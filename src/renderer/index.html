@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>我的 Agent 客户端</title>
+</head>
+
+<body>
+    <h1>我的 Agent 客户端</h1>
+    <!-- 新建对话会清空当前页面和会话上下文 -->
+    <button id="new-chat-button" type="button">新建对话</button>
+    <label for="session-select">历史对话</label>
+    <select id="session-select">
+        <option value="">选择历史对话</option>
+    </select>
+    <label for="session-name">对话名称</label>
+    <input id="session-name" type="text" maxlength="40" />
+    <button id="rename-button" type="button">重命名</button>
+    <div id="messages" aria-live="polite"></div>
+
+    <form id="message-form">
+        <label for="message-input">输入消息</label>
+        <input id="message-input" type="text" autocomplete="off" />
+        <button id="send-button" type="submit">发送</button>
+        <button id="stop-button" type="button" disabled>停止生成</button>
+    </form>
+
+    <script src="./renderer.js"></script>
+</body>
+
+</html>
