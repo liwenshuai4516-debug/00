@@ -95,8 +95,20 @@ export async function createPiAgent(sessionDir, resume = false, sessionPath) {
 }
 
 // 发送消息，并把收到的文本增量交给调用方。
-export async function sendMessage(session, text, onText) {
+export async function sendMessage(session, text, onText, onToolEvent) {
   const unsubscribe = session.subscribe((event) => {
+    // 将工具开始和结束事件交给主进程。
+    if (event.type === "tool_execution_start") {
+      onToolEvent({ type: "start", name: event.toolName });
+    }
+
+    if (event.type === "tool_execution_end") {
+      onToolEvent({
+        type: "end",
+        name: event.toolName,
+        isError: event.isError,
+      });
+    }
     if (
       event.type === "message_update" &&
       event.assistantMessageEvent.type === "text_delta"
