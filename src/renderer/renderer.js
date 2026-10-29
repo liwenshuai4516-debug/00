@@ -1,3 +1,6 @@
+import { createProposalPanel } from "./components/proposal-panel.js";
+import { mountHistoryPreview } from "./components/history-preview.js";
+import { createSessionInfoPanel } from "./components/session-info-panel.js";
 const form = document.getElementById("message-form");
 const input = document.getElementById("message-input");
 const sendButton = document.getElementById("send-button");
@@ -8,8 +11,25 @@ const messages = document.getElementById("messages");
 const sessionName = document.getElementById("session-name");
 const renameButton = document.getElementById("rename-button");
 
+// 在页面初始化时创建，后续统一调用 refresh 更新。
+const sessionInfoPanel = createSessionInfoPanel(
+  document.getElementById("session-info"),
+  () => window.agent.getSessionInfo(),
+);
+// 在页面初始化时创建面板，供所有函数和事件处理使用。
+const proposalPanelElement = document.getElementById("proposal-panel");
+
+const proposalPanel = createProposalPanel(
+  document.getElementById("proposal-list"),
+  (id) => window.agent.getProposal(id),
+  (id) => window.agent.applyProposal(id),
+  setBusy,
+  (error) => addMessage("错误", error.message),
+);
+
 function addMessage(role, text) {
   const message = document.createElement("p");
+  message.style.whiteSpace = "pre-wrap";
   message.textContent = `${role}：${text}`;
   messages.appendChild(message);
   return message;
@@ -17,6 +37,8 @@ function addMessage(role, text) {
 
 // 统一更新按钮和历史列表的可用状态。
 function setBusy(busy, generating = false) {
+  // fieldset 会统一禁用其内部按钮。
+  proposalPanelElement.disabled = busy;
   sendButton.disabled = busy;
   newChatButton.disabled = busy;
   sessionSelect.disabled = busy;
@@ -26,15 +48,34 @@ function setBusy(busy, generating = false) {
 
 // 用历史消息替换当前页面内容。
 function showHistory(history) {
+  // 切换或恢复历史时，清理当前页面的草稿操作入口。
+  proposalPanel.clear();
   messages.replaceChildren();
 
+  const labels = {
+    user: "我",
+    assistant: "Agent",
+    tool: "工具",
+    status: "状态",
+  };
+
   for (const message of history) {
-    const role = message.role === "user" ? "我" : "Agent";
-    addMessage(role, message.text);
+    addMessage(labels[message.role], message.text);
   }
 }
 
 // 获取历史列表，并标记当前正在使用的会话。
+// 主进程保存草稿数据；切换会话后由页面重新建立操作入口。
+async function restoreProposalPanel() {
+  const proposals = await window.agent.listProposals();
+
+  // 先清空，避免重复建立按钮。
+  proposalPanel.clear();
+
+  for (const proposal of proposals) {
+    proposalPanel.add(proposal.id);
+  }
+}
 async function refreshSessions() {
   const sessions = await window.agent.listSessions();
   const currentId = await window.agent.currentSession();
@@ -58,6 +99,9 @@ async function loadHistory() {
   try {
     const history = await window.agent.loadHistory();
     showHistory(history);
+    await sessionInfoPanel.refresh();
+
+    await restoreProposalPanel();
     await refreshSessions();
   } catch (error) {
     addMessage("错误", error.message);
@@ -67,8 +111,10 @@ async function loadHistory() {
   }
 }
 
-loadHistory();
+// 先建立独立预览入口，再尝试恢复当前聊天。
+mountHistoryPreview(document.getElementById("history-preview"), window.agent);
 
+loadHistory();
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -79,12 +125,40 @@ form.addEventListener("submit", async (event) => {
   input.value = "";
   setBusy(true, true);
 
-  const replyElement = addMessage("Agent", "");
+  // 每段连续的 Agent 文本使用独立消息元素。
+  let replyElement;
   let reply = "";
 
   const unsubscribe = window.agent.onTextDelta((delta) => {
+    // 真正收到文本时再创建，避免留下空白 Agent 消息。
+    if (!replyElement) {
+      replyElement = addMessage("Agent", "");
+    }
+
     reply += delta;
     replyElement.textContent = `Agent：${reply}`;
+  });
+
+  const unsubscribeTool = window.agent.onToolEvent((event) => {
+    if (event.type === "start") {
+      // 工具事件结束当前文本段；之后的回复在新位置显示。
+      replyElement = undefined;
+      reply = "";
+
+      addMessage("工具", `正在调用 ${event.name}`);
+    } else if (event.type === "end") {
+      replyElement = undefined;
+      reply = "";
+
+      const text = event.proposal
+        ? `${event.text}\n草稿编号：${event.proposal.id}`
+        : event.text;
+
+      addMessage("工具", text);
+      if (event.proposal) {
+        proposalPanel.add(event.proposal.id);
+      }
+    }
   });
 
   try {
@@ -100,6 +174,7 @@ form.addEventListener("submit", async (event) => {
     addMessage("错误", error.message);
   } finally {
     unsubscribe();
+    unsubscribeTool();
     setBusy(false);
     input.focus();
   }
@@ -110,7 +185,9 @@ newChatButton.addEventListener("click", async () => {
 
   try {
     await window.agent.newChat();
+    await sessionInfoPanel.refresh();
     messages.replaceChildren();
+    proposalPanel.clear();
     sessionSelect.value = "";
     input.value = "";
   } catch (error) {
@@ -131,6 +208,10 @@ sessionSelect.addEventListener("change", async () => {
     // 打开成功后再替换页面，失败时保留当前消息。
     const history = await window.agent.openSession(sessionId);
     showHistory(history);
+    await sessionInfoPanel.refresh();
+
+    // 会话打开成功后，再恢复它自己的待保存草稿。
+    await restoreProposalPanel();
   } catch (error) {
     addMessage("错误", error.message);
 

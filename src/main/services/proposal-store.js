@@ -1,0 +1,169 @@
+const { randomUUID } = require("node:crypto");
+
+// 未传 storage 时使用纯内存，现有单元测试无需依赖磁盘。
+function createProposalStore(storage) {
+  const sessions = new Map();
+
+  function getSession(sessionId) {
+    if (!sessions.has(sessionId)) {
+      const records = storage ? storage.load(sessionId) : [];
+      const restored = new Map();
+
+      for (const record of records) {
+        if (
+          !record ||
+          record.sessionId !== sessionId ||
+          typeof record.id !== "string" ||
+          !record.id ||
+          restored.has(record.id) ||
+          record.kind !== "edit-proposal" ||
+          typeof record.path !== "string" ||
+          !record.path ||
+          typeof record.oldText !== "string" ||
+          !record.oldText ||
+          record.oldText.length > 1000 ||
+          typeof record.newText !== "string" ||
+          record.newText.length > 1000 ||
+          record.oldText === record.newText ||
+          typeof record.baseTextHash !== "string" ||
+          !/^[a-f0-9]{64}$/.test(record.baseTextHash) ||
+          typeof record.written !== "boolean" ||
+          (record.applying !== undefined &&
+            typeof record.applying !== "boolean")
+        ) {
+          throw new Error("草稿字段无效或编号重复，请检查本地草稿记录。");
+        }
+
+        restored.set(record.id, Object.freeze({ ...record }));
+      }
+
+      // 全部检查通过后才采用，避免留下部分恢复的数据。
+      sessions.set(sessionId, restored);
+    }
+
+    return sessions.get(sessionId);
+  }
+
+  function persist(sessionId, records) {
+    storage?.save(sessionId, [...records.values()]);
+  }
+
+  function add(sessionId, proposal) {
+    if (
+      typeof sessionId !== "string" ||
+      !sessionId ||
+      proposal.kind !== "edit-proposal" ||
+      proposal.written !== false
+    ) {
+      throw new Error("无法登记无效的修改草稿。");
+    }
+
+    const records = getSession(sessionId);
+    const stored = Object.freeze({
+      id: randomUUID(),
+      sessionId,
+      kind: "edit-proposal",
+      path: proposal.path,
+      oldText: proposal.oldText,
+      newText: proposal.newText,
+      baseTextHash: proposal.baseTextHash,
+      written: false,
+    });
+
+    const next = new Map(records);
+    next.set(stored.id, stored);
+
+    // 先落盘再公布，失败不会留下可操作的内存草稿。
+    persist(sessionId, next);
+    sessions.set(sessionId, next);
+
+    return { ...stored };
+  }
+
+  function get(sessionId, id) {
+    const proposal = getSession(sessionId).get(id);
+
+    if (!proposal) {
+      throw new Error("当前会话中不存在该修改草稿。");
+    }
+
+    return { ...proposal };
+  }
+
+  function beginApply(sessionId, id) {
+    const proposal = get(sessionId, id);
+
+    if (proposal.written) {
+      throw new Error("该草稿已经保存，无需重复保存。");
+    }
+
+    if (proposal.applying) {
+      throw new Error("上次保存未确认完成，请检查文件并重新生成草稿。");
+    }
+
+    const next = new Map(getSession(sessionId));
+    next.set(id, Object.freeze({ ...proposal, applying: true }));
+
+    // 写文件前先持久化进行中状态。
+    persist(sessionId, next);
+    sessions.set(sessionId, next);
+  }
+
+  function cancelApply(sessionId, id) {
+    const proposal = get(sessionId, id);
+    const records = getSession(sessionId);
+
+    records.set(
+      id,
+      Object.freeze({
+        ...proposal,
+        applying: false,
+      }),
+    );
+
+    persist(sessionId, records);
+  }
+
+  function markWritten(sessionId, id) {
+    const proposal = get(sessionId, id);
+
+    if (proposal.written) {
+      throw new Error("该草稿已经保存，无需重复保存。");
+    }
+
+    const updated = Object.freeze({
+      ...proposal,
+      written: true,
+      applying: false,
+    });
+
+    const records = getSession(sessionId);
+
+    // 文件已经写入，先更新内存。
+    // 即使落盘失败，也不能允许本进程重复保存。
+    records.set(id, updated);
+    persist(sessionId, records);
+
+    return { ...updated };
+  }
+
+  function listPending(sessionId) {
+    return [...getSession(sessionId).values()]
+      .filter((proposal) => !proposal.written)
+      .map((proposal) => ({
+        id: proposal.id,
+        path: proposal.path,
+      }));
+  }
+
+  return {
+    add,
+    get,
+    beginApply,
+    cancelApply,
+    markWritten,
+    listPending,
+  };
+}
+
+module.exports = { createProposalStore };

@@ -4,11 +4,14 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>我的 Agent 客户端</title>
+    <title>我的 Agent 客户端11</title>
 </head>
 
 <body>
     <h1>我的 Agent 客户端</h1>
+    <!-- 展示实际会话身份；长目录自动换行。 -->
+    <p id="session-info" role="status" aria-atomic="true" style="white-space: pre-wrap; overflow-wrap: anywhere;">
+        当前会话信息尚未加载。</p>
     <!-- 新建对话会清空当前页面和会话上下文 -->
     <button id="new-chat-button" type="button">新建对话</button>
     <label for="session-select">历史对话</label>
@@ -18,6 +21,22 @@
     <label for="session-name">对话名称</label>
     <input id="session-name" type="text" maxlength="40" />
     <button id="rename-button" type="button">重命名</button>
+    <!-- 预览区域独立于当前聊天，避免混淆正在使用的会话。 -->
+    <details id="history-preview">
+        <summary>只读查看历史</summary>
+
+        <p>此处只预览，不切换当前聊天。若历史已压缩，显示范围与恢复聊天一致。</p>
+
+        <label for="preview-session-select">要预览的对话</label>
+        <select id="preview-session-select">
+            <option value="">展开后加载列表</option>
+        </select>
+
+        <button type="button" disabled>查看内容</button>
+
+        <p role="status"></p>
+        <div class="history-preview-content" aria-busy="false"></div>
+    </details>
     <div id="messages" aria-live="polite"></div>
 
     <form id="message-form">
@@ -26,8 +45,13 @@
         <button id="send-button" type="submit">发送</button>
         <button id="stop-button" type="button" disabled>停止生成</button>
     </form>
+    <!-- 生成期间统一禁用面板内的操作按钮 -->
+    <fieldset id="proposal-panel">
+        <legend>修改草稿</legend>
+        <div id="proposal-list"></div>
+    </fieldset>
 
-    <script src="./renderer.js"></script>
+    <script type="module" src="./renderer.js"></script>
 </body>
 
 </html>

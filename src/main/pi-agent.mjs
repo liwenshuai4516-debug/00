@@ -4,43 +4,42 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   ModelRegistry,
-  defineTool,
-  SessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
-import { Type } from "typebox";
+import { createWorkspaceSession } from "./workspace/workspace-session.mjs";
+import { createAgentTools } from "./tools/index.mjs";
+import { AGENT_SYSTEM_PROMPT } from "./prompts/agent-system-prompt.mjs";
+import messageAdapter from "./adapters/message-adapter.js";
+import modelConfig from "./config/model-config.js";
 
-// 定义一个不需要参数的工具，让模型获取当前北京时间。
-const currentTimeTool = defineTool({
-  name: "get_current_time",
-  label: "获取当前时间",
-  description: "获取当前北京时间，回答用户询问当前日期或时间的问题。",
-  parameters: Type.Object({}),
+const { formatToolResult } = messageAdapter;
+const { readModelConfig } = modelConfig;
 
-  async execute() {
-    // 在本机计算时间，明确指定时区。
-    const time = new Intl.DateTimeFormat("zh-CN", {
-      timeZone: "Asia/Shanghai",
-      dateStyle: "full",
-      timeStyle: "long",
-    }).format(new Date());
-
-    // 在启动应用的终端打印，方便确认工具确实被调用。
-    console.log("工具调用：get_current_time");
-
-    return {
-      content: [{ type: "text", text: time }],
-      details: {},
-    };
-  },
-});
 // sessionPath 用于打开指定历史会话。
-export async function createPiAgent(sessionDir, resume = false, sessionPath) {
+export async function createPiAgent(
+  sessionDir,
+  resume = false,
+  sessionPath,
+) {
+
+    // 先校验配置，再创建会话、加载资源或初始化认证存储。
+  const { provider, modelId, baseUrl } = readModelConfig();
+
+  // 目录检查、会话恢复和目录绑定统一交给新模块处理。
+  const {
+    workspaceRoot,
+    sessionManager,
+  } = await createWorkspaceSession({
+    sessionDir,
+    workspaceDir: process.env.AGENT_WORKSPACE_DIR,
+    resume,
+    sessionPath,
+  });
+
   const settingsManager = SettingsManager.inMemory();
 
-  // 暂时不加载扩展、技能和项目上下文。
   const resourceLoader = new DefaultResourceLoader({
-    cwd: process.cwd(),
+    cwd: workspaceRoot,
     agentDir: getAgentDir(),
     settingsManager,
     noExtensions: true,
@@ -48,21 +47,14 @@ export async function createPiAgent(sessionDir, resume = false, sessionPath) {
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
+    systemPrompt: AGENT_SYSTEM_PROMPT,
+    appendSystemPrompt: [],
   });
 
   await resourceLoader.reload();
 
   const authStorage = AuthStorage.create();
   const modelRegistry = ModelRegistry.create(authStorage);
-
-  // 模型配置由 Electron 主进程加载的 .env 提供。
-  const provider = process.env.PI_PROVIDER;
-  const modelId = process.env.PI_MODEL;
-  const baseUrl = process.env.PI_BASE_URL;
-
-  if (!provider || !modelId) {
-    throw new Error("请在 .env 中配置 PI_PROVIDER 和 PI_MODEL。");
-  }
 
   if (baseUrl) {
     modelRegistry.registerProvider(provider, { baseUrl });
@@ -74,21 +66,19 @@ export async function createPiAgent(sessionDir, resume = false, sessionPath) {
     throw new Error(`Pi 未找到模型：${provider}/${modelId}。`);
   }
 
+  // 工具、模型上下文和会话使用同一个真实工作目录。
+  const agentTools = createAgentTools(workspaceRoot);
+
   const { session } = await createAgentSession({
+    cwd: workspaceRoot,
     authStorage,
     modelRegistry,
     model,
     settingsManager,
     resourceLoader,
-    // 只允许当前时间工具，暂不启用文件或命令工具。
-    tools: ["get_current_time"],
-    customTools: [currentTimeTool],
-    // 指定路径时打开历史会话；否则恢复最近会话或创建新会话。
-    sessionManager: sessionPath
-      ? SessionManager.open(sessionPath)
-      : resume
-        ? SessionManager.continueRecent(process.cwd(), sessionDir)
-        : SessionManager.create(process.cwd(), sessionDir),
+    tools: agentTools.map((tool) => tool.name),
+    customTools: agentTools,
+    sessionManager,
   });
 
   return session;
@@ -103,12 +93,29 @@ export async function sendMessage(session, text, onText, onToolEvent) {
     }
 
     if (event.type === "tool_execution_end") {
-      onToolEvent({
+      const toolEvent = {
         type: "end",
         name: event.toolName,
         isError: event.isError,
-      });
+        text: formatToolResult(
+          event.toolName,
+          event.result.content,
+          event.isError,
+        ),
+      };
+
+      // 只从成功的草稿工具结果中提取结构化数据。
+      if (
+        event.toolName === "propose_workspace_edit" &&
+        !event.isError &&
+        event.result.details?.kind === "edit-proposal"
+      ) {
+        toolEvent.proposal = event.result.details;
+      }
+
+      onToolEvent(toolEvent);
     }
+
     if (
       event.type === "message_update" &&
       event.assistantMessageEvent.type === "text_delta"
