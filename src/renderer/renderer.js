@@ -176,7 +176,9 @@ input.addEventListener("keydown", (event) => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const text = input.value.trim();
+  // 请求使用去除首尾空白的内容，失败恢复使用完整原文。
+  const originalInput = input.value;
+  const text = originalInput.trim();
   if (!text || sendButton.disabled) return;
 
   // 主动发送消息时，恢复跟随，立即看到本轮内容。
@@ -187,8 +189,11 @@ form.addEventListener("submit", async (event) => {
   setBusy(true, true);
   setRequestStatus("正在准备请求并等待模型回复……");
 
+  // 模型请求和随后刷新历史列表是两个不同阶段。
+  let requestCompleted = false;
   let replyElement;
   let reply = "";
+
   // 每轮请求独立管理，使用调用编号关联，不能按工具名称匹配。
   const pendingTools = new Map();
 
@@ -256,6 +261,9 @@ form.addEventListener("submit", async (event) => {
   try {
     const result = await window.agent.sendMessage(text);
 
+    // 正常回复和主动停止都算请求已结束，不需要恢复输入。
+    requestCompleted = true;
+
     setRequestStatus(result.stopped ? "生成已停止。" : "本次回复已结束。");
 
     if (result.stopped) {
@@ -264,8 +272,21 @@ form.addEventListener("submit", async (event) => {
 
     await refreshSessions();
   } catch (error) {
-    setRequestStatus("本次操作未正常完成，请查看错误信息。");
-    addMessage("error", error.message);
+    if (requestCompleted) {
+      // 回复或停止已完成，仅列表刷新失败，不恢复已处理的输入。
+      setRequestStatus("请求已结束，但历史列表刷新失败。");
+      addMessage("error", `历史列表刷新失败：${error.message}`);
+    } else {
+      const restored = composerDrafts.restoreAfterFailure(originalInput);
+
+      setRequestStatus(
+        restored
+          ? "请求失败，原文已恢复，可编辑后重新发送。"
+          : "请求失败，已保留你正在编辑的内容，原文可在聊天区查看。",
+      );
+
+      addMessage("error", error.message);
+    }
   } finally {
     // 每轮请求都清理全部监听，避免下一轮重复接收事件。
     unsubscribe();

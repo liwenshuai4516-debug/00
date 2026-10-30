@@ -58,3 +58,39 @@ test("已发送后清空的输入不会恢复成旧草稿", async () => {
   drafts.switchTo("a");
   assert.equal(input.value, "下一条消息");
 });
+
+test("失败后恢复完整原文，切换会话后仍能找回", async () => {
+  const { input, drafts } = await setup();
+  const original = "  第一行\n    第二行\n";
+
+  drafts.switchTo("a");
+
+  // 模拟发送后输入框已清空，请求失败时恢复原文。
+  assert.equal(drafts.restoreAfterFailure(original), true);
+  assert.equal(input.value, original);
+
+  // 恢复的输入也应遵循现有的会话隔离规则。
+  drafts.switchTo("b");
+  assert.equal(input.value, "");
+
+  drafts.switchTo("a");
+  assert.equal(input.value, original);
+});
+
+test("失败恢复不覆盖等待期间输入的新内容或空白", async () => {
+  const { input, drafts } = await setup();
+
+  drafts.switchTo("a");
+
+  // 空格和换行同样视为用户正在编辑的内容。
+  for (const current of ["正在写下一条消息", "  \n"]) {
+    input.value = current;
+
+    assert.equal(
+      drafts.restoreAfterFailure("失败请求的原文"),
+      false,
+    );
+
+    assert.equal(input.value, current);
+  }
+});

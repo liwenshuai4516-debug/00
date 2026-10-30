@@ -16,5 +16,14 @@ export function createComposerDrafts(input) {
     currentId = sessionId;
   }
 
-  return { switchTo };
+  function restoreAfterFailure(text) {
+    // 等待回复时可能已经输入下一条消息，任何现有内容都不覆盖。
+    if (input.value !== "") return false;
+
+    // 恢复完整原文，保留换行、缩进和首尾空白。
+    input.value = text;
+    return true;
+  }
+
+  return { switchTo, restoreAfterFailure };
 }
