@@ -60,7 +60,7 @@ const proposalPanel = createProposalPanel(
   (error) => addMessage("error", error.message),
   (count) => {
     // 新增、恢复、保存、放弃和清空后都使用同一更新入口。
-    proposalSummary.textContent = `修改草稿（${count} 项未保存）`;
+    proposalSummary.textContent = `文件草稿（${count} 项未保存）`;
   },
 );
 

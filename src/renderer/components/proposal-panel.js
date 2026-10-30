@@ -47,39 +47,61 @@ export function createProposalPanel(
 
       try {
         const proposal = await loadProposal(id);
+        const isCreate = proposal.kind === "create-proposal";
         const title = document.createElement("p");
         title.textContent = `文件：${proposal.path}（本次检查通过，尚未保存）`;
 
         const comparison = document.createElement("div");
         comparison.className = "proposal-comparison";
-
-        const beforePanel = document.createElement("section");
-        beforePanel.className = "proposal-before";
-
-        const beforeLabel = document.createElement("h3");
-        beforeLabel.textContent = "替换前 · 将移除的片段";
-
-        const before = document.createElement("pre");
-        before.textContent = proposal.oldText;
-
-        beforePanel.append(beforeLabel, before);
-
-        const afterPanel = document.createElement("section");
-        afterPanel.className = "proposal-after";
-
-        const afterLabel = document.createElement("h3");
-        afterLabel.textContent = "替换后 · 将插入的片段";
-
-        const after = document.createElement("pre");
-        after.textContent = proposal.newText || "（删除原片段，不插入内容）";
-
-        afterPanel.append(afterLabel, after);
+        comparison.dataset.kind = proposal.kind;
 
         const scopeHint = document.createElement("p");
-        scopeHint.textContent = "这里只对照本次替换片段，不是完整文件。";
 
-        // 片段只作为纯文本显示，HTML 和脚本内容不会执行。
-        comparison.append(beforePanel, afterPanel);
+        if (isCreate) {
+          scopeHint.textContent =
+            "将新建此文件，以下为完整内容；保存时仍会检查目标是否被占用。";
+
+          const contentPanel = document.createElement("section");
+          contentPanel.className = "proposal-after";
+
+          const contentLabel = document.createElement("h3");
+          contentLabel.textContent = "新建文件 · 完整内容";
+
+          const content = document.createElement("pre");
+          // 只有空字符串显示占位提示，空格和换行仍按原样展示。
+          content.textContent =
+            proposal.content === "" ? "（空文件，0 字节）" : proposal.content;
+
+          contentPanel.append(contentLabel, content);
+          comparison.append(contentPanel);
+        } else {
+          scopeHint.textContent = "这里只对照本次替换片段，不是完整文件。";
+
+          const beforePanel = document.createElement("section");
+          beforePanel.className = "proposal-before";
+
+          const beforeLabel = document.createElement("h3");
+          beforeLabel.textContent = "替换前 · 将移除的片段";
+
+          const before = document.createElement("pre");
+          before.textContent = proposal.oldText;
+
+          beforePanel.append(beforeLabel, before);
+
+          const afterPanel = document.createElement("section");
+          afterPanel.className = "proposal-after";
+
+          const afterLabel = document.createElement("h3");
+          afterLabel.textContent = "替换后 · 将插入的片段";
+
+          const after = document.createElement("pre");
+          after.textContent = proposal.newText || "（删除原片段，不插入内容）";
+
+          afterPanel.append(afterLabel, after);
+          comparison.append(beforePanel, afterPanel);
+        }
+
+        // 两种草稿均使用纯文本展示，HTML 内容不会作为页面元素执行。
         preview.replaceChildren(title, scopeHint, comparison);
         saveButton.hidden = false;
       } catch (error) {

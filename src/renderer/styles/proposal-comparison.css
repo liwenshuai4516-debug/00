@@ -4,6 +4,10 @@
   gap: var(--space);
   margin: 12px 0;
 }
+/* 新建文件展示完整内容，使用单列。 */
+.proposal-comparison[data-kind="create-proposal"] {
+  grid-template-columns: minmax(0, 1fr);
+}
 
 .proposal-comparison > section {
   min-width: 0;

@@ -40,7 +40,7 @@
 - `src/main/pi-agent.mjs` 和 `pi-check.mjs` 使用 `await ModelRuntime.create()`、`getModel()`，通过 `createAgentSession({ modelRuntime, ... })` 创建会话。旧的 `AuthStorage` 和 `authStorage` / `modelRegistry` 会话选项已移除，不再沿用旧教程中的初始化代码。
 - Pi 1.4 的 `SessionManager.list(cwd, sessionDir)` 会按工作目录筛选。侧栏与只读历史预览使用 `SessionManager.listAll(sessionDir)` 保留全部历史；自动恢复仍按当前工作目录与应用绑定校验，不认领其他目录的会话。
 - 升级验证覆盖真实 SDK 初始化、自定义供应商地址、工具权限、会话信息、历史预览、工作目录恢复和文件工具，不请求真实模型。2026-10-30 在已提交代码加本次升级的临时副本中运行 13 个相关测试文件，72 项全部通过；这不代表工作区其他未提交功能已验证。工作区验证时曾因既有 `session-service.js` 未导出 `getSessionInfo` / `previewSession` 而失败，后续继续开发时须核对实际导出。
-- Electron `45.1.0` 内置 Node `24.22.1` 的独立会话初始化检查也通过，使用临时配置与会话目录，未请求模型；尚未进行真实模型聊天和完整界面手动验证。
+- Electron `45.1.0` 内置 Node `24.22.1` 的独立会话初始化检查也通过，使用临时配置与会话目录，未请求模型。后续真实聊天与新建文件草稿的用户手动验收见交接记录，不代表其他未提交功能已验收。
 
 ## 工程化与代码风格
 
@@ -83,37 +83,51 @@ JavaScript 使用两空格缩进、双引号、分号及描述性的驼峰命名
 
 ### 当前阶段
 
-- 使用 Electron、原生 DOM/ES Module 渲染层和 Pi Agent SDK；当前 SDK 为 `@earendil-works/pi-coding-agent` `1.4.0`，通过上述 npm 别名保留原导入路径。允许使用 Element Plus 不代表已经引入 Vue 或需要迁移现有前端。
-- 已有聊天、流式回复、停止、历史会话、工具展示、已有文件修改草稿的审阅/保存/放弃和持久化。工作区中还有手动上下文整理、对话导出等手写改动，不能当作已经全部验证或提交。
-- 当前正在补齐“新建文件草稿”链路，尚未向模型开放完整的新建文件能力。
-- `src/main/workspace/resolve-new-file-path.mjs` 已实现新文件路径检查：父目录必须存在，拒绝覆盖、隐藏/排除路径、目录外路径和已有符号链接；解析本身不写文件。
-- `src/main/tools/propose-create.mjs` 已实现 `propose_workspace_create`，返回 `create-proposal`，正文存于 `content`，允许空文件，限制为 UTF-8 32 KiB，拒绝空字节；工具只生成草稿。
-- `src/main/services/proposal-store.js` 已支持新建与修改草稿共同登记、按会话隔离、恢复和放弃。误输入的 `ƒ;` 已删除。
-- `src/main/services/proposal-review-service.js` 已加入新建草稿分支：审阅时重新检查目标路径，返回草稿，不创建文件。
+- 使用 Electron、原生 DOM/ES Module 渲染层和 Pi Agent SDK；当前 SDK 为 `@earendil-works/pi-coding-agent` `1.4.0`，通过 npm 别名保留原导入路径。允许使用 Element Plus 不代表已经引入 Vue 或需要迁移现有前端。
+- 新建文件草稿的工具、登记、审阅、保存、事实记录、历史展示和前端审阅现已接通。此前文档中的“未注册工具”“审阅测试为空”“保存服务重复定义”等待办已经过时，不要重复实施。
+- `resolve-new-file-path.mjs` 检查父目录、目标占用、隐藏/排除路径及工作目录边界；`propose_workspace_create` 只生成 `create-proposal`，完整正文保存在 `content`，允许空文件，限制 UTF-8 32 KiB，拒绝空字节。
+- `apply-workspace-create.mjs` 在已有父目录内写临时文件并同步，使用 `link` 发布目标，拒绝覆盖；保存前复核路径，清理失败但文件已保存时返回警告。
+- 保存链路保留进行中状态、失败恢复状态与附加警告语义；新建事实使用 `workspace-create-applied` 和实际内容，修改事实继续使用 `workspace-edit-applied`。
+- `tools/index.mjs` 注册新建工具，系统提示词区分新建与修改及草稿与保存；Pi 事件按工具名称和草稿类型成对提取，聊天服务登记两种草稿并保留 `toolCallId`。
+- 前端新建草稿展示完整内容，空字符串显示“（空文件，0 字节）”，空格与换行原样保留；使用 `textContent` 展示，两种草稿共用保存和放弃入口。审阅区标题为“文件草稿”。
+- 工作区仍有上下文整理、对话导出、发送失败恢复输入等其他手写改动，不能当作全部已验证或已提交。
 
-### 最近验证与缺口
+### 验证记录与边界
 
-本次交接在实际工作区执行以下相关测试，30 项通过：
+- 此前后端提交 `7078e4b` 与 `e5feb64` 已覆盖新建路径、保存及草稿链路；后端提交副本曾运行 15 个相关测试文件，81 项通过。
+- 本轮在仅包含已提交代码与本次新建工具注册、提示词和前端改动的临时副本中运行下列测试，28 项全部通过。副本不包含工作区其他未提交功能，也不读取本地 `.env` 或真实会话，不请求模型。
 
 ```bash
 node --test \
-  tests/unit/new-file-path.test.js \
   tests/unit/propose-create.test.js \
-  tests/unit/proposal-store.test.js \
-  tests/unit/proposal-persistence.test.js \
-  tests/unit/proposal-discard.test.js
+  tests/unit/tool-events.test.js \
+  tests/unit/read-lines.test.js \
+  tests/unit/proposal-create-apply.test.js
 ```
 
-现有 `tests/unit/proposal-review-service.test.js` 的 4 项修改草稿审阅测试也通过。**交接时 `tests/unit/proposal-create-review.test.js` 为零行空文件**，不能因为测试命令成功就认为新增审阅用例已经通过；此前教程中的 10 项结果来自临时副本。
+- 使用者反馈已完成真实界面手动验收：中文文件生成草稿后确认保存、重启查看保存记录、空文件保存、放弃草稿后重启不恢复，以及审阅后目标被外部占用时保存失败且不覆盖外部内容。这是使用者反馈，助手没有读取真实会话或验收文件。
+- `deepseek/deepseek-v4-flash` 初始化报错已定位为 Pi 本地目录未登记旧别名；SDK 1.4.0 内置 ID 为 `deepseek-flash`。已指导使用者修改本地 `PI_MODEL` 并彻底重启，之后使用者继续完成验收；不读取或提交 `.env`。
+- 使用者已选择下一阶段先核验现有“上下文整理、对话导出”。本轮在实际工作区运行下列 5 个文件，27 项通过；测试使用模拟会话和临时导出文件，不请求真实模型。
+
+```bash
+node --test \
+  tests/unit/context-compaction.test.js \
+  tests/unit/conversation-export.test.js \
+  tests/unit/message-adapter.test.js \
+  tests/unit/agent-ipc.test.js \
+  tests/unit/window-lifecycle.test.js
+```
+
+- 已核对 SDK 的 `compact()` 在异步准备后建立取消控制器并发送 `compaction_start`，现有服务订阅事件以补发准备期间的取消。导出保存的是当前上下文展示文本，可能包含摘要和截断工具结果，不能称为完整原始历史备份。
+- 上述检查未发现必须修改的问题；上下文整理和导出的真实界面操作尚未在本阶段手动验收，不能因单元测试通过就记录为全部完成。
 
 ### 下一步顺序
 
-1. 先指导使用者补齐 `tests/unit/proposal-create-review.test.js`：验证中文与空内容不写文件、目标被文件/目录/失效链接占用、隐藏与目录外路径、父目录链接改指目录外、已保存/保存未确认/未知类型。与已有审阅测试一起运行，完整教程预期共 10 项。
-2. 接入保存前明确整理重复定义：`proposal-apply-service.js` 第一个 `apply()` 之后混入了另一份旧的 `applyDefaultEdit`、`createProposalApplyService` 和导出；`session-service.js` 中 `recordWorkspaceEdit()` 连续定义两次。先核对实际代码再给准确删除范围，保留现有持久化状态和失败警告语义，不盲目整文件覆盖。
-3. 实现新文件保存模块，再接入保存服务。保存前必须复核路径，最终创建/发布必须拒绝覆盖已存在目标，不能照搬修改文件时可覆盖目标的 `rename`。沿用保存前登记进行中状态、保存失败恢复状态、文件已保存后的附加错误返回警告等语义，并验证失败和竞争情况。
-4. 扩展会话保存事实记录，明确记录“新建”及实际内容，不能误记成 `oldText/newText` 替换；同步检查历史消息适配和相关测试。
-5. 保存链路验证后，再统一接入 `tools/index.mjs`、`pi-agent.mjs` 的工具结果提取、`chat-service.js` 的草稿登记、系统提示词和 `renderer/components/proposal-panel.js` 的新建内容审阅。当前这些入口仍主要识别 `propose_workspace_edit` / `edit-proposal`，页面仍按原文与新文片段展示。
+1. 指导使用者手动验收上下文整理成功、取消、失败后的按钮恢复，以及整理前后输入草稿和待保存文件草稿保留；真实整理由使用者主动触发，助手不为测试调用付费模型。
+2. 验收导出取消不产生文件、成功导出保留中文和换行、整理后导出包含摘要及保留消息，并确认导出不切换会话、不清空输入或文件草稿。
+3. 若发现问题，先复现，再给最小修正的准确位置、完整代码和针对性验证；维持使用者亲手编写方式。
+4. 验收后再独立整理上下文整理和导出的提交范围，核对共享文件中的其他功能改动，不能整批加入全部工作区差异。
 
 ### 本次提交范围
 
-本次交接只更新并提交 `AGENTS.md`。工作区内既有的应用代码、测试及 `agent-save-example.txt` 等未提交文件保留原状，不执行 `git add .`；新窗口必须检查本地改动，不要误认为文档推送也包含全部源码。不要读取或提交 `.env`、真实会话和其他私密内容。
+本次收尾包括新建工具注册、系统提示词、新建内容审阅组件及样式、两个“文件草稿”标题和本交接文档。`index.html` 与 `renderer.js` 只提交标题差异，保留上下文整理、导出及输入恢复等其他改动。其余源码、测试差异和本地验收文件保留原状；不要读取或提交 `.env`、真实会话或 `agent-save-example.txt`、`qa-*-demo.txt` 等本地内容，不执行 `git add .`。
