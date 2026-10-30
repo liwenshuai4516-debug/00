@@ -33,6 +33,15 @@
 
 每次变更先明确可验证的目标，再执行与影响范围相称的检查。手动验证涉及的聊天、流式回复、停止生成、会话切换或工具调用流程；修复缺陷时先复现，再验证修复。引入自动化测试或构建工具后，在此记录实际命令和约定。
 
+## Pi SDK 版本与升级约定
+
+- 当前 Pi SDK 固定为 `1.4.0`，官方包已由 `@mariozechner/pi-coding-agent` 迁移到 `@earendil-works/pi-coding-agent`。`package.json` 使用 npm 别名 `"@mariozechner/pi-coding-agent": "npm:@earendil-works/pi-coding-agent@1.4.0"`，因此源码保留原导入路径；不要误认为仍运行旧版 SDK。
+- Node.js 最低要求为 `22.19.0`；同时更新 `package.json` 与 `package-lock.json`，使用 `npm ci` 复现依赖。
+- `src/main/pi-agent.mjs` 和 `pi-check.mjs` 使用 `await ModelRuntime.create()`、`getModel()`，通过 `createAgentSession({ modelRuntime, ... })` 创建会话。旧的 `AuthStorage` 和 `authStorage` / `modelRegistry` 会话选项已移除，不再沿用旧教程中的初始化代码。
+- Pi 1.4 的 `SessionManager.list(cwd, sessionDir)` 会按工作目录筛选。侧栏与只读历史预览使用 `SessionManager.listAll(sessionDir)` 保留全部历史；自动恢复仍按当前工作目录与应用绑定校验，不认领其他目录的会话。
+- 升级验证覆盖真实 SDK 初始化、自定义供应商地址、工具权限、会话信息、历史预览、工作目录恢复和文件工具，不请求真实模型。2026-10-30 在已提交代码加本次升级的临时副本中运行 13 个相关测试文件，72 项全部通过；这不代表工作区其他未提交功能已验证。工作区验证时曾因既有 `session-service.js` 未导出 `getSessionInfo` / `previewSession` 而失败，后续继续开发时须核对实际导出。
+- Electron `45.1.0` 内置 Node `24.22.1` 的独立会话初始化检查也通过，使用临时配置与会话目录，未请求模型；尚未进行真实模型聊天和完整界面手动验证。
+
 ## 工程化与代码风格
 
 以可维护、可运行的 Agent 客户端为目标，小步演进，每一步保持现有功能可验证。优先沿用现有依赖和风格，避免无关重构、推测性功能和配置。功能增长时再按职责组织会话管理、工具、配置和测试；工具能力及其权限应明确，工具调用和错误应可观察。
@@ -74,7 +83,7 @@ JavaScript 使用两空格缩进、双引号、分号及描述性的驼峰命名
 
 ### 当前阶段
 
-- 使用 Electron、原生 DOM/ES Module 渲染层和 Pi Agent SDK；当前依赖为 `@mariozechner/pi-coding-agent` `^0.73.1`。允许使用 Element Plus 不代表已经引入 Vue 或需要迁移现有前端。
+- 使用 Electron、原生 DOM/ES Module 渲染层和 Pi Agent SDK；当前 SDK 为 `@earendil-works/pi-coding-agent` `1.4.0`，通过上述 npm 别名保留原导入路径。允许使用 Element Plus 不代表已经引入 Vue 或需要迁移现有前端。
 - 已有聊天、流式回复、停止、历史会话、工具展示、已有文件修改草稿的审阅/保存/放弃和持久化。工作区中还有手动上下文整理、对话导出等手写改动，不能当作已经全部验证或提交。
 - 当前正在补齐“新建文件草稿”链路，尚未向模型开放完整的新建文件能力。
 - `src/main/workspace/resolve-new-file-path.mjs` 已实现新文件路径检查：父目录必须存在，拒绝覆盖、隐藏/排除路径、目录外路径和已有符号链接；解析本身不写文件。

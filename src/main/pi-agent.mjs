@@ -1,9 +1,8 @@
 import {
-  AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
   getAgentDir,
-  ModelRegistry,
+  ModelRuntime,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { createWorkspaceSession } from "./workspace/workspace-session.mjs";
@@ -47,14 +46,14 @@ export async function createPiAgent(sessionDir, resume = false, sessionPath) {
 
   await resourceLoader.reload();
 
-  const authStorage = AuthStorage.create();
-  const modelRegistry = ModelRegistry.create(authStorage);
+  // Pi 1.4 使用统一的异步模型与凭据运行时。
+  const modelRuntime = await ModelRuntime.create();
 
   if (baseUrl) {
-    modelRegistry.registerProvider(provider, { baseUrl });
+    modelRuntime.registerProvider(provider, { baseUrl });
   }
 
-  const model = modelRegistry.find(provider, modelId);
+  const model = modelRuntime.getModel(provider, modelId);
 
   if (!model) {
     throw new Error(`Pi 未找到模型：${provider}/${modelId}。`);
@@ -65,8 +64,7 @@ export async function createPiAgent(sessionDir, resume = false, sessionPath) {
 
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
-    authStorage,
-    modelRegistry,
+    modelRuntime,
     model,
     settingsManager,
     resourceLoader,

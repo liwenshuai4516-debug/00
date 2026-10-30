@@ -13,7 +13,7 @@
     "electron": "^45.1.0"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "^0.73.1",
+    "@mariozechner/pi-coding-agent": "npm:@earendil-works/pi-coding-agent@1.4.0",
     "typebox": "^1.4.3"
   }
 }

@@ -1,9 +1,8 @@
 import {
-  AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
   getAgentDir,
-  ModelRegistry,
+  ModelRuntime,
   SessionManager,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
@@ -26,9 +25,8 @@ const resourceLoader = new DefaultResourceLoader({
 console.log("正在加载 Pi 资源...");
 await resourceLoader.reload();
 
-// 创建凭据管理器和模型注册表。
-const authStorage = AuthStorage.create();
-const modelRegistry = ModelRegistry.create(authStorage);
+// Pi 1.4 使用统一的异步模型与凭据运行时。
+const modelRuntime = await ModelRuntime.create();
 
 // 从 .env 读取模型提供商和模型名称。
 const provider = process.env.PI_PROVIDER;
@@ -41,11 +39,11 @@ if (!provider || !modelId) {
 }
 // 如果配置了地址，就覆盖该供应商的默认 API 地址。
 if (baseUrl) {
-  modelRegistry.registerProvider(provider, { baseUrl });
+  modelRuntime.registerProvider(provider, { baseUrl });
 }
 
 // 按供应商和模型名称精确查找。
-const model = modelRegistry.find(provider, modelId);
+const model = modelRuntime.getModel(provider, modelId);
 
 if (!model) {
   throw new Error(`Pi 未找到模型：${provider}/${modelId}。`);
@@ -57,8 +55,7 @@ console.log("正在创建会话...");
 
 // 会话只保存在内存中，并且不启用内置工具。
 const { session } = await createAgentSession({
-  authStorage,
-  modelRegistry,
+  modelRuntime,
   model,
   settingsManager,
   resourceLoader,

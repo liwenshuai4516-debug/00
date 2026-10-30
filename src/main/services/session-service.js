@@ -98,7 +98,8 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
   // 读取会话文件列表；不自行解析或修改 JSONL 内容。
   async function readSessions() {
     const { SessionManager } = await import("@mariozechner/pi-coding-agent");
-    return SessionManager.list(process.cwd(), sessionDir);
+    // Pi 1.4 的 list 会按工作目录过滤；侧栏和只读预览仍列出全部历史。
+    return SessionManager.listAll(sessionDir);
   }
 
   async function listSessions() {

@@ -86,8 +86,8 @@ export async function createWorkspaceSession({
 
     if (error) throw new Error(error);
   } else if (resume) {
-    // 指定 sessionDir 后，SDK 会列出其中所有目录的会话。
-    // 列表按最近活动排序，逐个寻找当前目录的合法记录。
+    // SDK 按当前工作目录列出会话；仍需核对应用自己的绑定记录。
+    // 列表按最近活动排序，逐个寻找合法记录。
     const sessions = await SessionManager.list(
       workspaceRoot,
       sessionDir,

@@ -22,6 +22,11 @@ test("有效配置能初始化及新建真实 Pi 会话，不请求模型", asyn
       const service = createSessionService(process.argv[1]);
       const first = await service.getSession(true);
       const firstId = first.sessionId;
+      // 核对 Pi 1.4 的模型运行时、地址覆盖与工具权限，不请求模型。
+      assert.equal(first.model.baseUrl, "https://example.invalid/v1");
+      assert.equal(first.modelRuntime.getModel("openai", "gpt-4").baseUrl, first.model.baseUrl);
+      assert.ok(first.getActiveToolNames().includes("read_workspace_lines"));
+      assert.ok(!first.getActiveToolNames().some(name => ["read", "bash", "edit", "write"].includes(name)));
             // 核对真实 Pi 会话返回的信息，不请求模型。
      assert.deepEqual(await service.getSessionInfo(), {
       sessionId: firstId,
@@ -55,7 +60,7 @@ test("有效配置能初始化及新建真实 Pi 会话，不请求模型", asyn
         PI_CODING_AGENT_DIR: path.join(base, "pi-config"),
         PI_PROVIDER: "openai",
         PI_MODEL: "gpt-4",
-        PI_BASE_URL: "",
+        PI_BASE_URL: "https://example.invalid/v1",
         AGENT_WORKSPACE_DIR: workspace,
       },
       encoding: "utf8",
