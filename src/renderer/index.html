@@ -48,6 +48,14 @@
             <header class="chat-header">
                 <h1>项目助手</h1>
                 <p id="session-info" role="status" aria-atomic="true">当前会话信息尚未加载。</p>
+                <div class="button-row">
+                    <button id="compact-session-button" type="button" disabled
+                        title="调用模型生成前文摘要，保留原始历史文件。">整理上下文</button>
+
+                    <button id="cancel-compaction-button" type="button" hidden>取消整理</button>
+                    <button id="export-conversation-button" type="button" disabled
+                        title="导出当前上下文的展示文本，包括摘要和保留消息。">导出对话</button>
+                </div>
             </header>
 
             <!-- 消息区占用剩余高度，输入区保持在底部。 -->

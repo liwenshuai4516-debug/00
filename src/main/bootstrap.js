@@ -1,10 +1,13 @@
 //应用启动与服务组装
 
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("node:path");
 const { loadEnvFile } = require("node:process");
 const { createSessionService } = require("./services/session-service.js");
 const { createChatService } = require("./services/chat-service.js");
+const {
+  createConversationExportService,
+} = require("./services/conversation-export-service.js");
 const { registerAgentIpc } = require("./ipc/agent-ipc.js");
 const { registerWindowLifecycle } = require("./lifecycle/window-lifecycle.js");
 const { createProposalStore } = require("./services/proposal-store.js");
@@ -47,15 +50,35 @@ const proposalApplyService = createProposalApplyService(
   sessionService,
 );
 
-// 整个应用生命周期只注册一次，不随窗口重新创建。
+// 系统保存窗口由入口组装，导出服务不直接依赖 Electron。
+const conversationExportService = createConversationExportService(
+  sessionService,
+  (sender, options) => {
+    // 发起导出的窗口已关闭时，不再弹出保存面板。
+    if (sender.isDestroyed()) {
+      return { canceled: true };
+    }
+
+    const parentWindow = BrowserWindow.fromWebContents(sender);
+    if (!parentWindow) {
+      return { canceled: true };
+    }
+
+    return dialog.showSaveDialog(parentWindow, {
+      ...options,
+      defaultPath: path.join(app.getPath("documents"), "对话.txt"),
+    });
+  },
+);
+
 registerAgentIpc(
   ipcMain,
   sessionService,
   chatService,
   proposalReviewService,
   proposalApplyService,
+  conversationExportService,
 );
-
 function createWindow() {
   const window = new BrowserWindow({
     width: 900,
@@ -67,8 +90,16 @@ function createWindow() {
     },
   });
   // 每次创建窗口都绑定，包括 macOS 关闭后重新打开的窗口。
-  registerWindowLifecycle(window, chatService);
-
+  registerWindowLifecycle(window, {
+    async stop() {
+      // 两项清理都要执行，避免其中一步失败后跳过另一项。
+      try {
+        sessionService.cancelCompaction();
+      } finally {
+        await chatService.stop();
+      }
+    },
+  });
   window.loadFile(path.join(projectRoot, "src/renderer/index.html"));
 }
 

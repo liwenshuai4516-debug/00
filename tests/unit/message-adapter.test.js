@@ -80,3 +80,33 @@ test("历史显示保存记录，忽略隐藏或未知的自定义消息", () =>
     { role: "status", text: "文件已保存：example.js" },
   ]);
 });
+test("压缩摘要使用状态角色展示，并保留摘要与后续消息的顺序", () => {
+  const messages = [
+    {
+      role: "compactionSummary",
+      summary: "已完成目录检查。\n下一步：实现会话导出。",
+      tokensBefore: 8000,
+      timestamp: 1,
+    },
+    {
+      role: "user",
+      content: "继续下一步",
+    },
+  ];
+
+  const before = JSON.stringify(messages);
+
+  assert.deepEqual(toHistory(messages), [
+    {
+      role: "status",
+      text: "上下文整理摘要\n已完成目录检查。\n下一步：实现会话导出。",
+    },
+    {
+      role: "user",
+      text: "继续下一步",
+    },
+  ]);
+
+  // 展示转换不能改写 Pi 的原始上下文。
+  assert.equal(JSON.stringify(messages), before);
+});

@@ -11,7 +11,7 @@ async function createDefaultAgent(...args) {
 // 测试时可以传入模拟创建函数，正常启动无需额外参数。
 function createSessionService(sessionDir, createAgent = createDefaultAgent) {
   let sessionPromise;
-
+  let activeCompaction;
   function getSession(resume = false) {
     if (!sessionPromise) {
       // 同步保存 Promise，确保并发调用共享同一次初始化。
@@ -33,6 +33,71 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
 
   async function loadHistory() {
     return getHistory(await getSession(true));
+  }
+
+  // 由 IPC 的互斥入口调用，整理期间不能发送、切换或保存。
+  // 整理状态独立保存，初始化期间也能接收取消请求。
+  async function compactSession() {
+    if (activeCompaction) {
+      throw new Error("已有上下文整理正在进行。");
+    }
+
+    const request = {
+      stopRequested: false,
+      session: null,
+    };
+
+    activeCompaction = request;
+
+    try {
+      const session = await getSession(true);
+      request.session = session;
+
+      // 初始化期间收到取消，不再进入 SDK 整理。
+      if (request.stopRequested) {
+        return {
+          stopped: true,
+          history: getHistory(session),
+        };
+      }
+
+      const unsubscribe = session.subscribe((event) => {
+        // SDK 异步准备后才建立取消控制器，
+        // 因此需要补发准备期间收到的取消请求。
+        if (event.type === "compaction_start" && request.stopRequested) {
+          session.abortCompaction();
+        }
+      });
+
+      try {
+        await session.compact();
+
+        return {
+          stopped: false,
+          history: getHistory(session),
+        };
+      } catch (error) {
+        // 用户取消引起的中断，不作为普通错误展示。
+        if (!request.stopRequested) throw error;
+
+        return {
+          stopped: true,
+          history: getHistory(session),
+        };
+      } finally {
+        unsubscribe();
+      }
+    } finally {
+      activeCompaction = undefined;
+    }
+  }
+
+  function cancelCompaction() {
+    const request = activeCompaction;
+    if (!request) return;
+
+    request.stopRequested = true;
+    request.session?.abortCompaction();
   }
 
   async function currentSession() {
@@ -211,6 +276,8 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
     loadHistory,
     currentSession,
     getSessionInfo,
+    compactSession,
+    cancelCompaction,
     recordWorkspaceEdit,
     listSessions,
     previewSession,

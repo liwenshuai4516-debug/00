@@ -5,6 +5,7 @@ function registerAgentIpc(
   chatService,
   proposalReviewService,
   proposalApplyService,
+  conversationExportService,
 ) {
   let operationPending = false;
 
@@ -30,7 +31,22 @@ function registerAgentIpc(
 
   // 当前会话由主进程决定，页面不需要传入会话编号。
   ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
+  // 整理只针对主进程当前会话，不接收页面指定的会话编号。
+  ipcMain.handle("agent:compact-session", () => {
+    return runIdleOperation(() => sessionService.compactSession());
+  });
 
+  // 取消不能经过互斥入口，否则会被正在整理的操作阻止。
+  ipcMain.handle("agent:cancel-compaction", () =>
+    sessionService.cancelCompaction(),
+  );
+
+  // 导出与生成、整理、保存和切换会话共用互斥入口。
+  ipcMain.handle("agent:export-conversation", (event) => {
+    return runIdleOperation(() =>
+      conversationExportService.exportConversation(event.sender),
+    );
+  });
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
   ipcMain.handle("agent:open-session", (_event, sessionId) => {

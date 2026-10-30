@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 读取实际会话的模型与真实工作目录。
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
+  // 整理当前会话，以及取消正在进行的整理。
+  compactSession: () => ipcRenderer.invoke("agent:compact-session"),
+
+  cancelCompaction: () => ipcRenderer.invoke("agent:cancel-compaction"),
+
+  // 保存位置由系统窗口选择，页面不传路径或导出内容。
+  exportConversation: () => ipcRenderer.invoke("agent:export-conversation"),
 
   // 获取当前会话中已登记的草稿。
   getProposal: (id) => ipcRenderer.invoke("agent:get-proposal", id),

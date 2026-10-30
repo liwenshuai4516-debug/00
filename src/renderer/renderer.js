@@ -13,6 +13,14 @@ const composerDrafts = createComposerDrafts(input);
 const sendButton = document.getElementById("send-button");
 const stopButton = document.getElementById("stop-button");
 const newChatButton = document.getElementById("new-chat-button");
+const compactSessionButton = document.getElementById("compact-session-button");
+const exportConversationButton = document.getElementById(
+  "export-conversation-button",
+);
+
+const cancelCompactionButton = document.getElementById(
+  "cancel-compaction-button",
+);
 const sessionList = createSessionList(
   document.getElementById("session-list"),
   openHistorySession,
@@ -84,6 +92,8 @@ function setBusy(busy, generating = false) {
   proposalPanelElement.disabled = busy;
   sendButton.disabled = busy;
   newChatButton.disabled = busy;
+  compactSessionButton.disabled = busy;
+  exportConversationButton.disabled = busy;
   sessionList.setBusy(busy);
   stopButton.disabled = !generating;
   renameButton.disabled = busy;
@@ -357,6 +367,84 @@ renameButton.addEventListener("click", async () => {
   } catch (error) {
     addMessage("error", error.message);
   } finally {
+    setBusy(false);
+    input.focus();
+  }
+});
+compactSessionButton.addEventListener("click", async () => {
+  if (compactSessionButton.disabled) return;
+
+  setBusy(true);
+  cancelCompactionButton.hidden = false;
+  cancelCompactionButton.disabled = false;
+  setRequestStatus("正在整理上下文，请稍候……");
+
+  try {
+    const result = await window.agent.compactSession();
+
+    // 只更新消息区，保留输入草稿和待保存的文件修改。
+    // 不调用会清空草稿面板的 showHistory()。
+    messages.replaceChildren();
+    messageScroll.followLatest();
+
+    for (const message of result.history) {
+      addMessage(message.role, message.text);
+    }
+
+    setRequestStatus(
+      result.stopped ? "上下文整理已停止。" : "上下文整理完成。",
+    );
+  } catch (error) {
+    // 整理失败时保留原消息，只追加错误提示。
+    setRequestStatus("上下文整理未完成，请查看错误信息。");
+    addMessage("error", error.message);
+  } finally {
+    cancelCompactionButton.hidden = true;
+
+    await sessionInfoPanel.refresh();
+
+    setBusy(false);
+    input.focus();
+  }
+});
+
+cancelCompactionButton.addEventListener("click", async () => {
+  if (cancelCompactionButton.hidden || cancelCompactionButton.disabled) {
+    return;
+  }
+
+  cancelCompactionButton.disabled = true;
+  setRequestStatus("正在取消整理，请稍候……");
+
+  try {
+    await window.agent.cancelCompaction();
+
+    // 取消请求送达不代表整理已结束。
+    // 等原整理请求结束，再由它的 finally 恢复按钮。
+  } catch (error) {
+    // 原整理已经结束时，不让迟到的错误覆盖后续状态。
+    if (cancelCompactionButton.hidden) return;
+
+    cancelCompactionButton.disabled = false;
+    setRequestStatus("取消整理未确认，可以再次尝试。");
+    addMessage("error", error.message);
+  }
+});
+exportConversationButton.addEventListener("click", async () => {
+  if (exportConversationButton.disabled) return;
+
+  setBusy(true);
+  setRequestStatus("请选择导出位置……");
+
+  try {
+    const result = await window.agent.exportConversation();
+
+    setRequestStatus(result.canceled ? "已取消导出。" : "对话已导出。");
+  } catch (error) {
+    setRequestStatus("导出未完成，请查看错误信息。");
+    addMessage("error", error.message);
+  } finally {
+    // 导出不改变消息、输入草稿或待保存的文件修改。
     setBusy(false);
     input.focus();
   }

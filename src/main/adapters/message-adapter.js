@@ -24,15 +24,26 @@ function formatToolResult(name, content, isError) {
 
 function toHistory(messages) {
   return messages
-    .filter((message) =>
-      ["user", "assistant", "toolResult"].includes(message.role) ||
-      (
-        message.role === "custom" &&
-        ["workspace-edit-applied", "workspace-create-applied"].includes(message.customType) &&
-        message.display === true
-      ),
+    .filter(
+      (message) =>
+        ["user", "assistant", "toolResult", "compactionSummary"].includes(
+          message.role,
+        ) ||
+        (message.role === "custom" &&
+          ["workspace-edit-applied", "workspace-create-applied"].includes(
+            message.customType,
+          ) &&
+          message.display === true),
     )
     .map((message) => {
+      // 压缩摘要没有 content 字段，需要单独读取 summary。
+      if (message.role === "compactionSummary") {
+        return {
+          role: "status",
+          text: `上下文整理摘要\n${message.summary}`,
+        };
+      }
+
       // 保存记录使用独立角色，不冒充用户或模型消息。
       if (message.role === "custom") {
         return {
