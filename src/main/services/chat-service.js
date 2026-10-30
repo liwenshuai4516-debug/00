@@ -53,7 +53,9 @@ function createChatService(
 
             if (
               event.type === "end" &&
-              event.name === "propose_workspace_edit" &&
+              ["propose_workspace_edit", "propose_workspace_create"].includes(
+                event.name,
+              ) &&
               !event.isError &&
               event.proposal
             ) {
@@ -67,7 +69,7 @@ function createChatService(
                   type: "end",
                   // 登记失败也属于原工具调用，页面需要更新原记录。
                   toolCallId: event.toolCallId,
-                  name: "登记修改草稿",
+                  name: "登记文件草稿",
                   isError: true,
                   text: `草稿未登记，无法保存：${error.message}`,
                 });

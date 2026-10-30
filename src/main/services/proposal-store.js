@@ -1,5 +1,17 @@
 const { randomUUID } = require("node:crypto");
 
+// 登记与恢复使用相同的新建草稿字段约束。
+function isCreateProposal(proposal) {
+  return (
+    proposal?.kind === "create-proposal" &&
+    typeof proposal.path === "string" &&
+    Boolean(proposal.path) &&
+    typeof proposal.content === "string" &&
+    !proposal.content.includes("\0") &&
+    Buffer.byteLength(proposal.content, "utf8") <= 32 * 1024
+  );
+}
+
 // 未传 storage 时使用纯内存，现有单元测试无需依赖磁盘。
 function createProposalStore(storage) {
   const sessions = new Map();
@@ -10,23 +22,29 @@ function createProposalStore(storage) {
       const restored = new Map();
 
       for (const record of records) {
+        // 不同草稿类型分别校验各自的内容字段。
+        const validFields =
+          record?.kind === "create-proposal"
+            ? isCreateProposal(record)
+            : record?.kind === "edit-proposal" &&
+              typeof record.oldText === "string" &&
+              Boolean(record.oldText) &&
+              record.oldText.length <= 1000 &&
+              typeof record.newText === "string" &&
+              record.newText.length <= 1000 &&
+              record.oldText !== record.newText &&
+              typeof record.baseTextHash === "string" &&
+              /^[a-f0-9]{64}$/.test(record.baseTextHash);
+
         if (
           !record ||
           record.sessionId !== sessionId ||
           typeof record.id !== "string" ||
           !record.id ||
           restored.has(record.id) ||
-          record.kind !== "edit-proposal" ||
+          !validFields ||
           typeof record.path !== "string" ||
           !record.path ||
-          typeof record.oldText !== "string" ||
-          !record.oldText ||
-          record.oldText.length > 1000 ||
-          typeof record.newText !== "string" ||
-          record.newText.length > 1000 ||
-          record.oldText === record.newText ||
-          typeof record.baseTextHash !== "string" ||
-          !/^[a-f0-9]{64}$/.test(record.baseTextHash) ||
           typeof record.written !== "boolean" ||
           (record.applying !== undefined &&
             typeof record.applying !== "boolean")
@@ -37,7 +55,7 @@ function createProposalStore(storage) {
         restored.set(record.id, Object.freeze({ ...record }));
       }
 
-      // 全部检查通过后才采用，避免留下部分恢复的数据。
+      // 全部检查通过后才采用，避免部分恢复。
       sessions.set(sessionId, restored);
     }
 
@@ -52,21 +70,32 @@ function createProposalStore(storage) {
     if (
       typeof sessionId !== "string" ||
       !sessionId ||
-      proposal.kind !== "edit-proposal" ||
+      (proposal.kind !== "edit-proposal" && !isCreateProposal(proposal)) ||
       proposal.written !== false
     ) {
       throw new Error("无法登记无效的修改草稿。");
     }
 
     const records = getSession(sessionId);
+
+    // 按类型挑选字段，不采用工具传来的编号或会话归属。
+    const fields =
+      proposal.kind === "create-proposal"
+        ? {
+            content: proposal.content,
+          }
+        : {
+            oldText: proposal.oldText,
+            newText: proposal.newText,
+            baseTextHash: proposal.baseTextHash,
+          };
+
     const stored = Object.freeze({
       id: randomUUID(),
       sessionId,
-      kind: "edit-proposal",
+      kind: proposal.kind,
       path: proposal.path,
-      oldText: proposal.oldText,
-      newText: proposal.newText,
-      baseTextHash: proposal.baseTextHash,
+      ...fields,
       written: false,
     });
 
@@ -147,7 +176,7 @@ function createProposalStore(storage) {
     return { ...updated };
   }
   function discard(sessionId, id) {
-    // get 同时检查编号是否属于当前会话。
+    // get 同时检查草稿存在性和会话归属。
     const proposal = get(sessionId, id);
 
     if (proposal.written) {
@@ -155,14 +184,14 @@ function createProposalStore(storage) {
     }
 
     if (proposal.applying) {
-      throw new Error("草稿保存结果尚未确认，请先检查文件，不能直接放弃。");
+      throw new Error("上次保存结果尚未确认，请检查文件并重新生成草稿。");
     }
 
+    // 在副本中删除，快照写入失败时仍保留原来的内存状态。
     const next = new Map(getSession(sessionId));
     next.delete(id);
 
-    // 先保存新快照，再替换内存。
-    // 落盘失败时，原草稿仍然可以查看或重试。
+    // 快照保存成功后，才采用新的内存状态。
     persist(sessionId, next);
     sessions.set(sessionId, next);
 
@@ -187,8 +216,8 @@ function createProposalStore(storage) {
     beginApply,
     cancelApply,
     markWritten,
-    listPending,
     discard,
+    listPending,
   };
 }
 

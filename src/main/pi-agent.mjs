@@ -110,11 +110,13 @@ export async function sendMessage(
         ),
       };
 
-      // 只从成功的草稿工具结果中提取结构化数据。
+      // 工具名称与草稿类型必须对应，失败结果不提取草稿。
       if (
-        event.toolName === "propose_workspace_edit" &&
         !event.isError &&
-        event.result.details?.kind === "edit-proposal"
+        ((event.toolName === "propose_workspace_edit" &&
+          event.result.details?.kind === "edit-proposal") ||
+          (event.toolName === "propose_workspace_create" &&
+            event.result.details?.kind === "create-proposal"))
       ) {
         toolEvent.proposal = event.result.details;
       }

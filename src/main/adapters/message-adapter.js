@@ -28,7 +28,7 @@ function toHistory(messages) {
       ["user", "assistant", "toolResult"].includes(message.role) ||
       (
         message.role === "custom" &&
-        message.customType === "workspace-edit-applied" &&
+        ["workspace-edit-applied", "workspace-create-applied"].includes(message.customType) &&
         message.display === true
       ),
     )
