@@ -4,52 +4,89 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>我的 Agent 客户端11</title>
+    <title>闪电31</title>
+    <link rel="stylesheet" href="./styles/app.css" />
+    <link rel="stylesheet" href="./styles/message-scroll.css" />
+    <link rel="stylesheet" href="./styles/session-list.css" />
+    <link rel="stylesheet" href="./styles/proposal-comparison.css" />
+
 </head>
 
 <body>
-    <h1>我的 Agent 客户端</h1>
-    <!-- 展示实际会话身份；长目录自动换行。 -->
-    <p id="session-info" role="status" aria-atomic="true" style="white-space: pre-wrap; overflow-wrap: anywhere;">
-        当前会话信息尚未加载。</p>
-    <!-- 新建对话会清空当前页面和会话上下文 -->
-    <button id="new-chat-button" type="button">新建对话</button>
-    <label for="session-select">历史对话</label>
-    <select id="session-select">
-        <option value="">选择历史对话</option>
-    </select>
-    <label for="session-name">对话名称</label>
-    <input id="session-name" type="text" maxlength="40" />
-    <button id="rename-button" type="button">重命名</button>
-    <!-- 预览区域独立于当前聊天，避免混淆正在使用的会话。 -->
-    <details id="history-preview">
-        <summary>只读查看历史</summary>
+    <div class="app-shell">
+        <!-- 会话操作集中在侧栏，沿用现有接口与元素编号。 -->
+        <aside class="sidebar" aria-label="会话管理">
+            <h2>我的 Agent</h2>
+            <button id="new-chat-button" type="button">新建对话</button>
 
-        <p>此处只预览，不切换当前聊天。若历史已压缩，显示范围与恢复聊天一致。</p>
+            <h3 class="sidebar-section-title">历史对话</h3>
+            <label for="session-search">搜索对话</label>
+            <input id="session-search" type="search" autocomplete="off" placeholder="按标题搜索"
+                aria-controls="session-list" />
+            <nav id="session-list" class="session-list" aria-label="历史对话" aria-busy="false"></nav>
 
-        <label for="preview-session-select">要预览的对话</label>
-        <select id="preview-session-select">
-            <option value="">展开后加载列表</option>
-        </select>
+            <label for="session-name">对话名称</label>
+            <input id="session-name" type="text" maxlength="40" />
+            <button id="rename-button" type="button">重命名</button>
 
-        <button type="button" disabled>查看内容</button>
+            <details id="history-preview">
+                <summary>只读查看历史</summary>
+                <p>仅预览，不切换聊天；显示范围与恢复聊天一致。</p>
 
-        <p role="status"></p>
-        <div class="history-preview-content" aria-busy="false"></div>
-    </details>
-    <div id="messages" aria-live="polite"></div>
+                <label for="preview-session-select">要预览的对话</label>
+                <select id="preview-session-select">
+                    <option value="">展开后加载列表</option>
+                </select>
 
-    <form id="message-form">
-        <label for="message-input">输入消息</label>
-        <input id="message-input" type="text" autocomplete="off" />
-        <button id="send-button" type="submit">发送</button>
-        <button id="stop-button" type="button" disabled>停止生成</button>
-    </form>
-    <!-- 生成期间统一禁用面板内的操作按钮 -->
-    <fieldset id="proposal-panel">
-        <legend>修改草稿</legend>
-        <div id="proposal-list"></div>
-    </fieldset>
+                <button type="button" disabled>查看内容</button>
+                <p role="status"></p>
+                <div class="history-preview-content" aria-busy="false"></div>
+            </details>
+        </aside>
+
+        <main class="chat-main">
+            <header class="chat-header">
+                <h1>项目助手</h1>
+                <p id="session-info" role="status" aria-atomic="true">当前会话信息尚未加载。</p>
+            </header>
+
+            <!-- 消息区占用剩余高度，输入区保持在底部。 -->
+            <section class="thread-area" aria-label="当前对话">
+                <div id="messages" role="log" aria-label="聊天消息" aria-live="polite" tabindex="0"></div>
+
+                <button id="latest-message-button" type="button" aria-controls="messages" hidden>回到最新消息</button>
+            </section>
+
+            <details id="proposal-review-panel" class="review-panel">
+                <summary id="proposal-summary">修改草稿（0 项未保存）</summary>
+
+                <!-- 仍由现有 setBusy 统一控制草稿按钮。 -->
+                <fieldset id="proposal-panel">
+                    <legend>审阅与保存</legend>
+                    <div id="proposal-list"></div>
+                </fieldset>
+            </details>
+
+            <footer class="composer-area">
+                <p id="request-status" role="status" aria-atomic="true">就绪</p>
+
+                <form id="message-form" class="composer">
+                    <label for="message-input">输入消息</label>
+                    <textarea id="message-input" rows="4" autocomplete="off"
+                        aria-describedby="message-input-hint"></textarea>
+
+                    <div class="composer-actions">
+                        <p id="message-input-hint">Enter 发送，Shift+Enter 换行。</p>
+
+                        <div class="button-row">
+                            <button id="stop-button" type="button" disabled>停止生成</button>
+                            <button id="send-button" class="primary-button" type="submit">发送</button>
+                        </div>
+                    </div>
+                </form>
+            </footer>
+        </main>
+    </div>
 
     <script type="module" src="./renderer.js"></script>
 </body>

@@ -2,23 +2,18 @@ import path from "node:path";
 import { readdir } from "node:fs/promises";
 import { defineTool } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-  isExcluded,
-  resolveWorkspacePath,
-} from "../workspace/path-policy.mjs";
-import { createReadTextFileTool } from "./read-text-file.mjs";
+import { isExcluded, resolveWorkspacePath } from "../workspace/path-policy.mjs";
+import { readWorkspaceSource } from "../workspace/read-workspace-source.mjs";
 
 const MAX_ENTRIES = 500;
 const MAX_MATCHES = 30;
 
 export function createSearchTextTool(workspaceDir) {
-  const reader = createReadTextFileTool(workspaceDir);
-
   return defineTool({
     name: "search_workspace_text",
     label: "搜索项目文本",
     description:
-      "递归搜索工作目录中的 UTF-8 文本，区分大小写，使用普通字符串匹配。返回相对路径、从 1 开始的行号和文本片段。不跟随符号链接。",
+      "递归搜索工作目录中单文件最大 1 MiB 的 UTF-8 文本，区分大小写，使用普通字符串匹配。返回相对路径、从 1 开始的行号和文本片段。不跟随符号链接。",
 
     parameters: Type.Object({
       path: Type.String({
@@ -31,7 +26,7 @@ export function createSearchTextTool(workspaceDir) {
       }),
     }),
 
-    async execute(toolCallId, params, signal) {
+    async execute(_toolCallId, params, signal) {
       signal?.throwIfAborted();
 
       if (!params.query.trim()) {
@@ -83,13 +78,8 @@ export function createSearchTextTool(workspaceDir) {
           let file;
 
           try {
-            // 内部复用读取能力，不额外发起模型调用。
-            const result = await reader.execute(
-              toolCallId,
-              { path: filePath },
-              signal,
-            );
-            file = result.details;
+            // 内部读取源文本，只将匹配片段交给模型。
+            file = await readWorkspaceSource(workspaceDir, filePath, signal);
           } catch (error) {
             // 取消必须向上传播；普通文件读取失败则记录后继续。
             signal?.throwIfAborted();

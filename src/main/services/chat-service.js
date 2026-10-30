@@ -17,7 +17,7 @@ function createChatService(
     return Boolean(activeRequest);
   }
 
-  async function send(text, onText, onToolEvent) {
+  async function send(text, onText, onToolEvent, onStatus = () => {}) {
     if (typeof text !== "string" || !text.trim()) {
       throw new Error("请输入消息内容。");
     }
@@ -65,6 +65,8 @@ function createChatService(
                 // 存储失败作为应用错误展示，不公布保存按钮。
                 onToolEvent({
                   type: "end",
+                  // 登记失败也属于原工具调用，页面需要更新原记录。
+                  toolCallId: event.toolCallId,
                   name: "登记修改草稿",
                   isError: true,
                   text: `草稿未登记，无法保存：${error.message}`,
@@ -79,6 +81,10 @@ function createChatService(
             }
 
             onToolEvent(event);
+          },
+          // 停止后的状态不能覆盖页面上的停止提示。
+          (status) => {
+            if (!request.stopped) onStatus(status);
           },
         );
       } catch (error) {
@@ -122,11 +128,18 @@ function createChatService(
     return proposalStore.listPending(session.sessionId);
   }
 
+  // 会话归属由主进程取得，页面只能提交草稿编号。
+  async function discardProposal(id) {
+    const session = await sessionService.getSession();
+
+    return proposalStore.discard(session.sessionId, id);
+  }
   return {
     send,
     stop,
     isBusy,
     getProposal,
+    discardProposal,
     markProposalWritten,
 
     // 由保存服务控制保存开始和失败恢复。

@@ -43,12 +43,23 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
   async function getSessionInfo() {
     const session = await getSession(true);
     const model = session.model;
+    const usage = session.getContextUsage();
 
     return {
       sessionId: session.sessionId,
       workspaceDir: session.sessionManager.getCwd(),
       provider: model?.provider ?? "",
       modelId: model?.id ?? "",
+
+      // 只返回页面需要的字段，不传递完整 SDK 对象。
+      // tokens 和 percent 为 null 时表示暂时无法估算。
+      contextUsage: usage
+        ? {
+            tokens: usage.tokens,
+            contextWindow: usage.contextWindow,
+            percent: usage.percent,
+          }
+        : null,
     };
   }
 
@@ -158,6 +169,9 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
     const nextSession = await createAgent(sessionDir);
     sessionPromise = Promise.resolve(nextSession);
     previousSession?.dispose();
+
+    // 返回实际创建的编号，供页面关联该会话的输入草稿。
+    return nextSession.sessionId;
   }
 
   async function renameSession(name) {

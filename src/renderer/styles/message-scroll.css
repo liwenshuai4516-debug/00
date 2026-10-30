@@ -1,0 +1,106 @@
+#messages {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding: 16px 24px 64px;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+}
+
+.chat-message {
+  /* 使用随父区域变化的宽度，auto 保持水平居中。 */
+  width: var(--content-width);
+  max-width: none;
+  margin: 0 auto 24px;
+}
+
+.message-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.message-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/* 用户消息使用靠右的浅色气泡，Agent 回复保持正文布局。 */
+.chat-message[data-role="user"] .message-label {
+  text-align: right;
+}
+
+.chat-message[data-role="user"] .message-body {
+  width: fit-content;
+  max-width: 90%;
+  margin-left: auto;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--sidebar);
+}
+
+/* 工具输出可选择和复制，使用等宽字体区分。 */
+.chat-message[data-role="tool"] .message-body {
+  padding: 10px 12px;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.chat-message[data-role="status"] .message-body {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 错误同时具有文字标签和边框，不只依靠颜色表达。 */
+.chat-message[data-role="error"] .message-body {
+  padding: 10px 12px;
+  border: 1px solid var(--text);
+  border-radius: var(--radius);
+}
+.tool-message {
+  border-top: 1px solid var(--border);
+}
+
+.tool-message > summary {
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* 原生展开标记继续保留，明确提示可以展开或收起。 */
+.tool-message[open] > summary {
+  color: var(--text);
+}
+
+.tool-message > .message-body {
+  /* 长工具结果在内部滚动，避免占满整个聊天区域。 */
+  max-height: 16rem;
+  overflow-y: auto;
+}
+.message-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.message-actions button {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.message-actions [role="status"] {
+  font-size: 12px;
+  color: var(--muted);
+}

@@ -1,15 +1,45 @@
 import { createProposalPanel } from "./components/proposal-panel.js";
 import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel } from "./components/session-info-panel.js";
+import { createMessageScroll } from "./components/message-scroll.js";
+import { createSessionList } from "./components/session-list.js";
+import { appendMessage, updateToolMessage } from "./components/message-view.js";
+
+import { createComposerDrafts } from "./components/composer-drafts.js";
+
 const form = document.getElementById("message-form");
 const input = document.getElementById("message-input");
+const composerDrafts = createComposerDrafts(input);
 const sendButton = document.getElementById("send-button");
 const stopButton = document.getElementById("stop-button");
 const newChatButton = document.getElementById("new-chat-button");
-const sessionSelect = document.getElementById("session-select");
+const sessionList = createSessionList(
+  document.getElementById("session-list"),
+  openHistorySession,
+);
+// 搜索只更新侧栏展示，不切换当前会话。
+const sessionSearch = document.getElementById("session-search");
+
+sessionSearch.addEventListener("input", () => {
+  sessionList.setQuery(sessionSearch.value);
+});
 const messages = document.getElementById("messages");
+
+const messageScroll = createMessageScroll(
+  messages,
+  document.getElementById("latest-message-button"),
+);
 const sessionName = document.getElementById("session-name");
 const renameButton = document.getElementById("rename-button");
+
+const requestStatus = document.getElementById("request-status");
+
+function setRequestStatus(text) {
+  // 相同状态不重复修改，避免每段文本都触发辅助阅读播报。
+  if (requestStatus.textContent !== text) {
+    requestStatus.textContent = text;
+  }
+}
 
 // 在页面初始化时创建，后续统一调用 refresh 更新。
 const sessionInfoPanel = createSessionInfoPanel(
@@ -18,21 +48,34 @@ const sessionInfoPanel = createSessionInfoPanel(
 );
 // 在页面初始化时创建面板，供所有函数和事件处理使用。
 const proposalPanelElement = document.getElementById("proposal-panel");
+const proposalReviewPanel = document.getElementById("proposal-review-panel");
+const proposalSummary = document.getElementById("proposal-summary");
 
 const proposalPanel = createProposalPanel(
   document.getElementById("proposal-list"),
   (id) => window.agent.getProposal(id),
   (id) => window.agent.applyProposal(id),
+  (id) => window.agent.discardProposal(id),
   setBusy,
-  (error) => addMessage("错误", error.message),
+  (error) => addMessage("error", error.message),
+  (count) => {
+    // 新增、恢复、保存、放弃和清空后都使用同一更新入口。
+    proposalSummary.textContent = `修改草稿（${count} 项未保存）`;
+  },
 );
 
 function addMessage(role, text) {
-  const message = document.createElement("p");
-  message.style.whiteSpace = "pre-wrap";
-  message.textContent = `${role}：${text}`;
-  messages.appendChild(message);
-  return message;
+  const body = appendMessage(messages, role, text);
+
+  if (role === "tool") {
+    // 展开、收起改变消息高度，继续遵循当前滚动跟随状态。
+    body.parentElement.addEventListener("toggle", () => {
+      messageScroll.update();
+    });
+  }
+
+  messageScroll.update();
+  return body;
 }
 
 // 统一更新按钮和历史列表的可用状态。
@@ -41,29 +84,23 @@ function setBusy(busy, generating = false) {
   proposalPanelElement.disabled = busy;
   sendButton.disabled = busy;
   newChatButton.disabled = busy;
-  sessionSelect.disabled = busy;
+  sessionList.setBusy(busy);
   stopButton.disabled = !generating;
   renameButton.disabled = busy;
 }
 
 // 用历史消息替换当前页面内容。
 function showHistory(history) {
-  // 切换或恢复历史时，清理当前页面的草稿操作入口。
   proposalPanel.clear();
   messages.replaceChildren();
 
-  const labels = {
-    user: "我",
-    assistant: "Agent",
-    tool: "工具",
-    status: "状态",
-  };
+  // 切换会话后恢复跟随最新消息。
+  messageScroll.followLatest();
 
   for (const message of history) {
-    addMessage(labels[message.role], message.text);
+    addMessage(message.role, message.text);
   }
 }
-
 // 获取历史列表，并标记当前正在使用的会话。
 // 主进程保存草稿数据；切换会话后由页面重新建立操作入口。
 async function restoreProposalPanel() {
@@ -79,17 +116,10 @@ async function restoreProposalPanel() {
 async function refreshSessions() {
   const sessions = await window.agent.listSessions();
   const currentId = await window.agent.currentSession();
+  composerDrafts.switchTo(currentId);
 
-  sessionSelect.replaceChildren(new Option("选择历史对话", ""));
-
-  for (const session of sessions) {
-    const title = session.title.slice(0, 40);
-    sessionSelect.add(new Option(title, session.id));
-  }
-
-  // 新建但尚未发送消息的会话可能还没有出现在列表中。
-  const currentExists = sessions.some((session) => session.id === currentId);
-  sessionSelect.value = currentExists ? currentId : "";
+  // 会话数据和当前编号仍由主进程提供。
+  sessionList.render(sessions, currentId);
 }
 
 // 启动时恢复最近会话并加载历史列表。
@@ -104,7 +134,7 @@ async function loadHistory() {
     await restoreProposalPanel();
     await refreshSessions();
   } catch (error) {
-    addMessage("错误", error.message);
+    addMessage("error", error.message);
   } finally {
     setBusy(false);
     input.focus();
@@ -115,38 +145,79 @@ async function loadHistory() {
 mountHistoryPreview(document.getElementById("history-preview"), window.agent);
 
 loadHistory();
+
+// Enter 发送；Shift+Enter 保留 textarea 的默认换行行为。
+input.addEventListener("keydown", (event) => {
+  // 中文输入法选词时的 Enter 不应触发发送。
+  if (event.isComposing || event.key !== "Enter" || event.shiftKey) {
+    return;
+  }
+
+  // 普通 Enter 用于发送，阻止它在文本框里插入换行。
+  event.preventDefault();
+
+  // 长按 Enter 或当前不可发送时，不重复提交。
+  if (event.repeat || sendButton.disabled) return;
+
+  // 键盘与发送按钮共用 submit，统一处理校验和请求状态。
+  form.requestSubmit(sendButton);
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const text = input.value.trim();
   if (!text || sendButton.disabled) return;
 
-  addMessage("我", text);
+  // 主动发送消息时，恢复跟随，立即看到本轮内容。
+  messageScroll.followLatest();
+
+  addMessage("user", text);
   input.value = "";
   setBusy(true, true);
+  setRequestStatus("正在准备请求并等待模型回复……");
 
-  // 每段连续的 Agent 文本使用独立消息元素。
   let replyElement;
   let reply = "";
+  // 每轮请求独立管理，使用调用编号关联，不能按工具名称匹配。
+  const pendingTools = new Map();
+
+  // 请求发起之前先监听，避免遗漏早期状态。
+  const unsubscribeStatus = window.agent.onRequestStatus(setRequestStatus);
 
   const unsubscribe = window.agent.onTextDelta((delta) => {
-    // 真正收到文本时再创建，避免留下空白 Agent 消息。
+    setRequestStatus("正在接收回复……");
+
     if (!replyElement) {
-      replyElement = addMessage("Agent", "");
+      replyElement = addMessage("assistant", "");
     }
 
     reply += delta;
-    replyElement.textContent = `Agent：${reply}`;
+
+    // 角色标签由组件展示，这里只更新正文。
+    replyElement.textContent = reply;
+
+    // 已有消息的正文增长时，也需要更新滚动位置。
+    messageScroll.update();
   });
 
   const unsubscribeTool = window.agent.onToolEvent((event) => {
     if (event.type === "start") {
-      // 工具事件结束当前文本段；之后的回复在新位置显示。
+      setRequestStatus(`正在调用工具：${event.name}`);
+
+      // 工具事件将连续的模型文本分成不同段落。
       replyElement = undefined;
       reply = "";
 
-      addMessage("工具", `正在调用 ${event.name}`);
+      const body = addMessage("tool", `正在调用 ${event.name}`);
+
+      pendingTools.set(event.toolCallId, {
+        body,
+        name: event.name,
+      });
     } else if (event.type === "end") {
+      setRequestStatus("工具已返回，正在继续处理……");
+
       replyElement = undefined;
       reply = "";
 
@@ -154,27 +225,56 @@ form.addEventListener("submit", async (event) => {
         ? `${event.text}\n草稿编号：${event.proposal.id}`
         : event.text;
 
-      addMessage("工具", text);
+      const pending = pendingTools.get(event.toolCallId);
+
+      if (pending) {
+        // 更新开始时创建的记录，避免留下重复的“正在调用”。
+        updateToolMessage(pending.body, text);
+        pendingTools.delete(event.toolCallId);
+        messageScroll.update();
+      } else {
+        // 未收到开始事件时，也保留实际完成结果。
+        addMessage("tool", text);
+      }
+
       if (event.proposal) {
         proposalPanel.add(event.proposal.id);
+        proposalReviewPanel.open = true;
       }
     }
   });
-
   try {
     const result = await window.agent.sendMessage(text);
 
+    setRequestStatus(result.stopped ? "生成已停止。" : "本次回复已结束。");
+
     if (result.stopped) {
-      addMessage("状态", "生成已停止");
+      addMessage("status", "生成已停止");
     }
 
-    // 第一条消息写入后，新会话才会出现在列表中。
     await refreshSessions();
   } catch (error) {
-    addMessage("错误", error.message);
+    setRequestStatus("本次操作未正常完成，请查看错误信息。");
+    addMessage("error", error.message);
   } finally {
+    // 每轮请求都清理全部监听，避免下一轮重复接收事件。
     unsubscribe();
     unsubscribeTool();
+    unsubscribeStatus();
+    // 停止或异常可能没有完成事件，不能继续显示“正在调用”。
+    for (const { body, name } of pendingTools.values()) {
+      updateToolMessage(
+        body,
+        `${name} 结果未确认\n本轮请求已结束，未收到该工具的完成结果。`,
+      );
+    }
+
+    pendingTools.clear();
+    messageScroll.update();
+
+    // 成功、失败或停止后都重新读取当前会话的上下文估算。
+    await sessionInfoPanel.refresh();
+
     setBusy(false);
     input.focus();
   }
@@ -184,59 +284,66 @@ newChatButton.addEventListener("click", async () => {
   setBusy(true);
 
   try {
-    await window.agent.newChat();
+    const sessionId = await window.agent.newChat();
+    composerDrafts.switchTo(sessionId);
+    setRequestStatus("就绪");
     await sessionInfoPanel.refresh();
+
     messages.replaceChildren();
+
+    // 新建会话只需恢复一次跟随状态。
+    messageScroll.followLatest();
+
     proposalPanel.clear();
-    sessionSelect.value = "";
-    input.value = "";
+    // 新会话尚未发送消息时，可能还没有历史列表项。
+    sessionList.setActive("");
   } catch (error) {
-    addMessage("错误", error.message);
+    addMessage("error", error.message);
   } finally {
     setBusy(false);
     input.focus();
   }
 });
 
-sessionSelect.addEventListener("change", async () => {
-  const sessionId = sessionSelect.value;
-  if (!sessionId) return;
-
+async function openHistorySession(sessionId) {
   setBusy(true);
 
   try {
-    // 打开成功后再替换页面，失败时保留当前消息。
     const history = await window.agent.openSession(sessionId);
+    // 打开成功后，再保存旧输入并恢复目标会话的输入。
+    composerDrafts.switchTo(sessionId);
+
+    // 主进程打开成功后，才更新侧栏选中状态。
+    sessionList.setActive(sessionId);
+
+    setRequestStatus("就绪");
     showHistory(history);
     await sessionInfoPanel.refresh();
-
-    // 会话打开成功后，再恢复它自己的待保存草稿。
     await restoreProposalPanel();
   } catch (error) {
-    addMessage("错误", error.message);
-
-    // 切换失败时，恢复列表中显示的当前会话。
-    sessionSelect.value = await window.agent.currentSession();
+    // 打开失败时保留原选中项和已有聊天内容。
+    addMessage("error", error.message);
   } finally {
     setBusy(false);
     input.focus();
   }
-});
+}
 
 stopButton.addEventListener("click", async () => {
   stopButton.disabled = true;
+  setRequestStatus("正在停止，请稍候……");
 
   try {
     await window.agent.stop();
   } catch (error) {
-    addMessage("错误", error.message);
+    addMessage("error", error.message);
   }
 });
 renameButton.addEventListener("click", async () => {
   const name = sessionName.value.trim();
 
   if (!name) {
-    addMessage("错误", "请输入对话名称。");
+    addMessage("error", "请输入对话名称。");
     return;
   }
 
@@ -248,7 +355,7 @@ renameButton.addEventListener("click", async () => {
     await refreshSessions();
     sessionName.value = "";
   } catch (error) {
-    addMessage("错误", error.message);
+    addMessage("error", error.message);
   } finally {
     setBusy(false);
     input.focus();

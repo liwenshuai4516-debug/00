@@ -146,6 +146,31 @@ function createProposalStore(storage) {
 
     return { ...updated };
   }
+  function discard(sessionId, id) {
+    // get 同时检查编号是否属于当前会话。
+    const proposal = get(sessionId, id);
+
+    if (proposal.written) {
+      throw new Error("该草稿已经保存，不能放弃。");
+    }
+
+    if (proposal.applying) {
+      throw new Error("草稿保存结果尚未确认，请先检查文件，不能直接放弃。");
+    }
+
+    const next = new Map(getSession(sessionId));
+    next.delete(id);
+
+    // 先保存新快照，再替换内存。
+    // 落盘失败时，原草稿仍然可以查看或重试。
+    persist(sessionId, next);
+    sessions.set(sessionId, next);
+
+    return {
+      id: proposal.id,
+      path: proposal.path,
+    };
+  }
 
   function listPending(sessionId) {
     return [...getSession(sessionId).values()]
@@ -163,6 +188,7 @@ function createProposalStore(storage) {
     cancelApply,
     markWritten,
     listPending,
+    discard,
   };
 }
 

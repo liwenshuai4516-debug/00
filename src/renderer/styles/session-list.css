@@ -1,0 +1,39 @@
+.sidebar-section-title {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.session-list button {
+  width: 100%;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-color: transparent;
+  background: transparent;
+}
+
+.session-list button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+/* 视觉状态直接使用语义属性，避免维护两份选中状态。 */
+.session-list button[aria-current="true"] {
+  background: var(--hover);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+.session-list-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}

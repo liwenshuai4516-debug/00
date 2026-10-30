@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld("agent", {
   // 获取当前会话的 ID，用于在列表中标记当前对话。
   currentSession: () => ipcRenderer.invoke("agent:current-session"),
 
-    // 读取实际会话的模型与真实工作目录。
+  // 读取实际会话的模型与真实工作目录。
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
 
   // 获取当前会话中已登记的草稿。
@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 只允许提交草稿编号，不接受页面传入的路径或替换内容。
   applyProposal: (id) => ipcRenderer.invoke("agent:apply-proposal", id),
+
+  // 放弃尚未保存的草稿，只提交编号。
+  discardProposal: (id) => ipcRenderer.invoke("agent:discard-proposal", id),
   // 订阅工具状态，并返回取消订阅方法。
   onToolEvent: (callback) => {
     const listener = (_event, toolEvent) => callback(toolEvent);
@@ -41,6 +44,17 @@ contextBridge.exposeInMainWorld("agent", {
       ipcRenderer.removeListener("agent:tool-event", listener);
     };
   },
+  // 订阅请求状态，返回取消订阅函数。
+  onRequestStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+
+    ipcRenderer.on("agent:request-status", listener);
+
+    return () => {
+      ipcRenderer.removeListener("agent:request-status", listener);
+    };
+  },
+
   // 打开指定历史对话。
   openSession: (sessionId) =>
     ipcRenderer.invoke("agent:open-session", sessionId),

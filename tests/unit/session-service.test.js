@@ -97,7 +97,7 @@ test("新建成功后切换会话并释放原会话", async () => {
   });
 
   await service.getSession();
-  await service.newChat();
+  assert.equal(await service.newChat(), "next");
 
   assert.equal(await service.getSession(), next);
   assert.equal(await service.currentSession(), "next");

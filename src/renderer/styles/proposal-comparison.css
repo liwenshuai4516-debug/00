@@ -1,0 +1,41 @@
+.proposal-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space);
+  margin: 12px 0;
+}
+
+.proposal-comparison > section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.proposal-before {
+  background: var(--removed-background);
+}
+
+.proposal-after {
+  background: var(--added-background);
+}
+
+.proposal-comparison h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+#proposal-list .proposal-comparison pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  tab-size: 2;
+}
+
+/* 侧栏占用部分窗口宽度，提前切成单列，保证片段可读。 */
+@media (max-width: 900px) {
+  .proposal-comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

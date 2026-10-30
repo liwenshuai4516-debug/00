@@ -28,11 +28,9 @@ function registerAgentIpc(
     sessionService.currentSession(),
   );
 
-    // 当前会话由主进程决定，页面不需要传入会话编号。
-  ipcMain.handle("agent:session-info", () =>
-    sessionService.getSessionInfo(),
-  );
-  
+  // 当前会话由主进程决定，页面不需要传入会话编号。
+  ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
+
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
   ipcMain.handle("agent:open-session", (_event, sessionId) => {
@@ -60,6 +58,10 @@ function registerAgentIpc(
     return runIdleOperation(() => proposalReviewService.review(id));
   });
 
+  // 与保存、切换会话共用互斥入口。
+  ipcMain.handle("agent:discard-proposal", (_event, id) => {
+    return runIdleOperation(() => chatService.discardProposal(id));
+  });
   ipcMain.handle("agent:apply-proposal", (_event, id) => {
     return runIdleOperation(() => proposalApplyService.apply(id));
   });
@@ -80,6 +82,12 @@ function registerAgentIpc(
       (toolEvent) => {
         if (!event.sender.isDestroyed()) {
           event.sender.send("agent:tool-event", toolEvent);
+        }
+      },
+      (status) => {
+        // 只通知发起请求的页面；页面销毁后停止发送。
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("agent:request-status", status);
         }
       },
     );

@@ -23,12 +23,13 @@ test("有效配置能初始化及新建真实 Pi 会话，不请求模型", asyn
       const first = await service.getSession(true);
       const firstId = first.sessionId;
             // 核对真实 Pi 会话返回的信息，不请求模型。
-      assert.deepEqual(await service.getSessionInfo(), {
-        sessionId: firstId,
-        workspaceDir: realpathSync(process.env.AGENT_WORKSPACE_DIR),
-        provider: first.model.provider,
-        modelId: first.model.id,
-      });
+     assert.deepEqual(await service.getSessionInfo(), {
+      sessionId: firstId,
+      workspaceDir: realpathSync(process.env.AGENT_WORKSPACE_DIR),
+      provider: first.model.provider,
+      modelId: first.model.id,
+      contextUsage: first.getContextUsage() ?? null,
+    });
       assert.equal(first.sessionManager.getCwd(), realpathSync(process.env.AGENT_WORKSPACE_DIR));
       await service.newChat();
       const next = await service.getSession();
@@ -64,9 +65,7 @@ test("有效配置能初始化及新建真实 Pi 会话，不请求模型", asyn
 });
 
 test("供应商地址无效时，在创建会话目录之前拒绝初始化", async (t) => {
-  const base = await mkdtemp(
-    path.join(os.tmpdir(), "agent-invalid-config-"),
-  );
+  const base = await mkdtemp(path.join(os.tmpdir(), "agent-invalid-config-"));
 
   t.after(() => rm(base, { recursive: true, force: true }));
 
@@ -74,9 +73,8 @@ test("供应商地址无效时，在创建会话目录之前拒绝初始化", as
   await mkdir(workspace);
 
   const sessionDir = path.join(base, "sessions");
-  const servicePath = require.resolve(
-    "../../src/main/services/session-service.js",
-  );
+  const servicePath =
+    require.resolve("../../src/main/services/session-service.js");
 
   const script = `
     const assert = require("node:assert/strict");
