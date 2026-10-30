@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 读取实际会话的模型与真实工作目录。
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
+  // 页面只读取模型编号和名称，实际目录由主进程提供。
+  listModels: () => ipcRenderer.invoke("agent:list-models"),
   // 整理当前会话，以及取消正在进行的整理。
   compactSession: () => ipcRenderer.invoke("agent:compact-session"),
 

@@ -128,6 +128,27 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
     };
   }
 
+  // 读取当前会话的模型目录，不发起模型推理请求。
+  async function listModels() {
+    const session = await getSession(true);
+    const model = session.model;
+
+    if (!model) {
+      throw new Error("当前会话尚未选择模型。");
+    }
+
+    const models = session.modelRuntime.getModels(model.provider);
+
+    return {
+      provider: model.provider,
+      modelId: model.id,
+      // 页面只需要模型编号和名称，不返回完整 SDK 对象。
+      models: models.map((item) => ({
+        id: item.id,
+        name: item.name,
+      })),
+    };
+  }
   // 记录用户确认保存的事实，不主动请求模型回复。
   async function recordWorkspaceEdit(proposal) {
     const session = await getSession();
@@ -276,6 +297,7 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
     loadHistory,
     currentSession,
     getSessionInfo,
+    listModels,
     compactSession,
     cancelCompaction,
     recordWorkspaceEdit,
