@@ -37,3 +37,82 @@
   font-size: 12px;
   color: var(--muted);
 }
+
+/* 分组整体不收缩，长目录和标题在侧栏内截断。 */
+.session-group {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.session-group > summary {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 8px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  list-style: none;
+}
+
+.session-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.session-group > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+}
+
+.session-group[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.session-group > summary:hover {
+  background: var(--hover);
+}
+
+.session-group-name,
+.session-group-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-group-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.session-group-count,
+.session-group-path {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.session-group-path {
+  grid-column: 2 / -1;
+}
+
+.session-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-left: 12px;
+}
+
+.session-list .session-group-items button {
+  min-height: 44px;
+}
+
+/* 聚焦框留在滚动区域内部，避免被侧栏裁切。 */
+.session-group > summary:focus-visible,
+.session-group-items button:focus-visible {
+  outline-offset: -2px;
+}

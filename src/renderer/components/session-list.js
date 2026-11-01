@@ -1,6 +1,7 @@
-// 只负责会话列表展示；打开会话由 renderer.js 处理。
+// 只负责目录分组与会话列表展示；打开会话仍由 renderer.js 处理。
 export function createSessionList(container, onSelect) {
   const buttons = new Map();
+  const collapsed = new Set();
   let activeId = "";
   let busy = false;
   let sessions = [];
@@ -31,41 +32,86 @@ export function createSessionList(container, onSelect) {
     buttons.clear();
     container.replaceChildren();
 
-    // 只匹配标题，保留原有排序；空查询显示全部会话。
-    const visibleSessions = sessions.filter((session) =>
-      session.title.toLowerCase().includes(query),
-    );
+    // filter 创建新数组，排序不会改动主进程传来的列表。
+    const visibleSessions = sessions
+      .filter((session) => session.title.toLowerCase().includes(query))
+      .sort((first, second) => second.updatedAt - first.updatedAt);
+    const groups = new Map();
 
     for (const session of visibleSessions) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = session.title;
-      button.title = session.title;
-      button.disabled = busy;
+      // 使用完整目录作为键，同名文件夹不会被合并。
+      const key = session.workspaceDir;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(session);
+    }
 
-      button.addEventListener("click", () => {
-        // 筛选不能绕过当前会话判断和忙碌状态。
-        if (busy || session.id === activeId) return;
-        onSelect(session.id);
+    // 首次遇到的会话就是组内最新会话，分组也按最近活动排列。
+    for (const [workspaceDir, groupSessions] of groups) {
+      const group = document.createElement("details");
+      group.className = "session-group";
+      // 搜索时展开命中分组，不覆盖搜索前的折叠选择。
+      group.open = Boolean(query) || !collapsed.has(workspaceDir);
+
+      const summary = document.createElement("summary");
+      summary.title = workspaceDir || "未记录工作目录";
+
+      const name = document.createElement("span");
+      name.className = "session-group-name";
+      name.textContent = workspaceDir
+        ? workspaceDir.split(/[\\/]/).filter(Boolean).at(-1) || workspaceDir
+        : "未分类历史";
+
+      const count = document.createElement("span");
+      count.className = "session-group-count";
+      count.textContent = String(groupSessions.length);
+      count.setAttribute("aria-label", `${groupSessions.length} 个对话`);
+
+      const location = document.createElement("span");
+      location.className = "session-group-path";
+      location.textContent = workspaceDir || "未记录工作目录";
+      summary.append(name, count, location);
+
+      // 原生 summary 的鼠标和键盘操作都会触发 click。
+      // 在默认展开动作前记住下一状态，避免异步 toggle 与重绘交错。
+      summary.addEventListener("click", () => {
+        if (query) return;
+        if (group.open) collapsed.add(workspaceDir);
+        else collapsed.delete(workspaceDir);
       });
 
-      buttons.set(session.id, button);
-      container.appendChild(button);
+      const items = document.createElement("div");
+      items.className = "session-group-items";
+
+      for (const session of groupSessions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = session.title;
+        button.title = session.title;
+        button.disabled = busy;
+
+        button.addEventListener("click", () => {
+          // 展示归组不改变会话绑定，也不能绕过忙碌检查。
+          if (busy || session.id === activeId) return;
+          onSelect(session.id);
+        });
+
+        buttons.set(session.id, button);
+        items.appendChild(button);
+      }
+
+      group.append(summary, items);
+      container.appendChild(group);
     }
 
     if (!visibleSessions.length) {
       const empty = document.createElement("p");
       empty.className = "session-list-empty";
-
-      // 区分没有历史记录和搜索没有命中。
       empty.textContent = sessions.length
         ? "没有匹配的对话，试试其他关键词。"
         : "暂无历史对话，发送消息后会出现在这里。";
-
       container.appendChild(empty);
     }
 
-    // 隐藏当前会话不会改变它；重新显示时仍正确标记。
     setActive(activeId);
   }
 
