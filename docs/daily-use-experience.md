@@ -134,7 +134,9 @@
 
 队列消费协调已由使用者完成，完整代码保留在 [composer-draft-send-queue-step.md](composer-draft-send-queue-step.md)。新增beginSend/confirmConsumed/finishSend/rejectBeforeConsume，等待确认暂停保存，确认只推进基线并保留新输入；凭证身份与版本拦截迟到/重复确认。实际9项加既有队列/恢复共27项通过，尚未接renderer。消费前失败的空值恢复还需页面编辑记录保护后来主动清空。
 
-下一步只读状态核对完整手写指南在 [composer-send-inspection-step.md](composer-send-inspection-step.md)。候选inspectSend仅核对已登记原会话的目录，返回当前草稿版本与未确认快照；IPC经空闲互斥入口，生成中拒绝核对、读取期间阻止新发送，原输入保存独立可用。候选11项加相关回归38项通过，与队列恢复联合65项通过；尚未修改实际服务、IPC、preload或新测试。pendingSend为空不证明未消费，不能单凭此字段回填原文。后续须在页面协调实际版本与本地编辑，并补未确认快照的查看/手动处理、空会话恢复和关闭补保存。
+只读状态核对已由使用者完成，原完整代码保留在 [composer-send-inspection-step.md](composer-send-inspection-step.md)。inspectSend只读已登记原会话并核对目录，返回草稿与未确认快照，IPC经空闲互斥，输入保存独立可用；实际11项加相关回归38项通过，隔离功能版本也38项通过。尚未接页面。
+
+下一步队列采用核对结果和主动清空保护的完整手写指南在 [composer-send-reconcile-step.md](composer-send-reconcile-step.md)。reconcileSend严格匹配原文、版本与发送凭证，返回not-consumed/consumed/advanced；快照为空且版本前进不声称模型请求成功，其他冲突继续暂停。editVersion保护后来输入再清空，原问题先在旧队列复现，候选修正后新增10项加队列/恢复37项通过，与通信联合75项通过。实际队列、旧测试1处调整及新专项测试尚未修改。接下来接页面读取、保存、发送与异常处理，再补未确认快照查看/手动处理、空会话恢复和关闭补保存。
 
 输入与组织状态共用同一更新入口，按会话串行修改；不能让“保存输入”和“置顶”各自读取旧 JSON 再覆盖整条记录。使用同目录临时文件、同步和替换，成功后才返回确认；读取损坏时保留原文件并报告，不能静默重置。具体接口在开始手写时再按已验证的最小步骤确定，不提前引入数据库或通用状态框架。
 

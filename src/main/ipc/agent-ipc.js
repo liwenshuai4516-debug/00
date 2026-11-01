@@ -42,6 +42,11 @@ function registerAgentIpc(
       composerDraftService.saveDraft(sessionId, text, expectedRevision),
   );
 
+  // 异常后的状态核对必须等生成结束，读取期间阻止新的发送与会话操作。
+  ipcMain.handle("agent:inspect-composer-send", (_event, sessionId) => {
+    return runIdleOperation(() => composerDraftService.inspectSend(sessionId));
+  });
+
   // 当前会话由主进程决定，页面不需要传入会话编号。
   ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
 

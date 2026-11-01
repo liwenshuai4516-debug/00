@@ -53,7 +53,32 @@ function createComposerDraftService(sessionService, sessionStateStore) {
     };
   }
 
-  return { loadCurrentDraft, saveDraft };
+  async function inspectSend(sessionId) {
+    if (!knownSessions.has(sessionId)) {
+      throw new Error("该会话尚未登记，请先读取对应会话的输入草稿。");
+    }
+
+    // 使用原会话的登记；切换后的迟到核对不能改查新会话。
+    const workspaceDir = knownSessions.get(sessionId);
+    const state = await sessionStateStore.load(sessionId);
+    if (state && state.workspaceDir !== workspaceDir) {
+      throw new Error("输入草稿的工作目录与已登记目录不匹配。");
+    }
+
+    // 只给页面必要字段；读取不清理快照、不恢复原文，也不发送请求。
+    return {
+      sessionId,
+      text: state?.draft.text ?? "",
+      revision: state?.draft.revision ?? 0,
+      pendingSend: state?.pendingSend ? {
+        id: state.pendingSend.id,
+        text: state.pendingSend.text,
+        draftRevision: state.pendingSend.draftRevision,
+      } : null,
+    };
+  }
+
+  return { loadCurrentDraft, saveDraft, inspectSend };
 }
 
 module.exports = { createComposerDraftService };

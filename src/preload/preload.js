@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld("agent", {
       "agent:save-composer-draft", sessionId, text, expectedRevision,
     ),
 
+  // 只核对已登记的会话，不接收目录或页面提供的草稿状态。
+  inspectComposerSend: (sessionId) =>
+    ipcRenderer.invoke("agent:inspect-composer-send", sessionId),
+
   // 读取实际会话的模型与真实工作目录。
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
   // 页面只读取模型编号和名称，实际目录由主进程提供。
