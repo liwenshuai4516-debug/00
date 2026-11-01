@@ -121,11 +121,17 @@ function registerAgentIpc(
     return runIdleOperation(() => proposalApplyService.apply(id));
   });
 
-  ipcMain.handle("agent:send-message", (event, message) => {
+  ipcMain.handle("agent:send-message", (event, message, draftRequest) => {
     // chatService 自己负责拒绝重复生成；这里阻止保存期间发送。
     if (operationPending) {
       throw new Error("请等待当前操作结束后再发送消息。");
     }
+
+    // 只接受会话编号和输入版本，不转发页面提供的目录等字段。
+    const draft = draftRequest === undefined ? undefined : {
+      sessionId: draftRequest?.sessionId,
+      revision: draftRequest?.revision,
+    };
 
     return chatService.send(
       message,
@@ -143,6 +149,18 @@ function registerAgentIpc(
         // 只通知发起请求的页面；页面销毁后停止发送。
         if (!event.sender.isDestroyed()) {
           event.sender.send("agent:request-status", status);
+        }
+      },
+      draft,
+      (ack) => {
+        // 页面关闭不影响主进程继续发送和收尾；确认只发给请求来源。
+        if (!event.sender.isDestroyed()) {
+          event.sender.send("agent:draft-consumed", {
+            sessionId: ack.sessionId,
+            sendId: ack.sendId,
+            text: ack.text,
+            revision: ack.revision,
+          });
         }
       },
     );

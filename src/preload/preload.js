@@ -1,8 +1,16 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("agent", {
-  // 发起一轮对话。
-  sendMessage: (message) => ipcRenderer.invoke("agent:send-message", message),
+  // 可选输入版本用于消费已保存的原文；没有版本时沿用原调用。
+  sendMessage: (message, draftRequest) => {
+    if (draftRequest === undefined) {
+      return ipcRenderer.invoke("agent:send-message", message);
+    }
+    return ipcRenderer.invoke("agent:send-message", message, {
+      sessionId: draftRequest?.sessionId,
+      revision: draftRequest?.revision,
+    });
+  },
   // 清理当前会话。
   newChat: () => ipcRenderer.invoke("agent:new-chat"),
   // 从主进程读取最近一段对话的文本消息。
@@ -69,6 +77,15 @@ contextBridge.exposeInMainWorld("agent", {
 
     return () => {
       ipcRenderer.removeListener("agent:tool-event", listener);
+    };
+  },
+  // 接收主进程确认的消费版本，不将 Electron 事件对象交给页面。
+  onDraftConsumed: (callback) => {
+    const listener = (_event, draft) => callback(draft);
+    ipcRenderer.on("agent:draft-consumed", listener);
+
+    return () => {
+      ipcRenderer.removeListener("agent:draft-consumed", listener);
     };
   },
   // 订阅请求状态，返回取消订阅函数。
