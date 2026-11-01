@@ -17,14 +17,20 @@ const { readModelConfig } = modelConfig;
 const { getRequestStatus } = requestStatus;
 
 // sessionPath 用于打开指定历史会话。
-export async function createPiAgent(sessionDir, resume = false, sessionPath) {
+export async function createPiAgent(
+  sessionDir,
+  resume = false,
+  sessionPath,
+  workspaceDir = process.env.AGENT_WORKSPACE_DIR,
+) {
   // 先校验配置，再创建会话、加载资源或初始化认证存储。
   const { provider, modelId, baseUrl } = readModelConfig();
 
   // 目录检查、会话恢复和目录绑定统一交给新模块处理。
   const { workspaceRoot, sessionManager } = await createWorkspaceSession({
     sessionDir,
-    workspaceDir: process.env.AGENT_WORKSPACE_DIR,
+    // 显式目录供后续选择入口使用；旧调用仍采用启动配置。
+    workspaceDir,
     resume,
     sessionPath,
   });
