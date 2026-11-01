@@ -132,7 +132,9 @@
 
 使用者已完成聊天服务接线，向构造函数注入共享存储，send增加可选会话版本与同步消费确认回调；旧调用保持原行为。新路径先消费后发送，初始化期间停止也收尾；正常完成或停止清理快照，收尾失败仅附warning；消费后异常保留快照并返回unconfirmed，避免将远端处理情况未知的请求自动重发。实际与隔离副本的8项生命周期加既有聊天和存储共28项通过；消费确认通信已由使用者完成，sendMessage接收可选sessionId/revision，agent:draft-consumed仅通知请求来源，onDraftConsumed只暴露数据并可取消订阅；实际7项加相关回归共26项通过，排除无关改动的隔离副本也26项通过。页面版本路径尚未启用。
 
-下一步队列协调完整手写指南在 [composer-draft-send-queue-step.md](composer-draft-send-queue-step.md)，候选扩展beginSend/confirmConsumed/finishSend/rejectBeforeConsume，等待确认时暂停保存，确认只推进基线，保留后来的输入；通过凭证身份与版本拦截迟到和重复确认。候选9项加既有队列/恢复共27项通过，与通信联合53项通过；尚未修改实际队列或新增实际测试。IPC异常或缺失确认不能按明确消费前失败处理，后续须补主进程实际状态读取协调与未确认快照查看处理，再接页面。
+队列消费协调已由使用者完成，完整代码保留在 [composer-draft-send-queue-step.md](composer-draft-send-queue-step.md)。新增beginSend/confirmConsumed/finishSend/rejectBeforeConsume，等待确认暂停保存，确认只推进基线并保留新输入；凭证身份与版本拦截迟到/重复确认。实际9项加既有队列/恢复共27项通过，尚未接renderer。消费前失败的空值恢复还需页面编辑记录保护后来主动清空。
+
+下一步只读状态核对完整手写指南在 [composer-send-inspection-step.md](composer-send-inspection-step.md)。候选inspectSend仅核对已登记原会话的目录，返回当前草稿版本与未确认快照；IPC经空闲互斥入口，生成中拒绝核对、读取期间阻止新发送，原输入保存独立可用。候选11项加相关回归38项通过，与队列恢复联合65项通过；尚未修改实际服务、IPC、preload或新测试。pendingSend为空不证明未消费，不能单凭此字段回填原文。后续须在页面协调实际版本与本地编辑，并补未确认快照的查看/手动处理、空会话恢复和关闭补保存。
 
 输入与组织状态共用同一更新入口，按会话串行修改；不能让“保存输入”和“置顶”各自读取旧 JSON 再覆盖整条记录。使用同目录临时文件、同步和替换，成功后才返回确认；读取损坏时保留原文件并报告，不能静默重置。具体接口在开始手写时再按已验证的最小步骤确定，不提前引入数据库或通用状态框架。
 
