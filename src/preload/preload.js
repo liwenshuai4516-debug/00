@@ -1,6 +1,19 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("agent", {
+  readModelSettings: () => ipcRenderer.invoke("agent:read-model-settings"),
+  listSettingsModels: (provider) =>
+    ipcRenderer.invoke("agent:list-settings-models", provider),
+  saveModelSettings: (settings) =>
+    ipcRenderer.invoke("agent:save-model-settings", {
+      name: settings?.name, kind: settings?.kind,
+      provider: settings?.provider, modelId: settings?.modelId,
+      baseUrl: settings?.baseUrl, authMode: settings?.authMode, apiKey: settings?.apiKey,
+      api: settings?.api, contextWindow: settings?.contextWindow, maxTokens: settings?.maxTokens,
+    }),
+  setDefaultModelProfile: (id) => ipcRenderer.invoke("agent:set-default-model-profile", id),
+  listModelProfiles: () => ipcRenderer.invoke("agent:list-model-profiles"),
+  switchModelProfile: (id) => ipcRenderer.invoke("agent:switch-model-profile", id),
   // 可选输入版本用于消费已保存的原文；没有版本时沿用原调用。
   sendMessage: (message, draftRequest) => {
     if (draftRequest === undefined) {

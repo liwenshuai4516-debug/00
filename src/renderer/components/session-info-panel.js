@@ -32,7 +32,7 @@ export function createSessionInfoPanel(element, readInfo) {
       // 使用普通文本展示，避免目录名等内容被解释为 HTML。
       element.textContent = [
         `当前工作目录：${info.workspaceDir}`,
-        `当前模型：${model}`,
+        `当前模型：${info.profileName ? `${info.profileName} · ` : ""}${model}`,
         `会话编号：${info.sessionId}`,
         formatContextUsage(info.contextUsage),
       ].join("\n");

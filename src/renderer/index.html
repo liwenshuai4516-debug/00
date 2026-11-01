@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="./styles/model-selector.css" />
   <!-- 新主题最后加载，保留现有组件样式文件。 -->
   <link rel="stylesheet" href="./styles/codex-theme.css" />
+  <link rel="stylesheet" href="./styles/model-settings.css" />
 </head>
 <body>
   <!-- 图标只用于展示，不承载业务行为。 -->
@@ -60,6 +61,7 @@
       <nav id="session-list" class="session-list" aria-label="历史对话" aria-busy="false"></nav>
 
       <div class="sidebar-footer">
+        <button id="model-settings-button" type="button" disabled>模型与配置</button>
         <details id="history-preview">
           <summary>只读查看历史</summary>
           <p>仅预览，不切换当前对话。</p>
@@ -169,6 +171,95 @@
       </footer>
     </main>
   </div>
+
+  <!-- 独立配置对话框：关闭不会替换聊天、输入框或文件草稿节点。 -->
+  <dialog id="model-settings-dialog" class="model-settings-dialog" aria-labelledby="model-settings-title"
+    aria-describedby="model-settings-intro">
+    <header>
+      <h2 id="model-settings-title">模型与配置</h2>
+      <button type="button" data-close autofocus>关闭</button>
+    </header>
+    <p id="model-settings-intro">保存多套模型配置，在当前对话即时切换；已有会话记住自己的选择。</p>
+    <fieldset data-saved-controls class="saved-profile-controls" disabled>
+      <legend>已保存配置</legend>
+      <label for="saved-model-profiles">选择配置</label>
+      <select id="saved-model-profiles" data-profiles></select>
+      <p data-selected-info class="selected-profile-info"></p>
+      <div class="profile-actions">
+        <button type="button" data-apply>用于当前对话</button>
+        <button type="button" data-default>设为新对话默认</button>
+      </div>
+    </fieldset>
+    <details class="new-profile-editor">
+      <summary>新增模型配置</summary>
+      <form>
+        <fieldset disabled>
+          <legend>新配置</legend>
+          <button type="button" data-environment>读取 .env 配置</button>
+          <small data-environment-hint>读取启动时的供应商、模型和地址；使用该供应商已有凭据。不会切换当前对话或改写 .env。</small>
+          <div class="model-settings-fields">
+            <div>
+              <label for="profile-name">配置名称</label>
+              <input id="profile-name" name="name" required maxlength="80" autocomplete="off" />
+            </div>
+            <div>
+              <label for="profile-kind">供应商类型</label>
+              <select id="profile-kind" name="kind">
+                <option value="builtin">内置目录（OpenAI / Anthropic / DeepSeek）</option>
+                <option value="custom">自定义兼容接口</option>
+              </select>
+            </div>
+            <fieldset data-builtin>
+              <label for="profile-builtin-provider">供应商</label>
+              <select id="profile-builtin-provider" name="builtinProvider" required></select>
+              <label for="profile-builtin-model">模型</label>
+              <select id="profile-builtin-model" name="builtinModelId" required></select>
+            </fieldset>
+            <fieldset data-custom hidden disabled>
+              <label for="profile-custom-provider">供应商名称或标识</label>
+              <input id="profile-custom-provider" name="customProvider" required autocomplete="off" />
+              <label for="profile-custom-model">模型 ID</label>
+              <input id="profile-custom-model" name="customModelId" required autocomplete="off" spellcheck="false" />
+              <label for="profile-api">接口协议</label>
+              <select id="profile-api" name="api">
+                <option value="openai-completions">OpenAI Chat Completions 兼容</option>
+                <option value="openai-responses">OpenAI Responses 兼容</option>
+                <option value="anthropic-messages">Anthropic Messages 兼容</option>
+              </select>
+              <label for="profile-context">上下文窗口（tokens）</label>
+              <input id="profile-context" name="contextWindow" type="number" min="1" step="1" required />
+              <label for="profile-max-tokens">最大输出（tokens）</label>
+              <input id="profile-max-tokens" name="maxTokens" type="number" min="1" step="1" required />
+              <small>按供应商文档填写。第一版自定义配置使用文本输入；保存不验证账号权限或兼容性。</small>
+            </fieldset>
+            <div>
+              <label for="profile-base-url">API 地址</label>
+              <input id="profile-base-url" name="baseUrl" type="url" autocomplete="off" spellcheck="false" />
+              <small>自定义供应商必填；内置供应商留空使用其内置地址。请求和密钥会发往这个地址。</small>
+            </div>
+            <div>
+              <label for="profile-auth">凭据来源</label>
+              <select id="profile-auth" name="authMode">
+                <option value="saved">输入并加密保存 API 密钥</option>
+                <option value="sdk">使用该供应商已有的 SDK API 密钥</option>
+              </select>
+            </div>
+            <div data-key>
+              <label for="profile-key">API 密钥</label>
+              <input id="profile-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false" required />
+              <small>每套新配置单独输入；已保存密钥不会回填，关闭页面后清除未保存原文。</small>
+            </div>
+          </div>
+        </fieldset>
+        <button type="submit" disabled>保存为新配置</button>
+      </form>
+    </details>
+    <p>另存配置会保留原项，旧会话继续使用原配置。设置默认不会切换当前对话。</p>
+    <footer>
+      <p role="status" aria-atomic="true">尚未读取配置。</p>
+      <button type="button" data-retry hidden>重新读取</button>
+    </footer>
+  </dialog>
 
   <!-- 业务入口保留；页面外壳仅管理本地展示。 -->
   <script type="module" src="./renderer.js"></script>

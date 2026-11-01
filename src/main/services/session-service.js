@@ -122,12 +122,15 @@ function createSessionService(
     const session = await getSession(true);
     const model = session.model;
     const usage = session.getContextUsage();
+    const profileInfo = session.desktopModelSettings
+      ? await session.desktopModelSettings.describeCurrent(session) : null;
 
     return {
       sessionId: session.sessionId,
       workspaceDir: session.sessionManager.getCwd(),
       provider: model?.provider ?? "",
       modelId: model?.id ?? "",
+      ...(profileInfo ?? {}),
 
       // 只返回页面需要的字段，不传递完整 SDK 对象。
       // tokens 和 percent 为 null 时表示暂时无法估算。
@@ -195,6 +198,18 @@ function createSessionService(
       modelId: session.model.id,
     };
   }
+  async function listModelProfiles() {
+    const session = await getSession(true);
+    if (!session.desktopModelSettings) throw new Error("当前会话未启用多配置。");
+    return session.desktopModelSettings.listForSession(session);
+  }
+
+  async function switchModelProfile(id) {
+    const session = await getSession(true);
+    if (!session.desktopModelSettings) throw new Error("当前会话未启用多配置。");
+    return session.desktopModelSettings.switchProfile(session, id);
+  }
+
   // 记录用户确认保存的事实，不主动请求模型回复。
 
   async function recordWorkspaceEdit(proposal) {
@@ -441,6 +456,8 @@ function createSessionService(
     getSessionInfo,
     listModels,
     switchModel,
+    listModelProfiles,
+    switchModelProfile,
     compactSession,
     cancelCompaction,
     recordWorkspaceEdit,

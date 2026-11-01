@@ -11,6 +11,7 @@ import {
 } from "./components/message-view.js";
 
 import { createModelSelector } from "./components/model-selector.js";
+import { createModelSettingsPanel } from "./components/model-settings-panel.js";
 
 import { createComposerPersistence } from "./components/composer-persistence.js";
 
@@ -196,6 +197,15 @@ const modelSelector = createModelSelector(
 );
 
 
+//配置读取独立于当前会话；保存后不刷新或替换聊天内容。
+const modelSettingsPanel = createModelSettingsPanel(
+  document.getElementById("model-settings-dialog"),
+  document.getElementById("model-settings-button"),
+  window.agent,
+  setBusy,
+  () => Promise.all([modelSelector.refresh(), sessionInfoPanel.refresh()]),
+);
+
 const projectPanel = createProjectPanel(
   document.getElementById("project-panel"),
   window.agent,
@@ -242,6 +252,7 @@ function setBusy(busy, generating = false) {
   // fieldset 会统一禁用其内部按钮。
   proposalPanelElement.disabled = busy;
   modelSelector.setBusy(busy);
+  modelSettingsPanel.setBusy(busy);
   renderComposerState();
   newChatButton.disabled = busy;
   selectWorkspaceButton.disabled = busy;

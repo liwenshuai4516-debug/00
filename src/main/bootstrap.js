@@ -7,7 +7,9 @@ const { createSessionStateStore } = require("./storage/session-state-store.js");
 const {
   createComposerDraftService,
 } = require("./services/composer-draft-service.js");
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require("electron");
+const { createModelSettingsStore } = require("./storage/model-settings-store.js");
+const { createModelSettingsService } = require("./services/model-settings-service.js");
 const path = require("node:path");
 const { loadEnvFile } = require("node:process");
 const { createSessionService } = require("./services/session-service.js");
@@ -33,7 +35,31 @@ const {
 
 // 开发阶段使用项目根目录存放配置和会话。
 const projectRoot = path.resolve(__dirname, "../..");
-loadEnvFile(path.join(projectRoot, ".env"));
+try {
+  loadEnvFile(path.join(projectRoot, ".env"));
+} catch (error) {
+  // 未创建 .env 时仍允许打开配置页面；其他读取错误不能忽略。
+  if (error.code !== "ENOENT") throw error;
+}
+
+const modelSettingsStore = createModelSettingsStore(
+  path.join(app.getPath("userData"), "model-settings.json"),
+  {
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (
+      process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"
+    ),
+    encryptString: (value) => safeStorage.encryptString(value),
+    decryptString: (value) => safeStorage.decryptString(value),
+  },
+);
+const modelSettingsService = createModelSettingsService(modelSettingsStore);
+
+// 每次创建会话按自身记录解析配置；新会话才读取默认选择。
+async function createConfiguredAgent(...args) {
+  await app.whenReady();
+  const { createPiAgent } = await import("./pi-agent.mjs");
+  return createPiAgent(...args, modelSettingsService);
+}
 
 // 在应用入口组装服务，确保所有接口共享同一份状态。
 // 已保存的目录优先；尚无记录时使用 .env 默认目录。
@@ -44,7 +70,7 @@ const workspaceSettings = createWorkspaceSettings(
 
 const sessionService = createSessionService(
   path.join(projectRoot, "sessions"),
-  undefined,
+  createConfiguredAgent,
   workspaceSettings.load,
   workspaceSettings.save,
 ); // 文件草稿与 Pi 会话保存在当前项目的 sessions 目录内。
@@ -152,6 +178,7 @@ registerAgentIpc(
   workspaceSelectionService,
   projectService,
   composerDraftService,
+  modelSettingsService,
 );
 
 function createWindow() {

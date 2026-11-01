@@ -87,6 +87,8 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || event.isComposing) return;
+  // 模态配置页面自行处理 Escape，不同时收起背后的侧栏。
+  if (document.querySelector("dialog[open]")) return;
   if (menu.open) {
     const containedFocus = menu.contains(document.activeElement);
     menu.open = false;

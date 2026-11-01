@@ -22,9 +22,11 @@ export async function createPiAgent(
   resume = false,
   sessionPath,
   workspaceDir = process.env.AGENT_WORKSPACE_DIR,
+  modelSettings,
 ) {
-  // 先校验配置，再创建会话、加载资源或初始化认证存储。
-  const { provider, modelId, baseUrl } = readModelConfig();
+  const managed = typeof modelSettings?.resolveSelection === "function";
+  // 保留原四参数和旧配置对象调用，独立初始化检查仍在创建目录前校验。
+  const legacyConfig = managed ? null : (modelSettings ?? readModelConfig());
 
   // 目录检查、会话恢复和目录绑定统一交给新模块处理。
   const { workspaceRoot, sessionManager } = await createWorkspaceSession({
@@ -52,32 +54,25 @@ export async function createPiAgent(
 
   await resourceLoader.reload();
 
-  // Pi 1.4 使用统一的异步模型与凭据运行时。
-  const modelRuntime = await ModelRuntime.create();
-
-  if (baseUrl) {
-    modelRuntime.registerProvider(provider, { baseUrl });
-  }
-
-  // 优先采用当前分支最后一次明确的模型选择。
-  // 旧会话没有 model_change 时，兼容 SDK 从历史消息解析的模型。
-  const savedSelection =
-    sessionManager
-      .getBranch()
-      .findLast((entry) => entry.type === "model_change") ??
-    sessionManager.buildSessionContext().model;
-
-  // 当前版本只支持配置中的供应商，避免套用其他供应商的地址或凭据。
-  if (savedSelection && savedSelection.provider !== provider) {
-    throw new Error("会话模型属于其他供应商，请恢复对应供应商配置或新建对话。");
-  }
-
-  // 没有历史选择的新会话使用 .env 默认值。
-  const selectedModelId = savedSelection?.modelId ?? modelId;
-  const model = modelRuntime.getModel(provider, selectedModelId);
-
-  if (!model) {
-    throw new Error(`Pi 未找到模型：${provider}/${selectedModelId}。`);
+  const savedSelection = sessionManager.getBranch().findLast(
+    (entry) => entry.type === "model_change",
+  ) ?? sessionManager.buildSessionContext().model;
+  const runtime = await ModelRuntime.create();
+  let model;
+  if (managed) {
+    const profile = await modelSettings.resolveSelection(savedSelection);
+    const { installModelProfile } = await import("./model-profile-runtime.mjs");
+    model = await installModelProfile(runtime, profile);
+  } else {
+    const { provider, modelId, baseUrl, apiKey } = legacyConfig;
+    if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey);
+    if (baseUrl) runtime.registerProvider(provider, { baseUrl });
+    if (savedSelection && savedSelection.provider !== provider) {
+      throw new Error("会话模型属于其他供应商，请恢复对应供应商配置或新建对话。");
+    }
+    const selectedModelId = savedSelection?.modelId ?? modelId;
+    model = runtime.getModel(provider, selectedModelId);
+    if (!model) throw new Error(`Pi 未找到模型：${provider}/${selectedModelId}。`);
   }
 
   // 工具、模型上下文和会话使用同一个真实工作目录。
@@ -85,7 +80,7 @@ export async function createPiAgent(
 
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
-    modelRuntime,
+    modelRuntime: runtime,
     model,
     settingsManager,
     resourceLoader,
@@ -94,6 +89,8 @@ export async function createPiAgent(
     sessionManager,
   });
 
+  // 仅主进程持有配置服务；不把密钥或服务对象返回页面。
+  if (managed) session.desktopModelSettings = modelSettings;
   return session;
 }
 

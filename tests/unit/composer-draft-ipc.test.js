@@ -151,6 +151,7 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
   const sessionService = {};
   const stateStore = {};
   const draftService = {};
+  const modelSettingsService = {};
   const userData = path.join(os.tmpdir(), "mock-agent-user-data");
   let storageDirectory;
   let draftArguments;
@@ -159,6 +160,7 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
   const factories = {
     createWorkspaceSettings: () => ({ load() {}, save() {} }),
     createSessionService: () => sessionService,
+    createModelSettingsService: () => modelSettingsService,
     createSessionStateStore(directory) {
       storageDirectory = directory;
       return stateStore;
@@ -207,8 +209,9 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
 
   assert.equal(storageDirectory, path.join(userData, "session-state"));
   assert.deepEqual(draftArguments, [sessionService, stateStore]);
-  assert.equal(ipcArguments.length, 9);
+  assert.equal(ipcArguments.length, 10);
   assert.equal(ipcArguments[0], ipcMain);
   assert.equal(ipcArguments[1], sessionService);
   assert.equal(ipcArguments[8], draftService);
+  assert.equal(ipcArguments[9], modelSettingsService);
 });
