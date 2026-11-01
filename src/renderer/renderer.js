@@ -15,6 +15,9 @@ const composerDrafts = createComposerDrafts(input);
 const sendButton = document.getElementById("send-button");
 const stopButton = document.getElementById("stop-button");
 const newChatButton = document.getElementById("new-chat-button");
+const selectWorkspaceButton = document.getElementById(
+  "select-workspace-button",
+);
 const compactSessionButton = document.getElementById("compact-session-button");
 const exportConversationButton = document.getElementById(
   "export-conversation-button",
@@ -105,6 +108,7 @@ function setBusy(busy, generating = false) {
   modelSelector.setBusy(busy);
   sendButton.disabled = busy;
   newChatButton.disabled = busy;
+  selectWorkspaceButton.disabled = busy;
   compactSessionButton.disabled = busy;
   exportConversationButton.disabled = busy;
   sessionList.setBusy(busy);
@@ -485,6 +489,50 @@ exportConversationButton.addEventListener("click", async () => {
     addMessage("error", error.message);
   } finally {
     // 导出不改变消息、输入草稿或待保存的文件修改。
+    setBusy(false);
+    input.focus();
+  }
+});
+selectWorkspaceButton.addEventListener("click", async () => {
+  if (selectWorkspaceButton.disabled) return;
+
+  setBusy(true);
+  document.getElementById("conversation-menu").open = false;
+  setRequestStatus("请选择工作目录，确认后将新建对话……");
+  let switched = false;
+
+  try {
+    const result = await window.agent.selectWorkspace();
+
+    if (result.canceled) {
+      setRequestStatus("已取消选择工作目录。");
+      return;
+    }
+
+    switched = true;
+    // 主进程已切换成功，立即保存旧输入并绑定新会话编号。
+    composerDrafts.switchTo(result.sessionId);
+    showHistory([]);
+    sessionList.setActive("");
+    sessionName.value = "";
+    setRequestStatus(`已切换工作目录：${result.workspaceDir}。已新建对话。`);
+
+    // 新对话使用默认模型；目录与模型信息重新从主进程读取。
+    await sessionInfoPanel.refresh();
+    await modelSelector.refresh();
+    await refreshSessions();
+  } catch (error) {
+    // 切换成功后的刷新失败，不能误报为目录没有切换。
+    setRequestStatus(
+      switched
+        ? "工作目录已切换，但页面刷新未完成。"
+        : "工作目录未切换，请查看错误信息。",
+    );
+    addMessage(
+      "error",
+      `${switched ? "新对话已创建，刷新失败" : "选择工作目录失败"}：${error.message}`,
+    );
+  } finally {
     setBusy(false);
     input.focus();
   }
