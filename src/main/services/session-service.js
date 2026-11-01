@@ -1,6 +1,6 @@
 const { existsSync } = require("node:fs");
 const { toHistory } = require("../adapters/message-adapter.js");
-const { readFile } = require("node:fs/promises");
+const { readFile, realpath, stat } = require("node:fs/promises");
 
 // 正常运行时动态加载真实的 Pi 会话创建函数。
 async function createDefaultAgent(...args) {
@@ -368,6 +368,58 @@ function createSessionService(
     };
   }
 
+  // 打开已登记项目时恢复最近活动；由 IPC 互斥入口调用。
+  async function openWorkspace(workspaceDir) {
+    if (typeof saveWorkspaceDir !== "function") {
+      throw new Error("尚未配置工作目录保存方法。");
+    }
+
+    const workspaceRoot = await realpath(workspaceDir);
+    if (!(await stat(workspaceRoot)).isDirectory()) {
+      throw new Error("项目路径必须指向文件夹。");
+    }
+
+    // 原目录初始化失败时，仍允许打开其他项目。
+    const previousSession = sessionPromise
+      ? await sessionPromise.catch(() => undefined)
+      : undefined;
+
+    // 重复打开当前项目时保留正在查看的对话，包括尚未落盘的空对话。
+    if (previousSession?.sessionManager.getCwd() === workspaceRoot) {
+      return {
+        sessionId: previousSession.sessionId,
+        workspaceDir: workspaceRoot,
+        history: getHistory(previousSession),
+      };
+    }
+
+    // 复用已有的目录绑定检查与最近活动恢复，无合法历史时新建。
+    const nextSession = await createAgent(
+      sessionDir,
+      true,
+      undefined,
+      workspaceRoot,
+    );
+    let result;
+
+    try {
+      // 历史与配置准备成功后才替换，避免返回失败却已换了会话。
+      result = {
+        sessionId: nextSession.sessionId,
+        workspaceDir: nextSession.sessionManager.getCwd(),
+        history: getHistory(nextSession),
+      };
+      await saveWorkspaceDir(result.workspaceDir);
+    } catch (error) {
+      nextSession.dispose();
+      throw error;
+    }
+
+    sessionPromise = Promise.resolve(nextSession);
+    previousSession?.dispose();
+    return result;
+  }
+
   async function renameSession(name) {
     if (typeof name !== "string" || !name.trim()) {
       throw new Error("请输入对话名称。");
@@ -397,6 +449,7 @@ function createSessionService(
     openSession,
     newChat,
     switchWorkspace,
+    openWorkspace,
 
     renameSession,
   };
