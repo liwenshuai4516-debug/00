@@ -7,6 +7,7 @@ function registerAgentIpc(
   proposalApplyService,
   conversationExportService,
   workspaceSelectionService,
+  projectService,
 ) {
   let operationPending = false;
 
@@ -63,6 +64,12 @@ function registerAgentIpc(
       workspaceSelectionService.selectWorkspace(event.sender),
     );
   });
+  // 项目列表只读；添加项目从选择窗口到落盘全程互斥。
+  ipcMain.handle("agent:list-projects", () => projectService.listProjects());
+  ipcMain.handle("agent:add-project", (event) => {
+    return runIdleOperation(() => projectService.addProject(event.sender));
+  });
+
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
   ipcMain.handle("agent:open-session", (_event, sessionId) => {

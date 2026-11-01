@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 目录由系统窗口选择，页面不传路径。
   selectWorkspace: () => ipcRenderer.invoke("agent:select-workspace"),
+
+  // 添加时由系统窗口选择目录，不接收页面提供的路径。
+  listProjects: () => ipcRenderer.invoke("agent:list-projects"),
+  addProject: () => ipcRenderer.invoke("agent:add-project"),
   // 获取当前会话中已登记的草稿。
   getProposal: (id) => ipcRenderer.invoke("agent:get-proposal", id),
 

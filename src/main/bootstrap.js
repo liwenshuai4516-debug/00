@@ -1,5 +1,7 @@
 //应用启动与服务组装
 const { createWorkspaceSettings } = require("./storage/workspace-settings.js");
+const { createProjectStore } = require("./storage/project-store.js");
+const { createProjectService } = require("./services/project-service.js");
 
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("node:path");
@@ -89,27 +91,35 @@ const conversationExportService = createConversationExportService(
   },
 );
 
-// 将系统文件夹窗口绑定到发起操作的应用窗口。
+// 两种目录选择共用窗口绑定与关闭检查。
+async function chooseWorkspaceDirectory(sender, options) {
+  if (sender.isDestroyed()) return { canceled: true };
+
+  const parentWindow = BrowserWindow.fromWebContents(sender);
+  if (!parentWindow || parentWindow.isDestroyed()) {
+    return { canceled: true };
+  }
+
+  const selection = await dialog.showOpenDialog(parentWindow, options);
+
+  // 选择期间关闭窗口时，不继续切换会话或登记项目。
+  if (sender.isDestroyed() || parentWindow.isDestroyed()) {
+    return { canceled: true };
+  }
+
+  return selection;
+}
+
 const workspaceSelectionService = createWorkspaceSelectionService(
   sessionService,
-  async (sender, options) => {
-    if (sender.isDestroyed()) return { canceled: true };
-
-    const parentWindow = BrowserWindow.fromWebContents(sender);
-    if (!parentWindow || parentWindow.isDestroyed()) {
-      return { canceled: true };
-    }
-
-    const selection = await dialog.showOpenDialog(parentWindow, options);
-
-    // 选择期间关闭应用窗口时，不继续创建会话或保存选择。
-    if (sender.isDestroyed() || parentWindow.isDestroyed()) {
-      return { canceled: true };
-    }
-
-    return selection;
-  },
+  chooseWorkspaceDirectory,
 );
+const projectStore = createProjectStore(
+  path.join(app.getPath("userData"), "projects.json"),
+);
+const projectService = createProjectService(projectStore, chooseWorkspaceDirectory);
+
+
 registerAgentIpc(
   ipcMain,
   sessionService,
@@ -118,6 +128,7 @@ registerAgentIpc(
   proposalApplyService,
   conversationExportService,
   workspaceSelectionService,
+  projectService,
 );
 
 function createWindow() {
