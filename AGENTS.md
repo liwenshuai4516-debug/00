@@ -58,7 +58,7 @@ JavaScript 使用两空格缩进、双引号、分号及描述性的驼峰命名
 - 输入区保持在主聊天区底部，消息区独立滚动；流式回复跟随最新内容，用户上翻时保留阅读位置，并提供返回最新消息的入口。
 - 窄窗口允许侧栏和审阅区折叠或调整排布，保证聊天与输入操作可用。按钮具有明确状态，保留键盘操作、可见焦点、输入法保护及纯文本安全展示。
 - 按可运行的小步骤调整界面；每步给出准确修改位置、完整代码和中文注释，并验证涉及的发送、停止、会话切换和草稿操作。
-- 输入草稿按会话隔离，仅保留在当前页面内存中；不要将其描述为重启后可恢复。工具开始和结束事件按 `toolCallId` 关联，避免同名工具交错时串联结果。
+- 输入草稿按会话隔离；页面现已接入自动保存与版本发送，实际页面验证边界及待修复接线见下方交接。空会话重建及正常关闭补保存尚未完成，不称为完整重启恢复。工具开始和结束事件按 `toolCallId` 关联，避免同名工具交错时串联结果。
 - 修改草稿的保存、放弃和会话切换共用主进程互斥入口；放弃草稿只移除待保存记录，不修改工作文件。
 
 ## 应用名称与图标
@@ -185,7 +185,8 @@ node --test \
 - 使用者已亲手完成保存队列的beginSend/confirmConsumed/finishSend/rejectBeforeConsume及composer-draft-send-queue.test.js；实际语法检查、9项新增加既有队列/读取/输入共27项全部通过。代码与上轮已验证指南一致。发送前须保存完成并固定原文/版本凭证，等待确认暂停本会话保存，确认只推进基线、不清空新输入，凭证身份与版本防止迟到/重复确认；发送结束才释放本地凭证，确定消费前失败才允许为空时恢复。此恢复目前只判断空值，后续页面还须结合编辑记录保护后来主动清空。仍未接renderer，IPC异常或缺失确认不证明未消费，不可盲目解除暂停。
 - 使用者已亲手完成composerDraftService.inspectSend(sessionId)、agent:inspect-composer-send、preload.inspectComposerSend与composer-send-inspection.test.js。实际三个脚本语法检查、11项新增加相关回归共38项全部通过；隔离的已提交代码加本次功能块也通过相关38项。服务只读已登记原会话并核对目录，返回{sessionId,text,revision,pendingSend:null|{id,text,draftRevision}}，不暴露目录或组织字段；IPC经runIdleOperation，生成中拒绝，读取期间阻止新发送/会话操作，输入保存仍独立。来源文件仅有格式差异，提交精确暂存功能块。尚未接renderer。
 - 使用者已亲手完成队列reconcileSend及editVersion主动清空保护、原发送队列测试空串分支调整和composer-send-reconcile.test.js。实际语法检查、10项新增加既有队列/读取/输入共37项全部通过；与已验证指南一致。严格按原文、版本、凭证身份和确认状态协调，返回not-consumed/consumed/advanced，其他冲突保持暂停；advanced不证明模型成功，pendingSend保留供手动查看。发送清空不计为用户setText编辑。尚未接renderer。
-- 使用者已亲手创建composer-persistence.js，内容与docs/composer-persistence-step.md一致，语法检查通过。实际测试误放tests/composer-persistence.test.js，直接运行16项因相对导入越过项目目录而失败，不能记作实际53项通过；原37项通过。下一步先由使用者移动到tests/unit/composer-persistence.test.js，不改导入。正确目录临时副本53项通过。完整页面接线建议见docs/composer-page-integration-step.md；候选位于 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-composer-page-o_qy2gsq`，以HEAD和当前实际渲染层为基线。候选renderer语法检查及实际Electron页面/真实preload与IPC/临时存储14项模拟检查通过，覆盖输入隔离、保存失败与重试、发送/停止、生成中新输入、缺失确认/结果后的核对、未确认快照独立安全展示、新建继续、加载中编辑、项目打开互斥和其他页面操作、整页重建恢复、三档窗口布局；已查看页面截图。未请求模型、读取真实会话/配置或写真实剪贴板，不代表真实界面验收。实际HTML/CSS/renderer尚未接入；refreshSessions不得绑定输入，应在初始化及四个成功切换入口显式await bindComposer，项目绑定先于并行刷新，避免inspect与listProposals互斥冲突。组件已保护加载/编辑/主动清空和发送版本，300ms保存、持续输入最长1s；状态反馈与未确认原文遵循深色基线及ui-ux-pro-max指引。后续仍需未确认记录手动处理、空会话重建与正常关闭补保存，不能提前宣称完整重启恢复。
+- 上轮记录：使用者已亲手创建composer-persistence.js，内容与docs/composer-persistence-step.md一致，语法检查通过。实际测试误放tests/composer-persistence.test.js，直接运行16项因相对导入越过项目目录而失败，不能记作实际53项通过；原37项通过。下一步先由使用者移动到tests/unit/composer-persistence.test.js，不改导入。正确目录临时副本53项通过。完整页面接线建议见docs/composer-page-integration-step.md；候选位于 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-composer-page-o_qy2gsq`，以HEAD和当前实际渲染层为基线。候选renderer语法检查及实际Electron页面/真实preload与IPC/临时存储14项模拟检查通过，覆盖输入隔离、保存失败与重试、发送/停止、生成中新输入、缺失确认/结果后的核对、未确认快照独立安全展示、新建继续、加载中编辑、项目打开互斥和其他页面操作、整页重建恢复、三档窗口布局；已查看页面截图。未请求模型、读取真实会话/配置或写真实剪贴板，不代表真实界面验收。实际HTML/CSS/renderer尚未接入；refreshSessions不得绑定输入，应在初始化及四个成功切换入口显式await bindComposer，项目绑定先于并行刷新，避免inspect与listProposals互斥冲突。组件已保护加载/编辑/主动清空和发送版本，300ms保存、持续输入最长1s；状态反馈与未确认原文遵循深色基线及ui-ux-pro-max指引。后续仍需未确认记录手动处理、空会话重建与正常关闭补保存，不能提前宣称完整重启恢复。
+- 最新核对：使用者已将composer-persistence.test.js移动到tests/unit，实际组件与renderer语法检查及6个相关文件53项全部通过，旧测试目录问题已解决，不再要求移动。实际HTML/CSS/renderer已接入状态、重试、发送确认及四个切换入口；页面模拟前11项通过，在项目打开时失败。实际createProjectPanel调用漏传setBusy/openProject，点击项目在业务try之前调用undefined，添加也受影响；HTML同时有重复body开始标签。下一步仅按docs/composer-page-wiring-fix.md由使用者修复这两处，不继续叠加新功能。临时副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-composer-page-actual-9x7h05t4` 基于HEAD+实际整个渲染层及实际IPC/preload，仅修正这两处后14项Electron模拟检查全部通过，并查看截图；不请求模型或读取真实配置/会话，不代表实际修复或用户真实界面验收。工作区新增model-settings服务/存储/组件/样式/测试及相关接线是另一组改动，本轮保留且不验收、不提交；其中页面入口仍待该功能单独核对。页面修复后再继续未确认发送手动解除、空会话重建和关闭补保存。
 - 已核对 SDK 空会话边界，并在临时目录验证公开的 `SessionManager.create(cwd, sessionDir, { id })` 可以保留原编号重建未发送空会话，单独绑定不会落盘历史。设计将登记这类输入并提供同目录“未发送”入口；有真实历史则优先原恢复链路，历史丢失不冒充空会话。完整业务尚未实施。归档还须同步过滤启动和项目自动恢复，不能只让侧栏隐藏；项目恢复仍按最近消息活动。上下文复用已有 getSessionInfo，不新增模型请求。
 
 ### 新 UI 迭代基线（2026-11-01）
@@ -208,4 +209,4 @@ node --test \
 
 ### 本次提交范围
 
-本轮仅提交本次完整页面接线指南及AGENTS、日常体验设计和上一步组件指南的核对记录。实际组件内容已核对，但专项测试路径错误尚待使用者修正，组件与测试不在本轮提交；应用页面也仅为临时候选。保留所有其他工作区改动，不读取或提交 `.env`、真实会话和本地验收文件，不执行 `git add .`。
+本轮只提交使用者已完成且通过实际53项相关测试的composer-persistence.js及正确目录的composer-persistence.test.js，并更新交接、设计、组件说明和页面修复手写指南。页面接线因漏传项目回调尚未通过实际页面回归，实际renderer/HTML/CSS保留原状，等待使用者修复后再精确收尾；其他工作区改动全部保留，包括原接线指南的一处空白。未请求模型，不读取或提交.env、真实会话或本地验收文件，不执行git add .。
