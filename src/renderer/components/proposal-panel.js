@@ -1,3 +1,5 @@
+import { renderProposalDiff } from "./proposal-diff.js";
+
 export function createProposalPanel(
   container,
   loadProposal,
@@ -75,30 +77,14 @@ export function createProposalPanel(
           contentPanel.append(contentLabel, content);
           comparison.append(contentPanel);
         } else {
-          scopeHint.textContent = "这里只对照本次替换片段，不是完整文件。";
+          scopeHint.textContent =
+            "+ 新增，− 删除，= 不变；· 表示空格，→ 表示 Tab，原文不变。行尾标记仅描述片段，不代表文件末尾。保存时会重新核对文件。";
 
-          const beforePanel = document.createElement("section");
-          beforePanel.className = "proposal-before";
+          // 修改草稿统一使用逐行差异组件展示。
 
-          const beforeLabel = document.createElement("h3");
-          beforeLabel.textContent = "替换前 · 将移除的片段";
-
-          const before = document.createElement("pre");
-          before.textContent = proposal.oldText;
-
-          beforePanel.append(beforeLabel, before);
-
-          const afterPanel = document.createElement("section");
-          afterPanel.className = "proposal-after";
-
-          const afterLabel = document.createElement("h3");
-          afterLabel.textContent = "替换后 · 将插入的片段";
-
-          const after = document.createElement("pre");
-          after.textContent = proposal.newText || "（删除原片段，不插入内容）";
-
-          afterPanel.append(afterLabel, after);
-          comparison.append(beforePanel, afterPanel);
+          comparison.appendChild(
+            renderProposalDiff(proposal.oldText, proposal.newText),
+          );
         }
 
         // 两种草稿均使用纯文本展示，HTML 内容不会作为页面元素执行。

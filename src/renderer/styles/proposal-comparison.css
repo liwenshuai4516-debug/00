@@ -43,3 +43,78 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* 修改草稿采用单列逐行差异，长行在区域内部滚动。 */
+.proposal-comparison[data-kind="edit-proposal"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.proposal-diff-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.proposal-diff-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.proposal-diff {
+  width: 100%;
+  border-collapse: collapse;
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.proposal-diff caption {
+  padding: 8px;
+  text-align: left;
+  color: var(--muted);
+  font: 12px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.proposal-diff th,
+.proposal-diff td {
+  padding: 2px 8px;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.proposal-diff th {
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+
+.proposal-diff td:nth-child(-n + 3),
+.proposal-diff td:last-child {
+  width: 1%;
+  color: var(--muted);
+}
+
+.proposal-diff code {
+  font: inherit;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.proposal-diff [data-kind="remove"] {
+  background: var(--removed-background);
+}
+
+.proposal-diff [data-kind="add"] {
+  background: var(--added-background);
+}
+
+/* 用叠加标记显示空白，DOM 中仍保留原来的空格和 Tab。 */
+.proposal-diff .diff-whitespace {
+  position: relative;
+}
+
+.proposal-diff .diff-whitespace::before {
+  content: attr(data-marker);
+  position: absolute;
+  color: var(--muted);
+  pointer-events: none;
+}
