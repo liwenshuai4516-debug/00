@@ -252,14 +252,19 @@ function createSessionService(
     return SessionManager.listAll(sessionDir);
   }
 
-  async function listSessions() {
+   async function listSessions() {
     const sessions = await readSessions();
 
     return sessions.map((session) => ({
       id: session.id,
       title: session.name || session.firstMessage || "未命名对话",
+      // 目录只用于列表归组；打开会话仍须通过原有绑定检查。
+      workspaceDir: session.cwd,
+      // 统一返回毫秒时间戳，供页面按最近活动排序。
+      updatedAt: session.modified.getTime(),
     }));
   }
+
   // 只读预览：按已登记编号找到文件，不创建或切换 Agent 会话。
   async function previewSession(sessionId) {
     const selected = (await readSessions()).find(
