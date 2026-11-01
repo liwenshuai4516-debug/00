@@ -13,6 +13,7 @@ function createSessionService(
   sessionDir,
   createAgent = createDefaultAgent,
   readWorkspaceDir = () => process.env.AGENT_WORKSPACE_DIR,
+  saveWorkspaceDir,
 ) {
   let sessionPromise;
   let activeCompaction;
@@ -323,6 +324,44 @@ function createSessionService(
     // 返回实际创建的编号，供页面关联该会话的输入草稿。
     return nextSession.sessionId;
   }
+  // 后续只由 IPC 的互斥入口调用，避免与生成或保存交叉执行。
+  async function switchWorkspace(workspaceDir) {
+    if (typeof saveWorkspaceDir !== "function") {
+      throw new Error("尚未配置工作目录保存方法。");
+    }
+
+    // 已有初始化失败时仍允许重新选择目录，不再读取失效的配置。
+    const previousSession = sessionPromise
+      ? await sessionPromise.catch(() => undefined)
+      : undefined;
+
+    // 明确创建新对话，不恢复所选目录中的旧对话。
+    const nextSession = await createAgent(
+      sessionDir,
+      false,
+      undefined,
+      workspaceDir,
+    );
+    let nextWorkspaceDir;
+
+    try {
+      // 使用 Pi 实际绑定的真实目录保存选择。
+      nextWorkspaceDir = nextSession.sessionManager.getCwd();
+      await saveWorkspaceDir(nextWorkspaceDir);
+    } catch (error) {
+      nextSession.dispose();
+      throw error;
+    }
+
+    // 两项准备均成功后才替换，失败时保留原会话及其草稿。
+    sessionPromise = Promise.resolve(nextSession);
+    previousSession?.dispose();
+
+    return {
+      sessionId: nextSession.sessionId,
+      workspaceDir: nextWorkspaceDir,
+    };
+  }
 
   async function renameSession(name) {
     if (typeof name !== "string" || !name.trim()) {
@@ -352,6 +391,8 @@ function createSessionService(
     previewSession,
     openSession,
     newChat,
+    switchWorkspace,
+
     renameSession,
   };
 }

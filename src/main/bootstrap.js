@@ -37,6 +37,7 @@ const sessionService = createSessionService(
   path.join(projectRoot, "sessions"),
   undefined,
   workspaceSettings.load,
+  workspaceSettings.save,
 ); // 草稿与会话都保存在当前项目的 sessions 目录内。
 const proposalStorage = createProposalStorage(
   path.join(projectRoot, "sessions", "proposals"),
