@@ -7,7 +7,7 @@ export function buildLineDiff(oldText, newText) {
   const before = splitLines(oldText);
   const after = splitLines(newText);
 
-  // 当前修改草稿每侧最多 1000 字符，使用最长公共子序列对齐相同行。
+  // 使用最长公共子序列对齐完整行，保留原始上下文和换行。
   const lengths = Array.from(
     { length: before.length + 1 },
     () => new Uint16Array(after.length + 1),
@@ -60,23 +60,25 @@ export function buildLineDiff(oldText, newText) {
   return rows;
 }
 
-export function renderProposalDiff(oldText, newText) {
+export function renderProposalDiff(review) {
+  const { startLine, oldText, newText } = review;
+
   const region = document.createElement("div");
   region.className = "proposal-diff-scroll";
   region.tabIndex = 0;
   region.setAttribute("role", "region");
-  region.setAttribute("aria-label", "修改片段逐行差异，可横向滚动");
+  region.setAttribute("aria-label", "文件逐行差异，可横向滚动");
 
   const table = document.createElement("table");
   table.className = "proposal-diff";
 
   const caption = document.createElement("caption");
-  caption.textContent = "旧、新行号从各自替换片段的第 1 行起；并非文件行号。";
+  caption.textContent = `从文件第 ${startLine} 行开始。旧行对应原文件，新行对应保存后的预计文件。`;
 
   const head = document.createElement("thead");
   const headings = document.createElement("tr");
 
-  for (const label of ["旧行", "新行", "变化", "内容", "片段行尾"]) {
+  for (const label of ["旧行", "新行", "变化", "内容", "行尾"]) {
     const cell = document.createElement("th");
     cell.scope = "col";
     cell.textContent = label;
@@ -96,7 +98,11 @@ export function renderProposalDiff(oldText, newText) {
       add: ["+", "新增"],
     }[row.kind];
 
-    for (const value of [row.oldLine, row.newLine, change[0]]) {
+    // 算法返回片段内行号；旧、新两侧分别换算，增删行的空号保持为空。
+    const oldLine = row.oldLine === null ? null : row.oldLine + startLine - 1;
+    const newLine = row.newLine === null ? null : row.newLine + startLine - 1;
+
+    for (const value of [oldLine, newLine, change[0]]) {
       const cell = document.createElement("td");
       cell.textContent = value ?? "";
       tr.appendChild(cell);

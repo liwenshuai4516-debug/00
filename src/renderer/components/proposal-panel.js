@@ -78,12 +78,11 @@ export function createProposalPanel(
           comparison.append(contentPanel);
         } else {
           scopeHint.textContent =
-            "+ 新增，− 删除，= 不变；· 表示空格，→ 表示 Tab，原文不变。行尾标记仅描述片段，不代表文件末尾。保存时会重新核对文件。";
+            "+ 新增，− 删除，= 不变；· 表示空格，→ 表示 Tab，原文不变。展示修改处的完整行及前后最多两行上下文。保存时会重新核对文件。";
 
-          // 修改草稿统一使用逐行差异组件展示。
-
+          // 使用主进程复核后返回的完整行和文件起始行号。
           comparison.appendChild(
-            renderProposalDiff(proposal.oldText, proposal.newText),
+            renderProposalDiff(proposal.review),
           );
         }
 
