@@ -153,6 +153,13 @@ select option { background: var(--surface); color: var(--text); }
 .unconfirmed-send > p { margin: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
 .unconfirmed-send pre { max-width: 100%; max-height: 120px; margin: 0; padding: 8px; white-space: pre; overflow: auto; font-size: 12px; tab-size: 2; }
 
+/* 清理确认紧邻原文，按钮允许换行并保留键盘焦点样式。 */
+#dismiss-send-button { min-height: 44px; margin-top: 8px; }
+.dismiss-send-confirm { margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.dismiss-send-confirm p { margin: 0 0 10px; font-size: 12px; overflow-wrap: anywhere; }
+.dismiss-send-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dismiss-send-actions button { min-height: 44px; }
+
 @media (max-width: 1100px) {
   :root { --sidebar-width: 232px; }
   #messages { padding-inline: 24px; }

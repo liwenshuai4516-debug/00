@@ -27,10 +27,16 @@ const composerRetry = document.getElementById("composer-draft-retry");
 const unconfirmedSend = document.getElementById("unconfirmed-send");
 const unconfirmedText = document.getElementById("unconfirmed-send-text");
 let shownSendId = null;
+const dismissSendButton = document.getElementById("dismiss-send-button");
+const dismissConfirm = document.getElementById("dismiss-send-confirm");
+const dismissAccept = document.getElementById("dismiss-send-accept");
+const dismissCancel = document.getElementById("dismiss-send-cancel");
+let dismissTarget = null;
 
 function renderComposerState() {
   const message = composerState.message || "正在读取输入……";
-  if (composerStatus.textContent !== message) composerStatus.textContent = message;
+  if (composerStatus.textContent !== message)
+    composerStatus.textContent = message;
   composerRetry.hidden = !composerState.retryable;
   composerRetry.disabled = pageBusy;
   sendButton.disabled = pageBusy || !composerState.canSend;
@@ -41,6 +47,23 @@ function renderComposerState() {
   if (shownSendId !== pending?.id) unconfirmedSend.open = false;
   shownSendId = pending?.id ?? null;
   unconfirmedText.textContent = pending?.text ?? "";
+  // 确认只属于打开时的会话和快照；切换后必须重新核对。
+  if (
+    dismissTarget &&
+    (dismissTarget.sessionId !== composerState.sessionId ||
+      dismissTarget.sendId !== pending?.id)
+  ) {
+    dismissTarget = null;
+  }
+  const disabled = pageBusy || !composerState.canDismiss;
+  dismissSendButton.disabled = disabled;
+  dismissAccept.disabled = disabled;
+  dismissCancel.disabled = pageBusy;
+  dismissConfirm.hidden = !dismissTarget;
+  dismissSendButton.setAttribute(
+    "aria-expanded",
+    String(Boolean(dismissTarget)),
+  );
 }
 
 const composerPersistence = createComposerPersistence(input, window.agent, (state) => {
@@ -64,6 +87,53 @@ composerRetry.addEventListener("click", async () => {
     await composerPersistence.retry();
   } catch {
     // 组件已在输入区展示具体错误；继续保留编辑内容和重试入口。
+  } finally {
+    setBusy(false);
+    input.focus();
+  }
+});
+// 第一次点击只展示影响说明，不调用后端；焦点先放到取消按钮。
+dismissSendButton.addEventListener("click", () => {
+  if (dismissSendButton.disabled) return;
+  dismissTarget = {
+    sessionId: composerState.sessionId,
+    sendId: composerState.pendingSend.id,
+  };
+  renderComposerState();
+  dismissCancel.focus();
+});
+
+function cancelDismiss() {
+  dismissTarget = null;
+  renderComposerState();
+  dismissSendButton.focus();
+}
+dismissCancel.addEventListener("click", cancelDismiss);
+dismissConfirm.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !event.isComposing && !pageBusy) {
+    event.preventDefault();
+    cancelDismiss();
+  }
+});
+
+dismissAccept.addEventListener("click", async () => {
+  const target = dismissTarget;
+  if (
+    dismissAccept.disabled ||
+    !target ||
+    target.sessionId !== composerState.sessionId ||
+    target.sendId !== composerState.pendingSend?.id
+  )
+    return;
+  setBusy(true);
+  dismissTarget = null;
+  renderComposerState();
+  try {
+    await composerPersistence.dismissPendingSend(target.sendId);
+    setRequestStatus("发送限制已解除，当前输入已保留；没有重新发送消息。");
+  } catch (error) {
+    setRequestStatus("解除尚未完成，请查看输入区状态或重新核对原文。");
+    addMessage("error", `解除发送限制：${error.message}`);
   } finally {
     setBusy(false);
     input.focus();

@@ -4,7 +4,9 @@ import { createComposerDraftQueue } from "./composer-draft-queue.js";
 // 输入框只在这里读写；页面负责把状态显示出来并调用发送接口。
 export function createComposerPersistence(input, api, onState) {
   const drafts = createComposerDrafts(input);
-  const queue = createComposerDraftQueue((...args) => api.saveComposerDraft(...args));
+  const queue = createComposerDraftQueue((...args) =>
+    api.saveComposerDraft(...args),
+  );
   const entries = new Map();
   let currentId = null;
   let viewVersion = 0;
@@ -14,9 +16,30 @@ export function createComposerPersistence(input, api, onState) {
     if (disposed || entry?.sessionId !== currentId) return;
     onState({
       sessionId: currentId,
-      message: entry.error ? `输入未保存或未完成核对：${entry.error.message}` : entry.message,
-      retryable: Boolean(entry.error),
-      canSend: entry.loaded && !entry.preparing && !entry.ticket && !entry.pendingSend && !entry.error,
+      message: entry.dismissing
+        ? "正在解除发送限制……"
+        : entry.pendingCheckError
+          ? `解除结果尚未确认，请重试核对：${entry.pendingCheckError.message}`
+          : entry.error
+            ? `输入未保存或未完成核对：${entry.error.message}`
+            : entry.message,
+      retryable: Boolean(entry.error || entry.pendingCheckError),
+      canSend:
+        entry.loaded &&
+        !entry.preparing &&
+        !entry.ticket &&
+        !entry.pendingSend &&
+        !entry.error &&
+        !entry.dismissing &&
+        !entry.pendingCheckError,
+      canDismiss:
+        entry.loaded &&
+        !entry.preparing &&
+        !entry.ticket &&
+        Boolean(entry.pendingSend) &&
+        !entry.error &&
+        !entry.dismissing &&
+        !entry.pendingCheckError,
       pendingSend: entry.pendingSend ? { ...entry.pendingSend } : null,
     });
   }
@@ -41,7 +64,8 @@ export function createComposerPersistence(input, api, onState) {
     try {
       const saved = await queue.flush(entry.sessionId);
       entry.error = null;
-      entry.message = saved.text === entry.text ? "输入已保存。" : "输入待保存。";
+      entry.message =
+        saved.text === entry.text ? "输入已保存。" : "输入待保存。";
       publish(entry);
       return saved;
     } catch (error) {
@@ -52,10 +76,18 @@ export function createComposerPersistence(input, api, onState) {
   }
 
   function schedule(entry) {
-    if (disposed || !entry.loaded || entry.error || (entry.ticket && !entry.confirmed)) return;
+    if (
+      disposed ||
+      !entry.loaded ||
+      entry.error ||
+      (entry.ticket && !entry.confirmed)
+    )
+      return;
     entry.message = "输入待保存。";
     clearTimeout(entry.debounce);
-    const run = () => { void save(entry).catch(() => {}); };
+    const run = () => {
+      void save(entry).catch(() => {});
+    };
     entry.debounce = setTimeout(run, 300);
     // 持续输入也最多等待1秒；同一会话的实际写入由队列串行。
     if (entry.deadline === null) entry.deadline = setTimeout(run, 1000);
@@ -78,7 +110,8 @@ export function createComposerPersistence(input, api, onState) {
     if (previous && input.value !== previous.text) onInput();
     if (previous && currentId !== sessionId) {
       // 切换后的保存仍归原会话；失败保留原记录，回到该会话可重试。
-      if (previous.loaded && !previous.error) void save(previous).catch(() => {});
+      if (previous.loaded && !previous.error)
+        void save(previous).catch(() => {});
     }
     drafts.switchTo(sessionId);
     currentId = sessionId;
@@ -86,9 +119,21 @@ export function createComposerPersistence(input, api, onState) {
     let entry = entries.get(sessionId);
     if (!entry) {
       entry = {
-        sessionId, text: input.value, local: false, loaded: false, loading: null,
-        preparing: false, ticket: null, confirmed: false, pendingSend: null,
-        error: null, message: "正在读取输入……", debounce: null, deadline: null,
+        sessionId,
+        text: input.value,
+        local: false,
+        loaded: false,
+        loading: null,
+        preparing: false,
+        ticket: null,
+        confirmed: false,
+        pendingSend: null,
+        dismissing: false,
+        pendingCheckError: null,
+        error: null,
+        message: "正在读取输入……",
+        debounce: null,
+        deadline: null,
       };
       entries.set(sessionId, entry);
     }
@@ -105,10 +150,15 @@ export function createComposerPersistence(input, api, onState) {
       if (!entry.loading) {
         entry.loading = (async () => {
           const stored = await api.loadComposerDraft();
-          if (stored.sessionId !== sessionId) throw new Error("当前对话已变化，请重新读取输入。");
+          if (stored.sessionId !== sessionId)
+            throw new Error("当前对话已变化，请重新读取输入。");
           // 服务读取与核对不能因页面不回填而跳过；一致后才登记队列。
           const inspected = await api.inspectComposerSend(sessionId);
-          if (inspected.sessionId !== sessionId || inspected.revision !== stored.revision || inspected.text !== stored.text) {
+          if (
+            inspected.sessionId !== sessionId ||
+            inspected.revision !== stored.revision ||
+            inspected.text !== stored.text
+          ) {
             throw new Error("输入读取期间内容已变化，请重新读取并核对。");
           }
           queue.register(stored);
@@ -118,7 +168,9 @@ export function createComposerPersistence(input, api, onState) {
           if (entry.local) queue.setText(sessionId, entry.text);
           else entry.text = stored.text;
           return stored;
-        })().finally(() => { entry.loading = null; });
+        })().finally(() => {
+          entry.loading = null;
+        });
       }
       const stored = await entry.loading;
       if (!disposed && currentId === sessionId && view === viewVersion) {
@@ -131,7 +183,9 @@ export function createComposerPersistence(input, api, onState) {
         }
         entry.text = input.value;
       }
-      entry.message = entry.pendingSend ? "有未确认的发送原文，已保留，请先查看。" : "输入已读取。";
+      entry.message = entry.pendingSend
+        ? "有未确认的发送原文，已保留，请先查看。"
+        : "输入已读取。";
       if (entry.local) schedule(entry);
       publish(entry);
     } catch (error) {
@@ -143,7 +197,15 @@ export function createComposerPersistence(input, api, onState) {
 
   async function prepareSend() {
     const entry = entries.get(currentId);
-    if (!entry?.loaded || entry.error || entry.preparing || entry.ticket || entry.pendingSend) {
+    if (
+      !entry?.loaded ||
+      entry.error ||
+      entry.preparing ||
+      entry.ticket ||
+      entry.pendingSend ||
+      entry.dismissing ||
+      entry.pendingCheckError
+    ) {
       throw new Error("输入尚未就绪，或有待确认的发送记录。");
     }
     if (input.value !== entry.text) onInput();
@@ -151,7 +213,8 @@ export function createComposerPersistence(input, api, onState) {
     publish(entry);
     try {
       await save(entry);
-      if (disposed || currentId !== entry.sessionId) throw new Error("当前页面或会话已变化，请重新发送。");
+      if (disposed || currentId !== entry.sessionId)
+        throw new Error("当前页面或会话已变化，请重新发送。");
       const ticket = queue.beginSend(entry.sessionId);
       entry.ticket = ticket;
       entry.confirmed = false;
@@ -170,9 +233,14 @@ export function createComposerPersistence(input, api, onState) {
 
   function confirmConsumed(ticket, ack) {
     const entry = entries.get(ticket?.sessionId);
-    if (entry?.ticket !== ticket || !queue.confirmConsumed(ticket, ack)) return false;
+    if (entry?.ticket !== ticket || !queue.confirmConsumed(ticket, ack))
+      return false;
     entry.confirmed = true;
-    entry.pendingSend = { id: ack.sendId, text: ticket.text, draftRevision: ticket.revision };
+    entry.pendingSend = {
+      id: ack.sendId,
+      text: ticket.text,
+      draftRevision: ticket.revision,
+    };
     void save(entry).catch(() => {});
     return true;
   }
@@ -187,7 +255,8 @@ export function createComposerPersistence(input, api, onState) {
     queue.finishSend(ticket);
     entry.ticket = null;
     entry.confirmed = false;
-    if (result.outcome !== "unconfirmed" && !result.warning) entry.pendingSend = null;
+    if (result.outcome !== "unconfirmed" && !result.warning)
+      entry.pendingSend = null;
     // 请求已结束，输入补保存失败只在输入状态区报告，不改写请求结果。
     await save(entry).catch(() => {});
     return true;
@@ -201,7 +270,11 @@ export function createComposerPersistence(input, api, onState) {
       if (entry.ticket !== ticket) return false;
       let reconciled = queue.reconcileSend(ticket, inspected);
       if (!reconciled && entry.confirmed) {
-        reconciled = { ...queue.finishSend(ticket), status: "consumed", pendingSend: inspected.pendingSend };
+        reconciled = {
+          ...queue.finishSend(ticket),
+          status: "consumed",
+          pendingSend: inspected.pendingSend,
+        };
       }
       if (!reconciled) return false;
       entry.ticket = null;
@@ -222,11 +295,59 @@ export function createComposerPersistence(input, api, onState) {
     }
   }
 
+ // 解除结果丢失时只读取快照，不采用读取到的草稿正文或版本覆盖本地编辑。
+  async function refreshPending(entry) {
+    try {
+      const inspected = await api.inspectComposerSend(entry.sessionId);
+      const pending = inspected?.pendingSend;
+      if (inspected?.sessionId !== entry.sessionId || !(pending === null || (
+        typeof pending?.id === "string" && pending.id && typeof pending.text === "string"
+      ))) {
+        throw new Error("快照核对结果无效，请重新读取。");
+      }
+      entry.pendingSend = pending ? { ...pending } : null;
+      entry.pendingCheckError = null;
+      return !pending;
+    } catch (error) {
+      entry.pendingCheckError = error;
+      publish(entry);
+      throw error;
+    }
+  }
+
+  async function dismissPendingSend(sendId) {
+    const entry = entries.get(currentId);
+    if (!entry?.loaded || entry.error || entry.preparing || entry.ticket || entry.dismissing || entry.pendingCheckError || !entry.pendingSend || entry.pendingSend.id !== sendId) {
+      throw new Error("发送记录或输入状态已变化，请重新核对。");
+    }
+    entry.dismissing = true;
+    publish(entry);
+    try {
+      try {
+        const result = await api.dismissComposerSend(entry.sessionId, sendId);
+        if (result?.sessionId !== entry.sessionId || result.sendId !== sendId) {
+          throw new Error("解除确认与提交的编号不匹配。");
+        }
+        entry.pendingSend = null;
+      } catch (error) {
+        // 可能已经写入但没有收到返回；核对前不能假定失败，也不能重复清理。
+        if (!await refreshPending(entry)) throw error;
+      }
+      entry.message = "发送限制已解除，当前输入已保留。";
+    } finally {
+      entry.dismissing = false;
+      publish(entry);
+    }
+  }
+
   async function retry() {
     const entry = entries.get(currentId);
     if (!entry) return;
+    if (entry.dismissing) throw new Error("请等待解除操作结束。");
     if (entry.ticket) return recoverSend(entry.ticket);
     if (!entry.loaded) return switchTo(currentId);
+    // 普通重试只核对解除结果，绝不再次调用清理接口。
+    if (entry.pendingCheckError) await refreshPending(entry);
     return save(entry);
   }
 
@@ -238,7 +359,14 @@ export function createComposerPersistence(input, api, onState) {
   }
 
   return {
-    switchTo, prepareSend, confirmConsumed, finishSend, recoverSend, retry, dispose,
+    switchTo,
+    prepareSend,
+    confirmConsumed,
+    finishSend,
+    recoverSend,
+    retry,
+    dismissPendingSend,
+    dispose,
     flush: () => {
       const entry = entries.get(currentId);
       return entry ? save(entry) : Promise.resolve(null);
