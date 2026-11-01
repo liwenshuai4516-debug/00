@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="../../node_modules/@highlightjs/cdn-assets/styles/github-dark.min.css" />
   <link rel="stylesheet" href="./styles/markdown.css" />
   <link rel="stylesheet" href="./styles/session-list.css" />
+  <link rel="stylesheet" href="./styles/project-panel.css" />
   <link rel="stylesheet" href="./styles/proposal-comparison.css" />
   <link rel="stylesheet" href="./styles/model-selector.css" />
   <!-- 新主题最后加载，保留现有组件样式文件。 -->
@@ -41,6 +42,15 @@
         <svg class="icon" aria-hidden="true"><use href="#icon-new"/></svg>
         新建对话
       </button>
+      <section id="project-panel" class="project-panel" aria-labelledby="project-list-title" aria-busy="false">
+        <div class="project-panel-heading">
+          <h3 id="project-list-title">已添加项目</h3>
+          <button id="add-project-button" type="button" disabled>添加项目</button>
+        </div>
+        <ul class="registered-project-list" aria-label="已添加项目列表"></ul>
+        <p role="status" aria-atomic="true">正在读取项目……</p>
+        <button id="reload-projects-button" type="button" hidden>重新读取</button>
+      </section>
       <label class="search-field" for="session-search">
         <span class="sr-only">搜索对话</span>
         <svg class="icon" aria-hidden="true"><use href="#icon-search"/></svg>

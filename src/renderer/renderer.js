@@ -1,4 +1,5 @@
 import { createProposalPanel } from "./components/proposal-panel.js";
+import { createProjectPanel } from "./components/project-panel.js";
 import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel } from "./components/session-info-panel.js";
 import { createMessageScroll } from "./components/message-scroll.js";
@@ -73,6 +74,12 @@ const modelSelector = createModelSelector(
 );
 
 
+const projectPanel = createProjectPanel(
+  document.getElementById("project-panel"),
+  window.agent,
+  setBusy,
+);
+
 // 在页面初始化时创建面板，供所有函数和事件处理使用。
 const proposalPanelElement = document.getElementById("proposal-panel");
 const proposalReviewPanel = document.getElementById("proposal-review-panel");
@@ -116,6 +123,7 @@ function setBusy(busy, generating = false) {
   compactSessionButton.disabled = busy;
   exportConversationButton.disabled = busy;
   sessionList.setBusy(busy);
+  projectPanel.setBusy(busy);
   stopButton.disabled = !generating;
   renameButton.disabled = busy;
 }
@@ -176,6 +184,9 @@ async function loadHistory() {
 
 // 先建立独立预览入口，再尝试恢复当前聊天。
 mountHistoryPreview(document.getElementById("history-preview"), window.agent);
+
+// 项目清单独立读取，不依赖当前模型会话初始化成功。
+projectPanel.refresh();
 
 loadHistory();
 

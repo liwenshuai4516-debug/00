@@ -1,0 +1,64 @@
+.project-panel {
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.project-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-panel-heading h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.project-panel button {
+  min-height: 44px;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-color: transparent;
+}
+
+.registered-project-list {
+  max-height: min(18dvh, 144px);
+  margin: 0;
+  padding: 0 2px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.registered-project-list li {
+  padding: 8px 6px;
+}
+
+.registered-project-name,
+.registered-project-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.registered-project-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.registered-project-path,
+.registered-project-empty,
+.project-panel [role="status"] {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.project-panel [role="status"] {
+  max-height: 4.5em;
+  margin: 4px 0 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
