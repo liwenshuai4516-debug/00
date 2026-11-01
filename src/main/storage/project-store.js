@@ -42,6 +42,25 @@ function createProjectStore(storagePath) {
     return data.projects;
   }
 
+  // 添加与重命名共用原子写入，调用方通过 IPC 串行执行。
+  async function save(projects) {
+    await mkdir(path.dirname(storagePath), { recursive: true });
+    const temporaryPath = `${storagePath}.${randomUUID()}.tmp`;
+
+    try {
+      await writeFile(
+        temporaryPath,
+        JSON.stringify({ projects }) + "\n",
+        { encoding: "utf8", mode: 0o600, flag: "wx" },
+      );
+      // 同目录替换，读取者不会看到尚未写完的 JSON。
+      await rename(temporaryPath, storagePath);
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+
+  }
+
   // 后续通过 IPC 的互斥入口调用，避免多个添加操作相互覆盖。
   async function add(workspaceDir) {
     if (typeof workspaceDir !== "string" || !path.isAbsolute(workspaceDir)) {
@@ -64,25 +83,35 @@ function createProjectStore(storagePath) {
     };
     projects.push(project);
 
-    await mkdir(path.dirname(storagePath), { recursive: true });
-    const temporaryPath = `${storagePath}.${randomUUID()}.tmp`;
-
-    try {
-      await writeFile(
-        temporaryPath,
-        JSON.stringify({ projects }) + "\n",
-        { encoding: "utf8", mode: 0o600, flag: "wx" },
-      );
-      // 同目录替换，读取者不会看到尚未写完的 JSON。
-      await rename(temporaryPath, storagePath);
-    } finally {
-      await rm(temporaryPath, { force: true });
-    }
+    await save(projects);
 
     return project;
   }
 
-  return { list, add };
+  async function renameProject(projectId, name) {
+    if (typeof projectId !== "string" || !projectId.trim()) {
+      throw new Error("请选择项目。");
+    }
+    if (typeof name !== "string" || !name.trim() || name.trim().length > 40) {
+      throw new Error("项目名称请输入 1～40 个字符。");
+    }
+
+    const projects = await list();
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) {
+      throw new Error("未找到该项目，请重新读取项目列表。");
+    }
+
+    const nextName = name.trim();
+    if (project.name === nextName) return project;
+
+    // 只改登记名称，不依赖目录仍存在，也不改编号和真实路径。
+    project.name = nextName;
+    await save(projects);
+    return project;
+  }
+
+  return { list, add, rename: renameProject };
 }
 
 module.exports = { createProjectStore };
