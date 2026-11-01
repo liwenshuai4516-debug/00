@@ -1,0 +1,94 @@
+
+/* 仅 Agent 的排版正文使用普通流布局。 */
+.markdown-body {
+  white-space: normal;
+}
+
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child { margin-bottom: 0; }
+
+.markdown-body p, .markdown-body ul, .markdown-body ol,
+.markdown-body blockquote, .markdown-body pre, .markdown-body table {
+  margin: 0 0 16px;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin: 24px 0 12px;
+  line-height: 1.4;
+}
+
+.markdown-body h1 { font-size: 1.5em; }
+.markdown-body h2 { font-size: 1.3em; }
+.markdown-body h3 { font-size: 1.15em; }
+
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  font-size: 1em;
+}
+
+.markdown-body ul, .markdown-body ol { padding-left: 24px; }
+.markdown-body li + li { margin-top: 4px; }
+.markdown-body li > p { margin-bottom: 8px; }
+
+.markdown-body blockquote {
+  margin-left: 0;
+  padding-left: 14px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+.markdown-body code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--surface);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* 长代码在块内横向滚动，保留缩进，不撑宽聊天区。 */
+.markdown-body pre {
+  max-width: 100%;
+  padding: 14px 16px;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  tab-size: 2;
+}
+
+.markdown-body pre > code {
+  display: block;
+  overflow: visible;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.markdown-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown-body th, .markdown-body td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.markdown-body pre:focus-visible, .markdown-body table:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.markdown-body hr {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}

@@ -3,7 +3,11 @@ import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel } from "./components/session-info-panel.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
-import { appendMessage, updateToolMessage } from "./components/message-view.js";
+import {
+  appendMessage,
+  updateAssistantMessage,
+  updateToolMessage,
+} from "./components/message-view.js";
 
 import { createModelSelector } from "./components/model-selector.js";
 
@@ -215,6 +219,20 @@ form.addEventListener("submit", async (event) => {
 
   // 每轮请求独立管理，使用调用编号关联，不能按工具名称匹配。
   const pendingTools = new Map();
+  // 一帧内合并流式更新；工具调用前后的回复节点分别保留。
+  const pendingReplies = new Map();
+  let replyFrame;
+
+  function flushReplies() {
+    replyFrame = undefined;
+
+    for (const [body, text] of pendingReplies) {
+      updateAssistantMessage(body, text);
+    }
+
+    pendingReplies.clear();
+    messageScroll.update();
+  }
 
   // 请求发起之前先监听，避免遗漏早期状态。
   const unsubscribeStatus = window.agent.onRequestStatus(setRequestStatus);
@@ -228,11 +246,11 @@ form.addEventListener("submit", async (event) => {
 
     reply += delta;
 
-    // 角色标签由组件展示，这里只更新正文。
-    replyElement.textContent = reply;
+    pendingReplies.set(replyElement, reply);
 
-    // 已有消息的正文增长时，也需要更新滚动位置。
-    messageScroll.update();
+    if (replyFrame === undefined) {
+      replyFrame = requestAnimationFrame(flushReplies);
+    }
   });
 
   const unsubscribeTool = window.agent.onToolEvent((event) => {
@@ -311,6 +329,9 @@ form.addEventListener("submit", async (event) => {
     unsubscribe();
     unsubscribeTool();
     unsubscribeStatus();
+    // 正常结束、停止或失败时，立即展示尚未绘制的最后一段。
+    if (replyFrame !== undefined) cancelAnimationFrame(replyFrame);
+    flushReplies();
     // 停止或异常可能没有完成事件，不能继续显示“正在调用”。
     for (const { body, name } of pendingTools.values()) {
       updateToolMessage(

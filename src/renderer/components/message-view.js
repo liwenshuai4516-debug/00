@@ -1,3 +1,4 @@
+import { renderMarkdown } from "./markdown-renderer.js";
 const ROLE_LABELS = {
   user: "我",
   assistant: "Agent",
@@ -6,7 +7,28 @@ const ROLE_LABELS = {
   error: "错误",
 };
 
-// 历史消息和实时消息共用组件，所有内容均作为纯文本展示。
+// 历史消息和实时消息共用组件，// 原文与排版结果分开保存；复制时始终使用 Markdown 原文。
+const assistantSources = new WeakMap();
+
+export function updateAssistantMessage(body, text) {
+  assistantSources.set(body, text);
+
+  try {
+    renderMarkdown(body, text);
+    body.classList.add("markdown-body");
+
+    // 代码块和表格允许通过键盘聚焦、横向滚动。
+    for (const block of body.querySelectorAll("pre, table")) {
+      block.tabIndex = 0;
+    }
+  } catch {
+    // 排版失败仍展示完整原文，不中断聊天或输入恢复。
+    body.classList.remove("markdown-body");
+    body.textContent = text;
+  }
+}
+
+// 历史消息和实时消息共用组件，仅 Agent 回复进行 Markdown 排版。所有内容均作为纯文本展示。
 export function appendMessage(container, role, text) {
   if (role === "tool") {
     const details = document.createElement("details");
@@ -39,6 +61,8 @@ export function appendMessage(container, role, text) {
   article.append(label, body);
 
   if (role === "assistant") {
+    updateAssistantMessage(body, text);
+
     const actions = document.createElement("div");
     actions.className = "message-actions";
 
@@ -51,8 +75,8 @@ export function appendMessage(container, role, text) {
     copyStatus.setAttribute("role", "status");
 
     copyButton.addEventListener("click", async () => {
-      // 点击时读取正文，避免复制到消息刚创建时的空文本。
-      const currentText = body.textContent;
+      // 点击时读取最新原文，保留代码围栏、缩进和 Markdown 标记。
+      const currentText = assistantSources.get(body) ?? "";
 
       if (!currentText.trim()) {
         copyStatus.textContent = "暂无可复制的内容。";
