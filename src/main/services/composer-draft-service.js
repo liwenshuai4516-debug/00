@@ -78,7 +78,31 @@ function createComposerDraftService(sessionService, sessionStateStore) {
     };
   }
 
-  return { loadCurrentDraft, saveDraft, inspectSend };
+  // 只由用户明确确认后的独立入口调用，不代表模型已经成功处理。
+  async function dismissSend(sessionId, sendId) {
+    if (!knownSessions.has(sessionId)) {
+      throw new Error("该会话尚未登记，请先读取对应会话的输入草稿。");
+    }
+    if (typeof sendId !== "string" || !sendId) {
+      throw new Error("发送编号无效。");
+    }
+
+    const workspaceDir = knownSessions.get(sessionId);
+    await sessionStateStore.update(sessionId, workspaceDir, (state) => {
+      // 在串行更新内部比较编号，迟到的确认不能清理较新的发送记录。
+      if (state.pendingSend?.id !== sendId) {
+        throw new Error("发送记录已变化，请重新核对后再处理。");
+      }
+
+      // 不回填原文，不改草稿版本、组织状态，也不接触Pi历史。
+      return { ...state, pendingSend: null };
+    });
+
+    // 不返回可能已经过期的草稿正文，页面继续保留自己的最新编辑。
+    return { sessionId, sendId };
+  }
+
+  return { loadCurrentDraft, saveDraft, inspectSend, dismissSend };
 }
 
 module.exports = { createComposerDraftService };

@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 读取实际会话的模型与真实工作目录。
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
+  // 仅提交明确确认的会话和发送编号，不接受目录、原文或状态对象。
+  dismissComposerSend: (sessionId, sendId) =>
+    ipcRenderer.invoke("agent:dismiss-composer-send", sessionId, sendId),
+
   // 页面只读取模型编号和名称，实际目录由主进程提供。
   listModels: () => ipcRenderer.invoke("agent:list-models"),
 

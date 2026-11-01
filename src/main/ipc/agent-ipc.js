@@ -50,6 +50,11 @@ function registerAgentIpc(
   // 当前会话由主进程决定，页面不需要传入会话编号。
   ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
 
+  // 用户明确核对后解除限制；生成和其他会话操作期间不可执行。
+  ipcMain.handle("agent:dismiss-composer-send", (_event, sessionId, sendId) => {
+    return runIdleOperation(() => composerDraftService.dismissSend(sessionId, sendId));
+  });
+
   // 只读当前会话的模型目录，不接受页面指定供应商或会话。
   ipcMain.handle("agent:list-models", () => sessionService.listModels());
   // 切换模型与生成、整理、保存和会话切换共用互斥入口。
