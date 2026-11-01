@@ -33,6 +33,21 @@ function createSessionStateStore(directory) {
     ) {
       throw new Error("会话状态记录无效或归属不匹配。");
     }
+
+    // 旧记录可以没有此字段；非空快照必须对应已经消费的输入版本。
+    const sending = state.pendingSend;
+    if (
+      sending !== undefined &&
+      sending !== null &&
+      (typeof sending.id !== "string" ||
+        !sending.id ||
+        typeof sending.text !== "string" ||
+        !sending.text.trim() ||
+        !isRevision(sending.draftRevision) ||
+        sending.draftRevision >= state.draft.revision)
+    ) {
+      throw new Error("发送快照记录无效，请保留原文件并检查。");
+    }
   }
 
   async function read(sessionId, filename) {
@@ -78,6 +93,7 @@ function createSessionStateStore(directory) {
         draft: { text: "", revision: 0 },
         pinnedAt: null,
         archivedAt: null,
+        pendingSend: null,
       };
 
       if (state.workspaceDir !== workspaceDir) {
@@ -140,7 +156,55 @@ function createSessionStateStore(directory) {
     });
   }
 
-  return { load, update, saveDraft };
+  async function consumeDraft(sessionId, workspaceDir, text, expectedRevision) {
+    if (
+      typeof text !== "string" ||
+      !text.trim() ||
+      !isRevision(expectedRevision)
+    ) {
+      throw new Error("发送原文或输入版本无效。");
+    }
+
+    return update(sessionId, workspaceDir, (state) => {
+      if (
+        state.draft.revision !== expectedRevision ||
+        state.draft.text !== text
+      ) {
+        throw new Error("待发送输入已变化，请重新确认后再发送。");
+      }
+      if (state.pendingSend) {
+        throw new Error("该会话有尚未确认的发送记录，请先处理。");
+      }
+
+      // 原文快照与清空版本一起落盘，不能拆成两次写入。
+      return {
+        ...state,
+        draft: { text: "", revision: expectedRevision + 1 },
+        pendingSend: {
+          id: randomUUID(),
+          text,
+          draftRevision: expectedRevision,
+        },
+      };
+    });
+  }
+
+  async function completeSend(sessionId, workspaceDir, sendId) {
+    if (typeof sendId !== "string" || !sendId) {
+      throw new Error("发送编号无效。");
+    }
+
+    return update(sessionId, workspaceDir, (state) => {
+      if (state.pendingSend?.id !== sendId) {
+        throw new Error("发送记录已变化，不能清理其他发送快照。");
+      }
+
+      // 仅在业务层确认正常完成或主动停止后调用，不触碰后续输入。
+      return { ...state, pendingSend: null };
+    });
+  }
+
+  return { load, update, saveDraft, consumeDraft, completeSend };
 }
 
 module.exports = { createSessionStateStore };
