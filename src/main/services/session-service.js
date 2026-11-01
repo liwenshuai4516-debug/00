@@ -9,14 +9,26 @@ async function createDefaultAgent(...args) {
 }
 
 // 测试时可以传入模拟创建函数，正常启动无需额外参数。
-function createSessionService(sessionDir, createAgent = createDefaultAgent) {
+function createSessionService(
+  sessionDir,
+  createAgent = createDefaultAgent,
+  readWorkspaceDir = () => process.env.AGENT_WORKSPACE_DIR,
+) {
   let sessionPromise;
   let activeCompaction;
+
+  // 初始化、新建和打开历史共用目录来源。
+  // 创建失败时，由调用方保留原会话。
+  async function createSession(resume = false, sessionPath) {
+    const workspaceDir = await readWorkspaceDir();
+    return createAgent(sessionDir, resume, sessionPath, workspaceDir);
+  }
+
   function getSession(resume = false) {
     if (!sessionPromise) {
       // 同步保存 Promise，确保并发调用共享同一次初始化。
       sessionPromise = Promise.resolve()
-        .then(() => createAgent(sessionDir, resume))
+        .then(() => createSession(resume))
         .catch((error) => {
           sessionPromise = undefined;
           throw error;
@@ -294,7 +306,7 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
     const previousSession = sessionPromise ? await sessionPromise : undefined;
 
     // 创建成功后再替换，打开失败时保留旧会话。
-    const nextSession = await createAgent(sessionDir, false, selected.path);
+    const nextSession = await createSession(false, selected.path);
     sessionPromise = Promise.resolve(nextSession);
     previousSession?.dispose();
 
@@ -304,7 +316,7 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
   async function newChat() {
     const previousSession = sessionPromise ? await sessionPromise : undefined;
 
-    const nextSession = await createAgent(sessionDir);
+    const nextSession = await createSession();
     sessionPromise = Promise.resolve(nextSession);
     previousSession?.dispose();
 
