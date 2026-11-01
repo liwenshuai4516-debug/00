@@ -1,4 +1,5 @@
 //应用启动与服务组装
+const { createWorkspaceSettings } = require("./storage/workspace-settings.js");
 
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("node:path");
@@ -26,8 +27,17 @@ const projectRoot = path.resolve(__dirname, "../..");
 loadEnvFile(path.join(projectRoot, ".env"));
 
 // 在应用入口组装服务，确保所有接口共享同一份状态。
-const sessionService = createSessionService(path.join(projectRoot, "sessions"));
-// 草稿与会话都保存在当前项目的 sessions 目录内。
+// 已保存的目录优先；尚无记录时使用 .env 默认目录。
+const workspaceSettings = createWorkspaceSettings(
+  path.join(app.getPath("userData"), "workspace.json"),
+  process.env.AGENT_WORKSPACE_DIR,
+);
+
+const sessionService = createSessionService(
+  path.join(projectRoot, "sessions"),
+  undefined,
+  workspaceSettings.load,
+); // 草稿与会话都保存在当前项目的 sessions 目录内。
 const proposalStorage = createProposalStorage(
   path.join(projectRoot, "sessions", "proposals"),
 );
@@ -37,15 +47,19 @@ const proposalStore = createProposalStore(proposalStorage);
 // undefined 表示继续使用默认的 Pi 发送函数。
 const chatService = createChatService(sessionService, undefined, proposalStore);
 
-// 审阅使用与 Pi 工具一致的工作目录。
+// 文件操作以实际会话为准，不固定使用启动时的环境变量。
+async function getCurrentWorkspaceDir() {
+  const session = await sessionService.getSession(true);
+  return session.sessionManager.getCwd();
+}
+
 const proposalReviewService = createProposalReviewService(
-  process.env.AGENT_WORKSPACE_DIR,
+  getCurrentWorkspaceDir,
   chatService,
 );
 
-// 保存和审阅使用相同工作目录、相同聊天服务。
 const proposalApplyService = createProposalApplyService(
-  process.env.AGENT_WORKSPACE_DIR,
+  getCurrentWorkspaceDir,
   chatService,
   sessionService,
 );

@@ -25,16 +25,19 @@ function createProposalApplyService(
     if (!["edit-proposal", "create-proposal"].includes(proposal.kind)) {
       throw new Error("不支持保存该草稿类型。");
     }
-
+    // 读取失败发生在登记保存状态之前，草稿仍可继续操作。
+    const currentWorkspaceDir =
+      typeof workspaceDir === "function" ? await workspaceDir() : workspaceDir;
     // 先落盘进行中状态；失败时不进入文件写入。
     chatService.beginProposalApply(proposal.sessionId, proposal.id);
 
     let result;
 
     try {
-      result = proposal.kind === "create-proposal"
-        ? await applyCreate(workspaceDir, proposal)
-        : await applyEdit(workspaceDir, proposal);
+      result =
+        proposal.kind === "create-proposal"
+          ? await applyCreate(currentWorkspaceDir, proposal)
+          : await applyEdit(currentWorkspaceDir, proposal);
     } catch (error) {
       try {
         chatService.cancelProposalApply(proposal.sessionId, proposal.id);
@@ -81,7 +84,9 @@ function createProposalApplyService(
               result.warning,
               `文件已保存；${warnings.join("；")}。` +
                 "请检查文件，后续修改前重新读取。",
-            ].filter(Boolean).join("\n"),
+            ]
+              .filter(Boolean)
+              .join("\n"),
           }
         : {}),
     };

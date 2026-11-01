@@ -12,6 +12,9 @@ function createProposalReviewService(workspaceDir, chatService) {
     if (proposal.applying) {
       throw new Error("上次保存未确认完成，请检查文件并重新生成草稿。");
     }
+    // 原有调用可传固定目录；应用入口传函数，读取当前会话目录。
+    const currentWorkspaceDir =
+      typeof workspaceDir === "function" ? await workspaceDir() : workspaceDir;
 
     if (proposal.kind === "create-proposal") {
       const { resolveNewFilePath } =
@@ -19,7 +22,7 @@ function createProposalReviewService(workspaceDir, chatService) {
 
       // 草稿生成后目标可能已被占用，审阅时重新检查路径。
       // 此处只校验，不创建目录或文件。
-      await resolveNewFilePath(workspaceDir, proposal.path);
+      await resolveNewFilePath(currentWorkspaceDir, proposal.path);
       return proposal;
     }
 
@@ -31,7 +34,7 @@ function createProposalReviewService(workspaceDir, chatService) {
       await import("../tools/read-text-file.mjs");
 
     // 复用已有的路径、文件类型和大小限制。
-    const reader = createReadTextFileTool(workspaceDir);
+    const reader = createReadTextFileTool(currentWorkspaceDir);
     const result = await reader.execute("review-proposal", {
       path: proposal.path,
     });

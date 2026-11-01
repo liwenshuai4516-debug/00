@@ -144,7 +144,8 @@ node --test \
 - 使用者已亲手新建 `src/main/storage/workspace-settings.js` 和 `tests/unit/workspace-settings.test.js`，已核对实际代码并运行 5 项测试，全部通过。模块暴露 `createWorkspaceSettings(settingsPath, defaultWorkspaceDir)`，提供 `load()` / `save(workspaceDir)`；只有配置不存在才回退默认，校验绝对路径及真实文件夹，通过同目录临时文件加 `rename` 保存 `{ workspaceDir }`。覆盖默认回退不落盘、符号链接规范化与恢复、无效路径不改配置、损坏或失效配置拒绝回退、发布失败清理临时文件。测试只操作临时目录，不读取本地配置或会话、不请求模型。模块尚未接入启动及会话链路，不代表页面已经可以选择目录。
 - 使用者已亲手为 `createPiAgent()` 增加第四个参数 `workspaceDir = process.env.AGENT_WORKSPACE_DIR`，将它交给 `createWorkspaceSession()`，旧调用仍兼容。新建的 `pi-workspace.test.js` 曾为空文件，现已补齐并核对。实际工作区运行该测试加初始化、模型恢复和目录配置共 9 项，全部通过。新测试使用独立进程、临时目录、占位凭据并禁用网络，核对显式目录、符号链接真实路径、会话绑定、真实读取工具的目录及无效显式路径拒绝回退；不读取真实会话或请求模型。
 - 使用者已亲手完成会话服务目录来源改动：为 `createSessionService()` 增加第三个参数 `readWorkspaceDir`，默认读取启动配置；新增内部 `createSession()` 先读取目录，再传给 Pi 的第四个参数。初始化、新建、打开历史三个入口统一调用该函数，保持初始化 Promise 共享与失败重试、准备成功后才替换原会话的行为。已核对实际代码及 `session-workspace.test.js`，在实际工作区运行会话目录、会话服务、会话信息、Pi 初始化、Pi 目录、模型恢复及目录配置 7 个文件，27 项全部通过。此步尚未修改启动、审阅、保存或页面，不代表持久化目录已经接通应用。
-- 下一步启动与文件服务接线候选位于 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-workspace-wiring-810nglao`：`bootstrap.js` 创建 `userData/workspace.json` 配置并将 `workspaceSettings.load` 交给会话服务；审阅和保存传入读取实际会话 `sessionManager.getCwd()` 的函数。两项服务保留固定目录调用方式，并在每次操作时解析目录函数；保存先读取目录再登记进行中状态。候选新增 `proposal-workspace.test.js` 的 3 项测试，覆盖修改、新建草稿跨目录操作及目录读取失败不写入；加既有相关测试共 41 项通过。另在模拟 Electron 与临时配置中检查实际启动代码接线，确认已保存目录优先及文件操作跟随实际会话目录。未读取真实配置或会话、未请求模型。候选尚未写入实际源码，本步不增加页面按钮。
+- 使用者已亲手完成启动与文件服务接线：`bootstrap.js` 创建 `userData/workspace.json` 配置，将 `workspaceSettings.load` 交给会话服务，审阅与保存传入读取实际会话 `sessionManager.getCwd()` 的函数。两项服务保留固定目录调用方式，每次操作解析目录函数；保存先读取目录再登记进行中状态。`proposal-workspace.test.js` 的文件名拼写和保存服务的重复赋值已修正并核对，实际工作区运行该文件及审阅、保存、新建审阅、新建保存、草稿持久化、会话目录、目录配置共 8 个文件，41 项全部通过，三个改动脚本语法检查通过。另在模拟 Electron 与临时配置中验证实际启动代码，确认保存目录优先及文件操作跟随实际会话目录。未读取真实配置或会话、未请求模型；尚无页面选择目录入口。
+- 下一步目录切换候选位于 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-workspace-switch-hpeq9o50`：`createSessionService()` 增加第四个参数 `saveWorkspaceDir`，`bootstrap.js` 注入 `workspaceSettings.save`；新增 `switchWorkspace(workspaceDir)`，直接用指定目录创建新会话，保存 Pi 实际绑定的真实目录后才替换并释放旧会话，保存失败释放新会话并保留旧会话。初始化失败或尚未初始化时可绕过失效的旧目录配置恢复；重复选择同一目录也新建对话。候选新增 `workspace-switch.test.js` 的 7 项测试，加会话目录、会话服务、会话信息、模型切换、目录配置和文件服务目录测试，共 39 项通过；模拟启动接线另验证保存方法注入。候选仅在临时副本中验证，尚未写入实际源码；后续必须从 `runIdleOperation()` 调用，不提前暴露未受保护的页面接口。
 
 ### 新 UI 迭代基线（2026-11-01）
 
@@ -158,10 +159,10 @@ node --test \
 
 1. 模型恢复实际代码与测试已完成核对，不再重复实施。
 2. 页面选择器实际代码已接入并通过语法检查和 10 项模拟界面检查，不再重复实施。页面设计已应用 `ui-ux-pro-max` 技能。
-3. 新深色 UI 已有使用者页面验收反馈；目录配置存储、Pi 显式目录参数和会话服务目录来源实际代码均已验证，不再重复实施。下一步指导使用者修改 `bootstrap.js`、`proposal-review-service.js` 和 `proposal-apply-service.js`，并新建 `tests/unit/proposal-workspace.test.js`；候选 8 个相关测试文件共 41 项通过。
-4. 启动和文件服务接线验证后，增加受互斥保护的系统文件夹选择入口及页面交互。配置路径使用 `app.getPath("userData")` 下的 `workspace.json`；`.env` 仅作为尚无保存选择时的默认值，不改写。目录切换必须先准备成功再替换当前会话，失败保留原会话与草稿。
+3. 新深色 UI 已有使用者页面验收反馈；目录配置存储、Pi 显式目录参数、会话服务目录来源、启动与文件服务接线均已完成并验证，不再重复实施。下一步指导使用者为会话服务增加 `switchWorkspace()` 与保存方法注入，修改启动接线并新建 `tests/unit/workspace-switch.test.js`；候选 7 个相关测试文件共 39 项通过，实际修改后仍需核对。
+4. 会话目录切换服务验证后，增加受互斥保护的系统文件夹选择入口及页面交互。配置路径使用 `app.getPath("userData")` 下的 `workspace.json`；`.env` 仅作为尚无保存选择时的默认值，不改写。目录切换必须先准备成功再替换当前会话，失败保留原会话与草稿。
 5. `package.json`、IPC 文件及 `renderer.js` 的无关空白差异与本地验收文件不属于新功能；保留原状，不读取或提交本地内容。
 
 ### 本次提交范围
 
-Pi 显式目录参数已在 `7284fb8` 提交并推送。本轮只提交通过 27 项实际测试的会话服务目录来源改动、`session-workspace.test.js` 和本交接文档。启动及文件服务接线候选只在临时副本验证，作为手写建议交付。保留其他用户改动与本地验收文件，包括模型选择组件和主题样式的新改动，不执行 `git add .`，不读取或提交 `.env`、真实会话和本地验收内容。
+会话服务统一目录来源已在 `d19dbe5` 提交并推送。本轮只提交通过 41 项实际测试的 `bootstrap.js`、两个草稿文件服务、`proposal-workspace.test.js` 和本交接文档。下一步目录切换候选只在临时副本验证，作为手写建议交付。保留其他用户改动与本地验收文件，包括模型选择组件和主题样式的新改动，不执行 `git add .`，不读取或提交 `.env`、真实会话和本地验收内容。
