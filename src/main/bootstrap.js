@@ -3,6 +3,10 @@ const { createWorkspaceSettings } = require("./storage/workspace-settings.js");
 const { createProjectStore } = require("./storage/project-store.js");
 const { createProjectService } = require("./services/project-service.js");
 
+const { createSessionStateStore } = require("./storage/session-state-store.js");
+const {
+  createComposerDraftService,
+} = require("./services/composer-draft-service.js");
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("node:path");
 const { loadEnvFile } = require("node:process");
@@ -43,7 +47,16 @@ const sessionService = createSessionService(
   undefined,
   workspaceSettings.load,
   workspaceSettings.save,
-); // 草稿与会话都保存在当前项目的 sessions 目录内。
+); // 文件草稿与 Pi 会话保存在当前项目的 sessions 目录内。
+
+// 输入与组织状态共用一个存储实例，独立于 Pi 历史文件。
+const sessionStateStore = createSessionStateStore(
+  path.join(app.getPath("userData"), "session-state"),
+);
+const composerDraftService = createComposerDraftService(
+  sessionService,
+  sessionStateStore,
+);
 const proposalStorage = createProposalStorage(
   path.join(projectRoot, "sessions", "proposals"),
 );
@@ -133,6 +146,7 @@ registerAgentIpc(
   conversationExportService,
   workspaceSelectionService,
   projectService,
+  composerDraftService,
 );
 
 function createWindow() {

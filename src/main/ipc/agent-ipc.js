@@ -8,6 +8,7 @@ function registerAgentIpc(
   conversationExportService,
   workspaceSelectionService,
   projectService,
+  composerDraftService,
 ) {
   let operationPending = false;
 
@@ -29,6 +30,16 @@ function registerAgentIpc(
   ipcMain.handle("agent:load-history", () => sessionService.loadHistory());
   ipcMain.handle("agent:current-session", () =>
     sessionService.currentSession(),
+  );
+
+  // 输入保存独立于生成与切换互斥；原会话归属和版本由服务校验。
+  ipcMain.handle("agent:load-composer-draft", () =>
+    composerDraftService.loadCurrentDraft(),
+  );
+  ipcMain.handle(
+    "agent:save-composer-draft",
+    (_event, sessionId, text, expectedRevision) =>
+      composerDraftService.saveDraft(sessionId, text, expectedRevision),
   );
 
   // 当前会话由主进程决定，页面不需要传入会话编号。

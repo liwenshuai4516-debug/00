@@ -21,6 +21,13 @@ contextBridge.exposeInMainWorld("agent", {
   // 获取当前会话的 ID，用于在列表中标记当前对话。
   currentSession: () => ipcRenderer.invoke("agent:current-session"),
 
+    // 读取主进程当前会话；保存只传编号、原文和版本，不传工作目录。
+  loadComposerDraft: () => ipcRenderer.invoke("agent:load-composer-draft"),
+  saveComposerDraft: (sessionId, text, expectedRevision) =>
+    ipcRenderer.invoke(
+      "agent:save-composer-draft", sessionId, text, expectedRevision,
+    ),
+
   // 读取实际会话的模型与真实工作目录。
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
   // 页面只读取模型编号和名称，实际目录由主进程提供。
