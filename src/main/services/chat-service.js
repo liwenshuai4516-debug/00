@@ -10,6 +10,7 @@ function createChatService(
   sessionService,
   loadSender = loadDefaultSender,
   proposalStore = createProposalStore(),
+  sessionStateStore,
 ) {
   let activeRequest;
 
@@ -17,7 +18,14 @@ function createChatService(
     return Boolean(activeRequest);
   }
 
-  async function send(text, onText, onToolEvent, onStatus = () => {}) {
+  async function send(
+    text,
+    onText,
+    onToolEvent,
+    onStatus = () => {},
+    draftRequest,
+    onDraftConsumed = () => {},
+  ) {
     if (typeof text !== "string" || !text.trim()) {
       throw new Error("请输入消息内容。");
     }
@@ -26,75 +34,145 @@ function createChatService(
       throw new Error("已有消息正在生成。");
     }
 
+    // 在等待初始化前固定编号和版本，不接受页面指定的工作目录。
+    const draft =
+      draftRequest === undefined
+        ? null
+        : {
+            sessionId: draftRequest?.sessionId,
+            revision: draftRequest?.revision,
+          };
+    if (
+      draft &&
+      (!sessionStateStore ||
+        typeof draft.sessionId !== "string" ||
+        !draft.sessionId ||
+        !Number.isSafeInteger(draft.revision) ||
+        draft.revision < 0)
+    ) {
+      throw new Error("发送会话或输入版本无效，或尚未接入输入存储。");
+    }
+
     // 在任何异步操作之前占用请求状态，防止重复发送。
     const request = { stopped: false, session: null };
     activeRequest = request;
+    let consumed;
+    let workspaceDir;
 
     try {
       const sendMessage = await loadSender();
       const session = await sessionService.getSession();
 
-      // 初始化期间也允许停止，此时不发起模型请求。
-      if (request.stopped) {
-        return { stopped: true };
+      if (draft) {
+        if (session.sessionId !== draft.sessionId) {
+          throw new Error("当前会话已变化，请重新确认输入后再发送。");
+        }
+
+        workspaceDir = session.sessionManager.getCwd();
+        const state = await sessionStateStore.consumeDraft(
+          session.sessionId,
+          workspaceDir,
+          text,
+          draft.revision,
+        );
+        consumed = {
+          sessionId: session.sessionId,
+          sendId: state.pendingSend.id,
+          text: state.draft.text,
+          revision: state.draft.revision,
+        };
+
+        // 同步通知消费后的版本；仅传副本，避免回调改动后续清理编号。
+        onDraftConsumed({ ...consumed });
       }
 
-      request.session = session;
+      // 初始化或消费期间停止时，仍完成草稿收尾，但不调用模型。
+      if (!request.stopped) {
+        request.session = session;
 
-      try {
-        await sendMessage(
-          session,
-          text.trim(),
-          (delta) => {
-            if (!request.stopped) onText(delta);
-          },
-          (event) => {
-            if (request.stopped) return;
+        try {
+          await sendMessage(
+            session,
+            text.trim(),
+            (delta) => {
+              if (!request.stopped) onText(delta);
+            },
+            (event) => {
+              if (request.stopped) return;
 
-            if (
-              event.type === "end" &&
-              ["propose_workspace_edit", "propose_workspace_create"].includes(
-                event.name,
-              ) &&
-              !event.isError &&
-              event.proposal
-            ) {
-              let proposal;
+              if (
+                event.type === "end" &&
+                ["propose_workspace_edit", "propose_workspace_create"].includes(
+                  event.name,
+                ) &&
+                !event.isError &&
+                event.proposal
+              ) {
+                let proposal;
 
-              try {
-                proposal = proposalStore.add(session.sessionId, event.proposal);
-              } catch (error) {
-                // 存储失败作为应用错误展示，不公布保存按钮。
-                onToolEvent({
-                  type: "end",
-                  // 登记失败也属于原工具调用，页面需要更新原记录。
-                  toolCallId: event.toolCallId,
-                  name: "登记文件草稿",
-                  isError: true,
-                  text: `草稿未登记，无法保存：${error.message}`,
-                });
+                try {
+                  proposal = proposalStore.add(
+                    session.sessionId,
+                    event.proposal,
+                  );
+                } catch (error) {
+                  // 存储失败作为应用错误展示，不公布保存按钮。
+                  onToolEvent({
+                    type: "end",
+                    // 登记失败也属于原工具调用，页面需要更新原记录。
+                    toolCallId: event.toolCallId,
+                    name: "登记文件草稿",
+                    isError: true,
+                    text: `草稿未登记，无法保存：${error.message}`,
+                  });
+                  return;
+                }
+
+                onToolEvent({ ...event, proposal });
                 return;
               }
 
-              onToolEvent({ ...event, proposal });
-
-              // 当前工具事件已经处理完成，不再继续向下转发。
-              return;
-            }
-
-            onToolEvent(event);
-          },
-          // 停止后的状态不能覆盖页面上的停止提示。
-          (status) => {
-            if (!request.stopped) onStatus(status);
-          },
-        );
-      } catch (error) {
-        // 主动停止产生的中断不作为请求失败展示。
-        if (!request.stopped) throw error;
+              onToolEvent(event);
+            },
+            // 停止后的状态不能覆盖页面上的停止提示。
+            (status) => {
+              if (!request.stopped) onStatus(status);
+            },
+          );
+        } catch (error) {
+          // 主动停止产生的中断不作为请求失败展示。
+          if (!request.stopped) throw error;
+        }
       }
 
-      return { stopped: request.stopped };
+      const result = { stopped: request.stopped };
+      if (!consumed) return result;
+
+      result.outcome = request.stopped ? "stopped" : "completed";
+      result.draft = consumed;
+
+      try {
+        await sessionStateStore.completeSend(
+          consumed.sessionId,
+          workspaceDir,
+          consumed.sendId,
+        );
+      } catch (error) {
+        // 回复已结束，收尾失败不能变成可自动恢复原文的请求失败。
+        result.warning = `请求已结束，但发送快照清理失败：${error.message}`;
+      }
+
+      return result;
+    } catch (error) {
+      if (!consumed) throw error;
+
+      // 消费后异常不能证明远端未处理；保留快照，页面不可自动重发。
+      return {
+        stopped: request.stopped,
+        outcome: "unconfirmed",
+        draft: consumed,
+        error: error.message,
+      };
     } finally {
       // 成功、失败或停止后，都允许下一次发送。
       activeRequest = undefined;

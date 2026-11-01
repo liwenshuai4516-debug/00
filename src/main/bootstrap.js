@@ -64,7 +64,12 @@ const proposalStorage = createProposalStorage(
 const proposalStore = createProposalStore(proposalStorage);
 
 // undefined 表示继续使用默认的 Pi 发送函数。
-const chatService = createChatService(sessionService, undefined, proposalStore);
+const chatService = createChatService(
+  sessionService,
+  undefined,
+  proposalStore,
+  sessionStateStore,
+);
 
 // 文件操作以实际会话为准，不固定使用启动时的环境变量。
 async function getCurrentWorkspaceDir() {
