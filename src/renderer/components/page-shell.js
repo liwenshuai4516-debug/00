@@ -29,6 +29,11 @@ narrowWindow.addEventListener("change", () => {
   if (narrowWindow.matches && sidebar.contains(focused)) sidebarToggle.focus();
 });
 
+// 业务确认项目已打开后再收起侧栏；失败时保留项目区的错误提示。
+document.addEventListener("project-opened", () => {
+  if (narrowWindow.matches) setSidebar(false);
+});
+
 const sessionList = document.getElementById("session-list");
 const title = document.getElementById("conversation-title");
 function refreshTitle() {

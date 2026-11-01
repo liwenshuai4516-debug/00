@@ -1,5 +1,5 @@
 // 已登记项目独立展示；添加项目不替换当前对话。
-export function createProjectPanel(panel, agent, setPageBusy) {
+export function createProjectPanel(panel, agent, setPageBusy, onOpenProject) {
   const list = panel.querySelector("ul");
   const addButton = panel.querySelector("#add-project-button");
   const retryButton = panel.querySelector("#reload-projects-button");
@@ -10,7 +10,10 @@ export function createProjectPanel(panel, agent, setPageBusy) {
   function updateControls() {
     addButton.disabled = busy || loading;
     retryButton.disabled = busy || loading;
-    panel.setAttribute("aria-busy", String(loading));
+    for (const button of list.querySelectorAll("button")) {
+      button.disabled = busy || loading;
+    }
+    panel.setAttribute("aria-busy", String(busy || loading));
   }
 
   function setBusy(value) {
@@ -23,6 +26,11 @@ export function createProjectPanel(panel, agent, setPageBusy) {
 
     for (const project of projects) {
       const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "registered-project-open";
+      button.title = project.workspaceDir;
+
       const name = document.createElement("strong");
       name.className = "registered-project-name";
       name.textContent = project.name;
@@ -33,7 +41,28 @@ export function createProjectPanel(panel, agent, setPageBusy) {
       location.textContent = project.workspaceDir;
       location.title = project.workspaceDir;
 
-      item.append(name, location);
+      button.append(name, location);
+      button.addEventListener("click", async () => {
+        if (button.disabled) return;
+        setPageBusy(true);
+        status.textContent = `正在打开项目：${project.name}……`;
+        let opened = false;
+
+        try {
+          // 页面只提交编号；目录解析与恢复由主进程完成。
+          await onOpenProject(project.id);
+          opened = true;
+          status.textContent = `已打开项目：${project.name}`;
+        } catch (error) {
+          // 打开失败保留原消息、输入和文件草稿，在项目区提示。
+          status.textContent = `打开失败：${error.message}`;
+        } finally {
+          setPageBusy(false);
+          if (!opened) button.focus();
+        }
+      });
+
+      item.appendChild(button);
       list.appendChild(item);
     }
 

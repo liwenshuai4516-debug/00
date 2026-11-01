@@ -33,6 +33,21 @@
 }
 
 .registered-project-list li {
+  padding: 0;
+}
+
+.project-panel .registered-project-open {
+  display: block;
+  width: 100%;
+  padding: 8px 6px;
+  text-align: left;
+}
+
+.registered-project-open:focus-visible {
+  outline-offset: -2px;
+}
+
+.registered-project-list .registered-project-empty {
   padding: 8px 6px;
 }
 

@@ -78,6 +78,7 @@ const projectPanel = createProjectPanel(
   document.getElementById("project-panel"),
   window.agent,
   setBusy,
+  openProject,
 );
 
 // 在页面初始化时创建面板，供所有函数和事件处理使用。
@@ -388,6 +389,38 @@ newChatButton.addEventListener("click", async () => {
     input.focus();
   }
 });
+
+// 项目面板负责忙碌状态；这里在主进程确认成功后更新聊天页面。
+async function openProject(projectId) {
+  const result = await window.agent.openProject(projectId);
+
+  // 等待期间的新输入也归入原会话，再恢复目标会话的输入。
+  composerDrafts.switchTo(result.sessionId);
+  showHistory(result.history);
+  sessionList.setActive(result.sessionId);
+  sessionName.value = "";
+  setRequestStatus("就绪");
+
+  // 各区域独立刷新；某一区域失败不阻止其他区域恢复。
+  const updates = await Promise.allSettled([
+    restoreProposalPanel(),
+    refreshSessions(),
+    sessionInfoPanel.refresh(),
+    modelSelector.refresh(),
+  ]);
+
+  const failures = updates.filter((update) => update.status === "rejected");
+  if (failures.length) {
+    setRequestStatus("项目已打开，但部分页面信息读取失败。");
+    for (const failure of failures) {
+      addMessage("error", `项目已打开，刷新失败：${failure.reason.message}`);
+    }
+  }
+
+  // 只有成功打开后才通知外壳，窄窗口收起侧栏再聚焦输入框。
+  document.dispatchEvent(new CustomEvent("project-opened"));
+  input.focus();
+}
 
 async function openHistorySession(sessionId) {
   setBusy(true);
