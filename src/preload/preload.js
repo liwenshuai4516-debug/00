@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld("agent", {
   // 保存位置由系统窗口选择，页面不传路径或导出内容。
   exportConversation: () => ipcRenderer.invoke("agent:export-conversation"),
 
+  // 目录由系统窗口选择，页面不传路径。
+  selectWorkspace: () => ipcRenderer.invoke("agent:select-workspace"),
   // 获取当前会话中已登记的草稿。
   getProposal: (id) => ipcRenderer.invoke("agent:get-proposal", id),
 

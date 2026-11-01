@@ -6,6 +6,7 @@ function registerAgentIpc(
   proposalReviewService,
   proposalApplyService,
   conversationExportService,
+  workspaceSelectionService,
 ) {
   let operationPending = false;
 
@@ -54,6 +55,12 @@ function registerAgentIpc(
   ipcMain.handle("agent:export-conversation", (event) => {
     return runIdleOperation(() =>
       conversationExportService.exportConversation(event.sender),
+    );
+  });
+    // 从打开选择窗口到完成切换，全程占用同一个互斥入口。
+  ipcMain.handle("agent:select-workspace", (event) => {
+    return runIdleOperation(() =>
+      workspaceSelectionService.selectWorkspace(event.sender),
     );
   });
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());

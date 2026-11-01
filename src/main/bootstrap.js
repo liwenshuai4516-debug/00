@@ -9,6 +9,9 @@ const { createChatService } = require("./services/chat-service.js");
 const {
   createConversationExportService,
 } = require("./services/conversation-export-service.js");
+const {
+  createWorkspaceSelectionService,
+} = require("./services/workspace-selection-service.js");
 const { registerAgentIpc } = require("./ipc/agent-ipc.js");
 const { registerWindowLifecycle } = require("./lifecycle/window-lifecycle.js");
 const { createProposalStore } = require("./services/proposal-store.js");
@@ -86,6 +89,27 @@ const conversationExportService = createConversationExportService(
   },
 );
 
+// 将系统文件夹窗口绑定到发起操作的应用窗口。
+const workspaceSelectionService = createWorkspaceSelectionService(
+  sessionService,
+  async (sender, options) => {
+    if (sender.isDestroyed()) return { canceled: true };
+
+    const parentWindow = BrowserWindow.fromWebContents(sender);
+    if (!parentWindow || parentWindow.isDestroyed()) {
+      return { canceled: true };
+    }
+
+    const selection = await dialog.showOpenDialog(parentWindow, options);
+
+    // 选择期间关闭应用窗口时，不继续创建会话或保存选择。
+    if (sender.isDestroyed() || parentWindow.isDestroyed()) {
+      return { canceled: true };
+    }
+
+    return selection;
+  },
+);
 registerAgentIpc(
   ipcMain,
   sessionService,
@@ -93,7 +117,9 @@ registerAgentIpc(
   proposalReviewService,
   proposalApplyService,
   conversationExportService,
+  workspaceSelectionService,
 );
+
 function createWindow() {
   const window = new BrowserWindow({
     width: 900,
