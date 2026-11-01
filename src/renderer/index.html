@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="./styles/message-scroll.css" />
     <link rel="stylesheet" href="./styles/session-list.css" />
     <link rel="stylesheet" href="./styles/proposal-comparison.css" />
+    <link rel="stylesheet" href="./styles/model-selector.css" />
 
 </head>
 
@@ -48,6 +49,14 @@
             <header class="chat-header">
                 <h1>项目助手</h1>
                 <p id="session-info" role="status" aria-atomic="true">当前会话信息尚未加载。</p>
+                <div id="model-selector" class="model-selector" aria-busy="false">
+                    <label for="model-select">当前对话模型</label>
+                    <select id="model-select" aria-describedby="model-status" disabled>
+                        <option value="">正在读取模型……</option>
+                    </select>
+                    <button type="button" hidden>重新读取</button>
+                    <p id="model-status" role="status" aria-atomic="true">正在读取当前模型……</p>
+                </div>
                 <div class="button-row">
                     <button id="compact-session-button" type="button" disabled
                         title="调用模型生成前文摘要，保留原始历史文件。">整理上下文</button>

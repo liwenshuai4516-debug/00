@@ -5,6 +5,8 @@ import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
 import { appendMessage, updateToolMessage } from "./components/message-view.js";
 
+import { createModelSelector } from "./components/model-selector.js";
+
 import { createComposerDrafts } from "./components/composer-drafts.js";
 
 const form = document.getElementById("message-form");
@@ -54,6 +56,16 @@ const sessionInfoPanel = createSessionInfoPanel(
   document.getElementById("session-info"),
   () => window.agent.getSessionInfo(),
 );
+
+// 模型切换复用全页面忙碌状态，并刷新现有会话信息。
+const modelSelector = createModelSelector(
+  document.getElementById("model-selector"),
+  window.agent,
+  setBusy,
+  () => sessionInfoPanel.refresh(),
+);
+
+
 // 在页面初始化时创建面板，供所有函数和事件处理使用。
 const proposalPanelElement = document.getElementById("proposal-panel");
 const proposalReviewPanel = document.getElementById("proposal-review-panel");
@@ -86,10 +98,11 @@ function addMessage(role, text) {
   return body;
 }
 
-// 统一更新按钮和历史列表的可用状态。
+// 统一更新按钮、模型选择器和历史列表的可用状态。
 function setBusy(busy, generating = false) {
   // fieldset 会统一禁用其内部按钮。
   proposalPanelElement.disabled = busy;
+  modelSelector.setBusy(busy);
   sendButton.disabled = busy;
   newChatButton.disabled = busy;
   compactSessionButton.disabled = busy;
@@ -146,6 +159,8 @@ async function loadHistory() {
   } catch (error) {
     addMessage("error", error.message);
   } finally {
+    // 操作结束后读取实际会话的模型，再恢复交互。
+    await modelSelector.refresh();
     setBusy(false);
     input.focus();
   }
@@ -331,6 +346,8 @@ newChatButton.addEventListener("click", async () => {
   } catch (error) {
     addMessage("error", error.message);
   } finally {
+     // 操作结束后读取实际会话的模型，再恢复交互。
+    await modelSelector.refresh();
     setBusy(false);
     input.focus();
   }
@@ -355,6 +372,8 @@ async function openHistorySession(sessionId) {
     // 打开失败时保留原选中项和已有聊天内容。
     addMessage("error", error.message);
   } finally {
+    // 操作结束后读取实际会话的模型，再恢复交互。
+    await modelSelector.refresh();
     setBusy(false);
     input.focus();
   }
