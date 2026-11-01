@@ -1,0 +1,59 @@
+// 输入草稿的会话归属由主进程登记，页面只提交会话编号和输入版本。
+function createComposerDraftService(sessionService, sessionStateStore) {
+  const knownSessions = new Map();
+
+  async function loadCurrentDraft() {
+    const session = await sessionService.getSession(true);
+
+    // 在异步读取前固定归属，不能在保存时改用后来打开的会话。
+    const sessionId = session.sessionId;
+    const workspaceDir = session.sessionManager.getCwd();
+
+    const state = await sessionStateStore.load(sessionId);
+
+    // 异步返回后再检查，防止迟到读取覆盖已经确认的归属。
+    if (
+      knownSessions.has(sessionId) &&
+      knownSessions.get(sessionId) !== workspaceDir
+    ) {
+      throw new Error("会话工作目录与已登记目录不一致。");
+    }
+
+    if (state && state.workspaceDir !== workspaceDir) {
+      throw new Error("输入草稿的工作目录与当前会话不匹配。");
+    }
+
+    // 读取成功后才登记；失败时不能授权后续写入。
+    knownSessions.set(sessionId, workspaceDir);
+
+    return {
+      sessionId,
+      text: state?.draft.text ?? "",
+      revision: state?.draft.revision ?? 0,
+    };
+  }
+
+  async function saveDraft(sessionId, text, expectedRevision) {
+    if (!knownSessions.has(sessionId)) {
+      throw new Error("该会话尚未登记，请先读取对应会话的输入草稿。");
+    }
+
+    // 允许切换后的延迟保存，始终使用原会话已登记的目录。
+    const state = await sessionStateStore.saveDraft(
+      sessionId,
+      knownSessions.get(sessionId),
+      text,
+      expectedRevision,
+    );
+
+    return {
+      sessionId,
+      text: state.draft.text,
+      revision: state.draft.revision,
+    };
+  }
+
+  return { loadCurrentDraft, saveDraft };
+}
+
+module.exports = { createComposerDraftService };
