@@ -141,6 +141,18 @@ select option { background: var(--surface); color: var(--text); }
 .composer:has(#stop-button:not(:disabled)) #send-button { display: none; }
 #message-input-hint { margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
 
+/* 输入保存与文件草稿分别展示，状态和原文只在输入区内换行、滚动。 */
+.composer-save-row {
+  width: min(100%, var(--content-width)); margin: 8px auto 0;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+}
+#composer-draft-status { flex: 1 1 180px; margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+#composer-draft-retry { min-height: 40px; padding: 6px 10px; font-size: 12px; }
+.unconfirmed-send { width: min(100%, var(--content-width)); margin: 8px auto 0; max-height: 24dvh; overflow: auto; }
+.unconfirmed-send > summary { color: var(--muted); font-size: 12px; }
+.unconfirmed-send > p { margin: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.unconfirmed-send pre { max-width: 100%; max-height: 120px; margin: 0; padding: 8px; white-space: pre; overflow: auto; font-size: 12px; tab-size: 2; }
+
 @media (max-width: 1100px) {
   :root { --sidebar-width: 232px; }
   #messages { padding-inline: 24px; }

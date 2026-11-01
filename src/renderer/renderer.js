@@ -12,13 +12,65 @@ import {
 
 import { createModelSelector } from "./components/model-selector.js";
 
-import { createComposerDrafts } from "./components/composer-drafts.js";
+import { createComposerPersistence } from "./components/composer-persistence.js";
 
 const form = document.getElementById("message-form");
 const input = document.getElementById("message-input");
-const composerDrafts = createComposerDrafts(input);
 const sendButton = document.getElementById("send-button");
 const stopButton = document.getElementById("stop-button");
+// 页面忙碌与输入就绪分别管理，保存确认不能解除其他操作的忙碌状态。
+let pageBusy = true;
+let pageGenerating = false;
+let composerState = { canSend: false, retryable: false, pendingSend: null };
+const composerStatus = document.getElementById("composer-draft-status");
+const composerRetry = document.getElementById("composer-draft-retry");
+const unconfirmedSend = document.getElementById("unconfirmed-send");
+const unconfirmedText = document.getElementById("unconfirmed-send-text");
+let shownSendId = null;
+
+function renderComposerState() {
+  const message = composerState.message || "正在读取输入……";
+  if (composerStatus.textContent !== message) composerStatus.textContent = message;
+  composerRetry.hidden = !composerState.retryable;
+  composerRetry.disabled = pageBusy;
+  sendButton.disabled = pageBusy || !composerState.canSend;
+
+  // 生成中的临时快照等待请求结束后再展示，避免误报为异常。
+  const pending = pageGenerating ? null : composerState.pendingSend;
+  unconfirmedSend.hidden = !pending;
+  if (shownSendId !== pending?.id) unconfirmedSend.open = false;
+  shownSendId = pending?.id ?? null;
+  unconfirmedText.textContent = pending?.text ?? "";
+}
+
+const composerPersistence = createComposerPersistence(input, window.agent, (state) => {
+  composerState = state;
+  renderComposerState();
+});
+
+// 主进程已切换成功时，输入读取失败只影响输入区，不误报为会话切换失败。
+async function bindComposer(sessionId) {
+  try {
+    await composerPersistence.switchTo(sessionId);
+  } catch (error) {
+    addMessage("error", `当前对话已打开，输入读取失败：${error.message}`);
+  }
+}
+
+composerRetry.addEventListener("click", async () => {
+  if (composerRetry.disabled) return;
+  setBusy(true);
+  try {
+    await composerPersistence.retry();
+  } catch {
+    // 组件已在输入区展示具体错误；继续保留编辑内容和重试入口。
+  } finally {
+    setBusy(false);
+    input.focus();
+  }
+});
+window.addEventListener("pagehide", () => composerPersistence.dispose(), { once: true });
+
 const newChatButton = document.getElementById("new-chat-button");
 const selectWorkspaceButton = document.getElementById(
   "select-workspace-button",
@@ -115,10 +167,12 @@ function addMessage(role, text) {
 
 // 统一更新按钮、模型选择器和历史列表的可用状态。
 function setBusy(busy, generating = false) {
+  pageBusy = busy;
+  pageGenerating = generating;
   // fieldset 会统一禁用其内部按钮。
   proposalPanelElement.disabled = busy;
   modelSelector.setBusy(busy);
-  sendButton.disabled = busy;
+  renderComposerState();
   newChatButton.disabled = busy;
   selectWorkspaceButton.disabled = busy;
   compactSessionButton.disabled = busy;
@@ -156,7 +210,6 @@ async function restoreProposalPanel() {
 async function refreshSessions() {
   const sessions = await window.agent.listSessions();
   const currentId = await window.agent.currentSession();
-  composerDrafts.switchTo(currentId);
 
   // 会话数据和当前编号仍由主进程提供。
   sessionList.render(sessions, currentId);
@@ -168,6 +221,7 @@ async function loadHistory() {
 
   try {
     const history = await window.agent.loadHistory();
+    await bindComposer(await window.agent.currentSession());
     showHistory(history);
     await sessionInfoPanel.refresh();
 
@@ -211,21 +265,28 @@ input.addEventListener("keydown", (event) => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  // 请求使用去除首尾空白的内容，失败恢复使用完整原文。
-  const originalInput = input.value;
-  const text = originalInput.trim();
-  if (!text || sendButton.disabled) return;
+  if (!input.value.trim() || sendButton.disabled) return;
 
-  // 主动发送消息时，恢复跟随，立即看到本轮内容。
+  setBusy(true);
+  let ticket;
+  try {
+    ticket = await composerPersistence.prepareSend();
+  } catch (error) {
+    addMessage("error", error.message);
+    setBusy(false);
+    input.focus();
+    return;
+  }
+
   messageScroll.followLatest();
-
-  addMessage("user", text);
-  input.value = "";
+  // 等待保存期间可能继续编辑，展示和发送都使用最终固定的同一份原文。
+  addMessage("user", ticket.text.trim());
   setBusy(true, true);
   setRequestStatus("正在准备请求并等待模型回复……");
 
   // 模型请求和随后刷新历史列表是两个不同阶段。
-  let requestCompleted = false;
+  let requestReturned = false;
+  let inputSettled = false;
   let replyElement;
   let reply = "";
 
@@ -248,6 +309,9 @@ form.addEventListener("submit", async (event) => {
 
   // 请求发起之前先监听，避免遗漏早期状态。
   const unsubscribeStatus = window.agent.onRequestStatus(setRequestStatus);
+  const unsubscribeConsumed = window.agent.onDraftConsumed((ack) => {
+    composerPersistence.confirmConsumed(ticket, ack);
+  });
 
   const unsubscribe = window.agent.onTextDelta((delta) => {
     setRequestStatus("正在接收回复……");
@@ -308,32 +372,40 @@ form.addEventListener("submit", async (event) => {
     }
   });
   try {
-    const result = await window.agent.sendMessage(text);
+    const result = await window.agent.sendMessage(ticket.text, {
+      sessionId: ticket.sessionId,
+      revision: ticket.revision,
+    });
+    // 已返回的请求与随后页面刷新分别处理，输入补保存失败不恢复已发送原文。
+    requestReturned = true;
+    await composerPersistence.finishSend(ticket, result);
+    inputSettled = true;
 
-    // 正常回复和主动停止都算请求已结束，不需要恢复输入。
-    requestCompleted = true;
-
-    setRequestStatus(result.stopped ? "生成已停止。" : "本次回复已结束。");
-
-    if (result.stopped) {
-      addMessage("status", "生成已停止");
+    if (result.outcome === "unconfirmed") {
+      setRequestStatus("请求结果尚未确认，发送原文已单独保留。可以查看后新建对话继续。");
+      addMessage("error", result.error || "请求结果尚未确认。");
+    } else {
+      setRequestStatus(result.stopped ? "生成已停止。" : "本次回复已结束。");
+      if (result.stopped) addMessage("status", "生成已停止");
     }
-
+    if (result.warning) addMessage("status", result.warning);
     await refreshSessions();
   } catch (error) {
-    if (requestCompleted) {
-      // 回复或停止已完成，仅列表刷新失败，不恢复已处理的输入。
-      setRequestStatus("请求已结束，但历史列表刷新失败。");
+    if (requestReturned && inputSettled) {
+      setRequestStatus("请求已返回，但历史列表刷新失败；输入保持当前状态。");
       addMessage("error", `历史列表刷新失败：${error.message}`);
     } else {
-      const restored = composerDrafts.restoreAfterFailure(originalInput);
-
-      setRequestStatus(
-        restored
-          ? "请求失败，原文已恢复，可编辑后重新发送。"
-          : "请求失败，已保留你正在编辑的内容，原文可在聊天区查看。",
-      );
-
+      try {
+        const recovered = await composerPersistence.recoverSend(ticket);
+        setRequestStatus(
+          recovered?.status === "not-consumed"
+            ? "本次请求未发送，已保留输入，可检查后重试。"
+            : "请求结果尚未确认，已核对输入状态；请先查看聊天记录。",
+        );
+      } catch (recoveryError) {
+        setRequestStatus("请求结果及输入状态尚未确认，请使用输入区的重试入口核对。");
+        addMessage("error", `输入状态核对失败：${recoveryError.message}`);
+      }
       addMessage("error", error.message);
     }
   } finally {
@@ -341,6 +413,7 @@ form.addEventListener("submit", async (event) => {
     unsubscribe();
     unsubscribeTool();
     unsubscribeStatus();
+    unsubscribeConsumed();
     // 正常结束、停止或失败时，立即展示尚未绘制的最后一段。
     if (replyFrame !== undefined) cancelAnimationFrame(replyFrame);
     flushReplies();
@@ -357,7 +430,6 @@ form.addEventListener("submit", async (event) => {
 
     // 成功、失败或停止后都重新读取当前会话的上下文估算。
     await sessionInfoPanel.refresh();
-
     setBusy(false);
     input.focus();
   }
@@ -368,7 +440,7 @@ newChatButton.addEventListener("click", async () => {
 
   try {
     const sessionId = await window.agent.newChat();
-    composerDrafts.switchTo(sessionId);
+    await bindComposer(sessionId);
     setRequestStatus("就绪");
     await sessionInfoPanel.refresh();
 
@@ -395,7 +467,7 @@ async function openProject(projectId) {
   const result = await window.agent.openProject(projectId);
 
   // 等待期间的新输入也归入原会话，再恢复目标会话的输入。
-  composerDrafts.switchTo(result.sessionId);
+  await bindComposer(result.sessionId);
   showHistory(result.history);
   sessionList.setActive(result.sessionId);
   sessionName.value = "";
@@ -428,7 +500,7 @@ async function openHistorySession(sessionId) {
   try {
     const history = await window.agent.openSession(sessionId);
     // 打开成功后，再保存旧输入并恢复目标会话的输入。
-    composerDrafts.switchTo(sessionId);
+    await bindComposer(sessionId);
 
     // 主进程打开成功后，才更新侧栏选中状态。
     sessionList.setActive(sessionId);
@@ -576,7 +648,7 @@ selectWorkspaceButton.addEventListener("click", async () => {
 
     switched = true;
     // 主进程已切换成功，立即保存旧输入并绑定新会话编号。
-    composerDrafts.switchTo(result.sessionId);
+    await bindComposer(result.sessionId);
     showHistory([]);
     sessionList.setActive("");
     sessionName.value = "";
