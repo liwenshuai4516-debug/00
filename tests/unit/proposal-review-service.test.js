@@ -45,7 +45,15 @@ async function setup(t) {
 test("文件未变化时返回草稿，且不写入文件", async (t) => {
   const { filename, source, proposal, service } = await setup(t);
 
-  assert.deepEqual(await service.review(proposal.id), proposal);
+  // 审阅增加展示数据，原草稿字段仍保持原样。
+  assert.deepEqual(await service.review(proposal.id), {
+    ...proposal,
+    review: {
+      startLine: 1,
+      oldText: source,
+      newText: source.replace(proposal.oldText, proposal.newText),
+    },
+  });
   assert.equal(await readFile(filename, "utf8"), source);
 });
 

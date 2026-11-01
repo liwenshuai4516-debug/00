@@ -59,7 +59,37 @@ function createProposalReviewService(workspaceDir, chatService) {
       throw new Error("草稿不能唯一定位原文，请重新生成。");
     }
 
-    return proposal;
+    // 以完整行扩展替换范围，保留行内前后缀及前后各两行上下文。
+    // 行尾属于原文，不能统一换行，也不把末尾换行算成额外空行。
+    const lines = Array.from(
+      source.matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g),
+    ).filter((line) => line[0] !== "");
+
+    const replacementEnd = index + proposal.oldText.length;
+    const firstLine = lines.findIndex(
+      (line) => index < line.index + line[0].length,
+    );
+    const lastLine = lines.findIndex(
+      (line) => replacementEnd <= line.index + line[0].length,
+    );
+
+    const startLineIndex = Math.max(0, firstLine - 2);
+    const endLineIndex = Math.min(lines.length - 1, lastLine + 2);
+    const start = lines[startLineIndex].index;
+    const end = lines[endLineIndex].index + lines[endLineIndex][0].length;
+
+    // 仅扩展本次审阅响应，不改写草稿，也不用于替代保存前的再次复核。
+    return {
+      ...proposal,
+      review: {
+        startLine: startLineIndex + 1,
+        oldText: source.slice(start, end),
+        newText:
+          source.slice(start, index) +
+          proposal.newText +
+          source.slice(replacementEnd, end),
+      },
+    };
   }
 
   return { review };
