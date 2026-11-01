@@ -34,6 +34,11 @@ function registerAgentIpc(
 
   // 只读当前会话的模型目录，不接受页面指定供应商或会话。
   ipcMain.handle("agent:list-models", () => sessionService.listModels());
+  // 切换模型与生成、整理、保存和会话切换共用互斥入口。
+
+  ipcMain.handle("agent:switch-model", (_event, modelId) => {
+    return runIdleOperation(() => sessionService.switchModel(modelId));
+  });
 
   // 整理只针对主进程当前会话，不接收页面指定的会话编号。
   ipcMain.handle("agent:compact-session", () => {

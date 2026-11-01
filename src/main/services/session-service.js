@@ -149,7 +149,41 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
       })),
     };
   }
+
+  // 页面只提交编号，实际模型与供应商由主进程决定。
+  async function switchModel(modelId) {
+    if (typeof modelId !== "string" || !modelId.trim()) {
+      throw new Error("请选择模型。");
+    }
+
+    const session = await getSession(true);
+    const current = session.model;
+
+    if (!current) {
+      throw new Error("当前会话尚未选择模型。");
+    }
+
+    const model = session.modelRuntime.getModel(
+      current.provider,
+      modelId.trim(),
+    );
+
+    if (!model) {
+      throw new Error("当前供应商未登记该模型。");
+    }
+
+    // 相同模型无需再次记录；不改写全局默认模型。
+    if (model.id !== current.id) {
+      await session.setModel(model, { persist: false });
+    }
+
+    return {
+      provider: session.model.provider,
+      modelId: session.model.id,
+    };
+  }
   // 记录用户确认保存的事实，不主动请求模型回复。
+
   async function recordWorkspaceEdit(proposal) {
     const session = await getSession();
 
@@ -298,6 +332,7 @@ function createSessionService(sessionDir, createAgent = createDefaultAgent) {
     currentSession,
     getSessionInfo,
     listModels,
+    switchModel,
     compactSession,
     cancelCompaction,
     recordWorkspaceEdit,

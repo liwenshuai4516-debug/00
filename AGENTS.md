@@ -127,21 +127,22 @@ node --test \
 - 输入恢复的 `node --test tests/unit/composer-drafts.test.js` 共 5 项通过。另在临时副本运行实际 Electron 渲染页面，通过 9 项模拟接口检查：失败恢复原文、失败保留新输入、失败保留空白、成功不恢复、成功保留新输入、成功后列表失败、停止不恢复、停止后列表失败、部分回复后失败恢复。同时检查按钮恢复与三类事件监听清理；测试未读取真实会话或请求模型。此项是模拟界面验证，尚未记录使用者真实请求失败时的手动验收。
 
 - 使用者已恢复 `tests/unit/chat-service.test.js` 与 `tests/unit/proposal-store.test.js` 中被删除的两段原有测试。已核对两文件与 HEAD 一致，在实际工作区运行这两个文件，10 项通过；这项收尾已经完成，不要再次要求恢复。
-- 使用者已选择开发“界面查看和切换模型”，并已亲手完成模型列表服务、只读 IPC 与预加载接口：`listModels()` 返回 `{ provider, modelId, models: [{ id, name }] }`，通道为 `agent:list-models`，页面通过 `window.agent.listModels()` 读取。实际工作区的 `model-list.test.js`、`session-info.test.js` 与 `agent-ipc.test.js` 共 15 项通过。页面选择器和模型切换尚未实现。
+- 使用者已选择开发“界面查看和切换模型”，并已亲手完成模型列表服务、只读 IPC 与预加载接口：`listModels()` 返回 `{ provider, modelId, models: [{ id, name }] }`，通道为 `agent:list-models`，页面通过 `window.agent.listModels()` 读取。实际工作区的 `model-list.test.js`、`session-info.test.js` 与 `agent-ipc.test.js` 共 15 项通过。页面选择器尚未实现；模型切换服务和接口进度见下文。
 - 模型目录使用 Pi 1.4 的 `session.modelRuntime.getModels(provider)`，复用当前会话，不额外创建运行时。目录登记不等于账号有权限调用；不把完整 SDK 模型对象、凭据或供应商地址返回页面。只读列表不接受页面指定供应商或会话，生成期间允许读取；已验证预加载接口只调用固定通道且不转发额外参数。验证不请求模型。
 
 - 使用者已明确要求“每个会话记住自己的模型选择”。不能按只在当前打开期间有效来实现。当前 `createPiAgent()` 总是向 `createAgentSession()` 显式传入 `.env` 模型；SDK 只在未显式传模型时恢复会话选择，因此仅调用 `setModel()` 尚不足以满足重新打开或重启后的恢复需求。
-- 下一步切换服务候选只在临时副本验证：`switchModel(modelId)` 校验非空字符串，从当前供应商的实际运行时查找模型，调用 `session.setModel(model, { persist: false })`，相同模型不重复记录，返回实际 `{ provider, modelId }`。`persist: false` 不改写全局默认，SDK 仍记录会话模型变化；切换不代表账号已通过实际模型调用验证。
-- 候选 `model-switch.test.js` 的 4 项，加实际模型列表与会话信息的 9 项，在临时副本共 13 项通过。候选不修改实际应用源码，不读取 `.env` 或真实会话，不请求模型。SDK 切换失败可能发生在部分状态已更新之后，不得假设错误总表示已回滚；后续页面错误处理须重新读取实际模型。
+- 使用者已亲手完成 `switchModel(modelId)`、受 `runIdleOperation` 保护的 `agent:switch-model` IPC、预加载接口及 6 项切换测试。实际工作区的切换、列表、会话信息与 IPC 共 21 项测试通过。切换限定当前供应商，使用 `{ persist: false }`，不改写全局默认，SDK 仍追加会话模型选择记录。
+- SDK 切换失败可能发生在部分状态已更新之后，不得假设错误总表示已回滚；后续页面错误处理须重新读取实际模型。
+- 模型恢复缺口已在临时真实 SDK 会话复现：切换到 Pro 后重新打开仍返回默认 Flash。候选修正从 `sessionManager.getBranch()` 的最后一个 `model_change` 读取选择，无明确记录时兼容 `buildSessionContext().model`，无历史选择时使用 `.env` 默认；当前供应商不匹配或模型未登记时明确报错。候选只在临时副本验证，实际 `pi-agent.mjs` 尚未修改。
+- 候选 `model-restore.test.js` 加初始化、切换、列表、会话信息与 IPC 共 24 项通过，覆盖显式打开、自动恢复、新会话默认、分支选择和拒绝无效记录后原文件不变。独立进程使用临时配置与会话、占位凭据并禁用网络，不请求模型。SDK 尚未发送消息的空会话不会落盘，不能宣称空会话只切换模型后重启也能恢复。
 
 ### 下一步顺序
 
-1. 指导使用者亲手在 `session-service.js` 的 `recordWorkspaceEdit()` 前加入候选 `switchModel()`，返回对象的 `listModels` 后加入 `switchModel`，并新建 `tests/unit/model-switch.test.js`；核对实际源码，运行切换、列表、会话信息共 13 项测试。
-2. 接入切换的 IPC 与预加载接口。页面只传模型编号，切换与生成、整理、保存、导出及会话切换共用 `runIdleOperation`；只读模型列表仍允许独立读取。
-3. 按使用者选择修正会话恢复：已有会话采用当前分支最后一次有效模型选择，新会话继续使用 `.env` 默认；保持当前供应商与地址边界，缺失模型不得静默冒充恢复成功。先核对 Pi 1.4 的分支选择与恢复 API，再给准确代码，用临时真实 SDK 会话验证且不请求模型。
-4. 接入页面选择器，沿用原生 DOM，处理初始化、会话切换、忙碌状态、切换失败后读取实际选择。此时再应用前端设计技能；不要提前展示能选择却不实际生效的控件。
-5. `package.json` 的额外空行、`index.html` 和 IPC 文件的额外空白及本地验收文件不属于本次功能；保留原状，不读取或提交本地内容。
+1. 指导使用者亲手修改 `src/main/pi-agent.mjs` 的模型查找块，保留后面的 `createAgentSession({ model, ... })` 显式传值，并新建完整的 `tests/unit/model-restore.test.js`。候选已通过临时副本 24 项测试，实际修改后仍需核对。
+2. 恢复验证后接入页面选择器，沿用原生 DOM，处理初始化、会话切换、忙碌状态、切换失败后读取实际选择。此时应用前端设计技能；不要提前展示能选择却不实际生效的控件。
+3. 页面手动验收使用已有消息的会话验证各自模型记忆，新会话继续使用 `.env` 默认；未登记旧模型不得静默回退，跨供应商恢复暂不支持。
+4. `package.json`、`index.html` 和 IPC 文件的额外空白及本地验收文件不属于本次功能；保留原状，不读取或提交本地内容。
 
 ### 本次提交范围
 
-本次提交使用者已完成并通过 15 项测试的模型列表服务、只读 IPC、预加载接口和 `model-list.test.js`，并更新本交接文档。切换候选仍在临时副本，尚未写入实际源码。仅提交 IPC 功能变化，保留额外空白；其余空白差异和本地验收文件保留原状，不执行 `git add .`，不读取或提交 `.env`、真实会话和本地内容。
+本次只提交使用者已完成且通过 21 项测试的模型切换服务、受互斥保护的 IPC、预加载接口及 `model-switch.test.js`，并更新本交接文档。模型恢复候选尚未写入实际源码。保留无关空白差异与本地验收文件，不执行 `git add .`，不读取或提交 `.env`、真实会话和本地内容。
