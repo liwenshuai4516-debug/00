@@ -70,6 +70,11 @@ function registerAgentIpc(
     return runIdleOperation(() => projectService.addProject(event.sender));
   });
 
+  // 按登记编号打开，与生成、保存和其他切换共用互斥入口。
+  ipcMain.handle("agent:open-project", (_event, projectId) => {
+    return runIdleOperation(() => projectService.openProject(projectId));
+  });
+
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
   ipcMain.handle("agent:open-session", (_event, sessionId) => {

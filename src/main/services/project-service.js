@@ -1,5 +1,5 @@
-// 系统窗口由启动入口注入；这里只负责项目登记，不切换会话。
-function createProjectService(projectStore, chooseDirectory) {
+// 系统窗口与会话服务由启动入口注入；页面只提交项目编号。
+function createProjectService(projectStore, chooseDirectory, sessionService) {
   function listProjects() {
     return projectStore.list();
   }
@@ -20,7 +20,22 @@ function createProjectService(projectStore, chooseDirectory) {
     return { canceled: false, project };
   }
 
-  return { listProjects, addProject };
+  async function openProject(projectId) {
+    if (typeof projectId !== "string" || !projectId.trim()) {
+      throw new Error("请选择项目。");
+    }
+
+    // 每次从主进程存储查找目录，不接受页面传来的路径。
+    const projects = await projectStore.list();
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) {
+      throw new Error("未找到该项目，请重新读取项目列表。");
+    }
+
+    return sessionService.openWorkspace(project.workspaceDir);
+  }
+
+  return { listProjects, addProject, openProject };
 }
 
 module.exports = { createProjectService };

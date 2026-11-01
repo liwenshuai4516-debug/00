@@ -117,7 +117,11 @@ const workspaceSelectionService = createWorkspaceSelectionService(
 const projectStore = createProjectStore(
   path.join(app.getPath("userData"), "projects.json"),
 );
-const projectService = createProjectService(projectStore, chooseWorkspaceDirectory);
+const projectService = createProjectService(
+  projectStore,
+  chooseWorkspaceDirectory,
+  sessionService,
+);
 
 
 registerAgentIpc(
