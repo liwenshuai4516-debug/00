@@ -21,13 +21,17 @@ export function createComposerDraftQueue(saveDraft) {
         revision: draft.revision,
         pending: null,
         sending: null,
+        editVersion: 0,
       });
     }
     return snapshot(draft.sessionId, getState(draft.sessionId));
   }
 
   function setText(sessionId, text) {
-    getState(sessionId).text = text;
+    const state = getState(sessionId);
+    state.text = text;
+    // 同样的空串也可能来自主动清空，不能仅靠正文判断是否编辑过。
+    state.editVersion += 1;
   }
 
   function flush(sessionId) {
@@ -74,7 +78,7 @@ export function createComposerDraftQueue(saveDraft) {
 
     // 对象身份区分每次发送；原文和版本固定后，等待确认期间只缓存新输入。
     const ticket = Object.freeze(snapshot(sessionId, state));
-    state.sending = { ticket, consumed: false };
+    state.sending = { ticket, consumed: false, editVersion: state.editVersion };
     state.text = "";
     return ticket;
   }
@@ -120,13 +124,61 @@ export function createComposerDraftQueue(saveDraft) {
     }
 
     // 仅用于已确定未消费的失败；结果未知时必须保留等待状态。
-    if (state.text === "") state.text = ticket.text;
+    if (state.text === "" && state.editVersion === state.sending.editVersion) {
+      state.text = ticket.text;
+    }
     state.sending = null;
     return snapshot(ticket.sessionId, state);
   }
 
+  function reconcileSend(ticket, inspected) {
+    const state = findSending(ticket);
+    // 旧凭证或已通过事件确认的发送，不能再用较早的读取结果改写。
+    if (!state || state.sending.consumed) return false;
+
+    const pending = inspected?.pendingSend;
+    if (
+      inspected?.sessionId !== ticket.sessionId ||
+      typeof inspected.text !== "string" ||
+      !Number.isSafeInteger(inspected.revision) ||
+      inspected.revision < 0 ||
+      !(pending === null || (
+        typeof pending?.id === "string" && pending.id &&
+        typeof pending.text === "string" && pending.text.trim() &&
+        Number.isSafeInteger(pending.draftRevision) &&
+        pending.draftRevision >= 0 && pending.draftRevision < inspected.revision
+      ))
+    ) {
+      throw new Error("发送状态核对结果无效，请保留输入并重新核对。");
+    }
+
+    const pendingSend = pending ? { ...pending } : null;
+    if (inspected.revision === ticket.revision && inspected.text === ticket.text) {
+      // 原文和版本均未改变，才可确定本次发送尚未消费。
+      return { ...rejectBeforeConsume(ticket), status: "not-consumed", pendingSend };
+    }
+
+    if (
+      inspected.revision !== ticket.revision + 1 || inspected.text !== "" ||
+      (pending && (pending.draftRevision !== ticket.revision || pending.text !== ticket.text))
+    ) {
+      // 其他版本或正文变化不自动合并，维持暂停以免覆盖外部状态。
+      throw new Error("发送状态与本次原文或版本不匹配，请保留输入并重新核对。");
+    }
+
+    state.savedText = "";
+    state.revision = inspected.revision;
+    state.sending = null;
+    // 空快照只证明版本已前进，不能据此宣称模型请求成功。
+    return {
+      ...snapshot(ticket.sessionId, state),
+      status: pending ? "consumed" : "advanced",
+      pendingSend,
+    };
+  }
+
   return {
     register, setText, flush,
-    beginSend, confirmConsumed, finishSend, rejectBeforeConsume,
+    beginSend, confirmConsumed, finishSend, rejectBeforeConsume, reconcileSend,
   };
 }

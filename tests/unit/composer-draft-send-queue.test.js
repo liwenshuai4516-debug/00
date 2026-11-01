@@ -123,7 +123,8 @@ test("明确消费前失败只在本地为空时恢复原文，保留后续正�
   for (const later of ["", "后来的输入", " \t\r\n"]) {
     const { queue, calls } = await setup();
     const ticket = queue.beginSend("a");
-    queue.setText("a", later);
+    // 空串分支表示发送后没有新编辑；主动清空由新专项测试覆盖。
+    if (later !== "") queue.setText("a", later);
     const restored = queue.rejectBeforeConsume(ticket);
     assert.equal(restored.text, later === "" ? ticket.text : later);
     assert.equal(restored.revision, ticket.revision);
