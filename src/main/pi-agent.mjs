@@ -53,10 +53,25 @@ export async function createPiAgent(sessionDir, resume = false, sessionPath) {
     modelRuntime.registerProvider(provider, { baseUrl });
   }
 
-  const model = modelRuntime.getModel(provider, modelId);
+  // 优先采用当前分支最后一次明确的模型选择。
+  // 旧会话没有 model_change 时，兼容 SDK 从历史消息解析的模型。
+  const savedSelection =
+    sessionManager
+      .getBranch()
+      .findLast((entry) => entry.type === "model_change") ??
+    sessionManager.buildSessionContext().model;
+
+  // 当前版本只支持配置中的供应商，避免套用其他供应商的地址或凭据。
+  if (savedSelection && savedSelection.provider !== provider) {
+    throw new Error("会话模型属于其他供应商，请恢复对应供应商配置或新建对话。");
+  }
+
+  // 没有历史选择的新会话使用 .env 默认值。
+  const selectedModelId = savedSelection?.modelId ?? modelId;
+  const model = modelRuntime.getModel(provider, selectedModelId);
 
   if (!model) {
-    throw new Error(`Pi 未找到模型：${provider}/${modelId}。`);
+    throw new Error(`Pi 未找到模型：${provider}/${selectedModelId}。`);
   }
 
   // 工具、模型上下文和会话使用同一个真实工作目录。
