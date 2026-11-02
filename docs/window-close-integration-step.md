@@ -1,6 +1,6 @@
 # 下一步：关闭前保存与应用退出完整接线
 
-状态：待使用者亲手编写。上一小步主进程关闭守卫及13项专项已完成，2026-11-02实际两个语法检查及专项13项、原生命周期4项共17项通过。本指南只在临时副本实施和验证，尚未写入实际应用或测试。
+状态：使用者已手写相关接线并反馈启动专项的守卫注册顺序断言失败；本页已于2026-11-02修正该测试建议，实际全链路仍待重新核对。上一小步主进程关闭守卫及13项专项已完成，2026-11-02实际两个语法检查及专项13项、原生命周期4项共17项通过。本页所列完整验证记录来自先前临时副本，不能视为本次实际手写文件已通过。
 
 本轮假设：关闭时停止正在生成的回复、取消正在进行的上下文整理，等待原操作和输入协调全部收尾，再保存本页面已访问会话的输入；保存成功才关闭，失败保留窗口、输入与文件草稿。系统文件选择窗口已打开时，需要先由使用者完成或取消选择。未确认发送快照沿用现有含义，不清理或重新发送。
 
@@ -477,6 +477,8 @@ function createWindow() {
   registerWindowCloseGuard(window, ipcMain, quitGuard.cancelQuit);
 ```
 
+两个守卫之间没有注册先后依赖；已把关闭守卫放在`registerWindowLifecycle()`之前的实现同样有效，只要两者都在`loadFile()`之前。启动专项已修正为检查这一实际约束，避免把无关顺序写死。
+
 ### 7.4 删除旧window-all-closed注册
 
 只删除下面这一整段，它已由新应用退出守卫接管。保留`app.whenReady()`、`activate`及底部`module.exports`，`main.js`无需修改。
@@ -847,15 +849,28 @@ test("实际启动入口每次开窗均装守卫，退出中阻止新窗口，�
       return new Proxy({}, { get: (_target, key) => factories[key] ?? (() => ({})) });
     },
   });
+  // 两个守卫均须在加载页面前注册；它们之间没有先后依赖。
+  function assertWindowSetup(offset) {
+    const setup = calls.slice(offset);
+    assert.equal(setup.length, 4);
+    assert.equal(setup[0][0], "window");
+    assert.equal(setup[3][0], "load");
+    assert.deepEqual(
+      setup.slice(1, 3).map(item => item[0]).sort(),
+      ["close-guard", "lifecycle"],
+    );
+    const window = setup[0][1];
+    for (const call of setup.slice(1)) assert.equal(call[1], window);
+    return window;
+  }
+
   assert.deepEqual(calls, [["quit-guard"]]);
   module.exports.createWindow();
-  assert.deepEqual(calls.slice(1).map(item => item[0]), ["window", "lifecycle", "close-guard", "load"]);
-  const first = calls[1][1];
-  for (const call of calls.slice(2)) assert.equal(call[1], first);
+  const first = assertWindowSetup(1);
   quitting = true; module.exports.createWindow(); assert.equal(calls.length, 5);
   quitGuard.cancelQuit(); module.exports.createWindow();
-  assert.deepEqual(calls.slice(5).map(item => item[0]), ["window", "lifecycle", "close-guard", "load"]);
-  assert.notEqual(calls[5][1], first);
+  const second = assertWindowSetup(5);
+  assert.notEqual(second, first);
 });
 ```
 
@@ -1155,4 +1170,10 @@ node --test \
 4. 使用窗口红色关闭按钮及Command+Q各验证一次；macOS普通关窗后重新开窗仍可用，Command+Q后进程应真正退出。文件选择窗口打开时先完成或取消，不绕过在途操作。
 5. 自动检查已覆盖磁盘/停止失败留窗与再次关闭重试；无需破坏本机配置、真实会话或发起真实失败请求。真实输入法组词状态关闭的表现单独观察，不把模拟composition事件当作真实IME结论。
 
-正常关闭握手手写前仍未完成；上述候选通过不等于实际源码已经通过，也不等于真实重启/生成/系统退出已由使用者验收。强制结束、断电等只保证已经确认落盘的输入，本步不提供强制结束前保存保证。无历史且有未确认发送的专用处理入口、模型登记专用重试UI仍留待后续，不在本步清理快照或改写历史。
+正常关闭握手的实际全链路核对与真实验收仍未完成；上述候选通过不等于实际源码已经通过，也不等于真实重启/生成/系统退出已由使用者验收。强制结束、断电等只保证已经确认落盘的输入，本步不提供强制结束前保存保证。无历史且有未确认发送的专用处理入口、模型登记专用重试UI仍留待后续，不在本步清理快照或改写历史。
+
+### 启动专项顺序断言修正（2026-11-02）
+
+实际bootstrap先装close-guard、再装lifecycle，二者均在loadFile之前，行为有效。旧测试错误地写死lifecycle必须在前。本页第8节的window-close-bootstrap测试已调整：构造窗口在最前、加载页面在最后，中间两个守卫各一次，且绑定同一个窗口；保留IPC与取消退出回调、退出中不开窗及失败后重开等断言。
+
+临时副本`/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-close-order-check-qq32s4oh`已先复现旧失败，再验证新测试在两种合法顺序都通过；将关闭守卫放到loadFile之后的反例仍失败。仅修改临时测试和副本，不修改实际应用或测试。用户应替换实际测试末尾断言后执行该单文件；不为满足旧断言移动有效应用代码。本轮未重跑全部119项或页面专项，不把之前候选通过记为实际全链路已通过。

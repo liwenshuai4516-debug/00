@@ -365,3 +365,10 @@ node --test \
 - 候选主进程给已有守卫增加可选onBlocked通知，明确保存失败、通知失败或握手中页面重载/异常时取消退出；新app-quit-guard处理before-quit和重复退出，每个新窗口closed后异步确认全部窗口已移出列表再继续app.quit。真实Electron的close返回时可能尚未销毁窗口，不能凭isDestroyed=false误判关闭失败；app.quit路径可能不发普通window-all-closed，不能只依赖该事件。原closed停止兜底保留，退出中阻止重新开窗，失败后可再开。
 - 候选目录`/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-window-close-integration-g999a865`：12脚本语法检查、15文件119项单元检查通过；实际Electron关闭专项14项（包括原生app.quit失败取消和成功退出）、既有未发送页面19项、侧栏27项通过。侧栏专用preload替身同步新增关闭接口，生产代码不通过条件判断绕过握手。关闭报告/截图`/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/window-close-ui-VS10bI`，已查看375宽度截图。仅临时userData、本地模拟接口/输入Map及禁用HTTP/HTTPS，不读真实.env、配置/会话，不请求模型，不操作真实应用窗口；启动组装另用实际bootstrap的VM替身检查。
 - 上述通过只证明候选；实际应用和测试仍待使用者按指南手写并重新核对。真实输入法、红色关闭按钮、Command+Q、生成/整理与完整重启恢复仍需使用者验收，不用破坏配置或额外付费请求制造失败。强制结束只保证已确认落盘输入。无历史待确认记录的专用处理入口及模型登记专用重试UI仍未完成。
+
+
+### 关闭接线启动专项顺序修正（2026-11-02 最新核对）
+
+- 使用者已手写关闭接线并反馈window-close-bootstrap专项失败。实际bootstrap先注册close-guard、再注册lifecycle，两者都在loadFile前，有效；失败原因是助手原测试写死了无依赖的两个守卫顺序。助手未改实际应用或测试。
+- `docs/window-close-integration-step.md`第8节启动测试已修正为只要求构造最先、加载最后，中间两个守卫各一次且同一窗口，保留IPC/cancelQuit及退出期间不创建、失败后重开检查。建议只替换实际测试末尾断言，不移动有效接线。临时副本`/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-close-order-check-qq32s4oh`先复现旧失败，新测试语法与两种合法顺序通过，loadFile后才装守卫的反例仍失败。
+- 实际修正和整轮119项/页面检查仍待使用者重跑与后续核对，本轮不标记完整关闭接线或真实重启验收完成。只提交本指南修正与交接，保留用户所有应用、测试和视觉/格式改动。
