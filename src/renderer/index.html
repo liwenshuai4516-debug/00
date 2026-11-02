@@ -80,7 +80,7 @@
 
       <details class="recent-sessions" open>
         <summary>最近</summary>
-        <nav id="session-list" class="session-list" aria-label="历史对话" aria-busy="false"></nav>
+        <nav id="session-list" class="session-list" tabindex="-1" aria-label="历史对话" aria-busy="false"></nav>
       </details>
 
       <div class="sidebar-footer">
@@ -217,15 +217,19 @@
   <!-- 独立配置对话框：关闭不会替换聊天、输入框或文件草稿节点。 -->
   <dialog id="model-settings-dialog" class="model-settings-dialog" aria-labelledby="model-settings-title"
     aria-describedby="model-settings-intro">
+    <aside class="settings-sidebar" aria-label="设置">
+      <h2>设置</h2>
+      <nav class="settings-categories" role="tablist" aria-label="设置分类" aria-orientation="vertical">
+        <button type="button" id="settings-model-tab" class="settings-category" role="tab" data-settings-tab="model" aria-selected="true" aria-controls="settings-model-panel">模型管理</button>
+        <button type="button" id="settings-theme-tab" class="settings-category" role="tab" data-settings-tab="theme" aria-selected="false" aria-controls="settings-theme-panel" tabindex="-1">主题</button>
+        <button type="button" id="settings-archive-tab" class="settings-category" role="tab" data-settings-tab="archive" aria-selected="false" aria-controls="settings-archive-panel" tabindex="-1">已归档的聊天</button>
+      </nav>
+    </aside>
     <header class="model-manager-header">
       <div class="model-manager-brand">
         <span class="model-manager-mark"><svg class="icon" aria-hidden="true"><use href="#icon-settings" /></svg></span>
-        <h2 id="model-settings-title">设置</h2>
+        <h2 id="model-settings-title">模型管理</h2>
       </div>
-      <nav class="settings-categories" role="tablist" aria-label="设置分类">
-        <button type="button" id="settings-model-tab" class="settings-category" role="tab" data-settings-tab="model" aria-selected="true" aria-controls="settings-model-panel">模型管理</button>
-        <button type="button" id="settings-theme-tab" class="settings-category" role="tab" data-settings-tab="theme" aria-selected="false" aria-controls="settings-theme-panel" tabindex="-1">主题</button>
-      </nav>
       <div class="model-manager-toolbar">
         <span class="model-default-badge" data-default-label></span>
         <button type="button" data-refresh-official title="刷新所选内置供应商的官方目录" disabled>刷新官方目录</button>
@@ -385,7 +389,6 @@
     </div>
     <section id="settings-theme-panel" class="theme-settings" data-theme-panel role="tabpanel" aria-labelledby="settings-theme-tab" hidden>
       <div>
-        <h3>主题</h3>
         <p id="theme-settings-intro">选择应用的外观，立即生效并记住你的选择。</p>
         <fieldset>
           <legend>配色方案</legend>
@@ -393,6 +396,20 @@
         </fieldset>
         <p data-theme-status role="status" aria-atomic="true"></p>
       </div>
+    </section>
+    <section id="settings-archive-panel" class="archive-settings" role="tabpanel" aria-labelledby="settings-archive-tab" hidden>
+      <p id="archive-settings-intro">查看已归档的聊天。恢复后可在主页面打开，当前对话和输入保持不变。</p>
+      <label for="archive-session-search">搜索已归档的聊天</label>
+      <input id="archive-session-search" type="search" autocomplete="off" placeholder="搜索聊天" aria-controls="archive-session-list" />
+      <div id="archive-session-list" class="session-list" tabindex="-1" aria-label="已归档的聊天"></div>
+      <details id="archive-history-preview">
+        <summary>只读预览</summary>
+        <label for="archive-preview-select">已归档的聊天</label>
+        <select id="archive-preview-select"><option value="">选择聊天后查看</option></select>
+        <button type="button" disabled>查看内容</button>
+        <p role="status" aria-atomic="true"></p>
+        <div class="history-preview-content" aria-busy="false"></div>
+      </details>
     </section>
     <footer class="model-manager-feedback"><p data-model-status role="status" aria-atomic="true">尚未读取配置。</p><button type="button" data-retry hidden>重新读取</button></footer>
   </dialog>

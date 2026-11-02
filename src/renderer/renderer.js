@@ -201,10 +201,30 @@ const sessionList = createSessionList(
     onSetPinned: setSessionPinned, onReload: reloadSessionList,
     onSetArchived: setSessionArchived,
     onRenameProject: (project) => projectPanel.rename(project),
-    onPreview: (id, title) => historyPreview.preview(id, title),
   },
 );
-window.addEventListener("pagehide", () => sessionList.dispose(), { once: true });
+const archiveList = createSessionList(
+  document.getElementById("archive-session-list"),
+  () => {},
+  () => {},
+  {
+    archived: true,
+    onReload: reloadSessionList,
+    onSetArchived: setSessionArchived,
+    onPreview: (id, title) => archivePreview.preview(id, title),
+  },
+);
+const sessionLists = [sessionList, archiveList];
+window.addEventListener("pagehide", () => sessionLists.forEach(list => list.dispose()), { once: true });
+document.getElementById("archive-session-search").addEventListener("input", event => {
+  archiveList.setQuery(event.target.value);
+});
+
+function focusSessionActions(sessionId) {
+  const inArchive = document.getElementById("model-settings-dialog").open
+    && !document.getElementById("settings-archive-panel").hidden;
+  (inArchive ? archiveList : sessionList).focusActions(sessionId);
+}
 // 搜索只更新侧栏展示，不切换当前会话。
 const sessionSearch = document.getElementById("session-search");
 
@@ -379,7 +399,7 @@ const projectPanel = createProjectPanel(
   window.agent,
   setBusy,
   openProject,
-  (projects) => sessionList.setProjects(projects),
+  (projects) => sessionLists.forEach(list => list.setProjects(projects)),
   document.getElementById("project-rename-dialog"),
 );
 
@@ -435,7 +455,7 @@ function setBusy(busy, generating = false) {
   selectWorkspaceButton.disabled = blocked;
   compactSessionButton.disabled = blocked;
   exportConversationButton.disabled = blocked;
-  sessionList.setBusy(blocked, archiveSyncPending && !busy && !closing);
+  sessionLists.forEach(list => list.setBusy(blocked, archiveSyncPending && !busy && !closing));
   unsentSessionList.setBusy(blocked);
   projectPanel.setBusy(blocked);
   stopButton.disabled = closing || !generating;
@@ -474,7 +494,7 @@ async function refreshSessions() {
   const currentId = await window.agent.currentSession();
 
   // 会话数据和当前编号仍由主进程提供。
-  sessionList.render(sessions, currentId);
+  sessionLists.forEach(list => list.render(sessions, currentId));
 }
 
 async function setSessionPinned(sessionId, pinned) {
@@ -485,14 +505,14 @@ async function setSessionPinned(sessionId, pinned) {
     const result = await window.agent.setSessionPinned(sessionId, pinned);
     saved = true;
     // 确认落盘后立即使用实际结果；列表刷新失败也不会显示成保存失败。
-    sessionList.updatePinned(sessionId, result.pinnedAt);
+    sessionLists.forEach(list => list.updatePinned(sessionId, result.pinnedAt));
     await refreshSessions();
-    sessionList.setStatus(pinned ? "已置顶该对话。" : "已取消置顶。");
+    sessionLists.forEach(list => list.setStatus(pinned ? "已置顶该对话。" : "已取消置顶。"));
   } catch (error) {
-    sessionList.setStatus(`${saved ? "置顶状态已保存，列表刷新失败" : "置顶结果未确认，请刷新列表核对"}：${error.message}`, true);
+    sessionLists.forEach(list => list.setStatus(`${saved ? "置顶状态已保存，列表刷新失败" : "置顶结果未确认，请刷新列表核对"}：${error.message}`, true));
   } finally {
     setBusy(false);
-    sessionList.focusActions(sessionId);
+    focusSessionActions(sessionId);
   }
 }
 
@@ -502,13 +522,13 @@ async function reloadSessionList() {
   try {
     if (archiveSyncPending) await syncArchivedPage();
     await refreshSessions();
-    sessionList.setStatus("对话列表已刷新。");
+    sessionLists.forEach(list => list.setStatus("对话列表已刷新。"));
   } catch (error) {
-    sessionList.setStatus(`列表刷新失败：${error.message}`, true);
+    sessionLists.forEach(list => list.setStatus(`列表刷新失败：${error.message}`, true));
   } finally {
     if (!archiveSyncPending) input.readOnly = false;
     setBusy(false);
-    sessionList.focusActions(composerState.sessionId);
+    focusSessionActions(composerState.sessionId);
   }
 }
 
@@ -541,21 +561,21 @@ async function setSessionArchived(sessionId, archived) {
     if (archived && sessionId === composerState.sessionId) sessionInfoPanel.invalidate();
     const result = await window.agent.setSessionArchived(sessionId, archived);
     saved = true;
-    sessionList.updateArchived(sessionId, result.archivedAt);
+    sessionLists.forEach(list => list.updateArchived(sessionId, result.archivedAt));
     await syncArchivedPage(result.changed ? result : undefined);
     await refreshSessions();
-    sessionList.setStatus(archived ? "已归档，可撤销或在已归档列表中恢复。" : "已恢复对话，当前输入保持不变。");
+    sessionLists.forEach(list => list.setStatus(archived ? "已归档，可撤销或在设置的已归档聊天中恢复。" : "已恢复对话，当前输入保持不变。"));
   } catch (error) {
     if (archiveSyncPending) {
       // 返回丢失也可能已完成归档与切换；先只读核对实际编号，不重复提交。
       try { await syncArchivedPage(); } catch { /* 保持冻结，允许刷新入口再次核对。 */ }
     }
-    sessionList.setStatus(`${saved ? "归档状态已保存，页面更新未完成" : "归档操作未完成，请刷新核对"}：${error.message}`, true);
+    sessionLists.forEach(list => list.setStatus(`${saved ? "归档状态已保存，页面更新未完成" : "归档操作未完成，请刷新核对"}：${error.message}`, true));
   } finally {
     await refreshUnsentSessions();
     input.readOnly = archiveSyncPending || wasReadOnly;
     setBusy(false);
-    sessionList.focusActions(sessionId);
+    focusSessionActions(sessionId);
   }
 }
 
@@ -583,7 +603,14 @@ async function loadHistory() {
 }
 
 // 先建立独立预览入口，再尝试恢复当前聊天。
-const historyPreview = mountHistoryPreview(document.getElementById("history-preview"), window.agent);
+mountHistoryPreview(document.getElementById("history-preview"), {
+  listSessions: async () => (await window.agent.listSessions()).filter(session => session.archivedAt == null),
+  previewSession: id => window.agent.previewSession(id),
+});
+const archivePreview = mountHistoryPreview(document.getElementById("archive-history-preview"), {
+  listSessions: async () => (await window.agent.listSessions()).filter(session => session.archivedAt != null),
+  previewSession: id => window.agent.previewSession(id),
+});
 
 // 项目清单独立读取，不依赖当前模型会话初始化成功。
 projectPanel.refresh();

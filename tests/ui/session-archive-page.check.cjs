@@ -57,12 +57,14 @@ async function main() {
     previewSession: id => { calls.push(["preview", id]); return service.previewSession(id); },
     setSessionArchived: async (id, archived) => {
       calls.push(["archive", id, archived]);
+      if (flags.archiveGate) await flags.archiveGate.promise;
       if (flags.archiveFail) throw Error("模拟归档写入失败");
       const result = await service.setSessionArchived(id, archived);
       if (flags.resultLost) throw Error("模拟结果丢失");
       return result;
     },
   };
+  const flow = { list: () => [], subscribe: () => () => {} };
   registerAgentIpc(ipcMain, session, {
     isBusy: () => Boolean(flags.generating),
     listProposals: async () => proposals.get(await service.currentSession()) ?? [],
@@ -74,7 +76,8 @@ async function main() {
       if (flags.saveFail) throw Error("模拟输入保存失败");
       return composer.saveDraft(...args);
     },
-  }, {});
+  }, { read: async () => ({ profiles: [], providers: [], defaultProfileId: null, encryptionAvailable: true }),
+    oauth: flow, enrichment: flow });
   await app.whenReady();
   const win = new BrowserWindow({ width: 1120, height: 820, show: false,
     webPreferences: { preload: path.join(root, "src/preload/preload.js"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
@@ -88,7 +91,15 @@ async function main() {
   const row = id => `.session-row[data-session-id="${id}"]`;
   const archive = async id => { await click(`${row(id)} .session-actions-toggle`); await click(`${row(id)} .session-archive-action`); };
   const restore = async id => { await click(`${row(id)} .session-actions-toggle`); await click(`${row(id)} .session-pin-action`); };
-  const view = archived => click(`.session-view-switch button:nth-child(${archived ? 2 : 1})`);
+  const view = async archived => {
+    if (archived) {
+      if (!await js(`document.querySelector('#model-settings-dialog').open`)) {
+        await click('#model-settings-button');
+        await until(`document.querySelector('#model-settings-dialog').getAttribute('aria-busy')==='false'`);
+      }
+      await click('#settings-archive-tab');
+    } else await click('#model-settings-dialog [data-close]');
+  };
   const edit = text => js(`document.getElementById('message-input').value=${JSON.stringify(text)};document.getElementById('message-input').dispatchEvent(new Event('input'))`);
   const passed = [];
   const check = async (name, fn) => { await fn(); passed.push(name); console.log("通过", name); };
@@ -106,6 +117,9 @@ async function main() {
       assert.equal(await js(`document.querySelectorAll('#proposal-list article').length`), 1);
       const after = await store.load("b"); assert.deepEqual(after.draft, before.draft); assert.equal(after.pinnedAt, before.pinnedAt);
       assert.equal(await js(`document.querySelector('.archive-notice').hidden`), false);
+      await js(`document.querySelector('#history-preview').open=true`);
+      await until(`!document.querySelector('#history-preview select').disabled && !!document.querySelector('#history-preview option[value="a"]')`);
+      assert.equal(await js(`!!document.querySelector('#history-preview option[value="b"]')`), false);
     });
     await check("撤销不自动打开原会话，不打断新输入", async () => {
       await edit("撤销前后来输入"); await click(".archive-notice button"); await idle();
@@ -115,24 +129,39 @@ async function main() {
     await archive("b"); await idle();
     await check("已归档视图按目录分组，可搜索，点击仅只读预览", async () => {
       await view(true);
-      assert.equal(await js(`document.querySelectorAll('.session-open').length`), 0);
+      assert.equal(await js(`document.querySelectorAll('#session-list .session-open').length`), 2);
+      assert.equal(await js(`document.querySelector('#session-list .session-view-switch')`), null);
+      assert.equal(await js(`document.querySelector('#settings-archive-panel').hidden`), false);
       assert.equal(await js(`document.querySelectorAll('.session-preview').length`), 1);
       await click(".session-preview");
-      await until(`document.querySelector('#history-preview [role=status]').textContent.includes('只读预览：')`);
+      await until(`document.querySelector('#archive-history-preview [role=status]').textContent.includes('只读预览：')`);
       assert.equal(await service.currentSession(), "a"); assert.equal(calls.at(-1)[0], "preview");
       assert.equal(await js(`document.querySelectorAll('#session-list img').length`), 0);
-      await click("#session-search-toggle");
-      await js(`document.getElementById('session-search').value='归档样例';document.getElementById('session-search').dispatchEvent(new Event('input'))`);
+      await js(`document.getElementById('archive-session-search').value='无匹配';document.getElementById('archive-session-search').dispatchEvent(new Event('input'))`);
+      assert.equal(await js(`document.querySelectorAll('.session-preview').length`), 0);
+      await js(`document.getElementById('archive-session-search').value='归档样例';document.getElementById('archive-session-search').dispatchEvent(new Event('input'))`);
       assert.equal(await js(`document.querySelectorAll('.session-preview').length`), 1);
-      await click("#session-search-toggle");
+      assert.equal(await js(`document.querySelector('#session-search').value`), "");
+    });
+    await check("设置中恢复失败保留归档项，刷新后可继续恢复", async () => {
+      flags.archiveFail = true; await restore("b"); await idle(); flags.archiveFail = false;
+      assert.match(await js(`document.querySelector('#archive-session-list .session-list-status').textContent`), /未完成/);
+      assert.equal(await js(`document.querySelectorAll('#archive-session-list .session-preview').length`), 1);
+      await click('#archive-session-list .session-list-retry'); await idle();
+      assert.equal(await service.currentSession(), "a");
+      assert.equal(await js(`document.querySelector('#model-settings-dialog').open`), true);
     });
     await check("提示消失或页面重载后仍可从归档列表恢复", async () => {
       await win.reload(); await idle(); await view(true);
       assert.equal(await js(`document.querySelector('.archive-notice').hidden`), true);
-      await restore("b"); await idle();
+      flags.archiveGate = Promise.withResolvers();
+      await restore("b");
+      await until(`document.querySelector('#settings-archive-tab').disabled`);
+      assert.equal(await js(`document.querySelector('#archive-session-search').disabled && [...document.querySelectorAll('#archive-session-list button')].every(b=>b.disabled)`), true);
+      flags.archiveGate.resolve(); flags.archiveGate = null; await idle();
       assert.equal(await service.currentSession(), "a");
       assert.equal((await store.load("b")).draft.text, "B输入");
-      assert.equal(await js(`document.querySelector('.session-list-empty').textContent`), "暂无已归档对话。");
+      assert.equal(await js(`document.querySelector('#archive-session-list .session-list-empty').textContent`), "暂无已归档对话。");
       await view(false);
     });
     await check("当前归档前输入保存失败，不进入归档并保留页面", async () => {
@@ -215,12 +244,15 @@ async function main() {
         win.setSize(width, 820); await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
         if (await js(`document.getElementById('app-sidebar').hidden`)) await click('#sidebar-toggle');
         await view(true);
+        await js(`document.documentElement.dataset.theme=${JSON.stringify(width === 760 ? 'sakura' : 'dark')}`);
         await click(`${row("a")} .session-actions-toggle`);
-        assert.equal(await js(`document.documentElement.scrollWidth<=innerWidth&&['app-sidebar','session-list'].every(id=>{const e=document.getElementById(id);return e.scrollWidth<=e.clientWidth+1})`), true);
+        assert.equal(await js(`document.documentElement.scrollWidth<=innerWidth&&['settings-archive-panel','archive-session-list'].every(id=>{const e=document.getElementById(id);return e.scrollWidth<=e.clientWidth+1})`), true);
+        assert.equal(await js(`document.querySelector('.settings-sidebar').getBoundingClientRect().right<=document.querySelector('#settings-archive-panel').getBoundingClientRect().left+1`), true);
         await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
         await fs.writeFile(path.join(temporary, `archive-${width}.png`), (await win.webContents.capturePage()).toPNG());
         await click(`${row("a")} .session-pin-action`); await idle();
         assert.equal(await js(`document.getElementById('app-sidebar').hidden`), false);
+        assert.equal(await js(`document.getElementById('model-settings-dialog').open && document.activeElement.closest('#archive-session-list')!==null`), true);
         await view(false); await archive("a"); await idle();
       });
     }

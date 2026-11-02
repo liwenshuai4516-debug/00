@@ -100,7 +100,7 @@ async function main() {
     await click("#session-search-toggle");
     await click("#model-settings-button");
     await wait(`document.getElementById('model-settings-dialog').open&&document.getElementById('model-settings-dialog').getAttribute('aria-busy')==='false'`);
-    await check("设置分类并列显示模型管理与主题", `document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'&&document.querySelector('#settings-theme-tab').textContent.trim()==='主题'&&document.querySelector('#model-settings-dialog [data-profiles]')!==null`);
+    await check("设置左侧纵向显示模型管理、主题与已归档", `document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'&&document.querySelector('#settings-theme-tab').textContent.trim()==='主题'&&document.querySelector('#model-settings-dialog [data-profiles]')!==null&&document.querySelector('#settings-archive-tab').textContent.trim()==='已归档的聊天'&&document.querySelector('[role=tablist]').getAttribute('aria-orientation')==='vertical'`);
     await click("[data-edit]");
     await check("编辑加载非敏感字段，密钥留空并保留默认配置", `document.querySelector('#profile-name').value==='演示模型'&&document.querySelector('#profile-custom-model').value==='demo-model'&&document.querySelector('#profile-key').value===''&&!document.querySelector('#profile-key').required&&document.querySelector('[data-hide]').disabled`);
     await click("[data-cancel-edit]");

@@ -13,24 +13,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
   let sessions = [];
   let projects = [];
   let query = "";
-  let archivedView = false;
-  const views = document.createElement("div");
-  views.className = "session-view-switch";
-  views.setAttribute("role", "group");
-  views.setAttribute("aria-label", "对话列表范围");
-  const viewButtons = [false, true].map(archived => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = archived ? "已归档" : "对话";
-    button.addEventListener("click", () => {
-      if (busy) return;
-      archivedView = archived;
-      draw();
-      button.focus();
-    });
-    views.append(button);
-    return button;
-  });
+  const archivedView = actions.archived === true;
   const notice = createArchiveNotice(id => actions.onSetArchived(id, false));
   const status = document.createElement("p");
   status.className = "session-list-status";
@@ -82,7 +65,6 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     for (const button of projectButtons) button.disabled = busy;
     for (const button of actionControls) button.disabled = busy;
     retry.disabled = busy && !retryAllowed;
-    for (const button of viewButtons) button.disabled = busy;
     notice.setBusy(busy);
     if (busy) closeActions();
   }
@@ -93,11 +75,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     actionControls.length = 0;
     actionRows.clear();
     container.replaceChildren();
-    if (actions.onSetArchived) {
-      viewButtons.forEach((button, index) => button.setAttribute("aria-pressed", String(archivedView === Boolean(index))));
-      container.append(views);
-    }
-    container.append(notice.element);
+    if (!archivedView) container.append(notice.element);
 
     // filter 创建新数组，排序不会改动主进程传来的列表。
     const visibleSessions = sessions
@@ -231,7 +209,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           main.append(badge);
         }
         row.append(main);
-        if (actions.onSetPinned) {
+        if (actions.onSetPinned || (archivedView && actions.onSetArchived)) {
           const toggle = document.createElement("button");
           toggle.type = "button";
           toggle.className = "session-actions-toggle";
@@ -246,7 +224,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           toggle.append(icon);
           const panel = document.createElement("div");
           panel.className = "session-actions-panel";
-          panel.id = `session-actions-${actionRows.size}`;
+          panel.id = `${container.id}-actions-${actionRows.size}`;
           panel.hidden = true;
           toggle.setAttribute("aria-controls", panel.id);
           const pin = document.createElement("button");
@@ -343,7 +321,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
 
   function updateArchived(id, archivedAt) {
     sessions = sessions.map(session => session.id === id ? { ...session, archivedAt } : session);
-    if (archivedAt != null) notice.show(id);
+    if (archivedAt != null && !archivedView) notice.show(id);
     else notice.restored(id);
     draw();
   }
@@ -351,7 +329,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
   function focusActions(id) {
     const row = actionRows.get(id) ?? actionRows.values().next().value;
     if (row) row.toggle.focus();
-    else viewButtons[Number(archivedView)].focus();
+    else container.focus();
   }
 
   return {

@@ -67,7 +67,7 @@ async function main() {
     createWindow(); await load();
     await check("首次使用保留默认深色，首帧主题模块阻塞渲染", `document.documentElement.dataset.theme==='dark' && getComputedStyle(document.body).backgroundColor==='rgb(24, 24, 24)' && document.querySelector('script[src="./theme/theme-preference.js"]').blocking.contains('render')`);
     await open();
-    await check("主题与模型管理位于同级设置分类", `document.querySelectorAll('[role=tablist] [role=tab]').length===2 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'`);
+    await check("主题与模型管理位于同级设置分类", `document.querySelectorAll('[role=tablist] [role=tab]').length===3 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'`);
     await run(`document.querySelector('#profile-name').value='未保存的模型名称';document.querySelector('#profile-key').value='仅测试未保存值';window.originalMessage=document.querySelector('.chat-message');window.originalForm=document.querySelector('#model-profile-form');undefined;`);
     await click("#settings-theme-tab");
     await check("主题面板独立展示，模型操作和状态收起", `!document.querySelector('#settings-theme-panel').hidden && document.querySelector('#settings-model-panel').hidden && document.querySelector('.model-manager-feedback').hidden && document.querySelector('[data-refresh-official]').hidden`);
@@ -83,14 +83,16 @@ async function main() {
     assert.ok(contrast(...saveColors) >= 4.5, "保存按钮悬停后文字仍可读"); passed++; console.log("PASS 主要保存按钮悬停状态可读");
     win.webContents.sendInputEvent({ type: "mouseMove", x: 0, y: 0 });
     await click("[data-apply]"); await wait(`document.querySelector('#settings-theme-tab').disabled`);
-    await check("模型操作期间分类和主题选择共用忙碌保护", `document.querySelector('#settings-model-tab').disabled && [...document.querySelectorAll('[name=appearance-theme]')].every(input=>input.disabled)`);
+    await check("模型操作期间分类和主题选择共用忙碌保护", `[...document.querySelectorAll('.settings-category, [name=appearance-theme], #archive-session-search')].every(input=>input.disabled)`);
     releaseSwitch(); await idle();
     await click("#settings-theme-tab");
-    await run(`document.querySelector('#settings-theme-tab').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true,cancelable:true}))`);
+    await run(`document.querySelector('#settings-theme-tab').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}))`);
     await check("设置分类支持键盘切换和焦点跟随", `document.activeElement.id==='settings-model-tab' && !document.querySelector('#settings-model-panel').hidden`);
     await run(`document.querySelector('#settings-model-tab').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}))`);
-    await check("End选择主题，输入法组词不误切换分类", `document.activeElement.id==='settings-theme-tab' && !document.querySelector('#settings-theme-panel').hidden`);
-    await run(`document.querySelector('#settings-theme-tab').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',isComposing:true,bubbles:true,cancelable:true}))`);
+    await check("End选择已归档，菜单与内容对应", `document.activeElement.id==='settings-archive-tab' && !document.querySelector('#settings-archive-panel').hidden && document.querySelector('#model-settings-title').textContent==='已归档的聊天'`);
+    await run(`document.querySelector('#settings-archive-tab').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}))`);
+    await run(`document.querySelector('#settings-theme-tab').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',isComposing:true,bubbles:true,cancelable:true}))`);
+    await check("两个列表操作编号互不重复，主页面不展示归档入口", `new Set([...document.querySelectorAll('[id]')].map(e=>e.id)).size===document.querySelectorAll('[id]').length && document.querySelector('#session-list .session-view-switch')===null && document.querySelector('#settings-archive-tab').closest('.settings-sidebar')!==null`);
     await check("输入法组词保留当前分类", `document.querySelector('#settings-theme-tab').getAttribute('aria-selected')==='true'`);
 
     // 从实际渲染结果测量正文、次要文字、行内代码、语法高亮及主要按钮的对比度。
@@ -101,6 +103,7 @@ async function main() {
 
     for (const width of [1280, 800, 390]) {
       win.setSize(width, 860); await frame();
+      await check(`设置${width}宽度左侧纵向菜单、右侧内容`, `(()=>{const nav=document.querySelector('.settings-sidebar').getBoundingClientRect();const panel=document.querySelector('#settings-theme-panel').getBoundingClientRect();const tabs=[...document.querySelectorAll('.settings-category')].map(e=>e.getBoundingClientRect());return nav.right<=panel.left+1 && tabs.every((tab,i)=>!i||tab.top>=tabs[i-1].bottom) && document.querySelector('[role=tablist]').getAttribute('aria-orientation')==='vertical';})()`);
       await check(`主题设置${width}宽度无横向溢出`, `document.querySelector('#settings-theme-panel').scrollWidth<=document.querySelector('#settings-theme-panel').clientWidth+1 && document.querySelector('#model-settings-dialog').getBoundingClientRect().right<=innerWidth`);
       if (process.env.THEME_UI_ARTIFACT_DIR) {
         await mkdir(process.env.THEME_UI_ARTIFACT_DIR, { recursive: true });

@@ -167,22 +167,6 @@
   border-color: var(--border);
 }
 
-.session-view-switch {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
-}
-.session-list .session-view-switch button {
-  flex: 1;
-  width: auto;
-  min-height: 44px;
-  text-align: center;
-  color: var(--muted);
-}
-.session-list .session-view-switch button[aria-pressed="true"] {
-  color: var(--text);
-  background: var(--hover);
-}
 .archive-notice {
   display: flex;
   align-items: center;

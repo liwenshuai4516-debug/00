@@ -1,10 +1,22 @@
-/* 设置分类与业务面板分开；切换分类保留未保存的模型表单。 */
-.settings-categories { display: flex; gap: 4px; margin-right: auto; padding: 3px; border: 1px solid var(--border); border-radius: 10px; }
-.model-settings-dialog .settings-category { min-height: 44px; border: 0; color: var(--muted); background: transparent; white-space: nowrap; }
+/* 设置左侧纵向导航，右侧业务面板保持各自滚动与表单状态。 */
+.model-settings-dialog[open] { grid-template-columns: 184px minmax(0, 1fr); }
+.settings-sidebar { grid-column: 1; grid-row: 1 / 4; min-width: 0; overflow: auto; padding: 24px 12px; border-right: 1px solid var(--border); background: var(--sidebar); }
+.settings-sidebar h2 { margin: 0 12px 24px; font-size: 20px; }
+.settings-categories { display: flex; flex-direction: column; gap: 8px; }
+.model-settings-dialog .settings-category { min-height: 44px; border: 0; color: var(--muted); background: transparent; text-align: left; overflow-wrap: anywhere; }
 .model-settings-dialog .settings-category[aria-selected="true"] { color: var(--text); background: var(--hover); }
+.model-manager-header { grid-column: 2; grid-row: 1; min-width: 0; flex-wrap: wrap; }
+.model-manager-toolbar { flex-wrap: wrap; }
+.model-settings-dialog > [role="tabpanel"] { grid-column: 2; grid-row: 2; min-width: 0; }
+.model-manager-feedback { grid-column: 2; grid-row: 3; min-width: 0; }
+.archive-settings { min-height: 0; overflow: auto; padding: 24px 32px; }
+.archive-settings > input { margin-bottom: 20px; }
+.archive-settings > label { margin-top: 24px; }
+.archive-settings .history-preview-content { max-height: 40dvh; }
+.archive-settings details#archive-history-preview { margin-top: 24px; }
+.archive-settings .session-list-status { white-space: normal; }
 .theme-settings { min-height: 0; overflow: auto; padding: 32px; }
 .theme-settings > div { max-width: 760px; margin: 0 auto; }
-.theme-settings h3 { margin-bottom: 12px; font-size: 22px; }
 .theme-settings fieldset { margin-top: 28px; }
 .theme-settings legend { margin-bottom: 14px; font-weight: 600; }
 .theme-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
@@ -20,12 +32,15 @@
 .theme-preview span:nth-child(2) { width: 75%; height: 8px; align-self: center; border-radius: 4px; background: var(--preview-text); }
 .theme-preview span:last-child { grid-column: 2; grid-row: 3; border-radius: 6px; background: var(--preview-surface); }
 .theme-settings [role="status"] { margin-top: 24px; }
-@media (max-width: 1000px) {
-  .model-manager-header { flex-wrap: wrap; }
-  .settings-categories { order: 3; flex: 1 1 100%; margin-right: 0; }
-  .settings-category { flex: 1; }
-}
 @media (max-width: 700px) {
-  .theme-settings { padding: 20px; }
+  .model-settings-dialog[open] { grid-template-columns: 112px minmax(0, 1fr); }
+  .settings-sidebar { padding: 20px 6px; }
+  .settings-sidebar h2 { margin: 0 6px 20px; font-size: 18px; }
+  .model-settings-dialog .settings-category { padding: 10px 8px; }
+  .model-manager-mark { display: none; }
+  .model-thinking-section { align-items: stretch; flex-direction: column; }
+  .model-thinking-section select { min-width: 0; }
+  .model-manager-toolbar { flex-basis: 100%; }
+  .theme-settings, .archive-settings { padding: 16px; }
   .theme-choices { grid-template-columns: minmax(0, 1fr); }
 }
