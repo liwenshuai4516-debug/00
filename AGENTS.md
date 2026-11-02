@@ -102,7 +102,7 @@ JavaScript 使用两空格缩进、双引号、分号及描述性的驼峰命名
 
 | 顺序 | 未完项 | 当前基础与完成标准 |
 | --- | --- | --- |
-| 1 | 未发送空会话的登记、找回与重建 | 原编号、真实目录、来源与模型登记、输入原子保存和独立同步已接通，但SDK空会话没有历史文件。按原编号与登记模型重建的底层能力也已完成，同目录列表与恢复服务已完成，尚需IPC/preload和侧栏入口；有真实历史优先走原恢复链路，历史丢失不能冒充空会话。验证重启找回、目录/模型失效时保留输入、不串会话。 |
+| 1 | 未发送空会话的登记、找回与重建 | 原编号、真实目录、来源与模型登记、输入原子保存和独立同步已接通，但SDK空会话没有历史文件。按原编号与登记模型重建的底层能力也已完成，同目录列表与恢复服务、IPC/preload已完成，尚需侧栏组件和页面接线；有真实历史优先走原恢复链路，历史丢失不能冒充空会话。验证重启找回、目录/模型失效时保留输入、不串会话。 |
 | 2 | 正常关闭前补保存 | 当前pagehide只释放组件，窗口closed只停止生成，尚无关闭握手。需要关闭前等待待写输入、失败保留窗口并可重试，兼容生成与退出；强制结束只保证已确认落盘内容。1、2完成前不称完整重启恢复。 |
 | 3 | 会话置顶与可撤销归档 | 存储已有pinnedAt/archivedAt字段，业务接口和页面尚未接通。补置顶排序、归档视图、撤销/恢复、当前会话归档的安全切换；同步过滤启动及项目恢复，不删除或移动原历史，不丢输入和文件草稿，不改变最近消息活动规则。 |
 | 4 | 上下文用量常驻入口 | 已有getSessionInfo().contextUsage及菜单内信息展示。复用同一次读取，补输入区常驻按钮、详情与整理入口、统一刷新和会话/模型迟到响应保护；未知不显示零，不新增模型请求。 |
@@ -304,3 +304,12 @@ node --test \
 - 下一小步完整手写指南为 `docs/unsent-session-ipc-step.md`，候选尚未接入实际应用或测试。仅在原agent-ipc增加agent:list-unsent-sessions、agent:restore-unsent-session，两者共用runIdleOperation；预加载增加无参数listUnsentSessions和仅转发编号的restoreUnsentSession，不传页面路径、模型或快照；输入自动保存与停止仍独立。不改bootstrap或服务，不接页面。
 - 候选 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-ipc-advice-xc72zckb` 两个脚本语法检查及8文件63项通过，新增 `unsent-session-ipc.test.js` 9项。覆盖生成中拒绝、读取和恢复全程互斥、成功/失败释放、同步抛错可重试、固定通道及丢弃多余参数，并以实际preload/IPC/目录绑定和临时存储验证原编号/完整输入恢复、迟到输入不串会话、pending或跨目录拒绝后保留原会话和快照。新专项只模拟Agent，不请求模型；相关真实SDK服务测试仍使用临时配置与占位凭据、禁用网络。不读取真实.env、配置/会话或验收文件，不代表实际手写代码或真实重启验收。
 - 后续页面须沿用新深色侧栏：离开前等待输入保存，恢复后绑定返回编号并await原bindComposer读最新输入与快照，保留失败时原展示，保护迟到结果。新增列表也是互斥读取，不能与listProposals/inspectComposerSend直接Promise.all，要按顺序调用。正常关闭前补保存、无历史待确认发送的专用处理UI和完整重启恢复仍未完成。
+
+
+### IPC完成与未发送列表组件候选（2026-11-02 最新核对）
+
+- 使用者已亲手完成 `docs/unsent-session-ipc-step.md` 的两个IPC处理器、预加载接口和 `tests/unit/unsent-session-ipc.test.js` 9项。实际两个脚本语法检查及8文件63项全部通过；仅HEAD加本次两个接口文件功能块与用户测试的精确提交副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-ipc-complete-ipq5yuts` 也63项通过。两个入口复用runIdleOperation，列表无参数、恢复仅编号；不重复实施。助手未改写实际应用或测试，其他既有差异保留。
+- 下一小步完整手写指南为 `docs/unsent-session-list-component-step.md`，候选尚未写入实际应用或测试。新增原生DOM组件 `components/unsent-session-list.js`、局部样式和独立Electron检查脚本，先不接HTML或renderer。组件接收列表与回调，提供render/setActive/setBusy/showLoading/showError；标题及原因纯文本展示，受阻原因直接可见，支持忙碌/读取/失败重试、当前选择、原生键盘与刷新保留焦点。页面负责异步业务、互斥读取和迟到结果。
+- 使用ui-ux-pro-max核对禁用原因、键盘与深色布局，沿用实际index.html、codex-theme.css、page-shell.js及侧栏基线。实际渲染层候选副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-list-component-3ipl5up8` 两个脚本语法检查及10项Electron离线组件检查通过，覆盖状态、纯文本、仅编号回调、重复/受阻/已移除行防护、输入外焦点保留、Enter/空格、三档宽度滚动与可见焦点。截图及报告 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-list-ui-qt5fVk` 已查看；未读取真实.env、配置/会话或请求模型。
+- 本步指南引入的离线检查命令为 `./node_modules/.bin/electron tests/ui/unsent-session-list.check.cjs`；与node单元测试独立，只加载临时页面、实际组件/样式与模拟回调，使用临时userData并禁用HTTP/HTTPS。该脚本目前仅在指南和临时候选中，待使用者手写后核对；不称已接入实际项目验证流程。
+- 后续再接HTML样式与容器、renderer输入flush、恢复成功后编号绑定和await bindComposer、失败保留及会话/目录迟到响应保护。listUnsentSessions仍不能与listProposals/inspectComposerSend直接Promise.all。无历史且待确认发送条目的专用处理入口、正常关闭补保存和完整重启恢复仍未完成；已有当前会话的未确认发送解除UI不重复实施。

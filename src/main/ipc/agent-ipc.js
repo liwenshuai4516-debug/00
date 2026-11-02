@@ -125,6 +125,16 @@ function registerAgentIpc(
 
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
+  // 列表依赖当前真实目录；与恢复共用互斥入口，避免读取时目录被切换。
+  ipcMain.handle("agent:list-unsent-sessions", () =>
+    runIdleOperation(() => sessionService.listUnsentSessions()),
+  );
+
+  // 页面只提交编号，状态快照、目录和模型均由主进程读取。
+  ipcMain.handle("agent:restore-unsent-session", (_event, sessionId) =>
+    runIdleOperation(() => sessionService.restoreUnsentSession(sessionId)),
+  );
+
   ipcMain.handle("agent:open-session", (_event, sessionId) => {
     return runIdleOperation(() => sessionService.openSession(sessionId));
   });

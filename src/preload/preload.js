@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld("agent", {
   renameSession: (name) => ipcRenderer.invoke("agent:rename-session", name),
   // 获取历史对话列表。
   listSessions: () => ipcRenderer.invoke("agent:list-sessions"),
+
+  // 当前目录由主进程决定；读取不接受页面路径，恢复只传原会话编号。
+  listUnsentSessions: () => ipcRenderer.invoke("agent:list-unsent-sessions"),
+  restoreUnsentSession: (sessionId) =>
+    ipcRenderer.invoke("agent:restore-unsent-session", sessionId),
   // 页面只能传会话编号，不能指定主进程读取的文件路径。
   previewSession: (sessionId) =>
     ipcRenderer.invoke("agent:preview-session", sessionId),
