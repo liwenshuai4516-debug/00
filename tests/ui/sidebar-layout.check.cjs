@@ -22,6 +22,7 @@ async function main() {
     { id: "a2", title: "写一首古诗", workspaceDir: "/demo/a", updatedAt: 4 },
     { id: "old1", title: "旧项目会话", workspaceDir: "/history/a", updatedAt: 1 },
   ];
+  const unsentSessions = [];
   let current = "a1", nextId = 0;
   let addMode = "cancel", listFail = false, openFail = false;
   let releaseAdd, finishGeneration, consumed;
@@ -29,6 +30,7 @@ async function main() {
   const getDraft = () => drafts.get(current) ?? { sessionId: current, text: "", revision: 0 };
   ipcMain.handle("sidebar-check", async (event, name, args) => {
     calls.push([name, args]);
+    if (name === "listUnsentSessions") return unsentSessions;
     if (name === "loadHistory") return [];
     if (name === "currentSession") return current;
     if (name === "listSessions") return sessions;
@@ -94,7 +96,8 @@ async function main() {
     await idle();
     await check("设置入口位于侧栏底部", `document.getElementById('model-settings-button').closest('.sidebar-footer')!==null&&document.getElementById('model-settings-button').textContent.trim()==='设置'`);
     await click(".recent-sessions > summary");
-    await check("最近可以收起历史对话", `!document.querySelector('.recent-sessions').open&&document.querySelectorAll('.session-open').length===3`);
+    await check("最近只收起无项目对话，项目保持展示", `!document.querySelector('.recent-sessions').open&&document.querySelectorAll('.recent-sessions .session-open').length===1&&document.querySelectorAll('.session-group:not(.recent-sessions) .session-open').length===2&&document.querySelector('.session-project-open').checkVisibility()`);
+    await check("侧栏移除未发送与只读历史区块", `!document.querySelector('#unsent-session-list')&&!document.querySelector('#history-preview')&&document.querySelector('#project-list-title').textContent==='项目'`);
     await click("#session-search-toggle");
     await check("搜索自动展开最近", `document.querySelector('.recent-sessions').open`);
     await click("#session-search-toggle");
@@ -117,9 +120,14 @@ async function main() {
     await click("#model-settings-dialog [data-close]");
     win.setSize(1120, 820);
     await wait(`innerWidth>760&&!document.getElementById('app-sidebar').hidden`);
-    await check("移除上方已添加项目卡片，标题右侧只保留加号", `!document.querySelector('.registered-project-list')&&document.getElementById('project-list-title').textContent==='项目与对话'&&document.querySelector('#add-project-button use').getAttribute('href')==='#icon-plus'&&document.querySelectorAll('#add-project-button').length===1`);
+    await check("移除上方已添加项目卡片，标题右侧只保留加号", `!document.querySelector('.registered-project-list')&&document.getElementById('project-list-title').textContent==='项目'&&document.querySelector('#add-project-button use').getAttribute('href')==='#icon-plus'&&document.querySelectorAll('#add-project-button').length===1`);
     await check("搜索默认收起，顶部图标有标签与展开状态", `document.getElementById('session-search-field').hidden&&document.getElementById('session-search-toggle').closest('.sidebar-brand')!==null&&document.getElementById('session-search-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('session-search-toggle').getAttribute('aria-label')==='搜索对话'`);
-    await check("同目录合并为一个分组，无对话项目可见，历史按最近活动", `document.querySelectorAll('.session-group').length===3&&document.querySelector('.session-group-name').textContent==='演示项目'&&document.querySelectorAll('.session-project-open').length===2&&document.querySelectorAll('.session-open').length===3`);
+    await check("项目对话按登记目录归组，空项目保留，无项目对话在最后的最近中", `document.querySelectorAll('.session-group').length===3&&document.querySelector('.session-group-name').textContent==='演示项目'&&document.querySelectorAll('.session-project-open').length===2&&document.querySelectorAll('.session-open').length===3&&document.querySelector('#session-list > details:last-of-type').classList.contains('recent-sessions')&&document.querySelector('.recent-sessions .session-open').dataset.sessionId==='old1'`);
+    sessions.push({ id: "old2", title: "独立对话", workspaceDir: "/history/other", updatedAt: 8 });
+    await click(".session-project-open"); await idle();
+    await check("不同目录的无项目对话平铺在最近，按活动排序", `[...document.querySelectorAll('.recent-sessions .session-open')].map(b=>b.dataset.sessionId).join(',')==='old2,old1'&&document.querySelectorAll('.session-group').length===3`);
+    sessions.pop();
+    await click(".session-project-open"); await idle();
     await run(`document.getElementById('message-input').value='保留输入  ';document.getElementById('message-input').dispatchEvent(new Event('input'));document.getElementById('proposal-list').textContent='保留文件草稿'`);
     const opensBefore = calls.filter(c => c[0] === "openProject" || c[0] === "openSession").length;
     await click(".session-group summary");
@@ -163,7 +171,7 @@ async function main() {
     await win.webContents.debugger.sendCommand("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
     await wait(`document.getElementById('message-input').value===''`);await idle();
     assert.equal(current, "empty-b");
-    await check("项目名支持键盘打开，项目分组保留", `document.querySelectorAll('.session-group')[2].open&&document.querySelectorAll('.session-group').length===5`);
+    await check("项目名支持键盘打开，项目分组保留", `document.querySelectorAll('.session-group')[1].open&&document.querySelectorAll('.session-group').length===5`);
     await run(`document.querySelector('.session-group summary').click()`); // 展开原项目
     await click(".session-project-open");await idle();
     await check("打开原项目恢复原输入且不串会话", `document.getElementById('message-input').value==='保留输入  '`);
@@ -171,6 +179,9 @@ async function main() {
     await run(`const b=[...document.querySelectorAll('.session-group-items button')].find(b=>b.textContent==='写一首古诗');b.click()`);await idle();
     assert.equal(current, "a2");
     await check("对话行继续使用原会话打开入口", `document.querySelector('.session-group-items button[aria-current=true]').textContent==='写一首古诗'`);
+    if (!await run(`document.querySelector('.recent-sessions').open`)) await click('.recent-sessions > summary');
+    await click('.recent-sessions .session-open'); await idle();
+    await check("无项目对话可以直接打开，仍保留在最近", `document.querySelector('.recent-sessions .session-open[aria-current=true]').dataset.sessionId==='old1'`);
     projects.push({ id: "safe", name: '<img src=x onerror="window.injected=true">', workspaceDir: "/demo/safe" });
     await click("#add-project-button");await idle();
     await check("项目名称纯文本展示", `!document.querySelector('#session-list img')&&!window.injected&&[...document.querySelectorAll('.session-project-open')].some(b=>b.textContent.includes('<img'))`);
@@ -195,6 +206,12 @@ async function main() {
     await check("生成中搜索重绘仍保持项目和会话禁用", `[...document.querySelectorAll('#session-list button')].every(b=>b.disabled)`);
     await click("#session-search-toggle");await click("#stop-button");await idle();
     await check("停止后控件恢复", `!document.getElementById('add-project-button').disabled&&[...document.querySelectorAll('#session-list button')].every(b=>!b.disabled)`);
+    unsentSessions.push({ id:'a1',title:'重复草稿',workspaceDir:'/demo/a',blockedReason:'' }, { id:'draft-alone',title:'独立输入',workspaceDir:'/draft/one',blockedReason:'' }, { id:'blocked-alone',title:'待核对输入',workspaceDir:'/draft/two',blockedReason:'仍有待确认发送，暂不能重建。' });
+    await click('#new-chat-button'); await idle();
+    await check("有历史优先历史，空对话并入最近且受阻项明确禁用", `document.querySelectorAll('.session-open[data-session-id=a1]').length===1&&!document.querySelector('.session-open[data-session-id=a1]').hasAttribute('data-empty-session')&&document.querySelector('.recent-sessions .session-open[data-session-id=draft-alone]').dataset.emptySession==='true'&&document.querySelector('.recent-sessions .session-open[data-session-id=blocked-alone]').disabled&&document.querySelector('.session-blocked-reason').textContent.includes('待确认')`);
+    unsentSessions.length=0;
+    await click('.session-project-open'); await idle();
+    if (!await run(`document.querySelector('.recent-sessions').open`)) await click('.recent-sessions > summary');
     await writeFile(path.join(temporary, "sidebar-preview.png"), (await win.webContents.capturePage()).toPNG());
     if (process.env.SIDEBAR_SCREENSHOT_PATH) await writeFile(process.env.SIDEBAR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     assert.deepEqual(errors, []);

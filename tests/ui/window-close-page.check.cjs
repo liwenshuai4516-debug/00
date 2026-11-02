@@ -90,7 +90,7 @@ async function fresh({ beforeLoad = false } = {}) {
     const end=Date.now()+6000;
     while(!await js(code)){if(Date.now()>end)throw Error(`等待超时：${code}`);await new Promise(r=>setTimeout(r,15));}
   };
-  const idle=()=>until('!document.getElementById("new-chat-button").disabled && !document.querySelector(".unsent-list-refresh").disabled');
+  const idle=()=>until('!document.getElementById("new-chat-button").disabled');
   const click=selector=>js(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const edit=text=>js(`document.getElementById("message-input").value=${JSON.stringify(text)};document.getElementById("message-input").dispatchEvent(new Event("input"));`);
   const loaded=win.loadFile(path.join(root,"src/renderer/index.html"));

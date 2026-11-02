@@ -5,7 +5,6 @@ import { createSessionInfoPanel } from "./components/session-info-panel.js";
 import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
-import { createUnsentSessionList } from "./components/unsent-session-list.js";
 import {
   appendMessage,
   updateAssistantMessage,
@@ -112,7 +111,9 @@ const composerPersistence = createComposerPersistence(input, window.agent, (stat
 async function bindComposer(sessionId) {
   // 会话一变就隐藏旧目录条目，并作废尚未完成的列表读取。
   unsentReadVersion += 1;
-  unsentSessionList.showLoading();
+  draftSessions = [];
+  draftSessionOwner = sessionId;
+  renderSessionLists();
   try {
     await composerPersistence.switchTo(sessionId);
   } catch (error) {
@@ -193,9 +194,13 @@ const exportConversationButton = document.getElementById(
 const cancelCompactionButton = document.getElementById(
   "cancel-compaction-button",
 );
+let historySessions = [];
+let draftSessions = [];
+let draftSessionOwner = "";
+
 const sessionList = createSessionList(
   document.getElementById("session-list"),
-  openHistorySession,
+  selectSidebarSession,
   (project) => projectPanel.open(project),
   {
     onSetPinned: setSessionPinned, onReload: reloadSessionList,
@@ -232,12 +237,6 @@ sessionSearch.addEventListener("input", () => {
   sessionList.setQuery(sessionSearch.value);
 });
 let unsentReadVersion = 0;
-const unsentSessionList = createUnsentSessionList(
-  document.getElementById("unsent-session-list"),
-  openUnsentSession,
-  reloadUnsentSessions,
-);
-unsentSessionList.setBusy(pageBusy);
 window.addEventListener(
   "pagehide",
   () => {
@@ -250,34 +249,36 @@ window.addEventListener(
 async function refreshUnsentSessions() {
   const version = ++unsentReadVersion;
   const sessionId = composerState.sessionId;
-  unsentSessionList.showLoading();
+  draftSessions = [];
+  draftSessionOwner = sessionId;
+  renderSessionLists();
   try {
     const rows = await window.agent.listUnsentSessions();
     if (version !== unsentReadVersion || sessionId !== composerState.sessionId)
       return;
-    unsentSessionList.render(rows, sessionId);
+    draftSessions = rows.map(row => ({ ...row, empty: true, updatedAt: 0 }));
+    renderSessionLists();
   } catch (error) {
     if (
       version === unsentReadVersion &&
       sessionId === composerState.sessionId
     ) {
-      unsentSessionList.showError(error.message);
+      sessionList.setStatus(`对话输入读取失败：${error.message}`, true);
+      return false;
     }
   }
 }
 
-async function reloadUnsentSessions() {
-  if (pageBusy) return;
-  setBusy(true);
-  try {
-    // 手动刷新前等待当前输入落盘，使列表能包含刚保留的空会话。
-    await composerPersistence.flush();
-    await refreshUnsentSessions();
-  } catch (error) {
-    unsentSessionList.showError(error.message);
-  } finally {
-    setBusy(false);
-  }
+function renderSessionLists() {
+  const ids = new Set(historySessions.map(session => session.id));
+  const drafts = draftSessionOwner === composerState.sessionId ? draftSessions.filter(session => !ids.has(session.id)) : [];
+  sessionList.render([...historySessions, ...drafts], composerState.sessionId);
+  archiveList.render(historySessions, composerState.sessionId);
+}
+
+function selectSidebarSession(sessionId) {
+  if (historySessions.some(session => session.id === sessionId)) void openHistorySession(sessionId);
+  else if (draftSessionOwner === composerState.sessionId && draftSessions.some(session => session.id === sessionId)) void openUnsentSession(sessionId);
 }
 
 async function openUnsentSession(sessionId) {
@@ -330,10 +331,7 @@ async function openUnsentSession(sessionId) {
     if (restored) {
       document.dispatchEvent(new CustomEvent("unsent-session-opened"));
       input.focus();
-    } else
-      document
-        .querySelector("#unsent-session-list .unsent-list-refresh")
-        .focus();
+    } else sessionList.focusActions(sessionId);
   }
 }
 
@@ -456,7 +454,6 @@ function setBusy(busy, generating = false) {
   compactSessionButton.disabled = blocked;
   exportConversationButton.disabled = blocked;
   sessionLists.forEach(list => list.setBusy(blocked, archiveSyncPending && !busy && !closing));
-  unsentSessionList.setBusy(blocked);
   projectPanel.setBusy(blocked);
   stopButton.disabled = closing || !generating;
   renameButton.disabled = blocked;
@@ -494,7 +491,9 @@ async function refreshSessions() {
   const currentId = await window.agent.currentSession();
 
   // 会话数据和当前编号仍由主进程提供。
-  sessionLists.forEach(list => list.render(sessions, currentId));
+  historySessions = sessions;
+  renderSessionLists();
+  sessionList.setActive(currentId);
 }
 
 async function setSessionPinned(sessionId, pinned) {
@@ -505,6 +504,7 @@ async function setSessionPinned(sessionId, pinned) {
     const result = await window.agent.setSessionPinned(sessionId, pinned);
     saved = true;
     // 确认落盘后立即使用实际结果；列表刷新失败也不会显示成保存失败。
+    historySessions = historySessions.map(session => session.id === sessionId ? { ...session, pinnedAt: result.pinnedAt } : session);
     sessionLists.forEach(list => list.updatePinned(sessionId, result.pinnedAt));
     await refreshSessions();
     sessionLists.forEach(list => list.setStatus(pinned ? "已置顶该对话。" : "已取消置顶。"));
@@ -520,9 +520,10 @@ async function reloadSessionList() {
   if (pageBusy || closing) return;
   setBusy(true);
   try {
+    await composerPersistence.flush();
     if (archiveSyncPending) await syncArchivedPage();
     await refreshSessions();
-    sessionLists.forEach(list => list.setStatus("对话列表已刷新。"));
+    if (await refreshUnsentSessions() !== false) sessionLists.forEach(list => list.setStatus("对话列表已刷新。"));
   } catch (error) {
     sessionLists.forEach(list => list.setStatus(`列表刷新失败：${error.message}`, true));
   } finally {
@@ -561,6 +562,7 @@ async function setSessionArchived(sessionId, archived) {
     if (archived && sessionId === composerState.sessionId) sessionInfoPanel.invalidate();
     const result = await window.agent.setSessionArchived(sessionId, archived);
     saved = true;
+    historySessions = historySessions.map(session => session.id === sessionId ? { ...session, archivedAt: result.archivedAt } : session);
     sessionLists.forEach(list => list.updateArchived(sessionId, result.archivedAt));
     await syncArchivedPage(result.changed ? result : undefined);
     await refreshSessions();
@@ -603,10 +605,6 @@ async function loadHistory() {
 }
 
 // 先建立独立预览入口，再尝试恢复当前聊天。
-mountHistoryPreview(document.getElementById("history-preview"), {
-  listSessions: async () => (await window.agent.listSessions()).filter(session => session.archivedAt == null),
-  previewSession: id => window.agent.previewSession(id),
-});
 const archivePreview = mountHistoryPreview(document.getElementById("archive-history-preview"), {
   listSessions: async () => (await window.agent.listSessions()).filter(session => session.archivedAt != null),
   previewSession: id => window.agent.previewSession(id),

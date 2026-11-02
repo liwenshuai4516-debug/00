@@ -28,7 +28,7 @@ const session = {
   loadHistory: async () => history(current), currentSession: async () => current,
   getSessionInfo: async () => ({ sessionId: current, workspaceDir: workspace, modelId: current === "b" ? "Pro" : "Flash", provider: "mock", contextUsage: null }),
   listModelProfiles: async () => ({ currentProfileId: current === "b" ? "pro" : "flash", profiles: [{ id:"flash", name:"Flash", provider:"mock", modelId:"Flash" },{ id:"pro",name:"Pro",provider:"mock",modelId:"Pro" }] }),
-  listSessions: async () => { failure("historyList"); return ["a", "b"].map(id => ({ id, title: `对话 ${id}`, workspaceDir: workspace, updatedAt: 10 })); },
+  listSessions: async () => { failure("historyList"); return []; },
   listUnsentSessions: async () => {
     calls.push(["list",current,workspace]); await pause("listGate"); failure("list");
     if (workspace !== "/qa/one") return [];
@@ -79,16 +79,16 @@ async function main() {
     const end=Date.now()+5000;
     while (!await js(code)) { if(Date.now()>end) throw Error(`等待超时：${code}`); await new Promise(r=>setTimeout(r,20)); }
   };
-  const idle=() => until('!document.getElementById("new-chat-button").disabled && !document.querySelector(".unsent-list-refresh").disabled');
+  const idle=() => until('!document.getElementById("new-chat-button").disabled');
   const click=selector => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const edit=text => js(`document.getElementById("message-input").value=${JSON.stringify(text)};document.getElementById("message-input").dispatchEvent(new Event("input"));`);
-  const open=id => click(`[data-unsent-id="${id}"]`);
+  const open=id => click(`#session-list .session-open[data-session-id="${id}"]`);
   const passed=[];
   const check=async (name,fn) => { await fn();passed.push(name);console.log("通过",name); };
   await idle();
   await check("启动列表和输入/草稿读取依次完成",async () => {
     assert.equal(await js('document.getElementById("message-input").value'),"原输入");
-    assert.equal(await js('document.querySelectorAll("#unsent-session-list .unsent-list-open").length'),3);
+    assert.equal(await js('document.querySelectorAll("#session-list [data-empty-session]").length'),3);
     assert(calls.findIndex(c=>c[0]==="inspect")<calls.findIndex(c=>c[0]==="proposals"));
     assert(calls.findIndex(c=>c[0]==="proposals")<calls.findIndex(c=>c[0]==="list"));
     assert(!errors.some(e=>e.includes("其他操作完成")));
@@ -113,7 +113,7 @@ async function main() {
     await edit("离开前最新输入"); await open("b"); await idle();
     assert.equal(current,"b"); assert.equal(entry("a").text,"离开前最新输入");
     assert.equal(await js('document.getElementById("message-input").value'),entry("b").text.replace(/\r\n/g,"\n"));
-    assert.equal(await js('document.querySelector("[data-unsent-id=b]").getAttribute("aria-current")'),"true");
+    assert.equal(await js('document.querySelector(".session-open[data-session-id=b]").getAttribute("aria-current")'),"true");
     assert.equal(await js('document.getElementById("model-select").value'),"pro");
     assert.equal(await js('document.querySelectorAll("#proposal-list article").length'),1);
   });
@@ -158,32 +158,25 @@ async function main() {
     assert.match(await js('document.getElementById("request-status").textContent'),/已恢复/);
     assert.match(await js('document.getElementById("messages").textContent'),/刷新失败/);
   });
-  await check("未发送列表失败显示重试且不破坏聊天",async () => {
-    flags.list=true; await click(".unsent-list-refresh"); await idle();
-    assert.match(await js('document.querySelector(".unsent-list-status").textContent'),/读取未完成/);
-    assert.equal(await js('document.querySelector(".unsent-list-refresh").textContent'),"重试");
-    await click(".unsent-list-refresh"); await idle();
-    assert.equal(await js('document.querySelector(".unsent-list-refresh").textContent'),"刷新");
-  });
-  await check("手动刷新先保存输入且不替换当前消息与草稿节点",async () => {
-    await edit("刷新前输入");
-    await js('window.savedMessage=document.getElementById("messages").firstChild; window.savedProposal=document.getElementById("proposal-list").firstChild;');
-    await click(".unsent-list-refresh"); await idle();
-    assert.equal(entry("b").text,"刷新前输入");
-    assert.equal(await js('savedMessage===document.getElementById("messages").firstChild && savedProposal===document.getElementById("proposal-list").firstChild'),true);
+  await check("空对话并入统一列表，读取失败可重试且不破坏聊天",async () => {
+    flags.list=true; await click("#new-chat-button"); await idle();
+    assert.match(await js('document.querySelector(".session-list-status").textContent'),/读取失败/);
+    assert.equal(await js('document.querySelector(".session-list-retry").hidden'),false);
+    await click(".session-list-retry"); await idle();
+    assert.equal(await js('document.querySelector(".session-list-retry").hidden'),true);
   });
   await check("新建后刷新未发送条目且不回填旧输入",async () => {
     await click("#new-chat-button"); await idle();
     assert.match(current,/new-/); assert.equal(await js('document.getElementById("message-input").value'),"");
-    assert.equal(await js('document.querySelectorAll("#unsent-session-list [aria-current]").length'),0);
+    assert.equal(await js('document.querySelectorAll("#session-list [aria-current]").length'),0);
   });
   await check("目录切换清旧列表，项目打开恢复同目录列表",async () => {
     await click("#select-workspace-button"); await idle();
     assert.equal(workspace,"/qa/two");
-    assert.equal(await js('document.querySelectorAll(".unsent-list-open").length'),0);
+    assert.equal(await js('document.querySelectorAll("[data-empty-session]").length'),0);
     await click(".session-project-open"); await idle();
     assert.equal(workspace,"/qa/one");
-    assert.equal(await js('document.querySelectorAll(".unsent-list-open").length'),3);
+    assert.equal(await js('document.querySelectorAll("[data-empty-session]").length'),3);
   });
   await check("窄窗口恢复成功才关闭侧栏，失败保持入口",async () => {
     win.setContentSize(375,760); await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
@@ -208,18 +201,18 @@ async function main() {
     const gate=Promise.withResolvers(); flags.sendGate=gate;
     await edit("模拟发送原文"); await click("#send-button");
     await until('!document.getElementById("stop-button").disabled');
-    assert.equal(await js('[...document.querySelectorAll("#unsent-session-list button")].every(b=>b.disabled)'),true);
+    assert.equal(await js('[...document.querySelectorAll("#session-list button")].every(b=>b.disabled)'),true);
     await click("#stop-button"); await idle();
     assert.equal(await js('document.getElementById("message-input").value'),"");
     assert.equal(await js('document.getElementById("stop-button").disabled'),true);
   });
   await check("列表迟到结果在页面离开后失效",async () => {
     const gate=Promise.withResolvers(); flags.listGate=gate;
-    await click(".unsent-list-refresh"); await until('document.querySelector(".unsent-list-refresh").disabled');
+    await click("#new-chat-button"); await until('document.querySelector("#new-chat-button").disabled');
     await new Promise(r=>setTimeout(r,30));
-    await js('window.dispatchEvent(new Event("pagehide")); document.querySelector(".unsent-list-status").textContent="已离开页面";');
+    await js('window.dispatchEvent(new Event("pagehide")); document.querySelector(".session-list-status").textContent="已离开页面";');
     gate.resolve(); await until('!document.getElementById("new-chat-button").disabled');
-    assert.equal(await js('document.querySelector(".unsent-list-status").textContent'),"已离开页面");
+    assert.equal(await js('document.querySelector(".session-list-status").textContent'),"已离开页面");
   });
   await fs.writeFile(path.join(temporary,"report.json"),JSON.stringify({passed,errors},null,2));
   console.log(`通过 ${passed.length} 项实际页面模拟检查；截图与报告：${temporary}`); win.destroy();

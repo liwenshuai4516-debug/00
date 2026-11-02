@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const agent = {};
 for (const name of [
-  "loadHistory", "currentSession", "listSessions", "getSessionInfo", "listProposals", "listProjects",
+  "listUnsentSessions", "loadHistory", "currentSession", "listSessions", "getSessionInfo", "listProposals", "listProjects",
   "listModelProfiles", "switchModelProfile", "readModelSettings", "fetchModelCatalog", "loadComposerDraft", "saveComposerDraft", "inspectComposerSend",
   "addProject", "openProject", "openSession", "sendMessage", "stop", "newChat",
 ]) {

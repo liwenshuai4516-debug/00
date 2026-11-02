@@ -32,7 +32,8 @@ function setSearch(open) {
   searchToggle.setAttribute("aria-label", open ? "收起对话搜索" : "搜索对话");
   searchToggle.title = open ? "收起对话搜索" : "搜索对话";
   if (open) {
-    document.querySelector(".recent-sessions").open = true;
+    const recent = document.querySelector(".recent-sessions");
+    if (recent) recent.open = true;
     sessionSearch.focus();
   }
   else {

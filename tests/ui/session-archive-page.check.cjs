@@ -112,14 +112,12 @@ async function main() {
       const before = await store.load("b");
       await archive("b"); await idle();
       assert.equal(await service.currentSession(), "a");
-      assert.equal(await js(`document.querySelectorAll('.session-open').length`), 2);
+      assert.equal(await js(`document.querySelectorAll('.session-open:not([data-empty-session])').length`), 2);
       assert.equal(await js(`document.getElementById('message-input').value`), "归档前中文输入\n最后一行");
       assert.equal(await js(`document.querySelectorAll('#proposal-list article').length`), 1);
       const after = await store.load("b"); assert.deepEqual(after.draft, before.draft); assert.equal(after.pinnedAt, before.pinnedAt);
       assert.equal(await js(`document.querySelector('.archive-notice').hidden`), false);
-      await js(`document.querySelector('#history-preview').open=true`);
-      await until(`!document.querySelector('#history-preview select').disabled && !!document.querySelector('#history-preview option[value="a"]')`);
-      assert.equal(await js(`!!document.querySelector('#history-preview option[value="b"]')`), false);
+      assert.equal(await js(`document.querySelector('#history-preview')`), null);
     });
     await check("撤销不自动打开原会话，不打断新输入", async () => {
       await edit("撤销前后来输入"); await click(".archive-notice button"); await idle();
@@ -129,7 +127,7 @@ async function main() {
     await archive("b"); await idle();
     await check("已归档视图按目录分组，可搜索，点击仅只读预览", async () => {
       await view(true);
-      assert.equal(await js(`document.querySelectorAll('#session-list .session-open').length`), 2);
+      assert.equal(await js(`document.querySelectorAll('#session-list .session-open:not([data-empty-session])').length`), 2);
       assert.equal(await js(`document.querySelector('#session-list .session-view-switch')`), null);
       assert.equal(await js(`document.querySelector('#settings-archive-panel').hidden`), false);
       assert.equal(await js(`document.querySelectorAll('.session-preview').length`), 1);
@@ -211,7 +209,7 @@ async function main() {
       assert.match(await js(`document.querySelector('.session-list-status').textContent`), /已保存/);
       const count = calls.length; flags.listFail = false;
       await click('.session-list-retry'); await idle(); assert.equal(calls.length, count);
-      assert.equal(await js(`document.querySelectorAll('.session-open').length`), 2);
+      assert.equal(await js(`document.querySelectorAll('.session-open:not([data-empty-session])').length`), 2);
     });
     await check("当前归档返回丢失时核对实际编号并绑定新会话，不回填旧输入", async () => {
       flags.resultLost = true; await archive("a"); await idle(); flags.resultLost = false;

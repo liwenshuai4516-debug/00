@@ -75,8 +75,6 @@ select option { background: var(--surface); color: var(--text); }
 .session-list button[aria-current="true"] { background: var(--hover); font-weight: 500; }
 .session-list-empty { padding: 12px; line-height: 1.7; }
 .sidebar-footer { border-top: 1px solid var(--sidebar-divider); padding: 8px 8px 0; }
-.sidebar-footer summary { color: var(--muted); font-size: 13px; }
-#history-preview > button { margin-top: 10px; }
 .history-preview-content { max-height: 23dvh; }
 
 /* 页头保留标题与操作入口，详细信息按需展开。 */
@@ -228,17 +226,8 @@ select option { background: var(--surface); color: var(--text); }
 .window-close-dialog :focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 
 /* 最近列表可折叠，设置固定在侧栏底部。 */
-.recent-sessions {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-}
-.recent-sessions > summary {
-  padding: 10px 12px;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-}
+.sidebar-conversations { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.recent-sessions > summary { color: var(--muted); font-size: 13px; cursor: pointer; }
 .sidebar-footer .sidebar-action {
   width: 100%;
   margin-top: 8px;

@@ -15,7 +15,6 @@
   <!-- 新主题最后加载，保留现有组件样式文件。 -->
   <link rel="stylesheet" href="./styles/codex-theme.css" />
   <link rel="stylesheet" href="./styles/model-settings.css" />
-  <link rel="stylesheet" href="./styles/unsent-session-list.css" />
   <link rel="stylesheet" href="./styles/context-usage.css" />
   <link rel="stylesheet" href="./styles/settings.css" />
   <link rel="stylesheet" href="./styles/themes/sakura.css" />
@@ -66,33 +65,22 @@
         <svg class="icon" aria-hidden="true"><use href="#icon-search"/></svg>
         <input id="session-search" type="search" autocomplete="off" placeholder="搜索对话" aria-controls="session-list" />
       </label>
-      <section id="unsent-session-list" aria-label="当前工作目录的未发送对话"></section>
-      <section id="project-panel" class="project-panel" aria-labelledby="project-list-title" aria-busy="false">
-        <div class="project-panel-heading">
-          <h3 id="project-list-title" class="sidebar-section-title">项目与对话</h3>
-          <button id="add-project-button" class="icon-button" type="button" aria-label="添加项目" title="添加项目" disabled>
-            <svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg>
-          </button>
-        </div>
-        <p class="sr-only" role="status" aria-atomic="true">正在读取项目……</p>
-        <button id="reload-projects-button" type="button" hidden>重新读取项目</button>
-      </section>
+      <div class="sidebar-conversations">
+        <section id="project-panel" class="project-panel" aria-labelledby="project-list-title" aria-busy="false">
+          <div class="project-panel-heading">
+            <h3 id="project-list-title" class="sidebar-section-title">项目</h3>
+            <button id="add-project-button" class="icon-button" type="button" aria-label="添加项目" title="添加项目" disabled>
+              <svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg>
+            </button>
+          </div>
+          <p class="sr-only" role="status" aria-atomic="true">正在读取项目……</p>
+          <button id="reload-projects-button" type="button" hidden>重新读取项目</button>
+        </section>
 
-      <details class="recent-sessions" open>
-        <summary>最近</summary>
         <nav id="session-list" class="session-list" tabindex="-1" aria-label="历史对话" aria-busy="false"></nav>
-      </details>
+      </div>
 
       <div class="sidebar-footer">
-        <details id="history-preview">
-          <summary>只读查看历史</summary>
-          <p>仅预览，不切换当前对话。</p>
-          <label for="preview-session-select">历史对话</label>
-          <select id="preview-session-select"><option value="">展开后加载列表</option></select>
-          <button type="button" disabled>查看内容</button>
-          <p role="status"></p>
-          <div class="history-preview-content" aria-busy="false"></div>
-        </details>
         <button id="model-settings-button" class="sidebar-action" type="button" disabled>
           <svg class="icon" aria-hidden="true"><use href="#icon-settings" /></svg>
           设置

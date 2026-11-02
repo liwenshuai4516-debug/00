@@ -3,6 +3,7 @@ import { createArchiveNotice } from "./archive-notice.js";
 
 export function createSessionList(container, onSelect, onOpenProject, actions = {}) {
   const buttons = new Map();
+  const blockedIds = new Set();
   const projectButtons = [];
   const actionControls = [];
   const actionRows = new Map();
@@ -59,8 +60,8 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     retryAllowed = allowRetry;
     container.setAttribute("aria-busy", String(busy));
 
-    for (const button of buttons.values()) {
-      button.disabled = busy;
+    for (const [sessionId, button] of buttons) {
+      button.disabled = busy || blockedIds.has(sessionId);
     }
     for (const button of projectButtons) button.disabled = busy;
     for (const button of actionControls) button.disabled = busy;
@@ -71,6 +72,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
 
   function draw() {
     buttons.clear();
+    blockedIds.clear();
     projectButtons.length = 0;
     actionControls.length = 0;
     actionRows.clear();
@@ -83,15 +85,15 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
       .filter((session) => session.title.toLowerCase().includes(query))
       .sort((first, second) => second.updatedAt - first.updatedAt || first.id.localeCompare(second.id));
     const groups = new Map();
+    const projectsByDirectory = new Map(projects.map((project) => [project.workspaceDir, project]));
 
     for (const session of visibleSessions) {
-      // 使用完整目录作为键，同名文件夹不会被合并。
-      const key = session.workspaceDir;
+      // 只有登记项目才能认领对话；其他目录的对话统一放入“最近”。
+      const key = archivedView || projectsByDirectory.has(session.workspaceDir) ? session.workspaceDir : null;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(session);
     }
 
-    const projectsByDirectory = new Map(projects.map((project) => [project.workspaceDir, project]));
     // 已有对话仍按最近活动排序；没有对话的新项目也能从同一区域打开。
     if (!query && !archivedView) {
       for (const project of projects) {
@@ -99,7 +101,14 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
       }
     }
 
-    // 首次遇到的会话就是组内最新会话，分组也按最近活动排列。
+    // “最近”始终位于所有项目之后，折叠只影响未归属项目的对话。
+    if (!archivedView && (!query || groups.has(null))) {
+      const recent = groups.get(null) || [];
+      groups.delete(null);
+      groups.set(null, recent);
+    }
+
+    // 首次遇到的会话就是组内最新会话，项目也按最近活动排列。
     for (const [workspaceDir, groupSessions] of groups) {
       // 先按消息活动建立分组顺序，再只在组内提前置顶项。
       groupSessions.sort((first, second) => {
@@ -110,22 +119,29 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           || first.id.localeCompare(second.id);
       });
       const group = document.createElement("details");
-      group.className = "session-group";
+      group.className = workspaceDir === null ? "session-group recent-sessions" : "session-group";
       // 搜索时展开命中分组，不覆盖搜索前的折叠选择。
       group.open = Boolean(query) || !collapsed.has(workspaceDir);
 
       const summary = document.createElement("summary");
-      summary.title = workspaceDir || "未记录工作目录";
+      summary.title = workspaceDir === null ? "无项目归属的对话" : workspaceDir || "未记录工作目录";
 
       const project = projectsByDirectory.get(workspaceDir);
       const name = document.createElement(project && !archivedView ? "button" : "span");
       name.className = "session-group-name";
-      name.textContent = project?.name || (workspaceDir
+      name.textContent = workspaceDir === null ? "最近" : project?.name || (workspaceDir
         ? workspaceDir.split(/[\\/]/).filter(Boolean).at(-1) || workspaceDir
         : "未分类历史");
       if (project && !archivedView) {
         name.type = "button";
         name.classList.add("session-project-open");
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        icon.classList.add("icon");
+        icon.setAttribute("aria-hidden", "true");
+        const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+        use.setAttribute("href", "#icon-folder");
+        icon.append(use);
+        name.prepend(icon);
         name.disabled = busy;
         name.setAttribute("aria-label", `打开项目：${project.name}`);
         name.addEventListener("click", (event) => {
@@ -174,6 +190,12 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
 
       const items = document.createElement("div");
       items.className = "session-group-items";
+      if (workspaceDir === null && groupSessions.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "session-list-empty";
+        empty.textContent = "暂无对话。";
+        items.append(empty);
+      }
 
       for (const session of groupSessions) {
         const button = document.createElement("button");
@@ -182,11 +204,16 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
         button.dataset.sessionId = session.id;
         button.textContent = session.title;
         button.title = session.title;
-        button.disabled = busy;
+        button.disabled = busy || Boolean(session.blockedReason);
+        if (session.empty) button.dataset.emptySession = "true";
+        if (session.blockedReason) {
+          blockedIds.add(session.id);
+          button.setAttribute("aria-label", `${session.title}；${session.blockedReason}`);
+        }
 
         button.addEventListener("click", () => {
           // 展示归组不改变会话绑定，也不能绕过忙碌检查。
-          if (busy) return;
+          if (busy || session.blockedReason) return;
           if (archivedView) actions.onPreview?.(session.id, session.title);
           else if (session.id !== activeId) onSelect(session.id);
         });
@@ -209,7 +236,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           main.append(badge);
         }
         row.append(main);
-        if (actions.onSetPinned || (archivedView && actions.onSetArchived)) {
+        if (!session.empty && (actions.onSetPinned || (archivedView && actions.onSetArchived))) {
           const toggle = document.createElement("button");
           toggle.type = "button";
           toggle.className = "session-actions-toggle";
@@ -268,6 +295,12 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           row.append(toggle, panel);
           actionRows.set(session.id, { toggle, panel });
           actionControls.push(toggle, pin);
+        }
+        if (session.blockedReason) {
+          const reason = document.createElement("p");
+          reason.className = "session-blocked-reason";
+          reason.textContent = session.blockedReason;
+          row.append(reason);
         }
         items.appendChild(row);
       }
