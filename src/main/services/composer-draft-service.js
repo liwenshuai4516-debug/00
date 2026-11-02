@@ -44,6 +44,10 @@ function createComposerDraftService(sessionService, sessionStateStore) {
       knownSessions.get(sessionId),
       text,
       expectedRevision,
+      // 回调只查原编号；在同次状态写入中读取来源和实际模型。
+      typeof sessionService.readSessionRegistration === "function"
+        ? () => sessionService.readSessionRegistration(sessionId)
+        : undefined,
     );
 
     return {

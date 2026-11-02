@@ -18,6 +18,44 @@ function createSessionService(
   let sessionPromise;
   let activeCompaction;
 
+  // 只保留一个当前会话；已离开的会话仅保存小型元数据快照。
+  let observedSession;
+  const registrations = new Map();
+
+  function captureRegistration(session) {
+    const origin = session.desktopSessionOrigin;
+    // 缺少可信来源时保持未知，兼容旧调用，但不提供空会话重建证明。
+    if (origin !== "empty" && origin !== "history") return undefined;
+
+    const hasConversation = session.sessionManager.getEntries().some(
+      (entry) => entry.type === "message" &&
+        ["user", "assistant"].includes(entry.message?.role),
+    );
+    return {
+      workspaceDir: session.sessionManager.getCwd(),
+      source: origin === "history" || hasConversation ? "history" : "empty",
+      model: { provider: session.model?.provider, modelId: session.model?.id },
+    };
+  }
+
+  function observeSession(session) {
+    if (observedSession && observedSession !== session) {
+      registrations.set(observedSession.sessionId, captureRegistration(observedSession));
+    }
+    observedSession = session;
+    return session;
+  }
+
+  // 同步读取，不初始化、不切换；仅供主进程的状态更新回调使用。
+  function readSessionRegistration(sessionId) {
+    const registration = observedSession?.sessionId === sessionId
+      ? captureRegistration(observedSession)
+      : registrations.get(sessionId);
+    return registration ? {
+      ...registration, model: { ...registration.model },
+    } : undefined;
+  }
+
   // 初始化、新建和打开历史共用目录来源。
   // 创建失败时，由调用方保留原会话。
   async function createSession(resume = false, sessionPath) {
@@ -30,6 +68,7 @@ function createSessionService(
       // 同步保存 Promise，确保并发调用共享同一次初始化。
       sessionPromise = Promise.resolve()
         .then(() => createSession(resume))
+        .then(observeSession)
         .catch((error) => {
           sessionPromise = undefined;
           throw error;
@@ -328,7 +367,7 @@ function createSessionService(
 
     // 创建成功后再替换，打开失败时保留旧会话。
     const nextSession = await createSession(false, selected.path);
-    sessionPromise = Promise.resolve(nextSession);
+    sessionPromise = Promise.resolve(observeSession(nextSession));
     previousSession?.dispose();
 
     return getHistory(nextSession);
@@ -338,7 +377,7 @@ function createSessionService(
     const previousSession = sessionPromise ? await sessionPromise : undefined;
 
     const nextSession = await createSession();
-    sessionPromise = Promise.resolve(nextSession);
+    sessionPromise = Promise.resolve(observeSession(nextSession));
     previousSession?.dispose();
 
     // 返回实际创建的编号，供页面关联该会话的输入草稿。
@@ -374,7 +413,7 @@ function createSessionService(
     }
 
     // 两项准备均成功后才替换，失败时保留原会话及其草稿。
-    sessionPromise = Promise.resolve(nextSession);
+    sessionPromise = Promise.resolve(observeSession(nextSession));
     previousSession?.dispose();
 
     return {
@@ -430,7 +469,7 @@ function createSessionService(
       throw error;
     }
 
-    sessionPromise = Promise.resolve(nextSession);
+    sessionPromise = Promise.resolve(observeSession(nextSession));
     previousSession?.dispose();
     return result;
   }
@@ -451,6 +490,7 @@ function createSessionService(
 
   return {
     getSession,
+    readSessionRegistration,
     loadHistory,
     currentSession,
     getSessionInfo,

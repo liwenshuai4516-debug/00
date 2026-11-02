@@ -173,9 +173,15 @@ function createSessionStateStore(directory) {
     }));
   }
 
-  async function saveDraft(sessionId, workspaceDir, text, expectedRevision) {
+  async function saveDraft(
+    sessionId, workspaceDir, text, expectedRevision, readRegistration,
+  ) {
     if (typeof text !== "string" || !isRevision(expectedRevision)) {
       throw new Error("输入草稿或版本无效。");
+    }
+
+    if (readRegistration !== undefined && typeof readRegistration !== "function") {
+      throw new Error("会话登记读取方法无效。");
     }
 
     return update(sessionId, workspaceDir, (state) => {
@@ -183,10 +189,28 @@ function createSessionStateStore(directory) {
         throw new Error("输入草稿版本已变化，请重新读取后再保存。");
       }
 
+      // 到达写入队列时才读取，避免排队期间的旧模型覆盖实际选择。
+      const registration = readRegistration?.();
+      let nextRegistration = state.registration;
+      if (registration !== undefined) {
+        validateRegistration(registration);
+        if (registration.workspaceDir !== workspaceDir) {
+          throw new Error("会话恢复登记的工作目录不匹配。");
+        }
+        nextRegistration = {
+          source: state.registration?.source === "history" ? "history" : registration.source,
+          model: {
+            provider: registration.model.provider,
+            modelId: registration.model.modelId,
+          },
+        };
+      }
+
       return {
         ...state,
         // 空字符串也是明确保存，不能删除版本，否则旧输入可能重新写回。
         draft: { text, revision: expectedRevision + 1 },
+        ...(nextRegistration === undefined ? {} : { registration: nextRegistration }),
       };
     });
   }
