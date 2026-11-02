@@ -1,6 +1,7 @@
 import { createProviderAuthPanel } from "./model/provider-auth.js";
 import { createCatalogTools } from "./model/catalog-tools.js";
 import { createCatalogEnrichmentPanel } from "./model/catalog-enrichment.js";
+import { createProviderNavigation } from "./model/provider-navigation.js";
 
 export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, refreshProfiles) {
   const form = dialog.querySelector("form");
@@ -23,15 +24,28 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
   const environmentButton = dialog.querySelector("[data-environment]");
   const fetchButton = dialog.querySelector("[data-fetch-models]");
   const saveButton = form.querySelector('[type="submit"]');
+  const addProviderButton = dialog.querySelector("[data-add-provider]");
+  const refreshOfficialButton = dialog.querySelector("[data-refresh-official]");
+  const showEnrichmentButton = dialog.querySelector("[data-show-enrichment]");
   const field = (name) => form.elements.namedItem(name);
   let busy = true, loading = false, saving = false, ready = false;
   let sequence = 0;
   let data;
   let editingId = "";
   let unsubscribe;
+  const navigation = createProviderNavigation(dialog, selectProvider, id => {
+    savedSelect.value = id; describeSelected(); void editSelected();
+  });
   const providerAuth = createProviderAuthPanel(dialog.querySelector("[data-provider-auth]"), api, setPageBusy, refreshProfiles);
   const catalogTools = createCatalogTools(dialog.querySelector("[data-catalog-tools]"), api, setPageBusy, async provider => {
-    if (field("builtinProvider").value === provider) await loadModels();
+    if (field("builtinProvider").value !== provider) return;
+    const selectedModel = field("builtinModelId").value;
+    const pending = loadModels();
+    const token = sequence;
+    await pending;
+    if (token !== sequence || !dialog.open) return;
+    field("builtinModelId").value = selectedModel;
+    await refreshThinking();
   });
   const enrichment = createCatalogEnrichmentPanel(dialog.querySelector("[data-enrichment]"), api,
     () => field("kind").value === "custom" ? field("customModelId").value.trim() : "",
@@ -83,7 +97,13 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
     environmentButton.disabled = fields.disabled || !data?.environment ||
       !data.providers.some((item) => item.id === data.environment.provider);
     fetchButton.disabled = fields.disabled;
-    testButton.disabled = fields.disabled;
+    testButton.disabled = fields.disabled || !custom;
+    showEnrichmentButton.disabled = fields.disabled || !custom;
+    addProviderButton.disabled = fields.disabled;
+    refreshOfficialButton.disabled = fields.disabled || custom || !field("builtinProvider").value;
+    navigation.setBusy(fields.disabled);
+    dialog.querySelector("[data-editor-title]").textContent = editingId
+      ? `编辑服务商：${field(custom ? "customProvider" : "builtinProvider").value}` : "新增服务商";
     thinking.disabled = busy || loading || saving || !thinkingReady;
     if (data) {
       dialog.querySelector("[data-environment-hint]").textContent = data.environmentError
@@ -127,8 +147,45 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
     const selected = data?.profiles.find((item) => item.id === savedSelect.value);
     selectedInfo.textContent = selected
       ? `${selected.provider} / ${selected.modelId}\n${selected.baseUrl || "使用官方地址"}\n${selected.hasSavedKey ? "已有本机加密密钥" : selected.authMode === "oauth" ? "使用 OAuth 登录" : selected.authMode === "provider" ? "使用供应商激活密钥" : "使用原有 SDK 凭据"}`
-      : "可以在下方新增配置。";
+      : "选择左侧服务商，或添加自定义服务商。";
+    renderNavigation();
     update();
+  }
+
+  function renderNavigation() {
+    if (data) navigation.render(data, field("kind").value,
+      field(field("kind").value === "custom" ? "customProvider" : "builtinProvider").value, savedSelect.value);
+  }
+
+  function resetEditor(kind = "custom") {
+    editingId = ""; cancelEditButton.hidden = true; form.reset();
+    field("kind").value = kind;
+    field("apiKey").value = "";
+    for (const name of ["reasoning", "vision"]) delete field(name).dataset.edited;
+    saveButton.textContent = "保存";
+    savedSelect.value = ""; describeSelected();
+  }
+
+  async function selectProvider(kind, provider) {
+    if (fields.disabled) return;
+    const selected = data.profiles.find(item => item.kind === kind && item.provider === provider && item.id === savedSelect.value)
+      ?? data.profiles.find(item => item.kind === kind && item.provider === provider);
+    if (selected) {
+      savedSelect.value = selected.id; describeSelected(); await editSelected();
+    } else {
+      resetEditor(kind);
+      field(kind === "custom" ? "customProvider" : "builtinProvider").value = provider;
+      if (kind === "builtin") {
+        const capability = data.providers.find(item => item.id === provider);
+        field("authMode").value = capability?.supportsApiKey === false && capability.supportsOAuth ? "oauth" : "sdk";
+        const pending = loadModels();
+        const token = sequence;
+        await pending;
+        if (token !== sequence || !dialog.open) return;
+      }
+      renderNavigation(); update(); field("name").focus();
+      await refreshThinking();
+    }
   }
 
   async function loadModels() {
@@ -160,7 +217,7 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
       data = result;
       editingId = "";
       cancelEditButton.hidden = true;
-      saveButton.textContent = "保存为新配置";
+      saveButton.textContent = "保存";
       form.reset();
       for (const name of ["reasoning", "vision"]) delete field(name).dataset.edited;
       field("apiKey").value = "";
@@ -174,7 +231,9 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
       catalogTools.load(data);
       void providerAuth.load(data).catch(error => { status.textContent = error.message; });
       void enrichment.load().catch(error => { status.textContent = error.message; });
-      void refreshThinking();
+      loading = false;
+      if (savedSelect.value) void editSelected(false);
+      else { resetEditor(); void refreshThinking(); }
       status.textContent = data.encryptionAvailable
         ? "保存新增配置后，可立即切换；设为默认只影响以后新建的对话。"
         : "系统密钥保护不可用，暂不能保存新密钥。";
@@ -196,6 +255,8 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
       completed = true;
       data = await api.readModelSettings();
       renderProfiles(result?.id ?? savedSelect.value);
+      if (result?.id) await editSelected(false);
+      else if (editingId && !data.profiles.some(item => item.id === editingId)) resetEditor();
       await refreshProfiles();
       await refreshThinking();
       status.textContent = success;
@@ -226,14 +287,35 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
     if (event.key === "Escape" && event.isComposing) event.preventDefault();
   });
   dialog.addEventListener("cancel", (event) => { event.preventDefault(); close(); });
-  savedSelect.addEventListener("change", describeSelected);
+  savedSelect.addEventListener("change", () => { describeSelected(); void editSelected(); });
+  addProviderButton.addEventListener("click", () => {
+    if (addProviderButton.disabled) return;
+    resetEditor(); field("customProvider").focus();
+  });
+  refreshOfficialButton.addEventListener("click", () => {
+    if (refreshOfficialButton.disabled) return;
+    const catalog = dialog.querySelector("[data-catalog-tools]");
+    catalog.open = true;
+    catalog.querySelector("[data-catalog-provider]").value = field("builtinProvider").value;
+    catalogTools.setBusy(false);
+    catalog.querySelector("[data-refresh-builtin]").click();
+    catalog.scrollIntoView({ block: "nearest" });
+  });
+  showEnrichmentButton.addEventListener("click", () => {
+    if (showEnrichmentButton.disabled) return;
+    const section = dialog.querySelector("[data-enrichment]");
+    section.open = true; section.scrollIntoView({ block: "nearest" });
+    section.querySelector("textarea").focus();
+  });
   retryButton.addEventListener("click", () => { if (!retryButton.disabled) void load(); });
-  field("kind").addEventListener("change", () => { field("apiKey").value = ""; update(); });
+  field("kind").addEventListener("change", () => { field("apiKey").value = ""; renderNavigation(); update(); });
+  field("customProvider").addEventListener("change", () => { renderNavigation(); update(); });
   field("authMode").addEventListener("change", () => { field("apiKey").value = ""; update(); });
   field("builtinProvider").addEventListener("change", () => {
     field("apiKey").value = "";
     const capability = data?.providers.find(item => item.id === field("builtinProvider").value);
     if (capability?.supportsApiKey === false && capability.supportsOAuth) field("authMode").value = "oauth";
+    renderNavigation();
     void loadModels();
   });
   fetchButton.addEventListener("click", async () => {
@@ -315,11 +397,10 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
     void mutate(async () => { await api.setThinkingLevel(thinking.value); await refreshThinking(); }, "已更新当前对话的思考强度。");
   });
   for (const name of ["reasoning", "vision"]) field(name).addEventListener("change", () => { field(name).dataset.edited = "true"; });
-  editButton.addEventListener("click", async () => {
+  async function editSelected(focus = true) {
     const selected = data.profiles.find((item) => item.id === savedSelect.value);
-    if (!selected || editButton.disabled) return;
+    if (!selected) return;
     editingId = selected.id;
-    dialog.querySelector(".new-profile-editor").open = true;
     cancelEditButton.hidden = false;
     saveButton.textContent = "保存修改";
     field("name").value = selected.name;
@@ -338,17 +419,21 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
       for (const name of ["reasoning", "vision"]) field(name).dataset.edited = "true";
     } else {
       field("builtinProvider").value = selected.provider;
-      await loadModels();
-      if (!dialog.open || editingId !== selected.id) return;
+      const pending = loadModels();
+      const token = sequence;
+      await pending;
+      if (token !== sequence || !dialog.open || editingId !== selected.id) return;
       field("builtinModelId").value = selected.modelId;
     }
-    update();
-    field("name").focus();
+    renderNavigation(); update();
+    if (focus) field("name").focus();
+    await refreshThinking();
+  }
+  editButton.addEventListener("click", () => {
+    if (!editButton.disabled) void editSelected();
   });
   cancelEditButton.addEventListener("click", () => {
-    editingId = ""; cancelEditButton.hidden = true; form.reset();
-    for (const name of ["reasoning", "vision"]) delete field(name).dataset.edited;
-    saveButton.textContent = "保存为新配置"; update();
+    resetEditor();
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault(); if (saveButton.disabled) return;
@@ -367,7 +452,7 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
     };
     void mutate(async () => {
       const result = await api.saveModelSettings(input);
-      editingId = ""; cancelEditButton.hidden = true; saveButton.textContent = "保存为新配置";
+      editingId = ""; cancelEditButton.hidden = true; saveButton.textContent = "保存";
       return result;
     }, "配置已保存。选择“用于当前对话”即可切换。");
   });

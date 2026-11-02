@@ -79,6 +79,11 @@ async function main() {
     await run(`window.confirm=()=>true;window.prompt=()=>"复制的配置";undefined`);
     await click("#model-settings-button"); await idle();
     await check("设置读取使用真实预加载与IPC，保留聊天输入", `document.querySelector('#saved-model-profiles').options.length===2 && document.querySelector('#message-input').value==='保留聊天输入'`);
+    await check("供应商导航展示真实分组，打开后直接进入编辑", `document.querySelectorAll('[data-custom-providers] button').length===1 && document.querySelectorAll('[data-builtin-providers] button').length>0 && document.querySelector('[data-custom-providers] [aria-current=true] span').textContent==='gateway' && document.querySelector('#profile-name').value==='初始配置' && document.querySelectorAll('[data-model-cards] button').length===1`);
+    await click("[data-add-provider]");
+    await check("添加入口只重置编辑表单，聊天输入保留", `document.querySelector('#profile-kind').value==='custom' && document.querySelector('#profile-name').value==='' && document.querySelector('#profile-key').value==='' && document.querySelector('#message-input').value==='保留聊天输入'`);
+    assert.equal((await store.read()).profiles.length, 1); assert.equal(current, initial.id);
+    await click("[data-custom-providers] button"); await idle();
     await click("[data-edit]"); await idle();
     await fill("#profile-name", "编辑后的配置");
     await run(`document.querySelector('.new-profile-editor form').requestSubmit()`); await idle();
@@ -92,6 +97,10 @@ async function main() {
     const defaultId = (await store.read()).defaultProfileId;
     assert.notEqual(defaultId, current);
     await check("设置默认不切换当前对话，不丢聊天输入", `document.querySelector('#model-select').value===${JSON.stringify(current)} && document.querySelector('#message-input').value==='保留聊天输入'`);
+    await check("同一供应商聚合模型卡片，顶部显示默认配置", `document.querySelectorAll('[data-custom-providers] button').length===1 && document.querySelectorAll('[data-model-cards] button').length===2 && document.querySelector('[data-default-label]').textContent.includes('复制的配置')`);
+    await click("[data-model-cards] button"); await idle();
+    await check("模型卡片选择同步表单，不切换当前对话", `document.querySelector('#profile-name').value==='编辑后的配置' && document.querySelector('[data-model-cards] [aria-current=true]').textContent.includes('编辑后的配置')`);
+    assert.equal(current, edited.id); assert.equal((await store.read()).profiles.length, 2);
     await click("[data-edit]"); await idle();
     await click("[data-fetch-models]"); await idle();
     await check("编辑留空密钥可获取目录", `document.querySelector('#profile-model-options').options.length===2`);
@@ -100,11 +109,14 @@ async function main() {
     await click("[data-refresh-profile]"); await idle();
     await check("刷新目录包含新模型", `document.querySelector('[data-profile-catalog]').textContent.includes('new-model')`);
     await fill("#profile-context", ""); await fill("#profile-max-tokens", "");
+    await click("[data-show-enrichment]");
+    await check("补参数入口展开原有功能并可聚焦", `document.querySelector('[data-enrichment]').open && document.activeElement.id==='enrichment-ids'`);
     await click("[data-enrich]");
     await wait(`document.querySelector('[data-enrich-results] button')`);
     await click("[data-enrich-results] button");
     await check("公开目录参数明确来源并补充空白字段", `document.querySelector('[data-enrich-results]').textContent.includes('OpenRouter') && document.querySelector('#profile-context').value==='64000'`);
     await change("#model-thinking-level", "high"); await idle(); assert.equal(thinking, "high");
+    await click("[data-provider-auth] > summary");
     await change("#auth-provider", "gateway"); await wait(`!document.querySelector('#provider-key-value').disabled`);
     await fill("#provider-key-name", "密钥一"); await fill("#provider-key-value", "placeholder-1");
     await run(`document.querySelector('[data-provider-auth] form').requestSubmit()`); await idle();
@@ -134,16 +146,25 @@ async function main() {
     await run(`Array.from(document.querySelectorAll('[data-oauth-flow] button')).find(b=>b.textContent==='取消登录').click()`);
     await wait(`document.querySelector('[data-oauth-flow]').textContent.includes('已取消')`);
     await check("登录、退出、取消均接通事件链路", `!document.querySelector('#provider-oauth-response')`);
-    await change("#catalog-provider", "deepseek");
-    await click("[data-refresh-builtin]"); await idle(); assert.equal(officialRefreshes, 1);
+    await run(`Array.from(document.querySelectorAll('[data-builtin-providers] button')).find(b=>b.querySelector('span').textContent==='DeepSeek').click()`); await idle();
+    await check("官方供应商选择加载模型，测试连接入口不误用自定义接口", `document.querySelector('#profile-builtin-provider').value==='deepseek' && document.querySelector('#profile-builtin-model').options.length>1 && document.querySelector('[data-test-connection]').disabled && !document.querySelector('[data-refresh-official]').disabled`);
+    assert.equal(current, edited.id); assert.equal((await store.read()).profiles.length, 2);
+    await change("#profile-builtin-model", "deepseek-flash");
+    await click("[data-refresh-official]"); await idle(); assert.equal(officialRefreshes, 1);
+    await check("顶部刷新同步供应商并保留所选模型", `document.querySelector('[data-catalog-tools]').open && document.querySelector('#catalog-provider').value==='deepseek' && document.querySelector('#profile-builtin-model').value==='deepseek-flash'`);
     await run(`document.querySelector('[data-catalog-tools] details').open=true`);
     await fill("#catalog-model-id", "manual-test-model"); await fill("#catalog-context", "64000"); await fill("#catalog-max-tokens", "4000");
     await run(`document.querySelector('[data-append-model]').requestSubmit()`); await idle();
     assert.ok((await settings.listModels("deepseek")).some(model => model.id === "manual-test-model"));
-    for (const width of [1280, 390]) {
+    await click("[data-custom-providers] button"); await idle();
+    await run(`document.documentElement.style.setProperty('--page','rgb(246, 247, 248)'); document.documentElement.style.setProperty('--sidebar','rgb(232, 233, 234)'); document.documentElement.style.setProperty('--surface','rgb(222, 223, 224)');`);
+    await check("背景颜色跟随主题变量", `getComputedStyle(document.querySelector('#model-settings-dialog')).backgroundColor==='rgb(246, 247, 248)' && getComputedStyle(document.querySelector('.new-profile-editor')).backgroundColor==='rgb(246, 247, 248)' && getComputedStyle(document.querySelector('.settings-navigation')).backgroundColor==='rgb(232, 233, 234)' && getComputedStyle(document.querySelector('.model-limits-row')).backgroundColor==='rgb(222, 223, 224)'`);
+    await run(`for(const name of ['--page','--sidebar','--surface'])document.documentElement.style.removeProperty(name)`);
+    for (const width of [1280, 800, 390]) {
       win.setSize(width, 860);
       await run(`document.querySelector('.settings-content').scrollTop=0;new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
       await check(`设置${width}宽度无横向溢出`, `document.querySelector('.settings-content').scrollWidth<=document.querySelector('.settings-content').clientWidth+1 && document.querySelector('#model-settings-dialog').getBoundingClientRect().right<=innerWidth`);
+      if (width === 390) await check("窄窗口供应商横向滚动且名称可读，编辑区独立滚动", `document.querySelector('.model-provider-groups').scrollWidth>document.querySelector('.model-provider-groups').clientWidth && document.querySelector('[data-builtin-providers] button span').getBoundingClientRect().width>60 && getComputedStyle(document.querySelector('.settings-content')).overflowY==='auto'`);
       if (process.env.MODEL_UI_ARTIFACT_DIR) {
         await mkdir(process.env.MODEL_UI_ARTIFACT_DIR, { recursive: true });
         await writeFile(path.join(process.env.MODEL_UI_ARTIFACT_DIR, `settings-${width}.png`), (await win.webContents.capturePage()).toPNG());
@@ -153,6 +174,6 @@ async function main() {
     await check("关闭恢复原聊天和输入操作", `!document.querySelector('#model-settings-dialog').open && document.querySelector('#message-input').value==='保留聊天输入' && !document.querySelector('#message-input').disabled`);
     assert.ok(fetches >= 4); assert.deepEqual(errors, []);
     console.log(`模型管理 ${passed} 项页面检查通过。`);
-  } finally { settings.oauth.dispose(); settings.enrichment.dispose(); win.destroy(); await rm(temporary, { recursive: true, force: true }); }
+  } finally { settings.oauth.dispose(); settings.enrichment.dispose(); win.destroy(); await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }
 main().then(() => app.quit()).catch(error => { console.error(error); app.exit(1); });

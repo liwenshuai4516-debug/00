@@ -104,7 +104,7 @@ async function main() {
     await click("[data-edit]");
     await check("编辑加载非敏感字段，密钥留空并保留默认配置", `document.querySelector('#profile-name').value==='演示模型'&&document.querySelector('#profile-custom-model').value==='demo-model'&&document.querySelector('#profile-key').value===''&&!document.querySelector('#profile-key').required&&document.querySelector('[data-hide]').disabled`);
     await click("[data-cancel-edit]");
-    await run(`document.querySelector('.new-profile-editor').open=true;const form=document.querySelector('#model-settings-dialog form');form.elements.kind.value='custom';form.elements.kind.dispatchEvent(new Event('change'));form.elements.baseUrl.value='https://example.invalid/v1';form.elements.apiKey.value='example-key';`);
+    await run(`const form=document.querySelector('#model-settings-dialog form');form.elements.kind.value='custom';form.elements.kind.dispatchEvent(new Event('change'));form.elements.baseUrl.value='https://example.invalid/v1';form.elements.apiKey.value='example-key';`);
     await click("[data-fetch-models]");
     await wait(`document.querySelectorAll('#profile-model-options option').length===2`);
     await check("获取模型列表可用于选择且状态不显示密钥", `document.querySelector('#profile-model-options option').value==='model-a'&&!document.querySelector('#model-settings-dialog [role=status]').textContent.includes('example-key')`);
