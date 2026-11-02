@@ -28,31 +28,8 @@ function registerAgentIpc(
       });
   }
 
-  // 配置读取独立于会话初始化；保存与发送、切换等共用互斥入口。
-  ipcMain.handle("agent:read-model-settings", () =>
-    modelSettingsService.read(),
-  );
-  ipcMain.handle("agent:list-settings-models", (_event, provider) =>
-    modelSettingsService.listModels(provider),
-  );
-  ipcMain.handle("agent:save-model-settings", (_event, settings) => {
-    return runIdleOperation(() =>
-      modelSettingsService.save({
-        name: settings?.name, kind: settings?.kind,
-        provider: settings?.provider, modelId: settings?.modelId,
-        baseUrl: settings?.baseUrl, authMode: settings?.authMode, apiKey: settings?.apiKey,
-        api: settings?.api, contextWindow: settings?.contextWindow, maxTokens: settings?.maxTokens,
-      }),
-    );
-  });
-
-  ipcMain.handle("agent:set-default-model-profile", (_event, id) =>
-    runIdleOperation(() => modelSettingsService.setDefault(id)),
-  );
-  ipcMain.handle("agent:list-model-profiles", () => sessionService.listModelProfiles());
-  ipcMain.handle("agent:switch-model-profile", (_event, id) =>
-    runIdleOperation(() => sessionService.switchModelProfile(id)),
-  );
+  const { registerModelIpc } = require("./model-ipc.js");
+  registerModelIpc(ipcMain, modelSettingsService, sessionService, runIdleOperation);
 
   ipcMain.handle("agent:load-history", () => sessionService.loadHistory());
   ipcMain.handle("agent:current-session", () =>

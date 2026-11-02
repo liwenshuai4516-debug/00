@@ -36,6 +36,8 @@ test("信息来自真实会话对象，返回字段不包含密钥或完整 SDK 
     provider: "test-provider",
     modelId: "actual-model",
     contextUsage: null,
+    thinkingLevel: "off",
+    thinkingLevels: ["off"],
   });
 });
 
@@ -64,6 +66,8 @@ test("新建成功后信息跟随新会话", async () => {
     provider: "test-provider",
     modelId: "model-b",
     contextUsage: null,
+    thinkingLevel: "off",
+    thinkingLevels: ["off"],
   });
 });
 

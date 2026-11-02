@@ -13,6 +13,24 @@ export async function installModelProfile(runtime, profile) {
   }
 
   const providerId = `${PROFILE_PREFIX}${profile.id}`;
+  if (["provider", "oauth"].includes(profile.authMode)) {
+    runtime.desktopCredentialAliases?.set(providerId, profile.provider);
+    if (profile.authMode === "oauth") {
+      const native = runtime.getProvider(profile.provider);
+      if (!native?.auth.oauth) throw new Error("供应商不支持 OAuth。");
+      const model = { ...profile.model, provider: providerId };
+      runtime.registerNativeProvider({ ...native, id: providerId, name: profile.name,
+        getModels: () => [model], getAllModels: () => [model], refreshModels: undefined,
+        auth: { oauth: native.auth.oauth },
+      });
+    } else {
+      runtime.registerProvider(providerId, { name: profile.name, api: profile.model.api,
+        baseUrl: profile.model.baseUrl, models: [profile.model] });
+    }
+    await runtime.refresh({ allowNetwork: false });
+    if (!runtime.hasConfiguredAuth(providerId)) throw new Error("供应商尚未登录或没有激活密钥，请在设置中配置。");
+    return runtime.getModel(providerId, profile.modelId);
+  }
   const existing = runtime.getModel(providerId, profile.modelId);
   if (existing && runtime.hasConfiguredAuth(providerId)) return existing;
   let apiKey = profile.apiKey;

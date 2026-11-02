@@ -33,6 +33,8 @@ test("有效配置能初始化及新建真实 Pi 会话，不请求模型", asyn
       workspaceDir: realpathSync(process.env.AGENT_WORKSPACE_DIR),
       provider: first.model.provider,
       modelId: first.model.id,
+      thinkingLevel: first.thinkingLevel,
+      thinkingLevels: first.getAvailableThinkingLevels(),
       contextUsage: first.getContextUsage() ?? null,
     });
       assert.equal(first.sessionManager.getCwd(), realpathSync(process.env.AGENT_WORKSPACE_DIR));

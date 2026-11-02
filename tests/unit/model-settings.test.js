@@ -89,6 +89,25 @@ test("默认与历史独立，缺失及不匹配选择不得套用默认", async
   await assert.rejects(store.resolveSelection({ provider: "other", modelId: input.modelId }), /其他供应商/);
 });
 
+test("编辑保留密钥和历史快照，移除不破坏旧会话", async (t) => {
+  const { service, store, input } = await setup(t);
+  const original = await service.save(input);
+  const edited = await service.save({ ...input, replaceId: original.id, apiKey: "", baseUrl: "https://new.example.invalid/v1" });
+  assert.notEqual(edited.id, original.id);
+  assert.equal((await store.read()).defaultProfileId, edited.id);
+  assert.deepEqual((await store.read()).profiles.map((item) => item.id), [edited.id]);
+  assert.equal((await store.loadProfile(edited.id)).apiKey, input.apiKey);
+  assert.equal((await store.resolveSelection({ provider: PROFILE_PREFIX + original.id, modelId: input.modelId })).baseUrl, input.baseUrl);
+  await assert.rejects(store.hide(edited.id), /先选择其他默认/);
+  const other = await service.save({ ...input, name: "其他" });
+  await service.setDefault(other.id);
+  await store.hide(edited.id);
+  assert.deepEqual((await store.read()).profiles.map((item) => item.id), [other.id]);
+  const current = await service.listForSession({ model: { provider: PROFILE_PREFIX + edited.id, id: input.modelId } });
+  assert.equal(current.currentProfileId, edited.id);
+  assert.ok(current.profiles.some((item) => item.id === edited.id));
+});
+
 test("非法地址、协议、窗口、缺密钥及重名保留原文件", async (t) => {
   const { service, file, input } = await setup(t);
   await service.save(input);
@@ -146,8 +165,10 @@ test("内置模型保留真实元信息，未知供应商或模型拒绝", async
   const added = await service.save(config);
   const profile = await store.loadProfile(added.id);
   const catalog = await createSettingsCatalog();
-  assert.deepEqual((await service.read()).providers.map(item => item.id).sort(), ["anthropic", "deepseek", "openai"]);
-  await assert.rejects(service.listModels("azure"), /自定义兼容接口/);
+  const providers = (await service.read()).providers.map(item => item.id);
+  assert.ok(["anthropic", "deepseek", "openai"].every(id => providers.includes(id)));
+  assert.ok(providers.some(id => !["anthropic", "deepseek", "openai"].includes(id)));
+  await assert.rejects(service.listModels("not-a-provider"), /自定义兼容接口/);
   assert.equal(profile.model.contextWindow, catalog.getModel("deepseek", "deepseek-flash").contextWindow);
   assert.equal(profile.model.baseUrl, catalog.getModel("deepseek", "deepseek-flash").baseUrl);
   await assert.rejects(service.save({ ...config, name: "missing", modelId: "missing" }), /未登记/);
@@ -171,7 +192,7 @@ test("配置IPC白名单与互斥；读取无需会话初始化", async () => {
   assert.throws(() => handlers.get("agent:switch-model-profile")({}, "id"), /等待当前回复/);
   busy = false;
   await handlers.get("agent:save-model-settings")({}, { name: "A", path: "rejected", encryptedKey: "rejected" });
-  assert.deepEqual(Object.keys(calls[0]).sort(), ["name", "kind", "provider", "modelId", "baseUrl", "authMode", "apiKey", "api", "contextWindow", "maxTokens"].sort());
+  assert.deepEqual(Object.keys(calls[0]).sort(), ["name", "kind", "provider", "modelId", "baseUrl", "authMode", "apiKey", "api", "contextWindow", "maxTokens", "replaceId", "reasoning", "vision"].sort());
   assert.equal(calls[0].name, "A");
   const pending = handlers.get("agent:set-default-model-profile")({}, "id");
   await Promise.resolve();
@@ -225,4 +246,44 @@ test("启动地址无效仍可查看页面，但不能交给运行时发送密�
   });
   assert.equal((await store.read()).profiles[0].id, "legacy");
   await assert.rejects(store.resolveSelection(), /API 地址/);
+});
+
+test("复制、目录刷新合并、留空密钥探测与默认恢复保留历史快照", async t => {
+  const { store, crypto, input, file } = await setup(t, { PI_PROVIDER: "deepseek", PI_MODEL: "deepseek-flash" });
+  let requests = 0;
+  const service = createModelSettingsService(store, undefined, { fetch: async (_url, options) => {
+    requests++;
+    assert.equal(options.headers.authorization, "Bearer placeholder-A");
+    return { ok: true, json: async () => ({ data: [{ id: "new-model", context_window: 64000, max_tokens: 4000 }] }) };
+  } });
+  const saved = await service.save(input);
+  const cloned = await service.clone(saved.id, "配置副本");
+  assert.notEqual(cloned.id, saved.id);
+  assert.equal((await store.loadProfile(cloned.id)).apiKey, input.apiKey);
+  await store.mergeCatalog(`profile:${saved.id}`, [{ id: "new-model", contextWindow: 32000 }]);
+  assert.equal((await service.refreshProfile(saved.id)).models[0].contextWindow, 32000);
+  assert.deepEqual(await service.fetchCatalog({ profileId: saved.id, baseUrl: input.baseUrl, api: input.api }), ["new-model"]);
+  assert.equal(requests, 2);
+  await assert.rejects(service.fetchCatalog({ profileId: saved.id, baseUrl: "https://other.invalid", api: input.api }), /地址已改变/);
+  assert.equal(requests, 2);
+  await service.setDefault(saved.id); await service.clearDefault();
+  assert.equal((await store.read()).defaultProfileId, "legacy");
+  const reopened = createModelSettingsStore(file, crypto, {});
+  assert.equal((await reopened.loadProfile(saved.id)).modelId, input.modelId);
+  assert.equal((await reopened.readCatalog(`profile:${saved.id}`))[0].maxTokens, 4000);
+});
+
+test("手工补充内置模型保留完整参数，目录缓存不接收凭据或无效参数", async t => {
+  const { store, service, file, crypto } = await setup(t);
+  await service.appendBuiltin("deepseek", { modelId: "future-test-model", api: "openai-completions", contextWindow: 64000, maxTokens: 4000, reasoning: true, vision: false });
+  assert.ok((await service.listModels("deepseek")).some(item => item.id === "future-test-model"));
+  const saved = await service.save({ name: "手工模型", kind: "builtin", provider: "deepseek", modelId: "future-test-model", baseUrl: "", authMode: "saved", apiKey: "placeholder" });
+  assert.equal((await store.loadProfile(saved.id)).model.reasoning, true);
+  await assert.rejects(service.appendBuiltin("deepseek", { modelId: "future-test-model", api: "openai-completions", contextWindow: 64000, maxTokens: 4000 }), /已存在/);
+  await store.mergeCatalog("profile:manual", [{ id: "x", apiKey: "private", encryptedKey: "private" }]);
+  assert.equal(JSON.stringify(await store.readCatalog("profile:manual")).includes("private"), false);
+  const before = await readFile(file, "utf8");
+  await assert.rejects(store.mergeCatalog("profile:bad", [{ id: "x", contextWindow: -1 }]));
+  assert.equal(await readFile(file, "utf8"), before);
+  assert.ok((await createModelSettingsStore(file, crypto, {}).loadProfile(saved.id)).model.baseUrl);
 });

@@ -67,7 +67,7 @@ const chat = {
 };
 registerAgentIpc(ipcMain,session,chat,{}, {}, { exportConversation:async () => ({ canceled:true }) },
   { selectWorkspace:async () => { workspace="/qa/two"; current="other"; return { sessionId:current,workspaceDir:workspace }; } },
-  { listProjects:async () => [{ id:"p",name:"测试项目",workspaceDir:"/qa/one" }],openProject:async () => { workspace="/qa/one"; current="a"; return { sessionId:current,history:history(current) }; },addProject:async () => ({ canceled:true }) },composer,{read:async()=>({profiles:[],providers:[],defaultProfileId:"",encryptionAvailable:false,environment:null})});
+  { listProjects:async () => [{ id:"p",name:"测试项目",workspaceDir:"/qa/one" }],openProject:async () => { workspace="/qa/one"; current="a"; return { sessionId:current,history:history(current) }; },addProject:async () => ({ canceled:true }) },composer,{oauth:{list:()=>[],subscribe:()=>()=>{}},enrichment:{list:()=>[],subscribe:()=>()=>{}},read:async()=>({profiles:[],providers:[],defaultProfileId:"",encryptionAvailable:false,environment:null})});
 
 
 const { registerWindowCloseGuard } = require(path.join(root, "src/main/lifecycle/window-close-guard.js"));

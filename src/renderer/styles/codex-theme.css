@@ -57,7 +57,7 @@ select option { background: var(--surface); color: var(--text); }
 #session-search { min-height: 44px; padding-left: 40px; border-color: transparent; background: #2c2c2c; }
 #session-search:focus { border-color: var(--border); }
 .sidebar-section-title { padding: 14px 12px 4px; font-size: 12px; font-weight: 500; }
-#session-list { flex: 1 1 0; min-height: 0; overflow-y: auto; gap: 2px; padding: 2px; }
+#session-list { gap: 2px; padding: 2px; }
 .session-list button { flex-shrink: 0; min-height: 40px; padding: 9px 12px; border: 0; font-size: 14px; font-weight: 400; }
 .session-list button[aria-current="true"] { background: var(--hover); font-weight: 500; }
 .session-list-empty { padding: 12px; line-height: 1.7; }
@@ -213,3 +213,25 @@ select option { background: var(--surface); color: var(--text); }
 .window-close-dialog h2 { margin-top: 0; font-size: 18px; }
 .window-close-dialog p { margin-bottom: 0; color: var(--muted); line-height: 1.6; }
 .window-close-dialog :focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+
+/* 最近列表可折叠，设置固定在侧栏底部。 */
+.recent-sessions {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+.recent-sessions > summary {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.sidebar-footer .sidebar-action {
+  width: 100%;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.sidebar-footer .sidebar-action:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}

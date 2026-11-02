@@ -63,7 +63,8 @@ export async function createPiAgent(
     ? recovery.registration.model
     : sessionManager.getBranch().findLast((entry) => entry.type === "model_change") ??
       sessionManager.buildSessionContext().model;
-  const runtime = await ModelRuntime.create();
+  const runtime = managed && modelSettings.createRuntime
+    ? await modelSettings.createRuntime() : await ModelRuntime.create();
   let model;
   if (managed) {
     const profile = await modelSettings.resolveSelection(savedSelection);

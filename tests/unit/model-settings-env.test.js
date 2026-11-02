@@ -88,7 +88,9 @@ test("实际启动入口加载临时.env，真实SDK使用其中的模型、地�
     let windowCount = 0;
     const handlers = new Map();
     class BrowserWindow {
-      constructor() { windowCount++; }
+      constructor() { windowCount++; this.webContents = { on() {}, removeListener() {} }; }
+      on() {}
+      removeListener() {}
       once() {}
       loadFile() {}
       static getAllWindows() { return []; }
@@ -98,7 +100,7 @@ test("实际启动入口加载临时.env，真实SDK使用其中的模型、地�
       const context = {
         require(name) {
           if (name === "electron") return {
-            BrowserWindow, dialog: {}, ipcMain: { handle(name, fn) { assert.ok(!handlers.has(name)); handlers.set(name, fn); } },
+            BrowserWindow, dialog: {}, ipcMain: { on() {}, removeListener() {}, handle(name, fn) { assert.ok(!handlers.has(name)); handlers.set(name, fn); } },
             app: { whenReady: () => Promise.resolve(), getPath: () => path.join(base, "userData"), on() {}, quit() {} },
             safeStorage: { isEncryptionAvailable: () => true, encryptString: value => Buffer.from(value), decryptString: data => data.toString() },
           };

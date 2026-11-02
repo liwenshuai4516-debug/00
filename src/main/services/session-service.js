@@ -233,6 +233,8 @@ function createSessionService(
       provider: model?.provider ?? "",
       modelId: model?.id ?? "",
       ...(profileInfo ?? {}),
+      thinkingLevel: session.thinkingLevel ?? "off",
+      thinkingLevels: session.getAvailableThinkingLevels?.() ?? ["off"],
 
       // 只返回页面需要的字段，不传递完整 SDK 对象。
       // tokens 和 percent 为 null 时表示暂时无法估算。
@@ -312,6 +314,17 @@ function createSessionService(
     return switchAndSync(session, () =>
       session.desktopModelSettings.switchProfile(session, id),
     );
+  }
+
+  async function setThinkingLevel(level) {
+    const session = await getSession(true);
+    if (!session.getAvailableThinkingLevels?.().includes(level)) throw new Error("当前模型不支持所选思考强度。");
+    session.setThinkingLevel(level, { persist: false });
+    return { thinkingLevel: session.thinkingLevel, thinkingLevels: session.getAvailableThinkingLevels() };
+  }
+
+  async function refreshModelAuth() {
+    if (observedSession) await observedSession.modelRuntime.refresh({ allowNetwork: false });
   }
 
   // 记录用户确认保存的事实，不主动请求模型回复。
@@ -739,6 +752,8 @@ function createSessionService(
     switchModel,
     listModelProfiles,
     switchModelProfile,
+    setThinkingLevel,
+    refreshModelAuth,
     compactSession,
     cancelCompaction,
     recordWorkspaceEdit,

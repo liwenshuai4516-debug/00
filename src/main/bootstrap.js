@@ -7,9 +7,11 @@ const { createSessionStateStore } = require("./storage/session-state-store.js");
 const {
   createComposerDraftService,
 } = require("./services/composer-draft-service.js");
-const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell } = require("electron");
 const { createModelSettingsStore } = require("./storage/model-settings-store.js");
 const { createModelSettingsService } = require("./services/model-settings-service.js");
+const { createModelCatalogStore } = require("./storage/model-catalog-store.js");
+const { createModelCredentialsStore } = require("./storage/model-credentials-store.js");
 const path = require("node:path");
 const { loadEnvFile } = require("node:process");
 const { createSessionService } = require("./services/session-service.js");
@@ -57,7 +59,19 @@ const modelSettingsStore = createModelSettingsStore(
     decryptString: (value) => safeStorage.decryptString(value),
   },
 );
-const modelSettingsService = createModelSettingsService(modelSettingsStore);
+const modelCredentialsStore = createModelCredentialsStore(
+  path.join(app.getPath("userData"), "model-credentials.json"),
+  {
+    isEncryptionAvailable: () => modelSettingsStore.canEncrypt(),
+    encryptString: value => safeStorage.encryptString(value),
+    decryptString: value => safeStorage.decryptString(value),
+  },
+);
+const modelSettingsService = createModelSettingsService(modelSettingsStore, undefined, {
+  catalogStore: createModelCatalogStore(path.join(app.getPath("userData"), "model-catalogs")),
+  credentialsStore: modelCredentialsStore, openExternal: url => shell.openExternal(url),
+});
+app.on("will-quit", () => { modelSettingsService.oauth.dispose(); modelSettingsService.enrichment.dispose(); });
 
 // 每次创建会话按自身记录解析配置；新会话才读取默认选择。
 async function createConfiguredAgent(sessionDir, resume, sessionPath, workspaceDir, recovery, resumeOptions) {

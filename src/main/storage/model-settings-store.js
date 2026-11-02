@@ -3,7 +3,7 @@ const { randomUUID } = require("node:crypto");
 const { readFile, mkdir, writeFile, rename, rm } = require("node:fs/promises");
 
 const PROFILE_PREFIX = "desktop-profile-";
-const CUSTOM_APIS = ["openai-completions", "openai-responses", "anthropic-messages"];
+const CUSTOM_APIS = ["openai-completions", "openai-responses", "anthropic-messages", "google-generative-ai"];
 
 function text(value, label) {
   if (typeof value !== "string") throw new Error(`${label}必须是文本。`);
@@ -25,7 +25,7 @@ function normalizeProfile(input) {
   if (!profile.name || profile.name.length > 80 || !profile.provider || !profile.modelId) {
     throw new Error("请填写配置名称、供应商和模型 ID。");
   }
-  if (!["sdk", "saved"].includes(profile.authMode)) throw new Error("请选择凭据来源。");
+  if (!["sdk", "saved", "provider", "oauth"].includes(profile.authMode)) throw new Error("请选择凭据来源。");
   if (profile.baseUrl) {
     const url = URL.canParse(profile.baseUrl) ? new URL(profile.baseUrl) : null;
     if (!url || !["http:", "https:"].includes(url.protocol) ||
@@ -34,7 +34,7 @@ function normalizeProfile(input) {
     }
   }
   if (profile.kind === "custom") {
-    if (!profile.baseUrl || profile.authMode !== "saved" || !CUSTOM_APIS.includes(input.api)) {
+    if (!profile.baseUrl || !["saved", "provider"].includes(profile.authMode) || !CUSTOM_APIS.includes(input.api)) {
       throw new Error("自定义供应商需要地址、API 密钥和支持的接口协议。");
     }
     if (!Number.isSafeInteger(input.contextWindow) || !Number.isSafeInteger(input.maxTokens) ||
@@ -43,8 +43,10 @@ function normalizeProfile(input) {
     }
     Object.assign(profile, {
       api: input.api, contextWindow: input.contextWindow, maxTokens: input.maxTokens,
+      reasoning: input.reasoning === true, vision: input.vision === true,
     });
   }
+  if (profile.authMode === "oauth" && (profile.kind !== "builtin" || profile.baseUrl)) throw new Error("OAuth 配置请使用内置供应商的官方地址。");
   return profile;
 }
 
@@ -76,6 +78,7 @@ function createModelSettingsStore(settingsPath, safeStorage, env = process.env) 
       ids.add(profile.id);
       if (typeof profile.encryptedKey !== "string" ||
         (profile.authMode === "saved") !== Boolean(profile.encryptedKey)) throw new Error();
+      if (profile.hidden !== undefined && typeof profile.hidden !== "boolean") throw new Error();
       if (profile.id !== "legacy") {
         const model = profile.model;
         if (!model || model.id !== profile.modelId || typeof model.api !== "string" ||
@@ -84,8 +87,20 @@ function createModelSettingsStore(settingsPath, safeStorage, env = process.env) 
           typeof model.baseUrl !== "string" || !model.baseUrl) throw new Error();
       }
     }
-    if (record.profiles.length ? !ids.has(record.defaultProfileId) : record.defaultProfileId !== "") {
+    if (record.profiles.length ? !record.profiles.some((profile) => profile.id === record.defaultProfileId && !profile.hidden) : record.defaultProfileId !== "") {
       throw new Error();
+    }
+    if (record.catalogs !== undefined) {
+      if (!Array.isArray(record.catalogs) || new Set(record.catalogs.map(item => item.id)).size !== record.catalogs.length) throw new Error();
+      for (const catalog of record.catalogs) {
+        if (typeof catalog.id !== "string" || !catalog.id || !Array.isArray(catalog.models)) throw new Error();
+        for (const model of catalog.models) {
+          if (typeof model.id !== "string" || !model.id) throw new Error();
+          for (const name of ["name", "api"]) if (model[name] !== undefined && typeof model[name] !== "string") throw new Error();
+          for (const name of ["contextWindow", "maxTokens"]) if (model[name] !== undefined && (!Number.isSafeInteger(model[name]) || model[name] < 1)) throw new Error();
+          for (const name of ["reasoning", "vision"]) if (model[name] !== undefined && typeof model[name] !== "boolean") throw new Error();
+        }
+      }
     }
     return record;
   }
@@ -118,12 +133,16 @@ function createModelSettingsStore(settingsPath, safeStorage, env = process.env) 
       id, name, kind, provider, modelId, baseUrl, authMode,
       hasSavedKey: Boolean(profile.encryptedKey),
       api: profile.model?.api ?? profile.api ?? "",
+      contextWindow: profile.contextWindow ?? profile.model?.contextWindow,
+      maxTokens: profile.maxTokens ?? profile.model?.maxTokens,
+      reasoning: profile.reasoning ?? profile.model?.reasoning ?? false,
+      vision: profile.vision ?? profile.model?.input?.includes("image") ?? false,
     };
   }
 
-  async function read() {
+  async function read(includeId = "") {
     const record = await readRecord();
-    return { defaultProfileId: record.defaultProfileId, profiles: record.profiles.map(publicProfile) };
+    return { defaultProfileId: record.defaultProfileId, profiles: record.profiles.filter((profile) => !profile.hidden || profile.id === includeId).map(publicProfile) };
   }
 
   function readEnvironment() {
@@ -147,25 +166,35 @@ function createModelSettingsStore(settingsPath, safeStorage, env = process.env) 
     }
   }
 
-  async function add(input, model) {
+  async function add(input, model, replaceId = "") {
     const normalized = normalizeProfile(input);
     const record = await readRecord();
-    if (record.profiles.some((profile) => profile.name === normalized.name)) {
+    const previous = replaceId ? record.profiles.find((profile) => profile.id === replaceId && !profile.hidden) : null;
+    if (replaceId && !previous) throw new Error("待编辑的配置不存在。");
+    if (record.profiles.some((profile) => !profile.hidden && profile.id !== replaceId && profile.name === normalized.name)) {
       throw new Error("配置名称已存在，请换一个名称另存。");
     }
     let encryptedKey = "";
     if (normalized.authMode === "saved") {
       const key = text(input.apiKey, "API 密钥");
-      if (!key || key.length > 8192 || /[\r\n\0]/.test(key)) throw new Error("请输入有效的 API 密钥。");
-      if (!canEncrypt()) throw new Error("系统密钥保护不可用，不能保存 API 密钥。");
-      try {
-        encryptedKey = safeStorage.encryptString(key).toString("base64");
-      } catch {
-        throw new Error("密钥加密失败，原配置未修改。");
+      if (!key && previous?.authMode === "saved") {
+        encryptedKey = previous.encryptedKey;
+      } else {
+        if (!key || key.length > 8192 || /[\r\n\0]/.test(key)) throw new Error("请输入有效的 API 密钥。");
+        if (!canEncrypt()) throw new Error("系统密钥保护不可用，不能保存 API 密钥。");
+        try {
+          encryptedKey = safeStorage.encryptString(key).toString("base64");
+        } catch {
+          throw new Error("密钥加密失败，原配置未修改。");
+        }
       }
     }
     const profile = { ...normalized, id: randomUUID(), model, encryptedKey };
     record.profiles.push(profile);
+    if (previous) {
+      previous.hidden = true;
+      if (record.defaultProfileId === previous.id) record.defaultProfileId = profile.id;
+    }
     if (!record.defaultProfileId) record.defaultProfileId = profile.id;
     await publish(record);
     return publicProfile(profile);
@@ -173,10 +202,30 @@ function createModelSettingsStore(settingsPath, safeStorage, env = process.env) 
 
   async function setDefault(id) {
     const record = await readRecord();
-    if (!record.profiles.some((profile) => profile.id === id)) throw new Error("模型配置不存在。");
+    if (!record.profiles.some((profile) => profile.id === id && !profile.hidden)) throw new Error("模型配置不存在。");
     record.defaultProfileId = id;
     await publish(record);
     return id;
+  }
+
+  async function hide(id) {
+    const record = await readRecord();
+    const profile = record.profiles.find((item) => item.id === id && !item.hidden);
+    if (!profile) throw new Error("模型配置不存在。");
+    if (record.defaultProfileId === id) throw new Error("请先选择其他默认配置。");
+    profile.hidden = true;
+    await publish(record);
+  }
+
+  async function clearDefault() {
+    const record = await readRecord();
+    let original = record.profiles.find(item => item.id === "legacy");
+    if (!original && defaults.provider && defaults.modelId) {
+      original = legacy(defaults); normalizeProfile(original); record.profiles.push(original);
+    }
+    if (!original) throw new Error("没有可恢复的启动默认配置，请选择一个已保存配置。");
+    original.hidden = false; record.defaultProfileId = original.id;
+    await publish(record);
   }
 
   async function loadProfile(id) {
@@ -213,7 +262,33 @@ function createModelSettingsStore(settingsPath, safeStorage, env = process.env) 
     return { ...await loadProfile("legacy"), modelId: saved.modelId };
   }
 
-  return { read, readEnvironment, add, setDefault, loadProfile, resolveSelection, canEncrypt };
+  async function readCatalog(id) {
+    const record = await readRecord();
+    return record.catalogs?.find(item => item.id === id)?.models ?? [];
+  }
+
+  async function mergeCatalog(id, models) {
+    const record = await readRecord();
+    if (typeof id !== "string" || !id || !Array.isArray(models)) throw new Error("模型目录无效。");
+    record.catalogs ??= [];
+    let catalog = record.catalogs.find(item => item.id === id);
+    if (!catalog) { catalog = { id, models: [] }; record.catalogs.push(catalog); }
+    const merged = new Map(catalog.models.map(item => [item.id, item]));
+    for (const item of models) {
+      // 已有手工参数优先；只复制公开元信息，凭据不进入目录缓存。
+      if (typeof item?.id !== "string" || !item.id) throw new Error("模型编号无效。");
+      const clean = { id: item.id };
+      for (const name of ["name", "api", "contextWindow", "maxTokens", "reasoning", "vision"]) {
+        if (item[name] !== undefined) clean[name] = item[name];
+      }
+      merged.set(item.id, { ...clean, ...merged.get(item.id) });
+    }
+    catalog.models = [...merged.values()];
+    await publish(record);
+    return catalog.models;
+  }
+
+  return { read, readEnvironment, add, hide, setDefault, clearDefault, loadProfile, resolveSelection, readCatalog, mergeCatalog, canEncrypt };
 }
 
 module.exports = { createModelSettingsStore, normalizeProfile, PROFILE_PREFIX, CUSTOM_APIS };

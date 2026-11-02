@@ -39,6 +39,8 @@ async function main() {
     }
     if (name === "getSessionInfo") return { sessionId: current, workspaceDir: "/demo/a", provider: "demo", modelId: "demo", contextUsage: null };
     if (name === "listModelProfiles") return { currentProfileId: "demo", profiles: [{ id: "demo", name: "演示模型", provider: "demo", modelId: "demo" }] };
+    if (name === "readModelSettings") return { profiles: [{ id: "demo", name: "演示模型", kind: "custom", provider: "demo", modelId: "demo-model", baseUrl: "https://example.invalid/v1", authMode: "saved", hasSavedKey: true, api: "openai-completions", contextWindow: 32000, maxTokens: 2000 }], providers: [], defaultProfileId: "demo", encryptionAvailable: true };
+    if (name === "fetchModelCatalog") return ["model-a", "model-b"];
     if (name === "loadComposerDraft") return getDraft();
     if (name === "inspectComposerSend") return { ...getDraft(), pendingSend: null };
     if (name === "saveComposerDraft") {
@@ -90,6 +92,31 @@ async function main() {
   const search = value => run(`document.getElementById('session-search').value=${JSON.stringify(value)};document.getElementById('session-search').dispatchEvent(new Event('input',{bubbles:true}))`);
   try {
     await idle();
+    await check("设置入口位于侧栏底部", `document.getElementById('model-settings-button').closest('.sidebar-footer')!==null&&document.getElementById('model-settings-button').textContent.trim()==='设置'`);
+    await click(".recent-sessions > summary");
+    await check("最近可以收起历史对话", `!document.querySelector('.recent-sessions').open&&document.querySelectorAll('.session-open').length===3`);
+    await click("#session-search-toggle");
+    await check("搜索自动展开最近", `document.querySelector('.recent-sessions').open`);
+    await click("#session-search-toggle");
+    await click("#model-settings-button");
+    await wait(`document.getElementById('model-settings-dialog').open&&document.getElementById('model-settings-dialog').getAttribute('aria-busy')==='false'`);
+    await check("设置视图显示模型配置", `document.querySelector('.settings-nav-current').textContent.trim()==='模型配置'&&document.querySelector('#model-settings-dialog [data-profiles]')!==null`);
+    await click("[data-edit]");
+    await check("编辑加载非敏感字段，密钥留空并保留默认配置", `document.querySelector('#profile-name').value==='演示模型'&&document.querySelector('#profile-custom-model').value==='demo-model'&&document.querySelector('#profile-key').value===''&&!document.querySelector('#profile-key').required&&document.querySelector('[data-hide]').disabled`);
+    await click("[data-cancel-edit]");
+    await run(`document.querySelector('.new-profile-editor').open=true;const form=document.querySelector('#model-settings-dialog form');form.elements.kind.value='custom';form.elements.kind.dispatchEvent(new Event('change'));form.elements.baseUrl.value='https://example.invalid/v1';form.elements.apiKey.value='example-key';`);
+    await click("[data-fetch-models]");
+    await wait(`document.querySelectorAll('#profile-model-options option').length===2`);
+    await check("获取模型列表可用于选择且状态不显示密钥", `document.querySelector('#profile-model-options option').value==='model-a'&&!document.querySelector('#model-settings-dialog [role=status]').textContent.includes('example-key')`);
+    await click("#model-settings-dialog [data-close]");
+    await check("关闭设置返回入口", `!document.getElementById('model-settings-dialog').open&&document.activeElement.id==='model-settings-button'`);
+    win.setSize(390, 700);
+    await click("#model-settings-button");
+    await wait(`document.getElementById('model-settings-dialog').open`);
+    await check("窄窗口设置内容不横向溢出", `document.querySelector('.settings-content').scrollWidth<=document.querySelector('.settings-content').clientWidth+1&&document.getElementById('model-settings-dialog').getBoundingClientRect().width<=innerWidth`);
+    await click("#model-settings-dialog [data-close]");
+    win.setSize(1120, 820);
+    await wait(`innerWidth>760&&!document.getElementById('app-sidebar').hidden`);
     await check("移除上方已添加项目卡片，标题右侧只保留加号", `!document.querySelector('.registered-project-list')&&document.getElementById('project-list-title').textContent==='项目与对话'&&document.querySelector('#add-project-button use').getAttribute('href')==='#icon-plus'&&document.querySelectorAll('#add-project-button').length===1`);
     await check("搜索默认收起，顶部图标有标签与展开状态", `document.getElementById('session-search-field').hidden&&document.getElementById('session-search-toggle').closest('.sidebar-brand')!==null&&document.getElementById('session-search-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('session-search-toggle').getAttribute('aria-label')==='搜索对话'`);
     await check("同目录合并为一个分组，无对话项目可见，历史按最近活动", `document.querySelectorAll('.session-group').length===3&&document.querySelector('.session-group-name').textContent==='演示项目'&&document.querySelectorAll('.session-project-open').length===2&&document.querySelectorAll('.session-open').length===3`);

@@ -31,7 +31,10 @@ function setSearch(open) {
   searchToggle.setAttribute("aria-expanded", String(open));
   searchToggle.setAttribute("aria-label", open ? "收起对话搜索" : "搜索对话");
   searchToggle.title = open ? "收起对话搜索" : "搜索对话";
-  if (open) sessionSearch.focus();
+  if (open) {
+    document.querySelector(".recent-sessions").open = true;
+    sessionSearch.focus();
+  }
   else {
     // 收起时一并移除筛选，避免列表在没有可见关键词时仍被过滤。
     sessionSearch.value = "";
