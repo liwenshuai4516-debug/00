@@ -328,3 +328,11 @@ node --test \
 - 使用者明确要求直接修改布局。上方独立“已添加项目”卡片已移除；添加入口改为“项目与对话”标题右侧加号，登记项目并入原目录分组，无对话项目也可打开。项目名称负责打开，左侧箭头负责折叠。
 - 顶部搜索图标展开并聚焦搜索框，再次点击或 Escape 收起并清除筛选；保留输入法与配置弹窗保护。正常项目状态仅辅助阅读播报，错误可见并保留读取重试。
 - 新增离线页面检查命令 `./node_modules/.bin/electron tests/ui/sidebar-layout.check.cjs`。实际工作区与仅含本次变更的提交副本均通过 27 项模拟检查，项目服务与会话列表共 9 项单元测试通过。仅使用临时数据与模拟接口，不读真实配置/会话、不请求模型；截图与操作说明见 `docs/sidebar-layout.md`。本轮只改渲染层，保留其他窗口未提交的应用、样式与未发送会话功能。
+
+
+### 未发送页面专项超时定位（2026-11-02 最新核对）
+
+- 使用者已手写页面接线及 `tests/ui/unsent-session-page.check.cjs`，反馈三个语法检查和组件10项通过，但页面专项在第181行目录切换后等待新建/刷新按钮恢复时超时。实际CSS末尾围栏已经清理，旧待清理记录过时。
+- 实际renderer的await refreshUnsentSessions误放在renameButton处理器finally（核对时第766行），而selectWorkspaceButton处理器finally（第888行）缺少该调用。bindComposer已showLoading，目录操作结束只setBusy(false)不能解除组件loading，导致刷新按钮持续禁用；不是模型故障或等待时间太短。
+- 在实际src及tests/ui临时副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-timeout-efpfpg51` 先复现同一超时；仅将该行从重命名finally移入目录选择finally，renderer语法及19项页面模拟全部通过，报告 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-ui-WpIzOW`。未读真实.env、配置/会话、未请求模型。前面的模拟接口异常为预期注入，但最后超时是真失败。
+- 已更新 `docs/unsent-session-page-step.md` 状态、CSS清理记录和5.4精确修正位置。实际应用/测试未由助手修改，仍待使用者移动这一行后重跑页面专项，再核对提交未发送组件及页面功能；本轮只提交文档，不把候选修正或先前19项候选通过当作实际源码已经通过。

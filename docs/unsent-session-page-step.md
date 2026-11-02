@@ -1,6 +1,6 @@
 # 下一步：未发送侧栏与输入恢复接线
 
-状态：页面接线候选，尚未写入实际应用或测试。你已写好上一轮的列表组件、样式和检查脚本；实际两个脚本语法检查及10项组件检查通过。样式末行另有粘贴残留，先按第0节清理，再接本步。
+状态：使用者已亲手接入页面及检查脚本，CSS末尾围栏已清理。实际组件检查10项通过；页面检查在目录切换步骤超时，已确认refreshUnsentSessions误放进重命名处理器，而目录切换finally缺少该调用。修正方法见5.4；仅在实际源码的临时副本移动这一行后，19项页面检查全部通过，实际文件仍待使用者修改后复验。
 
 ## 目标与取舍
 
@@ -18,9 +18,9 @@
 
 文件：`/Users/liyingjun/Desktop/SW-QA/17-00/src/renderer/styles/unsent-session-list.css`。
 
-删除当前第66行、文件末尾那一整行三个反引号。文件应以最后一条CSS规则的右花括号结束。只复制本文代码块内部，开头和结尾的Markdown围栏不属于源码。
+该项已由使用者完成，当前CSS以右花括号结束，不再重复删除。只复制本文代码块内部，开头和结尾的Markdown围栏不属于源码。
 
-助手保持实际应用文件未改写。由于该残留尚未由你清理，上一轮三个新文件本轮先不提交，完成后再一并核对收尾。
+助手保持实际应用文件未改写。组件与页面功能待目录切换收尾修正并复验后一起核对提交。
 
 ## 1. 接入样式和侧栏容器
 
@@ -249,9 +249,15 @@ async function bindComposer(sessionId) {
 
 这次读取必须放在整个Promise.allSettled已经await完成之后，不能加入它的数组。listUnsentSessions、listProposals和inspectComposerSend共用互斥入口，并行会互相拒绝。
 
-### 5.4 工作目录选择
+### 5.4 工作目录选择：本次超时的修正位置
 
-在文件末尾selectWorkspaceButton点击处理的finally中，将原来的：
+2026-11-02实际文件核对发现，新增的await refreshUnsentSessions()在renameButton处理器的finally里（核对时第766行），而文件末尾selectWorkspaceButton处理器的finally里没有它（核对时第888行）。
+
+bindComposer会使旧列表失效并进入读取状态；目录切换收尾未刷新时，组件的loading一直为true，即使setBusy(false)后刷新按钮仍被禁用。因此测试等待“新建”和“刷新”按钮均可用时超时，不应增加等待时长或跳过断言。
+
+只做以下两处修改：
+
+1. 找到以renameButton.addEventListener开头的重命名处理器，删除其finally中多出的那一行await refreshUnsentSessions()。该段恢复为：
 
 ```javascript
   } finally {
@@ -260,17 +266,35 @@ async function bindComposer(sessionId) {
   }
 ```
 
-替换为：
+2. 找到文件末尾以selectWorkspaceButton.addEventListener开头的目录选择处理器，保留其try/catch，在自己的finally里补入刷新，完整尾部应为：
 
 ```javascript
+    addMessage(
+      "error",
+      `${switched ? "新对话已创建，刷新失败" : "选择工作目录失败"}：${error.message}`,
+    );
   } finally {
     await refreshUnsentSessions();
     setBusy(false);
     input.focus();
   }
+});
 ```
 
-只改这个目录选择处理器的finally。取消或失败时列表仍按实际原目录读取；成功时先由原bindComposer使旧结果失效，再刷新新目录列表。
+用selectWorkspaceButton与switched定位，避免改到相似的重命名或导出finally。其他完成位置的刷新保留。
+
+取消或失败时列表仍按实际原目录读取；成功时先由原bindComposer使旧结果失效，再刷新新目录列表。
+
+只移动这一行的临时副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-timeout-efpfpg51` 已先复现相同超时，再通过renderer语法检查及19项页面检查；报告目录 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-ui-WpIzOW`。实际应用文件未由助手修改。
+
+修正后只需重跑：
+
+```bash
+node --check src/renderer/renderer.js
+./node_modules/.bin/electron tests/ui/unsent-session-page.check.cjs
+```
+
+前面的“模拟load/save/restore等失败”是用例主动注入的异常，预期最终输出19项全部通过并正常退出。本次最后的等待超时属于实际失败，不能当作预期输出。
 
 ## 6. 窄窗口恢复成功后返回聊天
 
