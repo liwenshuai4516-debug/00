@@ -92,6 +92,8 @@ function createComposerDraftService(sessionService, sessionStateStore) {
     }
 
     const workspaceDir = knownSessions.get(sessionId);
+    // 历史来源尚未可靠保存时，不能先清除用于核对的发送快照。
+    await sessionService.syncSessionRegistration?.(sessionId);
     await sessionStateStore.update(sessionId, workspaceDir, (state) => {
       // 在串行更新内部比较编号，迟到的确认不能清理较新的发送记录。
       if (state.pendingSend?.id !== sendId) {

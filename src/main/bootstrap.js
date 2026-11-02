@@ -68,17 +68,19 @@ const workspaceSettings = createWorkspaceSettings(
   process.env.AGENT_WORKSPACE_DIR,
 );
 
+// 输入与组织状态共用一个存储实例，独立于 Pi 历史文件。
+const sessionStateStore = createSessionStateStore(
+  path.join(app.getPath("userData"), "session-state"),
+);
+
 const sessionService = createSessionService(
   path.join(projectRoot, "sessions"),
   createConfiguredAgent,
   workspaceSettings.load,
   workspaceSettings.save,
+  sessionStateStore,
 ); // 文件草稿与 Pi 会话保存在当前项目的 sessions 目录内。
 
-// 输入与组织状态共用一个存储实例，独立于 Pi 历史文件。
-const sessionStateStore = createSessionStateStore(
-  path.join(app.getPath("userData"), "session-state"),
-);
 const composerDraftService = createComposerDraftService(
   sessionService,
   sessionStateStore,

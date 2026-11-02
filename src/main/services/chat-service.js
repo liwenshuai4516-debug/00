@@ -58,6 +58,7 @@ function createChatService(
     activeRequest = request;
     let consumed;
     let workspaceDir;
+    let registrationWarning;
 
     try {
       const sendMessage = await loadSender();
@@ -142,14 +143,25 @@ function createChatService(
         } catch (error) {
           // 主动停止产生的中断不作为请求失败展示。
           if (!request.stopped) throw error;
+        } finally {
+          try {
+            await sessionService.syncSessionRegistration?.(session.sessionId);
+          } catch (error) {
+            // 本地登记失败不改变已经完成的请求结果；保留快照供后续核对。
+            registrationWarning = `恢复登记同步失败：${error.message}${consumed ? "；发送快照未清理。" : "。"}`;
+          }
         }
       }
 
-      const result = { stopped: request.stopped };
+      const result = {
+        stopped: request.stopped,
+        ...(registrationWarning ? { warning: registrationWarning } : {}),
+      };
       if (!consumed) return result;
 
       result.outcome = request.stopped ? "stopped" : "completed";
       result.draft = consumed;
+      if (registrationWarning) return result;
 
       try {
         await sessionStateStore.completeSend(
@@ -172,6 +184,7 @@ function createChatService(
         outcome: "unconfirmed",
         draft: consumed,
         error: error.message,
+        ...(registrationWarning ? { warning: registrationWarning } : {}),
       };
     } finally {
       // 成功、失败或停止后，都允许下一次发送。

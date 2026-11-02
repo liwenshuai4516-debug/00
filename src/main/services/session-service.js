@@ -14,6 +14,7 @@ function createSessionService(
   createAgent = createDefaultAgent,
   readWorkspaceDir = () => process.env.AGENT_WORKSPACE_DIR,
   saveWorkspaceDir,
+  sessionStateStore,
 ) {
   let sessionPromise;
   let activeCompaction;
@@ -54,6 +55,57 @@ function createSessionService(
     return registration ? {
       ...registration, model: { ...registration.model },
     } : undefined;
+  }
+
+  async function syncSessionRegistration(sessionId) {
+    if (!sessionStateStore) return;
+    const selected = readSessionRegistration(sessionId);
+    // 没有输入状态时不另建空条目；未来首次保存会读取实际模型。
+    if (!selected || !(await sessionStateStore.load(sessionId))) return;
+
+    await sessionStateStore.update(
+      sessionId,
+      selected.workspaceDir,
+      (state) => {
+        const actual = readSessionRegistration(sessionId);
+        if (!actual || actual.workspaceDir !== selected.workspaceDir) {
+          throw new Error("会话恢复登记的归属已变化。");
+        }
+        return {
+          ...state,
+          registration: {
+            source:
+              state.registration?.source === "history"
+                ? "history"
+                : actual.source,
+            model: { ...actual.model },
+          },
+        };
+      },
+    );
+  }
+
+  async function switchAndSync(session, operation) {
+    let result;
+    let switchError;
+    try {
+      result = await operation();
+    } catch (error) {
+      switchError = error;
+    }
+    try {
+      // SDK报错也可能已经更新模型；始终按最终实际选择同步。
+      await syncSessionRegistration(session.sessionId);
+    } catch (error) {
+      const prefix = switchError
+        ? `${switchError.message}；`
+        : "模型可能已切换；";
+      throw new Error(`${prefix}恢复登记同步失败：${error.message}`, {
+        cause: switchError ?? error,
+      });
+    }
+    if (switchError) throw switchError;
+    return result;
   }
 
   // 初始化、新建和打开历史共用目录来源。
@@ -227,16 +279,15 @@ function createSessionService(
       throw new Error("当前供应商未登记该模型。");
     }
 
-    // 相同模型无需再次记录；不改写全局默认模型。
-    if (model.id !== current.id) {
-      await session.setModel(model, { persist: false });
-    }
-
-    return {
-      provider: session.model.provider,
-      modelId: session.model.id,
-    };
+    return switchAndSync(session, async () => {
+      // 相同选择仍同步登记，允许登记写入失败后重试，不重复切换模型。
+      if (model.id !== current.id) {
+        await session.setModel(model, { persist: false });
+      }
+      return { provider: session.model.provider, modelId: session.model.id };
+    });
   }
+
   async function listModelProfiles() {
     const session = await getSession(true);
     if (!session.desktopModelSettings) throw new Error("当前会话未启用多配置。");
@@ -245,8 +296,11 @@ function createSessionService(
 
   async function switchModelProfile(id) {
     const session = await getSession(true);
-    if (!session.desktopModelSettings) throw new Error("当前会话未启用多配置。");
-    return session.desktopModelSettings.switchProfile(session, id);
+    if (!session.desktopModelSettings)
+      throw new Error("当前会话未启用多配置。");
+    return switchAndSync(session, () =>
+      session.desktopModelSettings.switchProfile(session, id),
+    );
   }
 
   // 记录用户确认保存的事实，不主动请求模型回复。
@@ -491,6 +545,7 @@ function createSessionService(
   return {
     getSession,
     readSessionRegistration,
+    syncSessionRegistration,
     loadHistory,
     currentSession,
     getSessionInfo,
