@@ -157,6 +157,7 @@ const cancelCompactionButton = document.getElementById(
 const sessionList = createSessionList(
   document.getElementById("session-list"),
   openHistorySession,
+  (project) => projectPanel.open(project),
 );
 // 搜索只更新侧栏展示，不切换当前会话。
 const sessionSearch = document.getElementById("session-search");
@@ -211,6 +212,7 @@ const projectPanel = createProjectPanel(
   window.agent,
   setBusy,
   openProject,
+  (projects) => sessionList.setProjects(projects),
 );
 
 // 在页面初始化时创建面板，供所有函数和事件处理使用。

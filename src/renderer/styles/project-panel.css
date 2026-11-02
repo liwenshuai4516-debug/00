@@ -3,77 +3,57 @@
   padding: 0 4px;
 }
 
-.project-panel-heading {
+.project-panel-heading,
+.sidebar-top-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
 }
 
-.project-panel-heading h3 {
+.project-panel-heading {
+  justify-content: space-between;
+}
+
+.project-panel-heading .sidebar-section-title {
   margin: 0;
+  padding: 0 8px;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
 }
 
-.project-panel button {
-  min-height: 44px;
-  padding: 6px 8px;
-  font-size: 12px;
-  border-color: transparent;
-}
-
-.registered-project-list {
-  max-height: min(18dvh, 144px);
-  margin: 0;
-  padding: 0 2px;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.registered-project-list li {
+/* 图标保持紧凑，按钮仍留足鼠标与键盘操作空间。 */
+.project-panel-heading .icon-button {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
   padding: 0;
+  border: 0;
+  background: transparent;
 }
 
-.project-panel .registered-project-open {
-  display: block;
+.project-panel [role="status"] {
+  margin: 4px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+#reload-projects-button {
+  margin: 4px 8px;
+  font-size: 12px;
+}
+
+.session-list .session-project-open {
   width: 100%;
-  padding: 8px 6px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
   text-align: left;
 }
 
-.registered-project-open:focus-visible {
+.session-project-open:focus-visible {
   outline-offset: -2px;
-}
-
-.registered-project-list .registered-project-empty {
-  padding: 8px 6px;
-}
-
-.registered-project-name,
-.registered-project-path {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.registered-project-name {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.registered-project-path,
-.registered-project-empty,
-.project-panel [role="status"] {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.project-panel [role="status"] {
-  max-height: 4.5em;
-  margin: 4px 0 0;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
 }

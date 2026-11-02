@@ -1,10 +1,12 @@
 // 只负责目录分组与会话列表展示；打开会话仍由 renderer.js 处理。
-export function createSessionList(container, onSelect) {
+export function createSessionList(container, onSelect, onOpenProject) {
   const buttons = new Map();
+  const projectButtons = [];
   const collapsed = new Set();
   let activeId = "";
   let busy = false;
   let sessions = [];
+  let projects = [];
   let query = "";
 
   function setActive(id) {
@@ -26,10 +28,12 @@ export function createSessionList(container, onSelect) {
     for (const button of buttons.values()) {
       button.disabled = busy;
     }
+    for (const button of projectButtons) button.disabled = busy;
   }
 
   function draw() {
     buttons.clear();
+    projectButtons.length = 0;
     container.replaceChildren();
 
     // filter 创建新数组，排序不会改动主进程传来的列表。
@@ -45,6 +49,14 @@ export function createSessionList(container, onSelect) {
       groups.get(key).push(session);
     }
 
+    const projectsByDirectory = new Map(projects.map((project) => [project.workspaceDir, project]));
+    // 已有对话仍按最近活动排序；没有对话的新项目也能从同一区域打开。
+    if (!query) {
+      for (const project of projects) {
+        if (!groups.has(project.workspaceDir)) groups.set(project.workspaceDir, []);
+      }
+    }
+
     // 首次遇到的会话就是组内最新会话，分组也按最近活动排列。
     for (const [workspaceDir, groupSessions] of groups) {
       const group = document.createElement("details");
@@ -55,11 +67,25 @@ export function createSessionList(container, onSelect) {
       const summary = document.createElement("summary");
       summary.title = workspaceDir || "未记录工作目录";
 
-      const name = document.createElement("span");
+      const project = projectsByDirectory.get(workspaceDir);
+      const name = document.createElement(project ? "button" : "span");
       name.className = "session-group-name";
-      name.textContent = workspaceDir
+      name.textContent = project?.name || (workspaceDir
         ? workspaceDir.split(/[\\/]/).filter(Boolean).at(-1) || workspaceDir
-        : "未分类历史";
+        : "未分类历史");
+      if (project) {
+        name.type = "button";
+        name.classList.add("session-project-open");
+        name.disabled = busy;
+        name.setAttribute("aria-label", `打开项目：${project.name}`);
+        name.addEventListener("click", (event) => {
+          // 名称用于打开项目，左侧箭头仍由原生 summary 控制展开。
+          event.preventDefault();
+          event.stopPropagation();
+          if (!busy) onOpenProject(project);
+        });
+        projectButtons.push(name);
+      }
 
       const count = document.createElement("span");
       count.className = "session-group-count";
@@ -103,7 +129,7 @@ export function createSessionList(container, onSelect) {
       container.appendChild(group);
     }
 
-    if (!visibleSessions.length) {
+    if (!groups.size) {
       const empty = document.createElement("p");
       empty.className = "session-list-empty";
       empty.textContent = sessions.length
@@ -126,5 +152,10 @@ export function createSessionList(container, onSelect) {
     draw();
   }
 
-  return { render, setActive, setBusy, setQuery };
+  function setProjects(value) {
+    projects = value;
+    draw();
+  }
+
+  return { render, setActive, setBusy, setQuery, setProjects };
 }

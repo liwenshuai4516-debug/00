@@ -22,6 +22,24 @@ sidebarClose.addEventListener("click", () => {
   setSidebar(false);
   sidebarToggle.focus();
 });
+
+const searchToggle = document.getElementById("session-search-toggle");
+const searchField = document.getElementById("session-search-field");
+const sessionSearch = document.getElementById("session-search");
+function setSearch(open) {
+  searchField.hidden = !open;
+  searchToggle.setAttribute("aria-expanded", String(open));
+  searchToggle.setAttribute("aria-label", open ? "收起对话搜索" : "搜索对话");
+  searchToggle.title = open ? "收起对话搜索" : "搜索对话";
+  if (open) sessionSearch.focus();
+  else {
+    // 收起时一并移除筛选，避免列表在没有可见关键词时仍被过滤。
+    sessionSearch.value = "";
+    sessionSearch.dispatchEvent(new Event("input", { bubbles: true }));
+    searchToggle.focus();
+  }
+}
+searchToggle.addEventListener("click", () => setSearch(searchField.hidden));
 narrowWindow.addEventListener("change", () => {
   // 窗口跨越断点时，避免焦点停在已经隐藏的区域。
   const focused = document.activeElement;
@@ -89,6 +107,11 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || event.isComposing) return;
   // 模态配置页面自行处理 Escape，不同时收起背后的侧栏。
   if (document.querySelector("dialog[open]")) return;
+  if (!searchField.hidden && sidebar.contains(document.activeElement)) {
+    event.preventDefault();
+    setSearch(false);
+    return;
+  }
   if (menu.open) {
     const containedFocus = menu.contains(document.activeElement);
     menu.open = false;

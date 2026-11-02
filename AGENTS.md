@@ -322,3 +322,9 @@ node --test \
 - 核对期间使用者另改了搜索折叠、项目加号及项目/会话合并展示；已重读实际index、renderer、page-shell、project-panel、session-list和主题样式，指南按最新布局定位，不覆盖这些未提交改动。页面候选只在最新实际src的临时副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-page-latest-2mr2rdtj` 编写，尚未写入实际应用或测试；候选清理了CSS残留。三个脚本语法检查及19项实际页面模拟通过，报告/三档截图 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-ui-tXEEYB` 已查看。覆盖读取顺序、输入读取失败重试、仅编号/非摘要恢复、保存/恢复失败、重复和受阻入口、刷新失败不回退、旧输入/草稿保留、目录/项目、新建、窄窗成功后关闭、生成停止状态和pagehide后迟到结果失效；使用实际preload/IPC互斥及模拟业务，不读真实.env、配置/会话或验收文件、不请求模型。
 - 本步指南提供 `tests/ui/unsent-session-page.check.cjs` 完整手写候选，命令 `./node_modules/.bin/electron tests/ui/unsent-session-page.check.cjs`，临时userData/报告/截图并禁用HTTP/HTTPS，异常只注入模拟接口。该脚本尚未接入实际项目。原生textarea的CRLF展示按既有浏览器归一化比较，本步未更改输入存储。
 - 后续须核对使用者实际实现和真实界面结果，不能将19项模拟称为真实重启验收。CSS清理、页面接线和验收未完成；正常关闭前补保存、无历史且待确认发送条目的专用处理入口仍未完成，不称完整重启恢复。
+
+### 侧栏布局调整（2026-11-02）
+
+- 使用者明确要求直接修改布局。上方独立“已添加项目”卡片已移除；添加入口改为“项目与对话”标题右侧加号，登记项目并入原目录分组，无对话项目也可打开。项目名称负责打开，左侧箭头负责折叠。
+- 顶部搜索图标展开并聚焦搜索框，再次点击或 Escape 收起并清除筛选；保留输入法与配置弹窗保护。正常项目状态仅辅助阅读播报，错误可见并保留读取重试。
+- 新增离线页面检查命令 `./node_modules/.bin/electron tests/ui/sidebar-layout.check.cjs`。实际工作区与仅含本次变更的提交副本均通过 27 项模拟检查，项目服务与会话列表共 9 项单元测试通过。仅使用临时数据与模拟接口，不读真实配置/会话、不请求模型；截图与操作说明见 `docs/sidebar-layout.md`。本轮只改渲染层，保留其他窗口未提交的应用、样式与未发送会话功能。
