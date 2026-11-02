@@ -351,6 +351,31 @@ export function createComposerPersistence(input, api, onState) {
     return save(entry);
   }
 
+  // 关闭准备阶段由页面先冻结编辑和会话操作，再等待这里全部保存确认。
+  async function flushAll() {
+    if (disposed) throw new Error("输入组件已释放，不能确认关闭前保存。");
+    const current = entries.get(currentId);
+    if (current && input.value !== current.text) onInput();
+    if (!current && input.value !== "") {
+      throw new Error("当前输入尚未绑定会话，请先完成初始化后重试。");
+    }
+
+    // 先检查全部记录，避免把发送协调中的空返回误当成保存完成。
+    for (const entry of entries.values()) {
+      if (entry.loading || entry.preparing || entry.ticket || entry.dismissing) {
+        throw new Error("请等待输入读取、发送协调或解除操作结束后重试保存。");
+      }
+      if (!entry.loaded && entry.local) {
+        throw new Error("有尚未完成读取的本地输入，请回到对应会话重新读取后再保存。");
+      }
+    }
+
+    // 复用各会话原有队列，等待在途写入，并显式重试之前失败的保存。
+    for (const entry of entries.values()) {
+      if (entry.loaded) await save(entry);
+    }
+  }
+
   function dispose() {
     disposed = true;
     viewVersion += 1;
@@ -366,6 +391,7 @@ export function createComposerPersistence(input, api, onState) {
     recoverSend,
     retry,
     dismissPendingSend,
+    flushAll,
     dispose,
     flush: () => {
       const entry = entries.get(currentId);
