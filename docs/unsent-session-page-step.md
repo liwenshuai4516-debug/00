@@ -1,6 +1,6 @@
 # 下一步：未发送侧栏与输入恢复接线
 
-状态：使用者已亲手接入页面及检查脚本，CSS末尾围栏已清理。实际组件检查10项通过；页面检查在目录切换步骤超时，已确认refreshUnsentSessions误放进重命名处理器，而目录切换finally缺少该调用。修正方法见5.4；仅在实际源码的临时副本移动这一行后，19项页面检查全部通过，实际文件仍待使用者修改后复验。
+状态：使用者已亲手完成页面接线、CSS清理及5.4中的目录切换收尾修正。2026-11-02实际四个脚本语法检查、组件10项和页面19项全部通过；仅HEAD加本次功能块的精确提交副本也10+19项通过。下一步为 `docs/composer-close-flush-step.md`。本页保留完整代码和历史超时修正供对照。
 
 ## 目标与取舍
 
@@ -20,7 +20,7 @@
 
 该项已由使用者完成，当前CSS以右花括号结束，不再重复删除。只复制本文代码块内部，开头和结尾的Markdown围栏不属于源码。
 
-助手保持实际应用文件未改写。组件与页面功能待目录切换收尾修正并复验后一起核对提交。
+助手保持实际应用文件未改写。组件与页面已完成修正和复验，本轮按功能块精确提交。
 
 ## 1. 接入样式和侧栏容器
 
@@ -251,7 +251,7 @@ async function bindComposer(sessionId) {
 
 ### 5.4 工作目录选择：本次超时的修正位置
 
-2026-11-02实际文件核对发现，新增的await refreshUnsentSessions()在renameButton处理器的finally里（核对时第766行），而文件末尾selectWorkspaceButton处理器的finally里没有它（核对时第888行）。
+以下是已修复的历史问题，不要再次移动正确位置的调用。2026-11-02核对时发现，新增的await refreshUnsentSessions()在renameButton处理器的finally里（核对时第766行），而文件末尾selectWorkspaceButton处理器的finally里没有它（核对时第888行）。
 
 bindComposer会使旧列表失效并进入读取状态；目录切换收尾未刷新时，组件的loading一直为true，即使setBusy(false)后刷新按钮仍被禁用。因此测试等待“新建”和“刷新”按钮均可用时超时，不应增加等待时长或跳过断言。
 
@@ -294,7 +294,7 @@ node --check src/renderer/renderer.js
 ./node_modules/.bin/electron tests/ui/unsent-session-page.check.cjs
 ```
 
-前面的“模拟load/save/restore等失败”是用例主动注入的异常，预期最终输出19项全部通过并正常退出。本次最后的等待超时属于实际失败，不能当作预期输出。
+前面的“模拟load/save/restore等失败”是用例主动注入的异常，预期最终输出19项全部通过并正常退出。此前的等待超时属于实际失败，已由本节修正解决，最新实际检查已19项通过。
 
 ## 6. 窄窗口恢复成功后返回聊天
 
@@ -562,7 +562,7 @@ node --check tests/ui/unsent-session-page.check.cjs
 
 预期组件检查10项、实际页面模拟19项全部通过。页面脚本会打印主动模拟的失败消息；以最终通过数量及正常退出为准，断言失败或超时会失败退出。它会给出临时截图和report.json位置。原生textarea会将CRLF展示为LF，测试按浏览器既有规则比较展示内容，没有为本步修改输入存储。
 
-本候选已在实际渲染层临时副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-page-latest-2mr2rdtj` 通过三个脚本语法检查与19项页面模拟。报告及三档截图位于 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-ui-tXEEYB`，截图已查看；候选中的样式末尾残留已单独清理，实际文件仍待你清理。模拟验证不能代替真实重启验收，也不代表工作区其他未提交功能已经验收。
+实际源码已通过四个脚本语法检查、10项组件检查和19项页面模拟；实际报告分别为 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-list-ui-bXnRsc` 与 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-ui-nllhaG`。仅HEAD加本次功能块的精确副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-page-exact-2kzajh2z` 也10+19项通过，页面报告及三档截图 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-ui-PXTro1`，375宽度截图已查看。CSS残留已清理。模拟验证不替代真实重启验收，也不代表工作区其他未提交功能已经验收。
 
 然后运行npm start，使用你自己的非敏感测试输入核对：
 
@@ -571,4 +571,4 @@ node --check tests/ui/unsent-session-page.check.cjs
 3. 等待输入已保存后正常退出并重启，通过同目录未发送入口找回原输入。此处只核对已确认落盘的内容，关闭前补保存仍是下一项工作。
 4. 缩窄窗口，恢复成功后回到聊天并聚焦输入；受阻条目显示原因且不可恢复。不要为测试强行制造真实待确认发送或破坏目录/模型配置，异常已由离线脚本覆盖。
 
-用户真实验收完成后再记录具体结果。正常关闭前补保存、无历史待确认发送记录的专用处理入口仍未完成，不称完整重启恢复。
+使用者反馈“做完了”，未逐项描述真实界面与重启结果，待收到具体反馈后另记。正常关闭前补保存、无历史待确认发送记录的专用处理入口仍未完成，不称完整重启恢复。

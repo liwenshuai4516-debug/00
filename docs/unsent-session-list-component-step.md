@@ -1,6 +1,6 @@
 # 下一步：未发送侧栏列表组件
 
-状态：使用者已亲手新增本指南的组件、样式和Electron检查脚本。2026-11-02实际两个脚本语法检查及10项组件检查通过；样式文件末尾另有一行Markdown围栏粘贴残留，待使用者清理，三个新文件本轮暂不提交。下一步页面接线与清理位置见 `docs/unsent-session-page-step.md`。
+状态：使用者已亲手完成组件、样式、Electron检查脚本及后续页面接线，CSS末尾粘贴残留已清理。2026-11-02实际检查与精确提交副本均通过组件10项、页面19项；此前“待清理/暂不提交”状态已过时。下一步为 `docs/composer-close-flush-step.md`。
 
 ## 目标与取舍
 
@@ -422,11 +422,11 @@ node --check tests/ui/unsent-session-list.check.cjs
 
 预期输出“通过10项组件检查”，并给出临时截图与report.json的位置。打开三张截图确认长标题换行、受阻原因、独立滚动和焦点环。脚本不会修改项目文件或使用真实会话。
 
-本候选已在实际渲染层的临时副本中通过上述检查；三档截图也已人工查看。候选目录为 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-list-component-3ipl5up8`，最终验证截图及报告位于 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-list-ui-qt5fVk`。这证明组件候选的离线表现，不代表你尚未编写的实际文件或真实重启流程已通过。
+实际组件已完成。精确提交副本的10项检查报告与三档截图位于 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-list-ui-WGjLVB`；页面已另外通过19项模拟，见页面指南。这些离线检查不替代真实重启验收。
 
 ## 下一小步的接线条件
 
-完成后再把容器、样式引用和组件接入实际深色侧栏。页面离开当前会话前须await输入保存；恢复成功先绑定返回编号，再await原bindComposer读取最新原文、版本与快照。恢复失败保留原消息、输入和文件草稿；恢复已成功但后续刷新失败时，不能回到旧编号或回填旧输入。
+以下接线已由使用者完成，保留为核对约定。页面离开当前会话前须await输入保存；恢复成功先绑定返回编号，再await原bindComposer读取最新原文、版本与快照。恢复失败保留原消息、输入和文件草稿；恢复已成功但后续刷新失败时，不能回到旧编号或回填旧输入。
 
 listUnsentSessions与listProposals、inspectComposerSend共用互斥入口，不能直接Promise.all。页面须在既有输入绑定与草稿读取后顺序读取，并保护会话、目录变化后的迟到响应。
 

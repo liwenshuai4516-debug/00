@@ -4,6 +4,7 @@ import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel } from "./components/session-info-panel.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
+import { createUnsentSessionList } from "./components/unsent-session-list.js";
 import {
   appendMessage,
   updateAssistantMessage,
@@ -74,6 +75,9 @@ const composerPersistence = createComposerPersistence(input, window.agent, (stat
 
 // 主进程已切换成功时，输入读取失败只影响输入区，不误报为会话切换失败。
 async function bindComposer(sessionId) {
+  // 会话一变就隐藏旧目录条目，并作废尚未完成的列表读取。
+  unsentReadVersion += 1;
+  unsentSessionList.showLoading();
   try {
     await composerPersistence.switchTo(sessionId);
   } catch (error) {
@@ -165,6 +169,111 @@ const sessionSearch = document.getElementById("session-search");
 sessionSearch.addEventListener("input", () => {
   sessionList.setQuery(sessionSearch.value);
 });
+let unsentReadVersion = 0;
+const unsentSessionList = createUnsentSessionList(
+  document.getElementById("unsent-session-list"),
+  openUnsentSession,
+  reloadUnsentSessions,
+);
+unsentSessionList.setBusy(pageBusy);
+window.addEventListener(
+  "pagehide",
+  () => {
+    unsentReadVersion += 1;
+  },
+  { once: true },
+);
+
+// 与输入核对、文件草稿读取顺序调用，不并行争用主进程互斥入口。
+async function refreshUnsentSessions() {
+  const version = ++unsentReadVersion;
+  const sessionId = composerState.sessionId;
+  unsentSessionList.showLoading();
+  try {
+    const rows = await window.agent.listUnsentSessions();
+    if (version !== unsentReadVersion || sessionId !== composerState.sessionId)
+      return;
+    unsentSessionList.render(rows, sessionId);
+  } catch (error) {
+    if (
+      version === unsentReadVersion &&
+      sessionId === composerState.sessionId
+    ) {
+      unsentSessionList.showError(error.message);
+    }
+  }
+}
+
+async function reloadUnsentSessions() {
+  if (pageBusy) return;
+  setBusy(true);
+  try {
+    // 手动刷新前等待当前输入落盘，使列表能包含刚保留的空会话。
+    await composerPersistence.flush();
+    await refreshUnsentSessions();
+  } catch (error) {
+    unsentSessionList.showError(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function openUnsentSession(sessionId) {
+  if (pageBusy || sessionId === composerState.sessionId) return;
+  setBusy(true);
+  const wasReadOnly = input.readOnly;
+  // 恢复期间暂时只读，仍可选择和复制；避免离开前又产生待保存输入。
+  input.readOnly = true;
+  let restored = false;
+  setRequestStatus("正在保存输入并恢复未发送对话……");
+  try {
+    await composerPersistence.flush();
+    const result = await window.agent.restoreUnsentSession(sessionId);
+    restored = true;
+    // 主进程已确认切换，先更新消息，再绑定新编号读取完整输入与快照。
+    showHistory(result.history);
+    sessionList.setActive(result.sessionId);
+    sessionName.value = "";
+    await bindComposer(result.sessionId);
+    setRequestStatus("未发送对话已恢复。请核对输入后再发送。");
+    // 分区刷新失败不撤回已经完成的恢复；互斥读取依次进行。
+    for (const refresh of [
+      restoreProposalPanel,
+      refreshSessions,
+      () => sessionInfoPanel.refresh(),
+      () => modelSelector.refresh(),
+    ]) {
+      try {
+        await refresh();
+      } catch (error) {
+        setRequestStatus("对话已恢复，但部分页面信息读取失败。");
+        addMessage("error", `对话已恢复，刷新失败：${error.message}`);
+      }
+    }
+  } catch (error) {
+    setRequestStatus(
+      restored
+        ? "对话已恢复，但页面更新未完成。"
+        : "未能恢复，原对话和输入已保留。",
+    );
+    addMessage(
+      "error",
+      `${restored ? "恢复后的页面更新失败" : "恢复未发送对话失败"}：${error.message}`,
+    );
+  } finally {
+    await refreshUnsentSessions();
+    input.readOnly = wasReadOnly;
+    setBusy(false);
+    if (restored) {
+      document.dispatchEvent(new CustomEvent("unsent-session-opened"));
+      input.focus();
+    } else
+      document
+        .querySelector("#unsent-session-list .unsent-list-refresh")
+        .focus();
+  }
+}
+
 const messages = document.getElementById("messages");
 
 const messageScroll = createMessageScroll(
@@ -261,6 +370,7 @@ function setBusy(busy, generating = false) {
   compactSessionButton.disabled = busy;
   exportConversationButton.disabled = busy;
   sessionList.setBusy(busy);
+  unsentSessionList.setBusy(busy);
   projectPanel.setBusy(busy);
   stopButton.disabled = !generating;
   renameButton.disabled = busy;
@@ -315,6 +425,7 @@ async function loadHistory() {
   } finally {
     // 操作结束后读取实际会话的模型，再恢复交互。
     await modelSelector.refresh();
+    await refreshUnsentSessions();
     setBusy(false);
     input.focus();
   }
@@ -513,6 +624,7 @@ form.addEventListener("submit", async (event) => {
 
     // 成功、失败或停止后都重新读取当前会话的上下文估算。
     await sessionInfoPanel.refresh();
+    await refreshUnsentSessions();
     setBusy(false);
     input.focus();
   }
@@ -540,6 +652,7 @@ newChatButton.addEventListener("click", async () => {
   } finally {
      // 操作结束后读取实际会话的模型，再恢复交互。
     await modelSelector.refresh();
+    await refreshUnsentSessions();
     setBusy(false);
     input.focus();
   }
@@ -563,6 +676,8 @@ async function openProject(projectId) {
     sessionInfoPanel.refresh(),
     modelSelector.refresh(),
   ]);
+
+  await refreshUnsentSessions();
 
   const failures = updates.filter((update) => update.status === "rejected");
   if (failures.length) {
@@ -598,6 +713,7 @@ async function openHistorySession(sessionId) {
   } finally {
     // 操作结束后读取实际会话的模型，再恢复交互。
     await modelSelector.refresh();
+    await refreshUnsentSessions();
     setBusy(false);
     input.focus();
   }
@@ -753,6 +869,7 @@ selectWorkspaceButton.addEventListener("click", async () => {
       `${switched ? "新对话已创建，刷新失败" : "选择工作目录失败"}：${error.message}`,
     );
   } finally {
+    await refreshUnsentSessions();
     setBusy(false);
     input.focus();
   }

@@ -121,3 +121,8 @@ document.addEventListener("keydown", (event) => {
     sidebarToggle.focus();
   }
 });
+
+// 只在业务确认恢复成功后收起窄窗口侧栏，失败时保留重试入口。
+document.addEventListener("unsent-session-opened", () => {
+  if (narrowWindow.matches) setSidebar(false);
+});
