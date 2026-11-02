@@ -1,7 +1,7 @@
 const { randomUUID } = require("node:crypto");
 
 // 只负责关闭握手；停止生成、等待页面操作和保存输入由页面接线负责。
-function registerWindowCloseGuard(window, ipcMain) {
+function registerWindowCloseGuard(window, ipcMain, onBlocked = () => {}) {
   const contents = window.webContents;
   let ready = false;
   let pendingId = null;
@@ -19,6 +19,7 @@ function registerWindowCloseGuard(window, ipcMain) {
       // 没收到确认就保留窗口；新页面准备好后可重新发起关闭。
       ready = false;
       pendingId = null;
+      onBlocked();
       console.error("关闭准备通知未送达，窗口已保留。");
     }
   }
@@ -44,7 +45,11 @@ function registerWindowCloseGuard(window, ipcMain) {
       result?.requestId !== pendingId || typeof result.saved !== "boolean"
     ) return;
     pendingId = null;
-    if (!result.saved || window.isDestroyed()) return;
+    if (!result.saved) {
+      onBlocked();
+      return;
+    }
+    if (window.isDestroyed()) return;
     // 只放行这次同步close；若被其他监听器取消，下次仍须重新保存。
     approved = true;
     try {
@@ -55,6 +60,7 @@ function registerWindowCloseGuard(window, ipcMain) {
   }
 
   function resetPage() {
+    if (pendingId) onBlocked();
     ready = false;
     pendingId = null;
   }

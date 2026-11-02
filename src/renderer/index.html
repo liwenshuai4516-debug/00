@@ -273,6 +273,14 @@
     </footer>
   </dialog>
 
+  <!-- 原生模态窗口阻止键盘、鼠标及已有配置弹窗中的新操作。 -->
+  <dialog id="window-close-dialog" class="window-close-dialog" aria-labelledby="window-close-title"
+    aria-describedby="window-close-status">
+    <h2 id="window-close-title" tabindex="-1" autofocus>正在准备关闭</h2>
+    <p id="window-close-status" role="status" aria-live="polite">
+      正在等待当前操作结束并保存输入。若系统文件选择窗口仍打开，请先完成或取消选择。
+    </p>
+  </dialog>
   <!-- 业务入口保留；页面外壳仅管理本地展示。 -->
   <script type="module" src="./renderer.js"></script>
   <script type="module" src="./components/page-shell.js"></script>

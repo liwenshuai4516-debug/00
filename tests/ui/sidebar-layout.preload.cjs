@@ -13,4 +13,9 @@ agent.onDraftConsumed = (callback) => {
   ipcRenderer.on("sidebar-consumed", listener);
   return () => ipcRenderer.removeListener("sidebar-consumed", listener);
 };
+// 本专项不发关闭请求；关闭协议由window-close-page.check.cjs独立验证。
+agent.closeReady = () => {};
+agent.onPrepareClose = () => () => {};
+agent.reportCloseResult = () => {};
+
 contextBridge.exposeInMainWorld("agent", agent);

@@ -1,6 +1,25 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("agent", {
+  // 固定关闭协议；不向页面暴露 Electron 事件或通用 send。
+  closeReady: () => ipcRenderer.send("agent:close-ready"),
+  onPrepareClose: (callback) => {
+    const listener = (_event, requestId) => {
+      if (typeof requestId === "string" && requestId) callback(requestId);
+    };
+    ipcRenderer.on("agent:prepare-close", listener);
+    return () => ipcRenderer.removeListener("agent:prepare-close", listener);
+  },
+  reportCloseResult: (requestId, saved) => {
+    if (
+      typeof requestId !== "string" ||
+      !requestId ||
+      typeof saved !== "boolean"
+    ) {
+      throw new Error("关闭保存确认无效。");
+    }
+    ipcRenderer.send("agent:close-result", { requestId, saved });
+  },
   readModelSettings: () => ipcRenderer.invoke("agent:read-model-settings"),
   listSettingsModels: (provider) =>
     ipcRenderer.invoke("agent:list-settings-models", provider),

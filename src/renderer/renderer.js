@@ -15,6 +15,7 @@ import { createModelSelector } from "./components/model-selector.js";
 import { createModelSettingsPanel } from "./components/model-settings-panel.js";
 
 import { createComposerPersistence } from "./components/composer-persistence.js";
+import { createWindowCloseController } from "./components/window-close-controller.js";
 
 const form = document.getElementById("message-form");
 const input = document.getElementById("message-input");
@@ -23,6 +24,37 @@ const stopButton = document.getElementById("stop-button");
 // 页面忙碌与输入就绪分别管理，保存确认不能解除其他操作的忙碌状态。
 let pageBusy = true;
 let pageGenerating = false;
+
+let closing = false;
+let composing = false;
+let closeController = null;
+const closeDialog = document.getElementById("window-close-dialog");
+let focusBeforeClose = null;
+
+// 不在输入法组词尚未结束时确认保存；模态窗口会使输入框失焦。
+input.addEventListener("compositionstart", () => {
+  composing = true;
+});
+input.addEventListener("compositionend", () => {
+  composing = false;
+  closeController?.notify();
+});
+closeDialog.addEventListener("cancel", (event) => event.preventDefault());
+
+function setClosing(value) {
+  closing = value;
+  setBusy(pageBusy, pageGenerating);
+  if (value) {
+    focusBeforeClose = document.activeElement;
+    closeDialog.showModal();
+  } else {
+    closeDialog.close();
+    const target = focusBeforeClose;
+    if (target?.isConnected && !target.disabled) target.focus();
+    else input.focus();
+  }
+}
+
 let composerState = { canSend: false, retryable: false, pendingSend: null };
 const composerStatus = document.getElementById("composer-draft-status");
 const composerRetry = document.getElementById("composer-draft-retry");
@@ -36,12 +68,13 @@ const dismissCancel = document.getElementById("dismiss-send-cancel");
 let dismissTarget = null;
 
 function renderComposerState() {
+  const busy = pageBusy || closing;
   const message = composerState.message || "正在读取输入……";
   if (composerStatus.textContent !== message)
     composerStatus.textContent = message;
   composerRetry.hidden = !composerState.retryable;
-  composerRetry.disabled = pageBusy;
-  sendButton.disabled = pageBusy || !composerState.canSend;
+  composerRetry.disabled = busy;
+  sendButton.disabled = busy || !composerState.canSend;
 
   // 生成中的临时快照等待请求结束后再展示，避免误报为异常。
   const pending = pageGenerating ? null : composerState.pendingSend;
@@ -57,10 +90,10 @@ function renderComposerState() {
   ) {
     dismissTarget = null;
   }
-  const disabled = pageBusy || !composerState.canDismiss;
+  const disabled = busy || !composerState.canDismiss;
   dismissSendButton.disabled = disabled;
   dismissAccept.disabled = disabled;
-  dismissCancel.disabled = pageBusy;
+  dismissCancel.disabled = busy;
   dismissConfirm.hidden = !dismissTarget;
   dismissSendButton.setAttribute(
     "aria-expanded",
@@ -360,20 +393,22 @@ function addMessage(role, text) {
 function setBusy(busy, generating = false) {
   pageBusy = busy;
   pageGenerating = generating;
-  // fieldset 会统一禁用其内部按钮。
-  proposalPanelElement.disabled = busy;
-  modelSelector.setBusy(busy);
-  modelSettingsPanel.setBusy(busy);
+  const blocked = busy || closing;
+  // 关闭冻结与原操作忙碌分别保存；原 finally 不能提前解除关闭冻结。
+  proposalPanelElement.disabled = blocked;
+  modelSelector.setBusy(blocked);
+  modelSettingsPanel.setBusy(blocked);
   renderComposerState();
-  newChatButton.disabled = busy;
-  selectWorkspaceButton.disabled = busy;
-  compactSessionButton.disabled = busy;
-  exportConversationButton.disabled = busy;
-  sessionList.setBusy(busy);
-  unsentSessionList.setBusy(busy);
-  projectPanel.setBusy(busy);
-  stopButton.disabled = !generating;
-  renameButton.disabled = busy;
+  newChatButton.disabled = blocked;
+  selectWorkspaceButton.disabled = blocked;
+  compactSessionButton.disabled = blocked;
+  exportConversationButton.disabled = blocked;
+  sessionList.setBusy(blocked);
+  unsentSessionList.setBusy(blocked);
+  projectPanel.setBusy(blocked);
+  stopButton.disabled = closing || !generating;
+  renameButton.disabled = blocked;
+  closeController?.notify();
 }
 
 // 用历史消息替换当前页面内容。
@@ -874,3 +909,20 @@ selectWorkspaceButton.addEventListener("click", async () => {
     input.focus();
   }
 });
+
+// 所有组件与事件均已建立后再报告就绪；初始化未结束时也会等待。
+closeController = createWindowCloseController({
+  api: window.agent,
+  readState: () => ({
+    busy: pageBusy || composing,
+    generating: pageGenerating,
+    compacting: !cancelCompactionButton.hidden,
+  }),
+  flushAll: () => composerPersistence.flushAll(),
+  setClosing,
+  onError: (error) => {
+    setRequestStatus("关闭前保存未完成，窗口与输入已保留；处理后可再次关闭。");
+    addMessage("error", `关闭前保存失败：${error.message}`);
+  },
+});
+window.addEventListener("pagehide", () => closeController.dispose(), { once: true });

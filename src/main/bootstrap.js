@@ -22,6 +22,11 @@ const {
 } = require("./services/workspace-selection-service.js");
 const { registerAgentIpc } = require("./ipc/agent-ipc.js");
 const { registerWindowLifecycle } = require("./lifecycle/window-lifecycle.js");
+
+const {
+  registerWindowCloseGuard,
+} = require("./lifecycle/window-close-guard.js");
+const { registerAppQuitGuard } = require("./lifecycle/app-quit-guard.js");
 const { createProposalStore } = require("./services/proposal-store.js");
 
 const { createProposalStorage } = require("./storage/proposal-storage.js");
@@ -185,7 +190,11 @@ registerAgentIpc(
   modelSettingsService,
 );
 
+const quitGuard = registerAppQuitGuard(app, BrowserWindow);
+
 function createWindow() {
+  // 退出进行中不再创建新窗口；失败取消退出后仍可正常重新打开。
+  if (quitGuard.isQuitting()) return;
   const window = new BrowserWindow({
     width: 900,
     height: 700,
@@ -195,6 +204,8 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  registerWindowCloseGuard(window, ipcMain, quitGuard.cancelQuit);
+
   // 每次创建窗口都绑定，包括 macOS 关闭后重新打开的窗口。
   registerWindowLifecycle(window, {
     async stop() {
@@ -219,10 +230,5 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
 // 原进程没有窗口时，允许单实例入口重新创建窗口。
 module.exports = { createWindow };

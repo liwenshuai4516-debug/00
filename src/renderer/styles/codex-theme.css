@@ -196,3 +196,20 @@ select option { background: var(--surface); color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   button { transition: none; }
 }
+
+/* 关闭等待沿用当前深色主题；错误后关闭模态窗口并恢复原操作入口。 */
+.window-close-dialog {
+  width: min(420px, calc(100vw - 48px));
+  box-sizing: border-box;
+  padding: calc(var(--space) * 2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+.window-close-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+.window-close-dialog h2 { margin-top: 0; font-size: 18px; }
+.window-close-dialog p { margin-bottom: 0; color: var(--muted); line-height: 1.6; }
+.window-close-dialog :focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
