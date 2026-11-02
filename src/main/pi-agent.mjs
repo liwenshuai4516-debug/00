@@ -23,6 +23,7 @@ export async function createPiAgent(
   sessionPath,
   workspaceDir = process.env.AGENT_WORKSPACE_DIR,
   modelSettings,
+  recovery,
 ) {
   const managed = typeof modelSettings?.resolveSelection === "function";
   // 保留原四参数和旧配置对象调用，独立初始化检查仍在创建目录前校验。
@@ -35,6 +36,7 @@ export async function createPiAgent(
     workspaceDir,
     resume,
     sessionPath,
+    recovery,
   });
 
   const settingsManager = SettingsManager.inMemory();
@@ -54,9 +56,11 @@ export async function createPiAgent(
 
   await resourceLoader.reload();
 
-  const savedSelection = sessionManager.getBranch().findLast(
-    (entry) => entry.type === "model_change",
-  ) ?? sessionManager.buildSessionContext().model;
+  // 仅真正重建的空会话采用登记模型；找到历史时仍遵循原分支选择。
+  const savedSelection = source === "empty" && recovery !== undefined
+    ? recovery.registration.model
+    : sessionManager.getBranch().findLast((entry) => entry.type === "model_change") ??
+      sessionManager.buildSessionContext().model;
   const runtime = await ModelRuntime.create();
   let model;
   if (managed) {

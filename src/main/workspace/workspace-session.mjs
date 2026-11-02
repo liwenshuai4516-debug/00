@@ -9,7 +9,7 @@ const BINDING_TYPE = "desktop-workspace-binding";
 
 // 返回不能继续使用的原因；空字符串表示绑定检查通过。
 // 先只读检查，再交给 SDK 打开，避免被拒绝的旧文件先被迁移。
-async function getSessionBindingError(sessionPath, workspaceRoot) {
+async function getSessionBindingError(sessionPath, workspaceRoot, expectedSessionId) {
   if (!(await stat(sessionPath)).isFile()) {
     return "会话路径不是普通文件。";
   }
@@ -25,6 +25,10 @@ async function getSessionBindingError(sessionPath, workspaceRoot) {
     typeof header.id !== "string"
   ) {
     return "会话文件头无效，无法继续。";
+  }
+
+  if (expectedSessionId !== undefined && header.id !== expectedSessionId) {
+    return "会话文件编号与恢复登记不一致。";
   }
 
   const bindings = entries.filter(
@@ -61,6 +65,7 @@ export async function createWorkspaceSession({
   workspaceDir,
   resume = false,
   sessionPath,
+  recovery,
 }) {
   if (!workspaceDir || !path.isAbsolute(workspaceDir)) {
     throw new Error(
@@ -76,12 +81,50 @@ export async function createWorkspaceSession({
   }
 
   let selectedPath = sessionPath;
+  if (recovery !== undefined) {
+    if (resume || sessionPath) {
+      throw new Error("登记恢复不能同时指定历史路径或自动恢复。");
+    }
+    if (!recovery || typeof recovery.sessionId !== "string" || !recovery.sessionId) {
+      throw new Error("恢复登记缺少原会话编号。");
+    }
+    if (recovery.workspaceDir !== workspaceRoot) {
+      throw new Error("恢复登记不属于当前真实工作目录。");
+    }
+
+    // 真实历史优先；跨目录也查原编号，随后执行原有绑定检查。
+    const matches = (await SessionManager.listAll(sessionDir)).filter(
+      (session) => session.id === recovery.sessionId,
+    );
+    if (matches.length > 1) {
+      throw new Error("发现多份相同编号的历史，无法确定恢复目标。");
+    }
+    selectedPath = matches[0]?.path;
+    if (!selectedPath) {
+      // 文件缺失本身不能证明为空；来源未知、历史丢失及待确认发送均拒绝重建。
+      if (recovery.registration?.source !== "empty") {
+        throw new Error("原会话没有可恢复历史，也没有可信的空会话登记。");
+      }
+      if (recovery.pendingSend != null) {
+        throw new Error("该会话仍有待确认发送，不能重建为空会话。");
+      }
+      if (typeof recovery.draft?.text !== "string" || recovery.draft.text.length === 0) {
+        throw new Error("该空会话没有待恢复的输入。");
+      }
+      const model = recovery.registration.model;
+      if (typeof model?.provider !== "string" || !model.provider.trim() ||
+          typeof model.modelId !== "string" || !model.modelId.trim()) {
+        throw new Error("恢复登记缺少原模型选择。");
+      }
+    }
+  }
 
   if (selectedPath) {
     // 用户明确选择了会话，检查失败就报告原因。
     const error = await getSessionBindingError(
       selectedPath,
       workspaceRoot,
+      recovery?.sessionId,
     );
 
     if (error) throw new Error(error);
@@ -118,10 +161,11 @@ export async function createWorkspaceSession({
     };
   }
 
-  // 没有匹配记录时新建，不认领或修改无绑定旧记录。
+  // 普通新建使用新编号；可信空会话重建保留原编号，不伪造历史消息。
   const manager = SessionManager.create(
     workspaceRoot,
     sessionDir,
+    recovery === undefined ? undefined : { id: recovery.sessionId },
   );
 
   manager.appendCustomEntry(BINDING_TYPE, {
