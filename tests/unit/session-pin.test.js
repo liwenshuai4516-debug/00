@@ -48,7 +48,7 @@ test("列表默认未置顶，不创建状态或Agent，不改写历史", async 
   const s = await setup(t);
   const history = await writeHistory(s, "a");
   assert.deepEqual(await s.service.listSessions(), [
-    { id: "a", title: "问题-a", workspaceDir: s.workspace, updatedAt: 1000, pinnedAt: null },
+    { id: "a", title: "问题-a", workspaceDir: s.workspace, updatedAt: 1000, pinnedAt: null, archivedAt: null },
   ]);
   await assert.rejects(fs.stat(s.directory), { code: "ENOENT" });
   assert.equal(await fs.readFile(history.file, "utf8"), history.content);
@@ -105,7 +105,7 @@ test("列表仍按消息活动返回，置顶不更新活动时间或泄露输�
   assert.deepEqual(rows.map(row => [row.id, row.updatedAt]), [["newer", 2000], ["older", 1000]]);
   assert.notEqual(rows[0].workspaceDir, rows[1].workspaceDir);
   for (const row of rows) {
-    assert.deepEqual(Object.keys(row).sort(), ["id", "title", "workspaceDir", "updatedAt", "pinnedAt"].sort());
+    assert.deepEqual(Object.keys(row).sort(), ["id", "title", "workspaceDir", "updatedAt", "pinnedAt", "archivedAt"].sort());
   }
   // 旧调用未注入存储时兼容读取，但不能假装已经保存置顶。
   const bare = createSessionService(s.sessions, () => assert.fail("不能创建Agent"));

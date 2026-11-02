@@ -56,8 +56,7 @@ export function mountHistoryPreview(panel, agent) {
     button.disabled = busy || !select.value;
   });
 
-  button.addEventListener("click", async () => {
-    const sessionId = select.value;
+  async function showPreview(sessionId) {
     if (!sessionId || busy) return;
 
     setLoading(true);
@@ -95,5 +94,16 @@ export function mountHistoryPreview(panel, agent) {
     } finally {
       setLoading(false);
     }
-  });
+  }
+  button.addEventListener("click", () => { void showPreview(select.value); });
+
+  return {
+    async preview(sessionId, title) {
+      if (busy) return;
+      // 同步进入loading，阻止随后toggle事件另发列表请求覆盖当前预览。
+      panel.open = true;
+      select.replaceChildren(new Option(title, sessionId));
+      await showPreview(sessionId);
+    },
+  };
 }

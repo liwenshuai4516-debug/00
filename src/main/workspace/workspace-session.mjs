@@ -66,6 +66,7 @@ export async function createWorkspaceSession({
   resume = false,
   sessionPath,
   recovery,
+  archivedSessionIds = [],
 }) {
   if (!workspaceDir || !path.isAbsolute(workspaceDir)) {
     throw new Error(
@@ -137,6 +138,7 @@ export async function createWorkspaceSession({
     );
 
     for (const session of sessions) {
+      if (archivedSessionIds.includes(session.id)) continue;
       const error = await getSessionBindingError(
         session.path,
         workspaceRoot,

@@ -60,11 +60,11 @@ const modelSettingsStore = createModelSettingsStore(
 const modelSettingsService = createModelSettingsService(modelSettingsStore);
 
 // 每次创建会话按自身记录解析配置；新会话才读取默认选择。
-async function createConfiguredAgent(sessionDir, resume, sessionPath, workspaceDir, recovery) {
+async function createConfiguredAgent(sessionDir, resume, sessionPath, workspaceDir, recovery, resumeOptions) {
   await app.whenReady();
   const { createPiAgent } = await import("./pi-agent.mjs");
   return createPiAgent(
-    sessionDir, resume, sessionPath, workspaceDir, modelSettingsService, recovery,
+    sessionDir, resume, sessionPath, workspaceDir, modelSettingsService, recovery, resumeOptions,
   );
 }
 

@@ -129,6 +129,10 @@ function registerAgentIpc(
     runIdleOperation(() => sessionService.setSessionPinned(sessionId, pinned)),
   );
 
+  ipcMain.handle("agent:set-session-archived", (_event, sessionId, archived) =>
+    runIdleOperation(() => sessionService.setSessionArchived(sessionId, archived)),
+  );
+
   // 列表依赖当前真实目录；与恢复共用互斥入口，避免读取时目录被切换。
   ipcMain.handle("agent:list-unsent-sessions", () =>
     runIdleOperation(() => sessionService.listUnsentSessions()),

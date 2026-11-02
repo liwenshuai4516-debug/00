@@ -1,4 +1,6 @@
 // 只负责目录分组与会话列表展示；打开会话仍由 renderer.js 处理。
+import { createArchiveNotice } from "./archive-notice.js";
+
 export function createSessionList(container, onSelect, onOpenProject, actions = {}) {
   const buttons = new Map();
   const projectButtons = [];
@@ -7,9 +9,29 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
   const collapsed = new Set();
   let activeId = "";
   let busy = false;
+  let retryAllowed = false;
   let sessions = [];
   let projects = [];
   let query = "";
+  let archivedView = false;
+  const views = document.createElement("div");
+  views.className = "session-view-switch";
+  views.setAttribute("role", "group");
+  views.setAttribute("aria-label", "对话列表范围");
+  const viewButtons = [false, true].map(archived => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = archived ? "已归档" : "对话";
+    button.addEventListener("click", () => {
+      if (busy) return;
+      archivedView = archived;
+      draw();
+      button.focus();
+    });
+    views.append(button);
+    return button;
+  });
+  const notice = createArchiveNotice(id => actions.onSetArchived(id, false));
   const status = document.createElement("p");
   status.className = "session-list-status";
   status.setAttribute("role", "status");
@@ -19,7 +41,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
   retry.className = "session-list-retry";
   retry.textContent = "刷新对话列表";
   retry.hidden = true;
-  retry.addEventListener("click", () => { if (!busy) actions.onReload?.(); });
+  retry.addEventListener("click", () => { if (!busy || retryAllowed) actions.onReload?.(); });
 
   function closeActions() {
     for (const { toggle, panel } of actionRows.values()) {
@@ -49,8 +71,9 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     }
   }
 
-  function setBusy(value) {
+  function setBusy(value, allowRetry = false) {
     busy = value;
+    retryAllowed = allowRetry;
     container.setAttribute("aria-busy", String(busy));
 
     for (const button of buttons.values()) {
@@ -58,7 +81,9 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     }
     for (const button of projectButtons) button.disabled = busy;
     for (const button of actionControls) button.disabled = busy;
-    retry.disabled = busy;
+    retry.disabled = busy && !retryAllowed;
+    for (const button of viewButtons) button.disabled = busy;
+    notice.setBusy(busy);
     if (busy) closeActions();
   }
 
@@ -68,9 +93,15 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     actionControls.length = 0;
     actionRows.clear();
     container.replaceChildren();
+    if (actions.onSetArchived) {
+      viewButtons.forEach((button, index) => button.setAttribute("aria-pressed", String(archivedView === Boolean(index))));
+      container.append(views);
+    }
+    container.append(notice.element);
 
     // filter 创建新数组，排序不会改动主进程传来的列表。
     const visibleSessions = sessions
+      .filter(session => (session.archivedAt != null) === archivedView)
       .filter((session) => session.title.toLowerCase().includes(query))
       .sort((first, second) => second.updatedAt - first.updatedAt || first.id.localeCompare(second.id));
     const groups = new Map();
@@ -84,7 +115,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
 
     const projectsByDirectory = new Map(projects.map((project) => [project.workspaceDir, project]));
     // 已有对话仍按最近活动排序；没有对话的新项目也能从同一区域打开。
-    if (!query) {
+    if (!query && !archivedView) {
       for (const project of projects) {
         if (!groups.has(project.workspaceDir)) groups.set(project.workspaceDir, []);
       }
@@ -109,12 +140,12 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
       summary.title = workspaceDir || "未记录工作目录";
 
       const project = projectsByDirectory.get(workspaceDir);
-      const name = document.createElement(project ? "button" : "span");
+      const name = document.createElement(project && !archivedView ? "button" : "span");
       name.className = "session-group-name";
       name.textContent = project?.name || (workspaceDir
         ? workspaceDir.split(/[\\/]/).filter(Boolean).at(-1) || workspaceDir
         : "未分类历史");
-      if (project) {
+      if (project && !archivedView) {
         name.type = "button";
         name.classList.add("session-project-open");
         name.disabled = busy;
@@ -152,7 +183,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
       for (const session of groupSessions) {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "session-open";
+        button.className = archivedView ? "session-preview" : "session-open";
         button.dataset.sessionId = session.id;
         button.textContent = session.title;
         button.title = session.title;
@@ -160,11 +191,13 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
 
         button.addEventListener("click", () => {
           // 展示归组不改变会话绑定，也不能绕过忙碌检查。
-          if (busy || session.id === activeId) return;
-          onSelect(session.id);
+          if (busy) return;
+          if (archivedView) actions.onPreview?.(session.id, session.title);
+          else if (session.id !== activeId) onSelect(session.id);
         });
 
-        buttons.set(session.id, button);
+        if (!archivedView) buttons.set(session.id, button);
+        else actionControls.push(button);
         const row = document.createElement("div");
         row.className = "session-row";
         row.dataset.sessionId = session.id;
@@ -202,11 +235,12 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           const pin = document.createElement("button");
           pin.type = "button";
           pin.className = "session-pin-action";
-          pin.textContent = pinned ? "取消置顶" : "置顶";
+          pin.textContent = archivedView ? "恢复对话" : (pinned ? "取消置顶" : "置顶");
           pin.addEventListener("click", () => {
             if (busy) return;
             closeActions();
-            actions.onSetPinned(session.id, !pinned);
+            if (archivedView) actions.onSetArchived(session.id, false);
+            else actions.onSetPinned(session.id, !pinned);
           });
           toggle.addEventListener("click", () => {
             if (busy) return;
@@ -223,6 +257,19 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
             toggle.focus();
           });
           panel.append(pin);
+          if (!archivedView && actions.onSetArchived) {
+            const archive = document.createElement("button");
+            archive.type = "button";
+            archive.className = "session-archive-action";
+            archive.textContent = "归档";
+            archive.addEventListener("click", () => {
+              if (busy) return;
+              closeActions();
+              actions.onSetArchived(session.id, true);
+            });
+            panel.append(archive);
+            actionControls.push(archive);
+          }
           row.append(toggle, panel);
           actionRows.set(session.id, { toggle, panel });
           actionControls.push(toggle, pin);
@@ -237,7 +284,9 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     if (!groups.size) {
       const empty = document.createElement("p");
       empty.className = "session-list-empty";
-      empty.textContent = sessions.length
+      empty.textContent = archivedView
+        ? (query ? "没有匹配的已归档对话。" : "暂无已归档对话。")
+        : sessions.length
         ? "没有匹配的对话，试试其他关键词。"
         : "暂无历史对话，发送消息后会出现在这里。";
       container.appendChild(empty);
@@ -245,7 +294,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
 
     setActive(activeId);
     container.append(status, retry);
-    setBusy(busy);
+    setBusy(busy, retryAllowed);
   }
 
   function render(nextSessions, currentId) {
@@ -275,13 +324,21 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     draw();
   }
 
+  function updateArchived(id, archivedAt) {
+    sessions = sessions.map(session => session.id === id ? { ...session, archivedAt } : session);
+    if (archivedAt != null) notice.show(id);
+    else notice.restored(id);
+    draw();
+  }
+
   function focusActions(id) {
     const row = actionRows.get(id) ?? actionRows.values().next().value;
-    row?.toggle.focus();
+    if (row) row.toggle.focus();
+    else viewButtons[Number(archivedView)].focus();
   }
 
   return {
-    render, setActive, setBusy, setQuery, setProjects, setStatus, updatePinned, focusActions,
-    dispose() { document.removeEventListener("click", onOutsideClick); },
+    render, setActive, setBusy, setQuery, setProjects, setStatus, updatePinned, updateArchived, focusActions,
+    dispose() { document.removeEventListener("click", onOutsideClick); notice.dispose(); },
   };
 }

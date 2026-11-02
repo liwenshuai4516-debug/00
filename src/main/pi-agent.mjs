@@ -24,6 +24,7 @@ export async function createPiAgent(
   workspaceDir = process.env.AGENT_WORKSPACE_DIR,
   modelSettings,
   recovery,
+  resumeOptions,
 ) {
   const managed = typeof modelSettings?.resolveSelection === "function";
   // 保留原四参数和旧配置对象调用，独立初始化检查仍在创建目录前校验。
@@ -37,6 +38,7 @@ export async function createPiAgent(
     resume,
     sessionPath,
     recovery,
+    archivedSessionIds: resumeOptions?.archivedSessionIds,
   });
 
   const settingsManager = SettingsManager.inMemory();

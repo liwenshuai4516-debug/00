@@ -10,6 +10,7 @@ function setup() {
   let busy = false;
   const calls = [];
   const service = {
+    setSessionArchived(...args) { calls.push(args); return { id: args[0], archivedAt: 10, changed: false }; },
     setSessionPinned(...args) { calls.push(args); return { id: args[0], pinnedAt: 10 }; },
     newChat() { return "new"; },
   };
@@ -75,4 +76,37 @@ test("预加载置顶使用固定通道，丢弃额外参数并传递拒绝", as
   assert.equal(await api.setSessionPinned("a", false, "/forged", 1), "done");
   await assert.rejects(api.setSessionPinned("bad", true), /模拟拒绝/);
   assert.deepEqual(calls, [["agent:set-session-pinned", "a", false], ["agent:set-session-pinned", "bad", true]]);
+});
+
+for (const archived of [false, true]) {
+  test(`归档IPC只转发编号和状态，${archived}全程互斥并传递失败`, async () => {
+    const s = setup();
+    s.setBusy(true);
+    assert.throws(() => s.invoke("set-session-archived", "a", archived), /等待当前回复结束/);
+    s.setBusy(false);
+    assert.deepEqual(await s.invoke("set-session-archived", "a", archived, "/forged", 999), { id: "a", archivedAt: 10, changed: false });
+    assert.deepEqual(s.calls, [["a", archived]]);
+    const gate = Promise.withResolvers();
+    s.service.setSessionArchived = () => gate.promise;
+    const pending = s.invoke("set-session-archived", "a", archived);
+    const failure = assert.rejects(pending, /归档失败/);
+    assert.throws(() => s.invoke("new-chat"), /其他操作完成/);
+    assert.throws(() => s.invoke("set-session-pinned", "a", true), /其他操作完成/);
+    assert.throws(() => s.invoke("set-session-archived", "a", archived), /其他操作完成/);
+    assert.throws(() => s.invoke("send-message", "文字"), /当前操作结束/);
+    assert.equal(await s.invoke("save-composer-draft", "a", "原文", 1), "saved");
+    gate.reject(Error("归档失败")); await failure;
+    assert.equal(await s.invoke("new-chat"), "new");
+  });
+}
+
+test("归档预加载固定通道，仅编号和布尔值", async () => {
+  let api; const calls = [];
+  runInNewContext(readFileSync(path.join(__dirname, "../../src/preload/preload.js"), "utf8"), {
+    require: () => ({ contextBridge: { exposeInMainWorld(_name, value) { api = value; } },
+      ipcRenderer: { invoke(...args) { calls.push(args); return Promise.resolve({ changed: false }); } },
+    }),
+  });
+  assert.deepEqual(await api.setSessionArchived("a", false, "/forged", 20), { changed: false });
+  assert.deepEqual(calls, [["agent:set-session-archived", "a", false]]);
 });

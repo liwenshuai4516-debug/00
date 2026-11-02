@@ -78,9 +78,10 @@ async function main() {
     isBusy: () => generating, listProposals: async () => [],
     send: async (text, _onText, _onTool, _onStatus, request, ack) => {
       generating = true;
+      sendGate = Promise.withResolvers();
       const state = await store.consumeDraft(current, workspace, text, request.revision);
       const consumed = { sessionId: current, ...state.draft, sendId: state.pendingSend.id };
-      ack(consumed); sendGate = Promise.withResolvers(); await sendGate.promise;
+      ack(consumed); await sendGate.promise;
       await store.completeSend(current, workspace, consumed.sendId);
       generating = false;
       return { stopped: true, outcome: "stopped", draft: consumed };

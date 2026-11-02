@@ -3,9 +3,9 @@ const { toHistory } = require("../adapters/message-adapter.js");
 const { readFile, realpath, stat } = require("node:fs/promises");
 
 // 正常运行时动态加载真实的 Pi 会话创建函数。
-async function createDefaultAgent(sessionDir, resume, sessionPath, workspaceDir, recovery) {
+async function createDefaultAgent(sessionDir, resume, sessionPath, workspaceDir, recovery, resumeOptions) {
   const { createPiAgent } = await import("../pi-agent.mjs");
-  return createPiAgent(sessionDir, resume, sessionPath, workspaceDir, undefined, recovery);
+  return createPiAgent(sessionDir, resume, sessionPath, workspaceDir, undefined, recovery, resumeOptions);
 }
 
 // 测试时可以传入模拟创建函数，正常启动无需额外参数。
@@ -112,6 +112,17 @@ function createSessionService(
   // 创建失败时，由调用方保留原会话。
   async function createSession(resume = false, sessionPath) {
     const workspaceDir = await readWorkspaceDir();
+    return createInWorkspace(resume, sessionPath, workspaceDir);
+  }
+
+  async function createInWorkspace(resume, sessionPath, workspaceDir) {
+    if (resume && sessionStateStore) {
+      // 状态读取失败必须中止恢复，不能把归档对话当作普通历史重新打开。
+      const states = await sessionStateStore.list();
+      const archivedSessionIds = states.filter(state => state.archivedAt !== null)
+        .map(state => state.sessionId);
+      return createAgent(sessionDir, resume, sessionPath, workspaceDir, undefined, { archivedSessionIds });
+    }
     return createAgent(sessionDir, resume, sessionPath, workspaceDir);
   }
 
@@ -380,6 +391,7 @@ function createSessionService(
           // 消息活动时间保持不变，置顶排序留给页面在原目录组内处理。
           updatedAt: session.modified.getTime(),
           pinnedAt: state?.pinnedAt ?? null,
+          archivedAt: state?.archivedAt ?? null,
         };
       }),
     );
@@ -420,6 +432,49 @@ function createSessionService(
       }),
     );
     return { id: sessionId, pinnedAt: state.pinnedAt };
+  }
+
+  // 归档当前会话时先准备候选，状态写入成功才替换并释放原会话。
+  async function setSessionArchived(sessionId, archived) {
+    if (!sessionStateStore) throw new Error("尚未配置会话状态存储。");
+    if (typeof sessionId !== "string" || !sessionId.trim()) {
+      throw new Error("请选择历史对话。");
+    }
+    if (typeof archived !== "boolean") throw new Error("归档状态无效。");
+    const matches = (await readSessions()).filter(session => session.id === sessionId);
+    if (matches.length !== 1) {
+      throw new Error(matches.length ? "发现多份相同编号的历史。" : "未找到该历史对话，请刷新列表后重试。");
+    }
+    const selected = matches[0];
+    if (!selected.cwd) throw new Error("该历史对话缺少工作目录，暂不能归档或恢复。");
+    const previous = sessionPromise ? await sessionPromise.catch(() => undefined) : undefined;
+    let next;
+    let replacement;
+    let state;
+    try {
+      if (archived && previous?.sessionId === sessionId) {
+        const workspaceDir = previous.sessionManager.getCwd();
+        if (workspaceDir !== selected.cwd) throw new Error("会话工作目录不匹配。");
+        next = await createInWorkspace(false, undefined, workspaceDir);
+        replacement = {
+          sessionId: next.sessionId,
+          workspaceDir: next.sessionManager.getCwd(),
+          history: getHistory(next),
+        };
+      }
+      state = await sessionStateStore.update(sessionId, selected.cwd, current => ({
+        ...current,
+        archivedAt: archived ? (current.archivedAt ?? Date.now()) : null,
+      }));
+    } catch (error) {
+      next?.dispose();
+      throw error;
+    }
+    if (next) {
+      sessionPromise = Promise.resolve(observeSession(next));
+      previous.dispose();
+    }
+    return { id: sessionId, archivedAt: state.archivedAt, changed: Boolean(next), ...replacement };
   }
 
   async function readRecoveryWorkspace() {
@@ -545,6 +600,10 @@ function createSessionService(
       throw new Error("未找到该历史对话，请刷新列表后重试。");
     }
 
+    if ((await sessionStateStore?.load(sessionId))?.archivedAt != null) {
+      throw new Error("该会话已归档，请先恢复后再继续对话。");
+    }
+
     const previousSession = sessionPromise ? await sessionPromise : undefined;
 
     // 创建成功后再替换，打开失败时保留旧会话。
@@ -630,8 +689,7 @@ function createSessionService(
     }
 
     // 复用已有的目录绑定检查与最近活动恢复，无合法历史时新建。
-    const nextSession = await createAgent(
-      sessionDir,
+    const nextSession = await createInWorkspace(
       true,
       undefined,
       workspaceRoot,
@@ -686,6 +744,7 @@ function createSessionService(
     recordWorkspaceEdit,
     listSessions,
     setSessionPinned,
+    setSessionArchived,
     listUnsentSessions,
     restoreUnsentSession,
     previewSession,

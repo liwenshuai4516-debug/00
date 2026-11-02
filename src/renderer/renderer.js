@@ -26,6 +26,7 @@ let pageBusy = true;
 let pageGenerating = false;
 
 let closing = false;
+let archiveSyncPending = false;
 let composing = false;
 let closeController = null;
 const closeDialog = document.getElementById("window-close-dialog");
@@ -68,7 +69,7 @@ const dismissCancel = document.getElementById("dismiss-send-cancel");
 let dismissTarget = null;
 
 function renderComposerState() {
-  const busy = pageBusy || closing;
+  const busy = pageBusy || closing || archiveSyncPending;
   const message = composerState.message || "正在读取输入……";
   if (composerStatus.textContent !== message)
     composerStatus.textContent = message;
@@ -195,7 +196,11 @@ const sessionList = createSessionList(
   document.getElementById("session-list"),
   openHistorySession,
   (project) => projectPanel.open(project),
-  { onSetPinned: setSessionPinned, onReload: reloadSessionList },
+  {
+    onSetPinned: setSessionPinned, onReload: reloadSessionList,
+    onSetArchived: setSessionArchived,
+    onPreview: (id, title) => historyPreview.preview(id, title),
+  },
 );
 window.addEventListener("pagehide", () => sessionList.dispose(), { once: true });
 // 搜索只更新侧栏展示，不切换当前会话。
@@ -395,7 +400,7 @@ function addMessage(role, text) {
 function setBusy(busy, generating = false) {
   pageBusy = busy;
   pageGenerating = generating;
-  const blocked = busy || closing;
+  const blocked = busy || closing || archiveSyncPending;
   // 关闭冻结与原操作忙碌分别保存；原 finally 不能提前解除关闭冻结。
   proposalPanelElement.disabled = blocked;
   modelSelector.setBusy(blocked);
@@ -405,7 +410,7 @@ function setBusy(busy, generating = false) {
   selectWorkspaceButton.disabled = blocked;
   compactSessionButton.disabled = blocked;
   exportConversationButton.disabled = blocked;
-  sessionList.setBusy(blocked);
+  sessionList.setBusy(blocked, archiveSyncPending && !busy && !closing);
   unsentSessionList.setBusy(blocked);
   projectPanel.setBusy(blocked);
   stopButton.disabled = closing || !generating;
@@ -468,13 +473,61 @@ async function reloadSessionList() {
   if (pageBusy || closing) return;
   setBusy(true);
   try {
+    if (archiveSyncPending) await syncArchivedPage();
     await refreshSessions();
     sessionList.setStatus("对话列表已刷新。");
   } catch (error) {
     sessionList.setStatus(`列表刷新失败：${error.message}`, true);
   } finally {
+    if (!archiveSyncPending) input.readOnly = false;
     setBusy(false);
     sessionList.focusActions(composerState.sessionId);
+  }
+}
+
+async function syncArchivedPage(result) {
+  const sessionId = result?.sessionId ?? await window.agent.currentSession();
+  if (sessionId !== composerState.sessionId) {
+    const history = result?.history ?? await window.agent.loadHistory();
+    showHistory(history);
+    sessionList.setActive(sessionId);
+    proposalPanel.clear();
+    sessionName.value = "";
+    await bindComposer(sessionId);
+    for (const refresh of [restoreProposalPanel, () => sessionInfoPanel.refresh(), () => modelSelector.refresh()]) {
+      try { await refresh(); } catch (error) { addMessage("error", `归档状态已更新，刷新失败：${error.message}`); }
+    }
+  }
+  archiveSyncPending = false;
+}
+
+async function setSessionArchived(sessionId, archived) {
+  if (pageBusy || closing || archiveSyncPending) return;
+  setBusy(true);
+  const wasReadOnly = input.readOnly;
+  // 当前会话即将离开，先冻结输入并确认落盘，避免切换期间新编辑丢失。
+  if (archived && sessionId === composerState.sessionId) input.readOnly = true;
+  let saved = false;
+  try {
+    if (archived && sessionId === composerState.sessionId) await composerPersistence.flush();
+    archiveSyncPending = true;
+    const result = await window.agent.setSessionArchived(sessionId, archived);
+    saved = true;
+    sessionList.updateArchived(sessionId, result.archivedAt);
+    await syncArchivedPage(result.changed ? result : undefined);
+    await refreshSessions();
+    sessionList.setStatus(archived ? "已归档，可撤销或在已归档列表中恢复。" : "已恢复对话，当前输入保持不变。");
+  } catch (error) {
+    if (archiveSyncPending) {
+      // 返回丢失也可能已完成归档与切换；先只读核对实际编号，不重复提交。
+      try { await syncArchivedPage(); } catch { /* 保持冻结，允许刷新入口再次核对。 */ }
+    }
+    sessionList.setStatus(`${saved ? "归档状态已保存，页面更新未完成" : "归档操作未完成，请刷新核对"}：${error.message}`, true);
+  } finally {
+    await refreshUnsentSessions();
+    input.readOnly = archiveSyncPending || wasReadOnly;
+    setBusy(false);
+    sessionList.focusActions(sessionId);
   }
 }
 
@@ -502,7 +555,7 @@ async function loadHistory() {
 }
 
 // 先建立独立预览入口，再尝试恢复当前聊天。
-mountHistoryPreview(document.getElementById("history-preview"), window.agent);
+const historyPreview = mountHistoryPreview(document.getElementById("history-preview"), window.agent);
 
 // 项目清单独立读取，不依赖当前模型会话初始化成功。
 projectPanel.refresh();
