@@ -57,3 +57,55 @@
 .session-project-open:focus-visible {
   outline-offset: -2px;
 }
+
+.session-group > summary.session-group-with-actions {
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+}
+
+.session-list .project-rename-toggle {
+  grid-column: 4;
+  grid-row: 1;
+  width: auto;
+  min-height: 44px;
+  padding: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.project-rename-dialog {
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.project-rename-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.project-rename-dialog form {
+  display: grid;
+  gap: 12px;
+}
+
+.project-rename-dialog h2,
+.project-rename-dialog p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-rename-dialog h2 { font-size: 18px; }
+.project-rename-dialog p { font-size: 13px; color: var(--muted); }
+.project-rename-dialog input { width: 100%; min-width: 0; box-sizing: border-box; }
+
+.project-rename-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

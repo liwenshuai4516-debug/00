@@ -35,7 +35,12 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return sessionService.openWorkspace(project.workspaceDir);
   }
 
-  return { listProjects, addProject, openProject };
+  function renameProject(projectId, name) {
+    // 只更新项目元信息，校验与落盘沿用存储层，不触碰当前会话。
+    return projectStore.rename(projectId, name);
+  }
+
+  return { listProjects, addProject, openProject, renameProject };
 }
 
 module.exports = { createProjectService };

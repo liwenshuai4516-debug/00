@@ -100,6 +100,10 @@ function registerAgentIpc(
     return runIdleOperation(() => projectService.openProject(projectId));
   });
 
+  ipcMain.handle("agent:rename-project", (_event, projectId, name) => {
+    return runIdleOperation(() => projectService.renameProject(projectId, name));
+  });
+
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
   ipcMain.handle("agent:set-session-pinned", (_event, sessionId, pinned) =>

@@ -152,6 +152,8 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 添加时由系统窗口选择目录，不接收页面提供的路径。
   listProjects: () => ipcRenderer.invoke("agent:list-projects"),
+  renameProject: (projectId, name) =>
+    ipcRenderer.invoke("agent:rename-project", projectId, name),
   addProject: () => ipcRenderer.invoke("agent:add-project"),
   // 页面只提交编号，工作目录由主进程从项目记录读取。
   openProject: (projectId) => ipcRenderer.invoke("agent:open-project", projectId),

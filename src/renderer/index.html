@@ -396,6 +396,21 @@
     </section>
     <footer class="model-manager-feedback"><p data-model-status role="status" aria-atomic="true">尚未读取配置。</p><button type="button" data-retry hidden>重新读取</button></footer>
   </dialog>
+  <dialog id="project-rename-dialog" class="project-rename-dialog" aria-labelledby="project-rename-title">
+    <form novalidate>
+      <h2 id="project-rename-title">重命名项目</h2>
+      <label for="project-rename-name">项目名称</label>
+      <input id="project-rename-name" name="name" maxlength="40" required autocomplete="off"
+        aria-describedby="project-rename-hint project-rename-error" />
+      <p id="project-rename-hint">请输入 1～40 个字符，仅修改显示名称。</p>
+      <p id="project-rename-error" role="status" aria-atomic="true"></p>
+      <div class="project-rename-actions">
+        <button type="button" data-check hidden>核对保存结果</button>
+        <button type="button" data-cancel>取消</button>
+        <button type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
   <!-- 原生模态窗口阻止键盘、鼠标及已有配置弹窗中的新操作。 -->
   <dialog id="window-close-dialog" class="window-close-dialog" aria-labelledby="window-close-title"
     aria-describedby="window-close-status">

@@ -168,6 +168,23 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
       location.className = "session-group-path";
       location.textContent = workspaceDir || "未记录工作目录";
       summary.append(name, count, location);
+      if (project && !archivedView && actions.onRenameProject) {
+        summary.classList.add("session-group-with-actions");
+        const rename = document.createElement("button");
+        rename.type = "button";
+        rename.className = "project-rename-toggle";
+        rename.dataset.projectId = project.id;
+        rename.textContent = "重命名";
+        rename.setAttribute("aria-label", `重命名项目：${project.name}`);
+        rename.disabled = busy;
+        rename.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!busy) actions.onRenameProject(project);
+        });
+        summary.append(rename);
+        projectButtons.push(rename);
+      }
 
       // 原生 summary 的鼠标和键盘操作都会触发 click。
       // 在默认展开动作前记住下一状态，避免异步 toggle 与重绘交错。

@@ -200,6 +200,7 @@ const sessionList = createSessionList(
   {
     onSetPinned: setSessionPinned, onReload: reloadSessionList,
     onSetArchived: setSessionArchived,
+    onRenameProject: (project) => projectPanel.rename(project),
     onPreview: (id, title) => historyPreview.preview(id, title),
   },
 );
@@ -379,6 +380,7 @@ const projectPanel = createProjectPanel(
   setBusy,
   openProject,
   (projects) => sessionList.setProjects(projects),
+  document.getElementById("project-rename-dialog"),
 );
 
 // 在页面初始化时创建面板，供所有函数和事件处理使用。
