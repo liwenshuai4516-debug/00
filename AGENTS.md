@@ -102,7 +102,7 @@ JavaScript 使用两空格缩进、双引号、分号及描述性的驼峰命名
 
 | 顺序 | 未完项 | 当前基础与完成标准 |
 | --- | --- | --- |
-| 1 | 未发送空会话的登记、找回与重建 | 原编号、真实目录、来源与模型登记、输入原子保存和独立同步已接通，但SDK空会话没有历史文件。按原编号与登记模型重建的底层能力也已完成，同目录列表与恢复服务、IPC/preload已完成，尚需侧栏组件和页面接线；有真实历史优先走原恢复链路，历史丢失不能冒充空会话。验证重启找回、目录/模型失效时保留输入、不串会话。 |
+| 1 | 未发送空会话的登记、找回与重建 | 原编号、真实目录、来源与模型登记、输入原子保存和独立同步已接通，但SDK空会话没有历史文件。按原编号与登记模型重建的底层能力也已完成，同目录列表与恢复服务、IPC/preload已完成，侧栏组件已编写且10项检查通过（CSS末尾粘贴残留待清理），尚需页面接线和真实验收；有真实历史优先走原恢复链路，历史丢失不能冒充空会话。验证重启找回、目录/模型失效时保留输入、不串会话。 |
 | 2 | 正常关闭前补保存 | 当前pagehide只释放组件，窗口closed只停止生成，尚无关闭握手。需要关闭前等待待写输入、失败保留窗口并可重试，兼容生成与退出；强制结束只保证已确认落盘内容。1、2完成前不称完整重启恢复。 |
 | 3 | 会话置顶与可撤销归档 | 存储已有pinnedAt/archivedAt字段，业务接口和页面尚未接通。补置顶排序、归档视图、撤销/恢复、当前会话归档的安全切换；同步过滤启动及项目恢复，不删除或移动原历史，不丢输入和文件草稿，不改变最近消息活动规则。 |
 | 4 | 上下文用量常驻入口 | 已有getSessionInfo().contextUsage及菜单内信息展示。复用同一次读取，补输入区常驻按钮、详情与整理入口、统一刷新和会话/模型迟到响应保护；未知不显示零，不新增模型请求。 |
@@ -313,3 +313,12 @@ node --test \
 - 使用ui-ux-pro-max核对禁用原因、键盘与深色布局，沿用实际index.html、codex-theme.css、page-shell.js及侧栏基线。实际渲染层候选副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-list-component-3ipl5up8` 两个脚本语法检查及10项Electron离线组件检查通过，覆盖状态、纯文本、仅编号回调、重复/受阻/已移除行防护、输入外焦点保留、Enter/空格、三档宽度滚动与可见焦点。截图及报告 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-list-ui-qt5fVk` 已查看；未读取真实.env、配置/会话或请求模型。
 - 本步指南引入的离线检查命令为 `./node_modules/.bin/electron tests/ui/unsent-session-list.check.cjs`；与node单元测试独立，只加载临时页面、实际组件/样式与模拟回调，使用临时userData并禁用HTTP/HTTPS。该脚本目前仅在指南和临时候选中，待使用者手写后核对；不称已接入实际项目验证流程。
 - 后续再接HTML样式与容器、renderer输入flush、恢复成功后编号绑定和await bindComposer、失败保留及会话/目录迟到响应保护。listUnsentSessions仍不能与listProposals/inspectComposerSend直接Promise.all。无历史且待确认发送条目的专用处理入口、正常关闭补保存和完整重启恢复仍未完成；已有当前会话的未确认发送解除UI不重复实施。
+
+
+### 列表组件实际核对与页面接线候选（2026-11-02 最新核对）
+
+- 使用者已亲手新建unsent-session-list组件、样式和 `tests/ui/unsent-session-list.check.cjs`；实际两个脚本语法检查与10项离线组件检查通过，报告及截图目录 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-list-ui-AvOwVe`。组件和脚本与指南仅结尾换行差异；CSS第66行另有三个反引号粘贴残留，浏览器忽略不表示应保留，已在新指南第0节要求使用者删除。助手未改写实际应用/测试；三份新文件暂不提交，待清理后与后续页面实现核对收尾。本轮仅提交指南和交接记录，保留其他未提交差异。
+- 下一步完整手写指南 `docs/unsent-session-page-step.md`：index引入CSS和侧栏容器；renderer创建列表、顺序刷新、失效编号与当前会话保护，恢复前await flush并暂时只读输入，成功后按返回编号await bindComposer，恢复失败保留原展示、分区刷新失败不回退。启动、新建、历史打开、项目/目录切换及发送收尾补列表刷新；新增读取不加入既有Promise.allSettled。外壳只在恢复成功事件后收起窄窗口侧栏。
+- 核对期间使用者另改了搜索折叠、项目加号及项目/会话合并展示；已重读实际index、renderer、page-shell、project-panel、session-list和主题样式，指南按最新布局定位，不覆盖这些未提交改动。页面候选只在最新实际src的临时副本 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/agent-unsent-page-latest-2mr2rdtj` 编写，尚未写入实际应用或测试；候选清理了CSS残留。三个脚本语法检查及19项实际页面模拟通过，报告/三档截图 `/var/folders/zl/dv8m7cfs0mj0j3vf6psss9y80000gn/T/unsent-page-ui-tXEEYB` 已查看。覆盖读取顺序、输入读取失败重试、仅编号/非摘要恢复、保存/恢复失败、重复和受阻入口、刷新失败不回退、旧输入/草稿保留、目录/项目、新建、窄窗成功后关闭、生成停止状态和pagehide后迟到结果失效；使用实际preload/IPC互斥及模拟业务，不读真实.env、配置/会话或验收文件、不请求模型。
+- 本步指南提供 `tests/ui/unsent-session-page.check.cjs` 完整手写候选，命令 `./node_modules/.bin/electron tests/ui/unsent-session-page.check.cjs`，临时userData/报告/截图并禁用HTTP/HTTPS，异常只注入模拟接口。该脚本尚未接入实际项目。原生textarea的CRLF展示按既有浏览器归一化比较，本步未更改输入存储。
+- 后续须核对使用者实际实现和真实界面结果，不能将19项模拟称为真实重启验收。CSS清理、页面接线和验收未完成；正常关闭前补保存、无历史且待确认发送条目的专用处理入口仍未完成，不称完整重启恢复。
