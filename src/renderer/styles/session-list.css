@@ -116,3 +116,53 @@
 .session-group-items button:focus-visible {
   outline-offset: -2px;
 }
+
+/* 操作区独立于打开按钮；展开在行内，避免被侧栏滚动区裁切。 */
+.session-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  min-width: 0;
+}
+.session-row-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.session-list .session-open {
+  flex: 1;
+  min-width: 0;
+}
+.session-pin-badge {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--muted);
+  padding-inline: 4px;
+}
+.session-list .session-actions-toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+.session-actions-panel {
+  grid-column: 1 / -1;
+  padding: 0 4px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.session-actions-panel[hidden] { display: none; }
+.session-list .session-pin-action {
+  min-height: 44px;
+  color: var(--text);
+}
+.session-list-status {
+  margin: 8px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.session-list .session-list-retry {
+  min-height: 44px;
+  border-color: var(--border);
+}

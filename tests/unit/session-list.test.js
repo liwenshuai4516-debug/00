@@ -63,8 +63,8 @@ test("跨目录列表返回归组元信息，保留标题与最近活动顺序",
 
   // 精确比较返回字段，避免泄露历史文件路径、完整正文或 SDK 对象。
   assert.deepEqual(await service.listSessions(), [
-    { id: "second", title: "问题-second", workspaceDir: secondDir, updatedAt: secondTime },
-    { id: "first", title: "重命名对话", workspaceDir: firstDir, updatedAt: firstTime },
+    { id: "second", title: "问题-second", workspaceDir: secondDir, updatedAt: secondTime, pinnedAt: null },
+    { id: "first", title: "重命名对话", workspaceDir: firstDir, updatedAt: firstTime, pinnedAt: null },
   ]);
   assert.equal(await readFile(first.file, "utf8"), first.content);
   assert.equal(await readFile(second.file, "utf8"), second.content);
@@ -76,7 +76,7 @@ test("缺少目录的旧历史保留空归属，不认领到当前项目", async
   const old = await writeHistory(dir, "old", undefined, updatedAt);
 
   assert.deepEqual(await service.listSessions(), [
-    { id: "old", title: "问题-old", workspaceDir: "", updatedAt },
+    { id: "old", title: "问题-old", workspaceDir: "", updatedAt, pinnedAt: null },
   ]);
   assert.equal(await readFile(old.file, "utf8"), old.content);
 });

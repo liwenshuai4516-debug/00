@@ -363,14 +363,63 @@ function createSessionService(
    async function listSessions() {
     const sessions = await readSessions();
 
-    return sessions.map((session) => ({
-      id: session.id,
-      title: session.name || session.firstMessage || "未命名对话",
-      // 目录只用于列表归组；打开会话仍须通过原有绑定检查。
-      workspaceDir: session.cwd,
-      // 统一返回毫秒时间戳，供页面按最近活动排序。
-      updatedAt: session.modified.getTime(),
-    }));
+    return Promise.all(
+      sessions.map(async (session) => {
+        const state = sessionStateStore
+          ? await sessionStateStore.load(session.id)
+          : null;
+        if (state && state.workspaceDir !== session.cwd) {
+          throw new Error("会话工作目录不匹配。");
+        }
+
+        return {
+          id: session.id,
+          title: session.name || session.firstMessage || "未命名对话",
+          // 目录只用于列表归组；打开会话仍须通过原有绑定检查。
+          workspaceDir: session.cwd,
+          // 消息活动时间保持不变，置顶排序留给页面在原目录组内处理。
+          updatedAt: session.modified.getTime(),
+          pinnedAt: state?.pinnedAt ?? null,
+        };
+      }),
+    );
+  }
+
+  // 后续由IPC互斥入口调用；页面只给历史编号和明确的布尔状态。
+  async function setSessionPinned(sessionId, pinned) {
+    if (!sessionStateStore) throw new Error("尚未配置会话状态存储。");
+    if (typeof sessionId !== "string" || !sessionId.trim()) {
+      throw new Error("请选择历史对话。");
+    }
+    if (typeof pinned !== "boolean") {
+      throw new Error("置顶状态无效。");
+    }
+
+    const matches = (await readSessions()).filter(
+      (session) => session.id === sessionId,
+    );
+    if (!matches.length) {
+      throw new Error("未找到该历史对话，请刷新列表后重试。");
+    }
+    if (matches.length !== 1) {
+      throw new Error("发现多份相同编号的历史，无法确定置顶目标。");
+    }
+    const selected = matches[0];
+    if (!selected.cwd) {
+      throw new Error("该历史对话缺少工作目录，暂不能置顶。");
+    }
+
+    // 在共享写队列内合并最新状态；不改输入版本、发送快照或恢复登记。
+    const state = await sessionStateStore.update(
+      sessionId,
+      selected.cwd,
+      (current) => ({
+        ...current,
+        // 重复置顶保留原时间，避免重试改变排序。
+        pinnedAt: pinned ? (current.pinnedAt ?? Date.now()) : null,
+      }),
+    );
+    return { id: sessionId, pinnedAt: state.pinnedAt };
   }
 
   async function readRecoveryWorkspace() {
@@ -636,6 +685,7 @@ function createSessionService(
     cancelCompaction,
     recordWorkspaceEdit,
     listSessions,
+    setSessionPinned,
     listUnsentSessions,
     restoreUnsentSession,
     previewSession,

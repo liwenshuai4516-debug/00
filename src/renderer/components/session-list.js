@@ -1,13 +1,41 @@
 // 只负责目录分组与会话列表展示；打开会话仍由 renderer.js 处理。
-export function createSessionList(container, onSelect, onOpenProject) {
+export function createSessionList(container, onSelect, onOpenProject, actions = {}) {
   const buttons = new Map();
   const projectButtons = [];
+  const actionControls = [];
+  const actionRows = new Map();
   const collapsed = new Set();
   let activeId = "";
   let busy = false;
   let sessions = [];
   let projects = [];
   let query = "";
+  const status = document.createElement("p");
+  status.className = "session-list-status";
+  status.setAttribute("role", "status");
+  status.hidden = true;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "session-list-retry";
+  retry.textContent = "刷新对话列表";
+  retry.hidden = true;
+  retry.addEventListener("click", () => { if (!busy) actions.onReload?.(); });
+
+  function closeActions() {
+    for (const { toggle, panel } of actionRows.values()) {
+      toggle.setAttribute("aria-expanded", "false");
+      panel.hidden = true;
+    }
+  }
+
+  function onOutsideClick(event) {
+    for (const { toggle, panel } of actionRows.values()) {
+      if (toggle.closest(".session-row").contains(event.target)) continue;
+      toggle.setAttribute("aria-expanded", "false");
+      panel.hidden = true;
+    }
+  }
+  document.addEventListener("click", onOutsideClick);
 
   function setActive(id) {
     activeId = id;
@@ -29,17 +57,22 @@ export function createSessionList(container, onSelect, onOpenProject) {
       button.disabled = busy;
     }
     for (const button of projectButtons) button.disabled = busy;
+    for (const button of actionControls) button.disabled = busy;
+    retry.disabled = busy;
+    if (busy) closeActions();
   }
 
   function draw() {
     buttons.clear();
     projectButtons.length = 0;
+    actionControls.length = 0;
+    actionRows.clear();
     container.replaceChildren();
 
     // filter 创建新数组，排序不会改动主进程传来的列表。
     const visibleSessions = sessions
       .filter((session) => session.title.toLowerCase().includes(query))
-      .sort((first, second) => second.updatedAt - first.updatedAt);
+      .sort((first, second) => second.updatedAt - first.updatedAt || first.id.localeCompare(second.id));
     const groups = new Map();
 
     for (const session of visibleSessions) {
@@ -59,6 +92,14 @@ export function createSessionList(container, onSelect, onOpenProject) {
 
     // 首次遇到的会话就是组内最新会话，分组也按最近活动排列。
     for (const [workspaceDir, groupSessions] of groups) {
+      // 先按消息活动建立分组顺序，再只在组内提前置顶项。
+      groupSessions.sort((first, second) => {
+        const firstPinned = first.pinnedAt != null;
+        const secondPinned = second.pinnedAt != null;
+        return Number(secondPinned) - Number(firstPinned)
+          || (firstPinned ? second.pinnedAt - first.pinnedAt : second.updatedAt - first.updatedAt)
+          || first.id.localeCompare(second.id);
+      });
       const group = document.createElement("details");
       group.className = "session-group";
       // 搜索时展开命中分组，不覆盖搜索前的折叠选择。
@@ -111,6 +152,8 @@ export function createSessionList(container, onSelect, onOpenProject) {
       for (const session of groupSessions) {
         const button = document.createElement("button");
         button.type = "button";
+        button.className = "session-open";
+        button.dataset.sessionId = session.id;
         button.textContent = session.title;
         button.title = session.title;
         button.disabled = busy;
@@ -122,7 +165,69 @@ export function createSessionList(container, onSelect, onOpenProject) {
         });
 
         buttons.set(session.id, button);
-        items.appendChild(button);
+        const row = document.createElement("div");
+        row.className = "session-row";
+        row.dataset.sessionId = session.id;
+        const main = document.createElement("div");
+        main.className = "session-row-main";
+        main.append(button);
+        const pinned = session.pinnedAt != null;
+        if (pinned) {
+          button.setAttribute("aria-label", `${session.title}（已置顶）`);
+          const badge = document.createElement("span");
+          badge.className = "session-pin-badge";
+          badge.textContent = "置顶";
+          badge.setAttribute("aria-hidden", "true");
+          main.append(badge);
+        }
+        row.append(main);
+        if (actions.onSetPinned) {
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "session-actions-toggle";
+          toggle.setAttribute("aria-label", `对话操作：${session.title}`);
+          toggle.setAttribute("aria-expanded", "false");
+          const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          icon.classList.add("icon");
+          icon.setAttribute("aria-hidden", "true");
+          const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+          use.setAttribute("href", "#icon-more");
+          icon.append(use);
+          toggle.append(icon);
+          const panel = document.createElement("div");
+          panel.className = "session-actions-panel";
+          panel.id = `session-actions-${actionRows.size}`;
+          panel.hidden = true;
+          toggle.setAttribute("aria-controls", panel.id);
+          const pin = document.createElement("button");
+          pin.type = "button";
+          pin.className = "session-pin-action";
+          pin.textContent = pinned ? "取消置顶" : "置顶";
+          pin.addEventListener("click", () => {
+            if (busy) return;
+            closeActions();
+            actions.onSetPinned(session.id, !pinned);
+          });
+          toggle.addEventListener("click", () => {
+            if (busy) return;
+            const open = panel.hidden;
+            closeActions();
+            panel.hidden = !open;
+            toggle.setAttribute("aria-expanded", String(open));
+          });
+          row.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape" || event.isComposing || panel.hidden) return;
+            event.preventDefault();
+            event.stopPropagation();
+            closeActions();
+            toggle.focus();
+          });
+          panel.append(pin);
+          row.append(toggle, panel);
+          actionRows.set(session.id, { toggle, panel });
+          actionControls.push(toggle, pin);
+        }
+        items.appendChild(row);
       }
 
       group.append(summary, items);
@@ -139,6 +244,8 @@ export function createSessionList(container, onSelect, onOpenProject) {
     }
 
     setActive(activeId);
+    container.append(status, retry);
+    setBusy(busy);
   }
 
   function render(nextSessions, currentId) {
@@ -157,5 +264,24 @@ export function createSessionList(container, onSelect, onOpenProject) {
     draw();
   }
 
-  return { render, setActive, setBusy, setQuery, setProjects };
+  function setStatus(message, retryable = false) {
+    status.textContent = message;
+    status.hidden = !message;
+    retry.hidden = !retryable;
+  }
+
+  function updatePinned(id, pinnedAt) {
+    sessions = sessions.map(session => session.id === id ? { ...session, pinnedAt } : session);
+    draw();
+  }
+
+  function focusActions(id) {
+    const row = actionRows.get(id) ?? actionRows.values().next().value;
+    row?.toggle.focus();
+  }
+
+  return {
+    render, setActive, setBusy, setQuery, setProjects, setStatus, updatePinned, focusActions,
+    dispose() { document.removeEventListener("click", onOutsideClick); },
+  };
 }

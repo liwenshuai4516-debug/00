@@ -125,6 +125,10 @@ function registerAgentIpc(
 
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
+  ipcMain.handle("agent:set-session-pinned", (_event, sessionId, pinned) =>
+    runIdleOperation(() => sessionService.setSessionPinned(sessionId, pinned)),
+  );
+
   // 列表依赖当前真实目录；与恢复共用互斥入口，避免读取时目录被切换。
   ipcMain.handle("agent:list-unsent-sessions", () =>
     runIdleOperation(() => sessionService.listUnsentSessions()),

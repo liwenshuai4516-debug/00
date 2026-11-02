@@ -136,7 +136,7 @@ async function main(){
   await check("关闭也补存本页面旧会话失败输入，失败不会漏过",async()=>{
     const s=await fresh();await s.idle();flags.failSaveIds=new Set(["a"]);await s.edit("旧会话未存");
     await s.until('document.getElementById("composer-draft-status").textContent.includes("未保存")');
-    await s.click('#session-list .session-group-items button:last-child');await s.idle();assert.equal(current,"b");await s.edit("新会话输入");
+    await s.click('#session-list .session-open[data-session-id="b"]');await s.idle();assert.equal(current,"b");await s.edit("新会话输入");
     s.win.close();await s.until('document.getElementById("request-status").textContent.includes("关闭前保存未完成")');
     assert.equal(await s.js('document.getElementById("message-input").value'),"新会话输入");
     flags.failSaveIds.clear();const done=s.closed();s.win.close();await done;
@@ -170,7 +170,7 @@ async function main(){
   });
   await check("会话切换进行中关闭等待新编号绑定，再保存各自原文",async()=>{
     const s=await fresh();await s.idle();await s.edit("切换前A输入");flags.openGate=Promise.withResolvers();const gate=flags.openGate;
-    await s.click('#session-list .session-group-items button:last-child');await s.until('document.getElementById("new-chat-button").disabled');
+    await s.click('#session-list .session-open[data-session-id="b"]');await s.until('document.getElementById("new-chat-button").disabled');
     const done=s.closed();s.win.close();await s.until('document.getElementById("window-close-dialog").open');
     assert.equal(s.win.isDestroyed(),false);gate.resolve();await done;
     assert.equal(entry("a").text,"切换前A输入");assert.equal(current,"b");

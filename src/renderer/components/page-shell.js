@@ -68,12 +68,9 @@ new MutationObserver(refreshTitle).observe(sessionList, {
 });
 refreshTitle();
 
-sessionList.addEventListener("click", (event) => {
-  const button = event.target.closest("button");
-  if (narrowWindow.matches && button && !button.disabled) {
-    setSidebar(false);
-    sidebarToggle.focus();
-  }
+// 只在业务确认打开成功后收起；行内置顶操作和打开失败均保留侧栏。
+document.addEventListener("session-opened", () => {
+  if (narrowWindow.matches) setSidebar(false);
 });
 document.getElementById("new-chat-button").addEventListener("click", () => {
   if (narrowWindow.matches) {

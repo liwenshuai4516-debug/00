@@ -92,7 +92,7 @@ async function main() {
     await idle();
     await check("移除上方已添加项目卡片，标题右侧只保留加号", `!document.querySelector('.registered-project-list')&&document.getElementById('project-list-title').textContent==='项目与对话'&&document.querySelector('#add-project-button use').getAttribute('href')==='#icon-plus'&&document.querySelectorAll('#add-project-button').length===1`);
     await check("搜索默认收起，顶部图标有标签与展开状态", `document.getElementById('session-search-field').hidden&&document.getElementById('session-search-toggle').closest('.sidebar-brand')!==null&&document.getElementById('session-search-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('session-search-toggle').getAttribute('aria-label')==='搜索对话'`);
-    await check("同目录合并为一个分组，无对话项目可见，历史按最近活动", `document.querySelectorAll('.session-group').length===3&&document.querySelector('.session-group-name').textContent==='演示项目'&&document.querySelectorAll('.session-project-open').length===2&&document.querySelectorAll('.session-group-items button').length===3`);
+    await check("同目录合并为一个分组，无对话项目可见，历史按最近活动", `document.querySelectorAll('.session-group').length===3&&document.querySelector('.session-group-name').textContent==='演示项目'&&document.querySelectorAll('.session-project-open').length===2&&document.querySelectorAll('.session-open').length===3`);
     await run(`document.getElementById('message-input').value='保留输入  ';document.getElementById('message-input').dispatchEvent(new Event('input'));document.getElementById('proposal-list').textContent='保留文件草稿'`);
     const opensBefore = calls.filter(c => c[0] === "openProject" || c[0] === "openSession").length;
     await click(".session-group summary");

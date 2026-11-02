@@ -195,7 +195,9 @@ const sessionList = createSessionList(
   document.getElementById("session-list"),
   openHistorySession,
   (project) => projectPanel.open(project),
+  { onSetPinned: setSessionPinned, onReload: reloadSessionList },
 );
+window.addEventListener("pagehide", () => sessionList.dispose(), { once: true });
 // 搜索只更新侧栏展示，不切换当前会话。
 const sessionSearch = document.getElementById("session-search");
 
@@ -441,6 +443,39 @@ async function refreshSessions() {
 
   // 会话数据和当前编号仍由主进程提供。
   sessionList.render(sessions, currentId);
+}
+
+async function setSessionPinned(sessionId, pinned) {
+  if (pageBusy || closing) return;
+  setBusy(true);
+  let saved = false;
+  try {
+    const result = await window.agent.setSessionPinned(sessionId, pinned);
+    saved = true;
+    // 确认落盘后立即使用实际结果；列表刷新失败也不会显示成保存失败。
+    sessionList.updatePinned(sessionId, result.pinnedAt);
+    await refreshSessions();
+    sessionList.setStatus(pinned ? "已置顶该对话。" : "已取消置顶。");
+  } catch (error) {
+    sessionList.setStatus(`${saved ? "置顶状态已保存，列表刷新失败" : "置顶结果未确认，请刷新列表核对"}：${error.message}`, true);
+  } finally {
+    setBusy(false);
+    sessionList.focusActions(sessionId);
+  }
+}
+
+async function reloadSessionList() {
+  if (pageBusy || closing) return;
+  setBusy(true);
+  try {
+    await refreshSessions();
+    sessionList.setStatus("对话列表已刷新。");
+  } catch (error) {
+    sessionList.setStatus(`列表刷新失败：${error.message}`, true);
+  } finally {
+    setBusy(false);
+    sessionList.focusActions(composerState.sessionId);
+  }
 }
 
 // 启动时恢复最近会话并加载历史列表。
@@ -740,6 +775,7 @@ async function openHistorySession(sessionId) {
 
     setRequestStatus("就绪");
     showHistory(history);
+    document.dispatchEvent(new CustomEvent("session-opened"));
     await sessionInfoPanel.refresh();
     await restoreProposalPanel();
   } catch (error) {
