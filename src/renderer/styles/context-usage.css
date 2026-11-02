@@ -1,0 +1,53 @@
+.composer-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  width: min(100%, var(--content-width));
+  margin: 4px auto 0;
+}
+.composer-meta-row #message-input-hint {
+  margin: 0;
+  text-align: left;
+}
+.context-usage {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+}
+#context-usage-toggle {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 6px 8px;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: normal;
+}
+.context-usage[data-level="high"] #context-usage-toggle {
+  color: var(--text);
+  border-color: var(--border);
+}
+.context-usage-details {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 100%;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(360px, 55dvh);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.context-usage-details[hidden] { display: none; }
+.context-usage-details h2 { margin: 0 0 8px; font-size: 14px; }
+.context-usage-details p { margin: 8px 0; white-space: pre-wrap; }
+.context-usage-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.context-usage-actions button { min-height: 44px; }

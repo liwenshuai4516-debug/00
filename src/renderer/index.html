@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="./styles/codex-theme.css" />
   <link rel="stylesheet" href="./styles/model-settings.css" />
   <link rel="stylesheet" href="./styles/unsent-session-list.css" />
+  <link rel="stylesheet" href="./styles/context-usage.css" />
 </head>
 <body>
   <!-- 图标只用于展示，不承载业务行为。 -->
@@ -124,7 +125,7 @@
               </div>
               <details class="session-details">
                 <summary>会话信息</summary>
-                <p id="session-info" role="status" aria-atomic="true">当前会话信息尚未加载。</p>
+                <p id="session-info">当前会话信息尚未加载。</p>
               </details>
             </div>
           </details>
@@ -189,7 +190,23 @@
             </div>
           </div>
         </details>
-        <p id="message-input-hint">Enter 发送 · Shift+Enter 换行</p>
+        <div class="composer-meta-row">
+          <p id="message-input-hint">Enter 发送 · Shift+Enter 换行</p>
+          <div id="context-usage" class="context-usage">
+            <button id="context-usage-toggle" type="button" aria-controls="context-usage-details" aria-expanded="false">上下文读取中…</button>
+            <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title" hidden>
+              <h2 id="context-usage-title">上下文用量</h2>
+              <p data-usage></p>
+              <p>这是当前模型上下文的估算，不代表费用、账号配额或全部原始历史。</p>
+              <p>整理会调用模型生成摘要，保留原始历史；仅在你点击后执行。</p>
+              <div class="context-usage-actions">
+                <button data-refresh type="button">重新读取</button>
+                <button data-compact type="button" disabled>整理上下文</button>
+              </div>
+            </section>
+            <span class="sr-only" role="status" aria-atomic="true" data-announcement></span>
+          </div>
+        </div>
       </footer>
     </main>
   </div>

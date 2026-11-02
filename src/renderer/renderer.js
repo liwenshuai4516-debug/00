@@ -2,6 +2,7 @@ import { createProposalPanel } from "./components/proposal-panel.js";
 import { createProjectPanel } from "./components/project-panel.js";
 import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel } from "./components/session-info-panel.js";
+import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
 import { createUnsentSessionList } from "./components/unsent-session-list.js";
@@ -268,6 +269,7 @@ async function openUnsentSession(sessionId) {
   setRequestStatus("正在保存输入并恢复未发送对话……");
   try {
     await composerPersistence.flush();
+    sessionInfoPanel.invalidate();
     const result = await window.agent.restoreUnsentSession(sessionId);
     restored = true;
     // 主进程已确认切换，先更新消息，再绑定新编号读取完整输入与快照。
@@ -332,16 +334,31 @@ function setRequestStatus(text) {
   }
 }
 
-// 在页面初始化时创建，后续统一调用 refresh 更新。
+const contextUsage = createContextUsage(document.getElementById("context-usage"), {
+  onRefresh: () => sessionInfoPanel.refresh(),
+  onCompact: () => compactSessionButton.click(),
+});
+// 菜单信息与常驻用量共用一次读取，不另发模型请求。
 const sessionInfoPanel = createSessionInfoPanel(
   document.getElementById("session-info"),
   () => window.agent.getSessionInfo(),
+  { readSessionId: () => composerState.sessionId, onState: state => contextUsage.render(state) },
 );
+window.addEventListener("pagehide", () => { sessionInfoPanel.dispose(); contextUsage.dispose(); }, { once: true });
+
+// 模型选择器与设置页共用切换入口，在请求前使旧模型估算失效。
+const modelApi = {
+  ...window.agent,
+  switchModelProfile(id) {
+    sessionInfoPanel.invalidate();
+    return window.agent.switchModelProfile(id);
+  },
+};
 
 // 模型切换复用全页面忙碌状态，并刷新现有会话信息。
 const modelSelector = createModelSelector(
   document.getElementById("model-selector"),
-  window.agent,
+  modelApi,
   setBusy,
   () => sessionInfoPanel.refresh(),
 );
@@ -351,7 +368,7 @@ const modelSelector = createModelSelector(
 const modelSettingsPanel = createModelSettingsPanel(
   document.getElementById("model-settings-dialog"),
   document.getElementById("model-settings-button"),
-  window.agent,
+  modelApi,
   setBusy,
   () => Promise.all([modelSelector.refresh(), sessionInfoPanel.refresh()]),
 );
@@ -372,7 +389,12 @@ const proposalSummary = document.getElementById("proposal-summary");
 const proposalPanel = createProposalPanel(
   document.getElementById("proposal-list"),
   (id) => window.agent.getProposal(id),
-  (id) => window.agent.applyProposal(id),
+  async (id) => {
+    const result = await window.agent.applyProposal(id);
+    // 保存事实可能增加上下文；读取失败不撤销已经确认的文件保存。
+    await sessionInfoPanel.refresh();
+    return result;
+  },
   (id) => window.agent.discardProposal(id),
   setBusy,
   (error) => addMessage("error", error.message),
@@ -405,6 +427,7 @@ function setBusy(busy, generating = false) {
   proposalPanelElement.disabled = blocked;
   modelSelector.setBusy(blocked);
   modelSettingsPanel.setBusy(blocked);
+  contextUsage.setBusy(blocked, generating, closing || archiveSyncPending);
   renderComposerState();
   newChatButton.disabled = blocked;
   selectWorkspaceButton.disabled = blocked;
@@ -416,6 +439,8 @@ function setBusy(busy, generating = false) {
   stopButton.disabled = closing || !generating;
   renameButton.disabled = blocked;
   closeController?.notify();
+  // 切换失败也重新读取实际会话；正常已刷新的路径不重复请求。
+  if (!blocked) void sessionInfoPanel.refreshIfNeeded();
 }
 
 // 用历史消息替换当前页面内容。
@@ -511,6 +536,7 @@ async function setSessionArchived(sessionId, archived) {
   try {
     if (archived && sessionId === composerState.sessionId) await composerPersistence.flush();
     archiveSyncPending = true;
+    if (archived && sessionId === composerState.sessionId) sessionInfoPanel.invalidate();
     const result = await window.agent.setSessionArchived(sessionId, archived);
     saved = true;
     sessionList.updateArchived(sessionId, result.archivedAt);
@@ -757,6 +783,7 @@ newChatButton.addEventListener("click", async () => {
   setBusy(true);
 
   try {
+    sessionInfoPanel.invalidate();
     const sessionId = await window.agent.newChat();
     await bindComposer(sessionId);
     setRequestStatus("就绪");
@@ -783,6 +810,7 @@ newChatButton.addEventListener("click", async () => {
 
 // 项目面板负责忙碌状态；这里在主进程确认成功后更新聊天页面。
 async function openProject(projectId) {
+  sessionInfoPanel.invalidate();
   const result = await window.agent.openProject(projectId);
 
   // 等待期间的新输入也归入原会话，再恢复目标会话的输入。
@@ -819,6 +847,7 @@ async function openHistorySession(sessionId) {
   setBusy(true);
 
   try {
+    sessionInfoPanel.invalidate();
     const history = await window.agent.openSession(sessionId);
     // 打开成功后，再保存旧输入并恢复目标会话的输入。
     await bindComposer(sessionId);
@@ -962,6 +991,7 @@ selectWorkspaceButton.addEventListener("click", async () => {
   let switched = false;
 
   try {
+    sessionInfoPanel.invalidate();
     const result = await window.agent.selectWorkspace();
 
     if (result.canceled) {

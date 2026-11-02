@@ -18,12 +18,36 @@ export function formatContextUsage(usage) {
 }
 
 // 页面组件只负责显示，实际会话信息由主进程提供。
-export function createSessionInfoPanel(element, readInfo) {
-  async function refresh() {
+export function createSessionInfoPanel(element, readInfo, { readSessionId = () => undefined, onState = () => {} } = {}) {
+  let sequence = 0;
+  let disposed = false;
+  let dirty = true;
+
+  function loading() {
     element.textContent = "正在读取当前会话信息……";
+    onState({ status: "loading" });
+  }
+
+  function invalidate() {
+    ++sequence;
+    dirty = true;
+    loading();
+  }
+
+  async function refresh() {
+    if (disposed) return;
+    const token = ++sequence;
+    const expectedId = readSessionId();
+    dirty = false;
+    loading();
 
     try {
       const info = await readInfo();
+      // 请求序号保护同会话模型切换，编号保护跨会话迟到响应。
+      if (disposed || token !== sequence) return;
+      if (expectedId !== readSessionId() || (expectedId && info.sessionId !== expectedId)) {
+        throw new Error("会话已变化，请重新读取当前会话信息。");
+      }
 
       const model = info.modelId
         ? `${info.provider}/${info.modelId}`
@@ -36,12 +60,19 @@ export function createSessionInfoPanel(element, readInfo) {
         `会话编号：${info.sessionId}`,
         formatContextUsage(info.contextUsage),
       ].join("\n");
+      onState({ status: "ready", info });
     } catch (error) {
+      if (disposed || token !== sequence) return;
       // 信息展示失败在当前区域提示，不向聊天流程抛出异常。
       element.textContent =
         `会话信息读取失败：${error.message}`;
+      onState({ status: "error", error: error.message });
     }
   }
 
-  return { refresh };
+  return {
+    refresh, invalidate,
+    refreshIfNeeded() { if (dirty) return refresh(); },
+    dispose() { disposed = true; ++sequence; },
+  };
 }
