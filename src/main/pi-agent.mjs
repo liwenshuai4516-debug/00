@@ -29,7 +29,7 @@ export async function createPiAgent(
   const legacyConfig = managed ? null : (modelSettings ?? readModelConfig());
 
   // 目录检查、会话恢复和目录绑定统一交给新模块处理。
-  const { workspaceRoot, sessionManager } = await createWorkspaceSession({
+  const { workspaceRoot, sessionManager, source } = await createWorkspaceSession({
     sessionDir,
     // 显式目录供后续选择入口使用；旧调用仍采用启动配置。
     workspaceDir,
@@ -88,6 +88,9 @@ export async function createPiAgent(
     customTools: agentTools,
     sessionManager,
   });
+
+  // 仅记录创建时的可信来源；后续产生消息时仍需推进持久化登记。
+  session.desktopSessionOrigin = source;
 
   // 仅主进程持有配置服务；不把密钥或服务对象返回页面。
   if (managed) session.desktopModelSettings = modelSettings;

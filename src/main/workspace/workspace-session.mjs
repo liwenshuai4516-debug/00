@@ -109,6 +109,8 @@ export async function createWorkspaceSession({
   if (selectedPath) {
     return {
       workspaceRoot,
+      // 来源由通过绑定检查后的实际分支确定，不靠文件缺失推断。
+      source: "history",
       sessionManager: SessionManager.open(
         selectedPath,
         sessionDir,
@@ -129,6 +131,7 @@ export async function createWorkspaceSession({
 
   return {
     workspaceRoot,
+    source: "empty",
     sessionManager: manager,
   };
 }
