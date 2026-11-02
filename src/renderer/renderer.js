@@ -13,7 +13,7 @@ import {
 } from "./components/message-view.js";
 
 import { createModelSelector } from "./components/model-selector.js";
-import { createModelSettingsPanel } from "./components/model-settings-panel.js";
+import { createSettingsPanel } from "./components/settings/settings-panel.js";
 
 import { createComposerPersistence } from "./components/composer-persistence.js";
 import { createWindowCloseController } from "./components/window-close-controller.js";
@@ -365,7 +365,7 @@ const modelSelector = createModelSelector(
 
 
 //配置读取独立于当前会话；保存后不刷新或替换聊天内容。
-const modelSettingsPanel = createModelSettingsPanel(
+const settingsPanel = createSettingsPanel(
   document.getElementById("model-settings-dialog"),
   document.getElementById("model-settings-button"),
   modelApi,
@@ -426,7 +426,7 @@ function setBusy(busy, generating = false) {
   // 关闭冻结与原操作忙碌分别保存；原 finally 不能提前解除关闭冻结。
   proposalPanelElement.disabled = blocked;
   modelSelector.setBusy(blocked);
-  modelSettingsPanel.setBusy(blocked);
+  settingsPanel.setBusy(blocked);
   contextUsage.setBusy(blocked, generating, closing || archiveSyncPending);
   renderComposerState();
   newChatButton.disabled = blocked;

@@ -19,14 +19,13 @@
 .model-manager-brand, .model-manager-toolbar { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .model-manager-brand h2 { margin: 0; white-space: nowrap; font-size: 20px; font-weight: 600; }
 .model-manager-mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius); background: var(--surface); }
-.settings-nav-current { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .model-default-badge { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--muted); }
 .model-default-badge:empty { display: none; }
 .model-settings-dialog .model-close-button { width: 44px; padding: 0; border: 0; font-size: 26px; background: transparent; }
 .settings-layout { display: grid; grid-template-columns: var(--model-navigation-width) minmax(0, 1fr); min-height: 0; }
 .settings-navigation { display: flex; flex-direction: column; min-height: 0; padding: 16px 10px; border-right: 1px solid var(--border); background: var(--sidebar); }
-.model-settings-dialog .model-add-provider { flex: 0 0 auto; width: 100%; margin-bottom: 20px; color: var(--page); background: var(--text); border-color: var(--text); font-weight: 600; }
-.model-settings-dialog .model-add-provider:hover:not(:disabled) { background: var(--muted); }
+.model-settings-dialog .model-add-provider { flex: 0 0 auto; width: 100%; margin-bottom: 20px; color: var(--on-primary); background: var(--primary); border-color: var(--primary); font-weight: 600; }
+.model-settings-dialog .model-add-provider:hover:not(:disabled) { background: var(--primary-hover); }
 .model-provider-groups { min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .model-provider-groups section + section { margin-top: 24px; }
 .model-provider-groups h3 { margin: 0; padding: 4px 10px 12px; color: var(--muted); font-size: 12px; font-weight: 600; }
@@ -48,7 +47,8 @@
 .model-settings-dialog #provider-editor-title { font-size: 18px; overflow-wrap: anywhere; }
 .model-settings-dialog .profile-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .model-settings-dialog button { min-height: 44px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
-.model-settings-dialog .model-save-button { color: var(--page); background: var(--text); border-color: var(--text); font-weight: 600; }
+.model-settings-dialog .model-save-button { color: var(--on-primary); background: var(--primary); border-color: var(--primary); font-weight: 600; }
+.model-settings-dialog .model-save-button:hover:not(:disabled) { background: var(--primary-hover); }
 .model-settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .model-settings-fields > div, .model-settings-fields [data-custom] > div { min-width: 0; }
 .model-settings-fields [data-custom] { display: contents; }
@@ -117,7 +117,6 @@
   .model-manager-brand h2 { font-size: 18px; }
   .model-manager-toolbar { justify-content: end; flex: 1; gap: 8px; }
   .model-default-badge { display: none; }
-  .settings-nav-current { display: none; }
   .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .settings-navigation { padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--border); max-height: 196px; }
   .model-settings-dialog .model-add-provider { margin-bottom: 10px; }

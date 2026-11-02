@@ -17,6 +17,9 @@
   <link rel="stylesheet" href="./styles/model-settings.css" />
   <link rel="stylesheet" href="./styles/unsent-session-list.css" />
   <link rel="stylesheet" href="./styles/context-usage.css" />
+  <link rel="stylesheet" href="./styles/settings.css" />
+  <link rel="stylesheet" href="./styles/themes/sakura.css" />
+  <script type="module" src="./theme/theme-preference.js" blocking="render"></script>
 </head>
 <body>
   <!-- 图标只用于展示，不承载业务行为。 -->
@@ -217,16 +220,19 @@
     <header class="model-manager-header">
       <div class="model-manager-brand">
         <span class="model-manager-mark"><svg class="icon" aria-hidden="true"><use href="#icon-settings" /></svg></span>
-        <h2 id="model-settings-title">模型管理</h2>
-        <span class="settings-nav-current">模型配置</span>
+        <h2 id="model-settings-title">设置</h2>
       </div>
+      <nav class="settings-categories" role="tablist" aria-label="设置分类">
+        <button type="button" id="settings-model-tab" class="settings-category" role="tab" data-settings-tab="model" aria-selected="true" aria-controls="settings-model-panel">模型管理</button>
+        <button type="button" id="settings-theme-tab" class="settings-category" role="tab" data-settings-tab="theme" aria-selected="false" aria-controls="settings-theme-panel" tabindex="-1">主题</button>
+      </nav>
       <div class="model-manager-toolbar">
         <span class="model-default-badge" data-default-label></span>
         <button type="button" data-refresh-official title="刷新所选内置供应商的官方目录" disabled>刷新官方目录</button>
         <button type="button" data-close class="model-close-button" autofocus aria-label="关闭设置" title="关闭设置">×</button>
       </div>
     </header>
-    <div class="settings-layout">
+    <div id="settings-model-panel" class="settings-layout" role="tabpanel" aria-labelledby="settings-model-tab">
       <aside class="settings-navigation" aria-label="模型供应商">
         <button type="button" class="model-add-provider" data-add-provider disabled><span aria-hidden="true">＋</span> 添加自定义服务商</button>
         <div class="model-provider-groups">
@@ -377,6 +383,17 @@
         </section>
       </div>
     </div>
+    <section id="settings-theme-panel" class="theme-settings" data-theme-panel role="tabpanel" aria-labelledby="settings-theme-tab" hidden>
+      <div>
+        <h3>主题</h3>
+        <p id="theme-settings-intro">选择应用的外观，立即生效并记住你的选择。</p>
+        <fieldset>
+          <legend>配色方案</legend>
+          <div class="theme-choices" data-theme-choices></div>
+        </fieldset>
+        <p data-theme-status role="status" aria-atomic="true"></p>
+      </div>
+    </section>
     <footer class="model-manager-feedback"><p data-model-status role="status" aria-atomic="true">尚未读取配置。</p><button type="button" data-retry hidden>重新读取</button></footer>
   </dialog>
   <!-- 原生模态窗口阻止键盘、鼠标及已有配置弹窗中的新操作。 -->

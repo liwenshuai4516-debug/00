@@ -24,6 +24,7 @@
 | `src/main/tools/`、`src/main/workspace/` | 工作目录工具及路径、读取约束 |
 | `src/preload/preload.js` | 向页面暴露有限的主进程接口 |
 | `src/renderer/` | 页面与交互；`components/` 放组件，`styles/` 放样式 |
+| `src/renderer/theme/`、`components/theme/`、`styles/themes/` | 主题偏好与首帧恢复、主题选择界面、独立配色；设置分类放在 `components/settings/` |
 
 保持主进程、预加载、渲染进程职责分离；新功能确需接口时同步接通必要链路。移动文件时同步入口、导入和资源路径，并检查旧会话读取。
 
@@ -62,7 +63,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 
 ## 页面与安全
 
-- 界面以现有深色基线 `src/renderer/index.html`、`src/renderer/styles/codex-theme.css`、`src/renderer/components/page-shell.js` 为准；先核对实际组件，再修改。参考 Codex 桌面布局，保留深灰侧栏、居中消息区、底部圆角输入和右下模型选择。
+- 界面以 `src/renderer/index.html`、`src/renderer/styles/codex-theme.css`、`src/renderer/components/page-shell.js` 为布局基线；先核对实际组件，再修改。参考 Codex 桌面布局，默认深色，设置中的独立主题只覆盖配色；保留侧栏、居中消息区、底部圆角输入和右下模型选择。
 - 使用中性色、轻量边框、统一间距与 CSS 变量。消息独立滚动，流式回复跟随最新内容，用户上翻时保留位置并提供返回最新入口；窄窗允许折叠侧栏和审阅区。
 - 按钮状态明确，保留键盘操作、可见焦点及输入法保护。Agent Markdown 使用本地依赖和现有白名单清理，其他内容优先 `textContent`；不随意引入框架。
 - 保留上下文隔离和受限预加载，不暴露完整 Electron 或 Node.js 能力。新增接口只接受必要参数，由主进程校验路径与归属。
@@ -83,6 +84,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 功能说明与验证入口：
 
 - [模型与供应商管理](docs/model-management.md)
+- [主题设置](docs/themes.md)
 - [会话置顶](docs/session-pinning.md)与[归档恢复](docs/session-archiving.md)
 - [上下文用量](docs/context-usage.md)
 - [侧栏布局](docs/sidebar-layout.md)

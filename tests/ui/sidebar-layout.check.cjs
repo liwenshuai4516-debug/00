@@ -100,7 +100,7 @@ async function main() {
     await click("#session-search-toggle");
     await click("#model-settings-button");
     await wait(`document.getElementById('model-settings-dialog').open&&document.getElementById('model-settings-dialog').getAttribute('aria-busy')==='false'`);
-    await check("设置视图显示模型配置", `document.querySelector('.settings-nav-current').textContent.trim()==='模型配置'&&document.querySelector('#model-settings-dialog [data-profiles]')!==null`);
+    await check("设置分类并列显示模型管理与主题", `document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'&&document.querySelector('#settings-theme-tab').textContent.trim()==='主题'&&document.querySelector('#model-settings-dialog [data-profiles]')!==null`);
     await click("[data-edit]");
     await check("编辑加载非敏感字段，密钥留空并保留默认配置", `document.querySelector('#profile-name').value==='演示模型'&&document.querySelector('#profile-custom-model').value==='demo-model'&&document.querySelector('#profile-key').value===''&&!document.querySelector('#profile-key').required&&document.querySelector('[data-hide]').disabled`);
     await click("[data-cancel-edit]");
