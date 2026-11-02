@@ -94,6 +94,24 @@ function createSessionStateStore(directory) {
     return read(sessionId, filename);
   }
 
+  // 只枚举已落盘的状态，不创建目录；每条仍经load的队列等待与校验。
+  async function list() {
+    await Promise.all([...pending.values()]);
+    let filenames;
+    try {
+      filenames = await fs.readdir(directory);
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+    const states = [];
+    for (const filename of filenames.filter(name => name.endsWith(".json")).sort()) {
+      const state = await load(filename.slice(0, -5));
+      if (state) states.push(state);
+    }
+    return states;
+  }
+
   // change 仅供主进程传入同步更新函数，不能直接暴露给页面。
   async function update(sessionId, workspaceDir, change) {
     const filename = getFilename(sessionId);
@@ -263,7 +281,7 @@ function createSessionStateStore(directory) {
     });
   }
 
-  return { load, update, registerSession, saveDraft, consumeDraft, completeSend };
+  return { load, list, update, registerSession, saveDraft, consumeDraft, completeSend };
 }
 
 module.exports = { createSessionStateStore };
