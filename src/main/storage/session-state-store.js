@@ -20,6 +20,18 @@ function createSessionStateStore(directory) {
     return Number.isSafeInteger(value) && value >= 0;
   }
 
+  function validateRegistration(registration) {
+    if (
+      !["empty", "history"].includes(registration?.source) ||
+      typeof registration.model?.provider !== "string" ||
+      !registration.model.provider.trim() ||
+      typeof registration.model?.modelId !== "string" ||
+      !registration.model.modelId.trim()
+    ) {
+      throw new Error("会话恢复登记无效。");
+    }
+  }
+
   function validate(state, sessionId) {
     if (
       state?.version !== 1 ||
@@ -32,6 +44,11 @@ function createSessionStateStore(directory) {
       !(state.archivedAt === null || isRevision(state.archivedAt))
     ) {
       throw new Error("会话状态记录无效或归属不匹配。");
+    }
+
+    // 旧记录没有来源证明，保持未登记；不能据此认定它是空会话。
+    if (state.registration !== undefined) {
+      validateRegistration(state.registration);
     }
 
     // 旧记录可以没有此字段；非空快照必须对应已经消费的输入版本。
@@ -138,6 +155,24 @@ function createSessionStateStore(directory) {
     return result;
   }
 
+  async function registerSession(sessionId, workspaceDir, source, model) {
+    // 只保存实际选择的标识；不复制密钥、地址或完整模型对象。
+    const registration = {
+      source,
+      model: { provider: model?.provider, modelId: model?.modelId },
+    };
+    validateRegistration(registration);
+
+    return update(sessionId, workspaceDir, (state) => ({
+      ...state,
+      registration: {
+        ...registration,
+        // 曾经存在真实历史的会话，不能退回成可重建的空会话。
+        source: state.registration?.source === "history" ? "history" : source,
+      },
+    }));
+  }
+
   async function saveDraft(sessionId, workspaceDir, text, expectedRevision) {
     if (typeof text !== "string" || !isRevision(expectedRevision)) {
       throw new Error("输入草稿或版本无效。");
@@ -204,7 +239,7 @@ function createSessionStateStore(directory) {
     });
   }
 
-  return { load, update, saveDraft, consumeDraft, completeSend };
+  return { load, update, registerSession, saveDraft, consumeDraft, completeSend };
 }
 
 module.exports = { createSessionStateStore };
