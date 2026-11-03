@@ -809,6 +809,8 @@ let slashCommandsRequest = null;
 let slashCommandsError = "";
 let slashMatches = [];
 let slashActive = -1;
+// 上一次指针位置，用于忽略静止指针和列表滚动产生的 mousemove。
+let slashPointer = { x: 0, y: 0 };
 
 // 首次打开菜单或会话变化时读取；读取失败仍保留内置命令。
 async function loadSlashCommands(force = false) {
@@ -870,11 +872,29 @@ function setSlashActive(index) {
     item.setAttribute("aria-selected", String(itemIndex === slashActive));
   });
   const active = items[slashActive];
-  if (active) {
-    input.setAttribute("aria-activedescendant", active.id);
-    active.scrollIntoView({ block: "nearest" });
+  if (!active) return;
+
+  input.setAttribute("aria-activedescendant", active.id);
+  // 只滚动列表自身，避免 scrollIntoView 连带移动输入区和消息区。
+  const top = active.offsetTop;
+  const bottom = top + active.offsetHeight;
+  if (top < slashMenu.scrollTop) {
+    slashMenu.scrollTop = Math.max(0, top - 6);
+  } else if (bottom > slashMenu.scrollTop + slashMenu.clientHeight) {
+    slashMenu.scrollTop = bottom - slashMenu.clientHeight + 6;
   }
 }
+
+// 指针真正移动才切换选中项：静止指针或滚动引起的 mousemove 不打断键盘选择。
+slashMenu.addEventListener("mousemove", (event) => {
+  const moved = Math.abs(event.clientX - slashPointer.x) + Math.abs(event.clientY - slashPointer.y);
+  if (moved < 4) return;
+
+  slashPointer = { x: event.clientX, y: event.clientY };
+  const item = event.target?.closest?.(".slash-command-item");
+  const index = Number(item?.dataset.index);
+  if (item && Number.isInteger(index) && index !== slashActive) setSlashActive(index);
+});
 
 // 选中命令只填入名称，参数和发送仍由用户确认。
 function applySlashCommand(command) {
@@ -928,10 +948,11 @@ function drawSlashMenu(token) {
     source.textContent = commandSources[command.source] ?? "命令";
 
     item.append(name, description, source);
+    // 索引交给菜单级委托读取，避免每项各挂一个监听。
+    item.dataset.index = String(index);
     // 点击不抢走焦点，保证键盘选择与输入状态一致。
     item.addEventListener("mousedown", (event) => event.preventDefault());
     item.addEventListener("click", () => applySlashCommand(slashMatches[index]));
-    item.addEventListener("mousemove", () => setSlashActive(index));
     slashMenu.append(item);
   }
 
@@ -1091,7 +1112,9 @@ input.addEventListener("keydown", (event) => {
   if (!event.isComposing && !slashMenu.hidden) {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      setSlashActive(slashActive + (event.key === "ArrowDown" ? 1 : -1));
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      // 尚无选中项时，向下从第一项开始，向上从最后一项开始。
+      setSlashActive(slashActive < 0 ? (step > 0 ? 0 : slashMatches.length - 1) : slashActive + step);
       return;
     }
     if (event.key === "Escape") {

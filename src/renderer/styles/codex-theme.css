@@ -475,9 +475,13 @@ select option {
   border-radius: 8px;
   text-align: left;
 }
-.slash-command-item:hover,
+/* 鼠标悬停只作轻提示，键盘选中另加左侧强调条，两者不混淆。 */
+.slash-command-item:hover {
+  background: var(--hover);
+}
 .slash-command-item[aria-selected="true"] {
   background: var(--hover);
+  box-shadow: inset 2px 0 0 var(--focus);
 }
 .slash-command-name {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
