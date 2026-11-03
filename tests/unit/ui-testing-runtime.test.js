@@ -1,0 +1,34 @@
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const { mkdtemp, rm, realpath } = require("node:fs/promises");
+const path = require("node:path");
+const os = require("node:os");
+const { existsSync } = require("node:fs");
+const { resolveUiTestingRuntime } = require("../../src/main/capabilities/ui-testing/runtime-paths.js");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
+const runFile = promisify(execFile);
+
+for (const scenario of ["resources", "recording", "replay"]) {
+  test(`内置 UI 测试：${scenario}（临时目录，不请求模型）`, async (t) => {
+    const runtime = resolveUiTestingRuntime({ isPackaged: false }, path.resolve(__dirname, "../.."));
+    if (scenario !== "resources" && (process.platform === "win32" ||
+      ![runtime.node, runtime.testCli, runtime.browsers].every(existsSync))) {
+      t.skip("浏览器集成检查需要已准备的内置运行环境与 POSIX shell。");
+      return;
+    }
+    const base = await realpath(await mkdtemp(path.join(os.tmpdir(), "ui-runtime-")));
+    // 官方 MCP 子进程退出时仍可能收尾写入 trace，允许临时目录删除重试。
+    t.after(() => rm(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+    const result = await runFile(process.execPath, [
+      "--require", path.resolve(__dirname, "../helpers/pi-test-isolation.cjs"),
+      path.resolve(__dirname, "../helpers/ui-testing-runtime-check.mjs"), base, scenario,
+    ], {
+      env: { ...process.env, PI_CODING_AGENT_DIR: path.join(base, "agent") },
+      encoding: "utf8",
+      timeout: 120_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    assert.equal(result.stderr, "");
+  });
+}

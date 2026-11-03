@@ -50,7 +50,8 @@ prepared 只表示环境已准备，不表示测试通过。
    不把未实际执行的操作写成录制事实。
 
 4. 调用 generator_write_test：
-   - fileName 使用返回的 caseFile。
+   - fileName 使用返回的 caseFileName（官方工具要求工作目录相对路径）。
+   - caseFile 是同一脚本的绝对路径，供读取和交付使用。
    - 代码依据官方生成日志整理。
    - 保存 CommonJS 格式，一个文件只包含一个 test。
    - 从 @playwright/test 引入 test、expect。

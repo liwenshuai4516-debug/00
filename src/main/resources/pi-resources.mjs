@@ -8,6 +8,7 @@ import {
   ProjectTrustStore,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
+import { createUiTestingExtension } from "../capabilities/ui-testing/extension.mjs";
 
 // SDK 没有导出 CLI 的信任决策函数；按公开事件契约接上宿主交互。
 async function resolveTrust({ cwd, agentDir, settingsManager, extensionsResult, ask, diagnostics }) {
@@ -50,7 +51,7 @@ async function resolveTrust({ cwd, agentDir, settingsManager, extensionsResult, 
   return trusted;
 }
 
-export async function createPiResources({ cwd, appendSystemPrompt, askProjectTrust, onDiagnostics }) {
+export async function createPiResources({ cwd, appendSystemPrompt, askProjectTrust, onDiagnostics, uiTestingRuntime }) {
   // 与内置 MCP 等扩展统一使用官方目录；环境变量仍可覆盖其位置。
   const agentDir = getAgentDir();
   const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });
@@ -66,6 +67,12 @@ export async function createPiResources({ cwd, appendSystemPrompt, askProjectTru
       { name: "codemode", factory: createCodemodeExtension(), builtin: true, replaceable: true },
       { name: "tool-search", factory: createToolSearchExtension(), builtin: true, replaceable: true },
       { name: "mcp", factory: createMcpExtension(), builtin: true, replaceable: true },
+      ...(uiTestingRuntime ? [{
+        name: "desktop-ui-testing",
+        factory: createUiTestingExtension(uiTestingRuntime),
+        builtin: true,
+        replaceable: true,
+      }] : []),
     ],
   });
   await resourceLoader.reload({

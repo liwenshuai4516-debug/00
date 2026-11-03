@@ -103,6 +103,7 @@ export async function createPiAgent(
       appendSystemPrompt: [promptSnapshot?.testAgentPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT],
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
+      uiTestingRuntime: resourceOptions?.uiTestingRuntime,
     });
   recordStage("资源与扩展发现（含项目信任）");
 

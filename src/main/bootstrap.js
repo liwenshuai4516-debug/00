@@ -1,4 +1,7 @@
 //应用启动与服务组装
+const {
+  resolveUiTestingRuntime,
+} = require("./capabilities/ui-testing/runtime-paths.js");
 const { createWorkspaceSettings } = require("./storage/workspace-settings.js");
 const { createProjectStore } = require("./storage/project-store.js");
 const { createProjectService } = require("./services/project-service.js");
@@ -83,6 +86,7 @@ async function createConfiguredAgent(
       createUiContext: extensionUi.createContext,
       cancelUi: extensionUi.cancelSession,
       cancelPendingUi: extensionUi.cancelPending,
+      uiTestingRuntime: resolveUiTestingRuntime(app, projectRoot),
     },
   );
 }
