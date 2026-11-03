@@ -112,42 +112,94 @@
   color: var(--text);
   font-size: 12px;
 }
-.model-catalog { display: grid; gap: 14px; margin-top: 14px; max-height: 340px; overflow: auto; }
+.model-catalog { display: grid; gap: 16px; margin-top: 14px; max-height: 420px; padding-right: 4px; overflow: auto; }
 .model-catalog-group { min-width: 0; }
 .model-catalog-group h4 {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 8px;
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
+}
+.model-catalog-title { flex: 0 1 auto; min-width: 0; color: var(--text); font-size: 12px; overflow-wrap: anywhere; }
+.model-catalog-group h4 code {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--page);
+  font-size: 10px;
+  font-weight: 400;
   overflow-wrap: anywhere;
 }
-.model-catalog-group h4 span { flex: 0 0 auto; font-weight: 400; }
-.model-catalog-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.model-catalog-item {
+.model-catalog-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--page);
+  font-weight: 500;
+}
+.model-catalog-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+/* 每个模型一行：左侧名称与能力，右侧操作；当前模型用左侧竖条标出。 */
+.model-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  padding: 7px 10px;
-  border-radius: 6px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   background: var(--page);
 }
-.model-catalog-item.is-current { box-shadow: inset 2px 0 0 var(--focus); }
-.model-catalog-name { flex: 1 1 120px; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
-.model-catalog-id { flex: 0 1 auto; max-width: 100%; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.model-catalog-tag {
-  flex: 0 0 auto;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+.model-row:hover { border-color: var(--border); }
+.model-row.is-current { border-color: var(--border); box-shadow: inset 3px 0 0 var(--focus); }
+.model-row-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 5px; min-width: 0; }
+.model-row-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.model-row-name { min-width: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.model-row-id { min-width: 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.model-row-meta { display: flex; flex-wrap: wrap; gap: 4px; }
+.model-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--muted);
+  background: var(--surface, var(--hover));
   font-size: 10px;
+  line-height: 1.7;
+  white-space: nowrap;
 }
+.model-chip.is-accent { color: var(--text); border-color: var(--border); }
+.model-chip.is-muted { opacity: 0.7; }
+.model-chip.is-current { color: var(--on-primary); background: var(--primary); }
+.model-row-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.model-settings-dialog .model-row-actions button {
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+}
+.model-settings-dialog .model-row-actions button:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.model-settings-dialog .model-row-actions .model-danger-button:hover:not(:disabled) { color: var(--error-border); border-color: var(--error-border); }
+.model-settings-dialog .model-primary-button {
+  min-height: 30px;
+  padding: 3px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--on-primary);
+  background: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.model-settings-dialog .model-primary-button:hover:not(:disabled) { background: var(--primary-hover); }
+.model-card-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .model-settings-dialog p.model-empty {
   margin: 14px 0 0;
   padding: 24px 16px;
@@ -156,6 +208,49 @@
   font-size: 12px;
   text-align: center;
 }
+.model-current-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
+.model-current-tags:empty { display: none; }
+.model-thinking-row { display: flex; align-items: center; gap: 8px; }
+.model-settings-dialog .model-thinking-row select { flex: 1 1 auto; }
+.model-settings-dialog .model-thinking-row button { flex: 0 0 auto; min-height: 36px; padding: 4px 12px; font-size: 12px; }
+/* 编辑表单：字段与 models.json 同名，按供应商、模型、能力、计费分组。 */
+.model-editor { margin-top: 16px; }
+.model-editor form { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.model-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px 16px; }
+.model-form-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; }
+.model-settings-dialog .model-form-field > span { color: var(--muted); font-size: 11px; }
+.model-settings-dialog .model-form-field input,
+.model-settings-dialog .model-form-field select,
+.model-settings-dialog .model-form-field textarea { min-height: 36px; padding: 6px 10px; font-size: 13px; }
+.model-form-section { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 14px 0 0; border: 0; border-top: 1px solid var(--border); }
+.model-form-section legend { padding: 0; color: var(--text); font-size: 12px; font-weight: 600; }
+.model-form-section > small { font-size: 11px; }
+.model-switch { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-size: 12px; }
+.model-settings-dialog .model-switch input,
+.model-settings-dialog .model-check-row input { width: 15px; height: 15px; min-height: 0; margin: 0; }
+.model-check-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.model-check-row label,
+.model-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.model-settings-dialog .model-check-row label input,
+.model-level input { width: 13px; height: 13px; min-height: 0; margin: 0; }
+.model-level:has(input:checked) { color: var(--text); border-color: var(--focus); }
+.model-level:has(input:disabled) { opacity: 0.65; }
+.model-thinking-levels { display: flex; flex-wrap: wrap; gap: 6px; }
+.model-form-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.model-form-status { color: var(--muted); font-size: 11px; }
+.model-form-status:empty { display: none; }
+.model-advanced-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; }
+.model-advanced-grid textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 .model-config-path {
   display: flex;
   align-items: center;
@@ -173,6 +268,10 @@
 .model-providers details { margin-top: 16px; }
 .model-settings-dialog p[data-provider-status] { margin: 16px 0 0; }
 .model-settings-dialog p[data-provider-status]:empty { display: none; }
+@media (max-width: 560px) {
+  .model-row { align-items: stretch; flex-direction: column; gap: 8px; }
+  .model-row-actions { justify-content: flex-start; }
+}
 @media (max-width: 460px) {
   .model-facts > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .model-panel-card { padding: 14px; }

@@ -10,6 +10,13 @@ test("读取当前供应商模型目录，只返回页面需要的字段，支�
       provider: "deepseek",
       id: "deepseek-flash",
       name: "DeepSeek Flash",
+      api: "openai-completions",
+      contextWindow: 1000000,
+      maxTokens: 384000,
+      reasoning: true,
+      input: ["text", "image"],
+      cost: { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0, total: 1.5 },
+      thinkingLevelMap: { low: "low", high: "high" },
       baseUrl: "https://example.invalid",
       internalData: "不返回页面",
     },
@@ -18,6 +25,10 @@ test("读取当前供应商模型目录，只返回页面需要的字段，支�
   let creations = 0;
   const session = {
     model: { provider: "deepseek", id: "deepseek-flash" },
+    settingsManager: {
+      getDefaultProvider: () => "deepseek",
+      getDefaultModel: () => "deepseek-v4-pro",
+    },
     modelRuntime: {
       async getAvailable() {
         return catalog;
@@ -34,9 +45,28 @@ test("读取当前供应商模型目录，只返回页面需要的字段，支�
   const expected = {
     provider: "deepseek",
     modelId: "deepseek-flash",
+    defaultProvider: "deepseek",
+    defaultModel: "deepseek-v4-pro",
     models: [
-      { id: "deepseek-flash", name: "DeepSeek Flash", provider: "deepseek" },
-      { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", provider: "another" },
+      {
+        id: "deepseek-flash",
+        name: "DeepSeek Flash",
+        provider: "deepseek",
+        api: "openai-completions",
+        contextWindow: 1000000,
+        maxTokens: 384000,
+        reasoning: true,
+        input: ["text", "image"],
+        thinkingLevelMap: { low: "low", high: "high" },
+        cost: { input: 0.3, output: 1.2, cacheRead: 0.006, cacheWrite: 0 },
+      },
+      {
+        id: "deepseek-v4-pro",
+        name: "DeepSeek V4 Pro",
+        provider: "another",
+        reasoning: false,
+        input: [],
+      },
     ],
   };
 
@@ -56,7 +86,13 @@ test("尚未选择模型时仍可列出已配置模型供首次选择", async ()
     model: undefined,
     modelRuntime: { getAvailable: async () => [] },
   }));
-  assert.deepEqual(await service.listModels(), { provider: "", modelId: "", models: [] });
+  assert.deepEqual(await service.listModels(), {
+    provider: "",
+    modelId: "",
+    defaultProvider: "",
+    defaultModel: "",
+    models: [],
+  });
 });
 test("模型列表 IPC 不转发页面指定的供应商或会话", async () => {
   const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");

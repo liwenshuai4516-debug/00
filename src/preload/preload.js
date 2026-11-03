@@ -49,7 +49,36 @@ contextBridge.exposeInMainWorld("agent", {
   readModelConfiguration: () => ipcRenderer.invoke("agent:read-model-configuration"),
   openModelsConfiguration: () => ipcRenderer.invoke("agent:open-models-configuration"),
   reloadModels: () => ipcRenderer.invoke("agent:reload-models"),
-  setDefaultModel: () => ipcRenderer.invoke("agent:set-default-model"),
+  // 结构化读取官方 models.json，用于编辑表单；不含密钥与请求头。
+  readModelCatalog: () => ipcRenderer.invoke("agent:read-model-catalog"),
+  // 表单只提交字段值，文件路径与校验都在主进程完成。
+  saveModel: input => ipcRenderer.invoke("agent:save-model", {
+    providerId: input?.providerId,
+    provider: {
+      name: input?.provider?.name,
+      baseUrl: input?.provider?.baseUrl,
+      api: input?.provider?.api,
+    },
+    original: input?.original === undefined
+      ? undefined
+      : { providerId: input.original?.providerId, modelId: input.original?.modelId },
+    model: {
+      id: input?.model?.id,
+      name: input?.model?.name,
+      api: input?.model?.api,
+      baseUrl: input?.model?.baseUrl,
+      reasoning: input?.model?.reasoning,
+      contextWindow: input?.model?.contextWindow,
+      maxTokens: input?.model?.maxTokens,
+      input: input?.model?.input,
+      cost: input?.model?.cost,
+      thinkingLevels: input?.model?.thinkingLevels,
+      thinkingFormat: input?.model?.thinkingFormat,
+      extra: input?.model?.extra,
+    },
+  }),
+  deleteModel: (providerId, modelId) => ipcRenderer.invoke("agent:delete-model", providerId, modelId),
+  setDefaultModel: (provider, modelId) => ipcRenderer.invoke("agent:set-default-model", provider, modelId),
   setThinkingLevel: level => ipcRenderer.invoke("agent:set-thinking-level", level),
   // 可选输入版本用于消费已保存的原文；没有版本时沿用原调用。
   sendMessage: (message, draftRequest) => {
@@ -159,6 +188,13 @@ contextBridge.exposeInMainWorld("agent", {
   // 放弃尚未保存的草稿，只提交编号。
   discardProposal: (id) => ipcRenderer.invoke("agent:discard-proposal", id),
   // 订阅工具状态，并返回取消订阅方法。
+  onOutputEvent: (callback) => {
+    const listener = (_event, output) => callback(output);
+    ipcRenderer.on("agent:output-event", listener);
+    return () => ipcRenderer.removeListener("agent:output-event", listener);
+  },
+
+  // 兼容旧文本/工具订阅；新版页面以原生输出事件为准。
   onToolEvent: (callback) => {
     const listener = (_event, toolEvent) => callback(toolEvent);
     ipcRenderer.on("agent:tool-event", listener);

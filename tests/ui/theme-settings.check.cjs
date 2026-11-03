@@ -101,6 +101,13 @@ async function main() {
     },
     {
       readConfiguration: async () => ({ modelsPath: "/demo/pi/models.json" }),
+      readCatalog: async () => ({
+        modelsPath: "/demo/pi/models.json",
+        providers: [{ id: "demo", name: "演示", baseUrl: "", api: "", models: [{ id: "demo-model", name: "演示模型" }] }],
+        options: { api: ["openai-completions"], thinkingLevels: ["off", "low", "high"], inputs: ["text", "image"] },
+      }),
+      saveModel: async () => ({ action: "created" }),
+      deleteModel: async () => ({ action: "deleted" }),
     },
     {
       read: async () => ({ ...promptSettings }),
@@ -258,7 +265,7 @@ async function main() {
       "返回模型设置保留节点，模型页面跟随樱粉",
       `document.querySelector('#settings-model-panel')===window.originalPanel && getComputedStyle(document.querySelector('#model-settings-dialog')).backgroundColor==='rgb(253, 242, 245)' && getComputedStyle(document.querySelector('[data-models-path]')).color==='rgb(125, 85, 97)'`,
     );
-    await click("[data-default-model]");
+    await click("[data-default-model-button]");
     await wait(`document.querySelector('#settings-theme-tab').disabled`);
     await check(
       "模型操作期间分类和主题选择共用忙碌保护",

@@ -8,14 +8,16 @@
 
 1. “打开 models.json”打开官方目录的配置文件；首次不存在时创建空 `providers`，不覆盖已有文件。目录由 `getAgentDir()` 决定，默认 `~/.pi/agent`，可由 `PI_CODING_AGENT_DIR` 指定。
 2. 在文本编辑器中保存，然后点击“重新读取模型”。页面提供兼容接口的折叠示例。字段、环境变量引用与命令取值均遵循官方格式，建议用 `$YOUR_API_KEY` 引用已有环境变量。
-3. 聊天输入框右下角选择当前模型。目录使用官方 `ModelRuntime.getAvailable()`，按供应商分组，以供应商和模型 ID 区分同名模型。设置页只读展示同一份目录：按供应商分组、标出当前模型，名称与编号相同时不重复显示编号。
-4. “设为新对话默认”通过官方 `SettingsManager` 保存当前选择；思考强度只调整当前对话。页面同时展示当前模型名称、供应商、上下文估算和可用思考强度。上述字段分别来自 `getSessionInfo()` 与 `listModels()`，没有读取“已保存默认模型”的接口，因此页面不展示默认值，保存结果以操作提示为准。
+3. 聊天输入框右下角选择当前模型。目录使用官方 `ModelRuntime.getAvailable()`，按供应商分组，以供应商和模型 ID 区分同名模型。设置页用同一份目录渲染模型卡片，展示上下文窗口、最大输出、推理与图片能力，并标出当前模型与新对话默认。
+4. “新增模型 / 编辑”用表单维护 `models.json`：供应商名称、`baseUrl`、`api`，以及模型的 `id`、`name`、`api`、`reasoning`、`thinkingLevelMap`、`input`、`contextWindow`、`maxTokens`、`cost`、`compat.thinkingFormat`，`inputLimits`、`samplingParams`、`samplingParamsByThinkingLevel`、`promptCache` 以 JSON 文本编辑。保存后主进程立即重读运行时；写入前校验编号、协议、数值与重复条目。`models.json` 中只写了 `id` 的条目，表单用运行时实际生效的值补全显示。
+5. “设为默认”可按行设置任意模型，也可沿用当前对话的模型；页面通过官方 `SettingsManager.getDefaultProvider()/getDefaultModel()` 展示已保存的默认值。
+6. 思考强度在模型支持时直接可选，并按模型写入 `SettingsManager.setModelThinkingLevel()`，切回该模型沿用上次档位；模型未标记 `reasoning` 时给出“开启”入口，跳到该模型编辑表单补齐 `reasoning` 与思考协议。
 
 Provider 扩展放入官方资源目录或受信任项目，通过扩展工厂的 `registerProvider` 登记；异步工厂在启动选择模型前完成。修改扩展后在聊天中执行 `/reload`。普通“重新读取模型”只刷新模型运行时，不重新执行扩展工厂。特殊协议实现、原生 Provider、虚拟模型及认证契约见官方文档，不再额外维护桌面私有格式。此页不提供自建 OAuth 登录流程；已有 Pi 环境变量、`auth.json` 与 `models.json` 认证由官方运行时解析。
 
 新对话选择优先级为：官方设置中的默认供应商和模型 → `.env` 的 `PI_PROVIDER`/`PI_MODEL` → SDK 自动选择。两个环境字段可以同时留空。恢复对话优先使用历史或可信空会话登记中的供应商与模型，默认设置不会覆盖它们。`.env` 的 `PI_BASE_URL` 仅作为未在 `models.json` 登记供应商的地址后备；官方配置和 Provider 扩展可覆盖该后备。
 
-页面只接收官方配置路径、模型编号、名称及必要会话信息，不读取或回填配置原文与密钥。文件路径由主进程固定生成。模型目录与上下文估算只用于展示，不新增接口，也不额外请求模型；目录读取失败只影响“可用模型”区域，不推翻已读到的当前模型，配置损坏时的错误提示不被后续操作覆盖。重读、切换、设默认及思考强度共用现有操作互斥；切换报错后重新读取 SDK 的实际选择。配置损坏时仍可通过设置打开文件修正。
+页面只接收配置路径、模型字段与必要会话信息；`models.json` 的 `apiKey` 以及供应商、模型的 `headers` 不返回页面，也不被表单覆盖，写入时原样保留。文件路径由主进程固定生成，写入先落临时文件再替换，权限保持 `0600`。模型目录与上下文估算只用于展示，不额外请求模型；目录读取失败只影响“可用模型”区域，不推翻已读到的当前模型，配置损坏时的错误提示不被后续操作覆盖。写入、重读、切换、设默认及思考强度共用现有操作互斥；切换报错后重新读取 SDK 的实际选择。`models.json` 不是合法 JSON 时，表单拒绝写入并提示先用文本编辑器修正。
 
 ## 旧实现移除
 
@@ -26,10 +28,10 @@ Provider 扩展放入官方资源目录或受信任项目，通过扩展工厂�
 ## 代码位置
 
 - `src/main/pi-agent.mjs`：官方运行时、扩展模型登记、启动与历史选择。
-- `src/main/services/model-provider-service.js`：官方配置文件入口，首次安全创建。
-- `src/main/services/session-service.js`：可用模型、切换、刷新、默认和思考强度。
-- `src/main/ipc/model-ipc.js`、`src/preload/preload.js`：有限接口与共用互斥。
-- `src/renderer/components/settings/model-providers.js`：设置页；`components/model-selector.js`：当前模型选择。
+- `src/main/services/model-provider-service.js`：官方配置文件入口，以及 `models.json` 的结构化读取、保存与删除（校验、原子写入、保留凭据字段）。
+- `src/main/services/session-service.js`：可用模型（含默认模型与能力字段）、切换、刷新、默认和思考强度。
+- `src/main/ipc/model-ipc.js`、`src/preload/preload.js`：有限接口与共用互斥；写入后立即重读运行时。
+- `src/renderer/components/settings/model-providers.js`：设置页目录、模型表单与当前对话操作；`components/model-selector.js`：当前模型选择。
 - `src/renderer/styles/model-settings.css`：设置外框与模型页样式。
 
 ## 验证
@@ -58,3 +60,7 @@ SDK 专项使用临时配置、会话与本地 HTTP/SSE 服务，覆盖官方配
 启动修复补充：临时夹具先复现旧私有供应商导致 `listModels()` 失败，再验证启动时并发读取历史与模型目录可以进入新对话、旧历史和输入不变、显式打开旧记录仍拒绝、普通新对话清除提示，以及默认配置错误正常透传。相关单元/SDK 36 项、模型页 22 项及未发送会话页 19 项通过；本次修复不需要外部模型请求。
 
 页面字段适配补充（2026-11-03）：设置页按“当前对话 / 可用模型 / 配置文件”分区，展示字段全部取自既有 `getSessionInfo()`、`listModels()` 与配置路径接口，未新增 IPC，也未改变后端行为。模型页检查增至 24 项，新增“可用模型按供应商分组并标出当前模型”“上下文未知时说明不可用而非显示为零”两项；主题设置 42 项复跑通过。深色与樱粉主题下 1180/760/390 三种宽度截图核对，卡片单列收拢、标题不折行、无横向溢出。
+
+模型维护与思考强度补充（2026-11-03）：设置页加入表单式新增、编辑、删除，默认模型可按行设置并回显，思考强度按模型记忆，模型列表改为分组卡片并展示上下文、输出与能力标签。`model-provider-service` 增加结构化读写（字段校验、原子写入、保留 `apiKey`/`headers`、删除空供应商）；`listModels()` 增加默认模型与能力字段；新增 `agent:read-model-catalog`、`agent:save-model`、`agent:delete-model`，`agent:set-default-model` 接受供应商与模型编号，写入后立即重读运行时。
+
+验证：`tests/unit/model-provider-service.test.js` 6 项、`model-ipc.test.js` 2 项、`model-list.test.js` 3 项、`model-thinking.test.js` 3 项、`custom-providers.test.js` 5 项通过；Electron 模型页 36 项、主题页 42 项通过。页面与单元检查使用模拟会话、临时 `models.json` 与本地夹具，未使用真实模型请求，也不代表真实供应商登录或推理已验收。

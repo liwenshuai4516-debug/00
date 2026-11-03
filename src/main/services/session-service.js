@@ -186,7 +186,11 @@ function createSessionService(
 
   // 恢复聊天正文和工具结果，保持 Pi 消息中的顺序。
   function getHistory(session) {
-    return toHistory(session.messages);
+    return toHistory(session.messages, {
+      includeTrace: true, parseSkillBlock: session.desktopParseSkillBlock,
+      skills: session.resourceLoader?.getSkills?.().skills ?? [],
+      cwd: session.sessionManager.getCwd(),
+    });
   }
 
   async function loadHistory() {
@@ -300,16 +304,37 @@ function createSessionService(
     const model = session.model;
 
     const models = await session.modelRuntime.getAvailable();
+    const settings = session.settingsManager;
 
     return {
       provider: model?.provider ?? "",
       modelId: model?.id ?? "",
       ...(session.desktopRestoreWarning ? { warning: session.desktopRestoreWarning } : {}),
-      // 页面只需要模型编号和名称，不返回完整 SDK 对象。
+      // 新对话采用的官方默认选择，只用于页面标记，不改变当前会话。
+      defaultProvider: settings?.getDefaultProvider?.() ?? "",
+      defaultModel: settings?.getDefaultModel?.() ?? "",
+      // 页面需要名称、能力和计费来展示模型卡片，不返回完整 SDK 对象。
       models: models.map((item) => ({
         id: item.id,
         name: item.name,
         provider: item.provider,
+        ...(item.api ? { api: item.api } : {}),
+        ...(typeof item.contextWindow === "number" ? { contextWindow: item.contextWindow } : {}),
+        ...(typeof item.maxTokens === "number" ? { maxTokens: item.maxTokens } : {}),
+        reasoning: item.reasoning === true,
+        input: Array.isArray(item.input) ? [...item.input] : [],
+        // 思考档位映射用于在编辑表单中回显该模型真正支持的级别。
+        ...(item.thinkingLevelMap ? { thinkingLevelMap: { ...item.thinkingLevelMap } } : {}),
+        ...(item.cost && typeof item.cost === "object"
+          ? {
+              cost: {
+                input: item.cost.input,
+                output: item.cost.output,
+                cacheRead: item.cost.cacheRead,
+                cacheWrite: item.cost.cacheWrite,
+              },
+            }
+          : {}),
       })),
     };
   }
@@ -356,20 +381,46 @@ function createSessionService(
     return listModels();
   }
 
-  async function setDefaultModel() {
+  // 默认模型按供应商和编号指定；不传参数时沿用当前会话的模型。
+  async function setDefaultModel(provider, modelId) {
     const session = await getSession(true);
-    if (!session.model) throw new Error("请先选择模型。");
-    session.settingsManager.setDefaultModelAndProvider(session.model.provider, session.model.id);
-    await session.settingsManager.flush();
-    if (session.settingsManager.drainErrors().length) throw new Error("Pi 默认模型保存失败，请检查 settings.json 的写入权限。");
-    return { provider: session.model.provider, modelId: session.model.id };
+    const settings = session.settingsManager;
+    let target = session.model;
+
+    if (provider !== undefined || modelId !== undefined) {
+      if (typeof provider !== "string" || !provider.trim() || typeof modelId !== "string" || !modelId.trim()) {
+        throw new Error("请选择供应商和模型。");
+      }
+      target = session.modelRuntime.getModel(provider.trim(), modelId.trim());
+      if (!target) throw new Error("Pi 未登记该供应商的模型。");
+    }
+
+    if (!target) throw new Error("请先选择模型。");
+    settings.setDefaultModelAndProvider(target.provider, target.id);
+    await settings.flush();
+    if (settings.drainErrors().length) throw new Error("Pi 默认模型保存失败，请检查 settings.json 的写入权限。");
+    return {
+      provider: target.provider,
+      modelId: target.id,
+      defaultProvider: settings.getDefaultProvider?.() ?? target.provider,
+      defaultModel: settings.getDefaultModel?.() ?? target.id,
+    };
   }
 
   async function setThinkingLevel(level) {
     const session = await getSession(true);
-    if (!session.getAvailableThinkingLevels?.().includes(level)) throw new Error("当前模型不支持所选思考强度。");
+    const available = session.getAvailableThinkingLevels?.() ?? [];
+    if (!available.includes(level)) throw new Error("当前模型不支持所选思考强度。");
     session.setThinkingLevel(level, { persist: false });
-    return { thinkingLevel: session.thinkingLevel, thinkingLevels: session.getAvailableThinkingLevels() };
+
+    // 按模型记住档位：切回该模型时沿用上次选择，不影响其他模型。
+    const settings = session.settingsManager;
+    if (session.model && typeof settings?.setModelThinkingLevel === "function") {
+      settings.setModelThinkingLevel(session.model.provider, session.model.id, level);
+      await settings.flush?.();
+      settings.drainErrors?.();
+    }
+    return { thinkingLevel: session.thinkingLevel, thinkingLevels: available };
   }
 
   // 只读取当前会话的扩展、模板和技能命令，不请求模型。
@@ -710,7 +761,7 @@ function createSessionService(
       throw new Error("未找到该历史对话，请刷新列表后重试。");
     }
 
-    const { parseSessionEntries, migrateSessionEntries, buildSessionContext } =
+    const { parseSessionEntries, migrateSessionEntries, buildSessionContext, parseSkillBlock } =
       await import("@mariozechner/pi-coding-agent");
 
     const entries = parseSessionEntries(await readFile(selected.path, "utf8"));
@@ -732,7 +783,7 @@ function createSessionService(
 
     return {
       title: selected.name || selected.firstMessage || "未命名对话",
-      history: toHistory(context.messages),
+      history: toHistory(context.messages, { includeTrace: true, parseSkillBlock }),
     };
   }
 

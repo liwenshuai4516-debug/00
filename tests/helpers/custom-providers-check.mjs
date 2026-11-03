@@ -70,7 +70,10 @@ if (scenario === "configuration") {
     const available = await service.listModels();
     assert.ok(available.models.some(m => m.provider === "alpha" && m.id === "same"));
     assert.ok(available.models.some(m => m.provider === "beta" && m.id === "same"));
-    assert.ok(available.models.every(m => Object.keys(m).sort().join() === "id,name,provider"));
+    // 页面只拿到展示用的白名单字段，不传递完整 SDK 模型对象。
+    const pageFields = ["api", "contextWindow", "cost", "id", "input", "maxTokens", "name", "provider", "reasoning", "thinkingLevelMap"];
+    assert.ok(available.models.every(m => Object.keys(m).every(key => pageFields.includes(key))));
+    assert.ok(available.models.every(m => m.id && m.provider && typeof m.reasoning === "boolean"));
     assert.ok(!JSON.stringify(available).includes(process.env.CUSTOM_TEST_KEY));
     assert.equal((await session.modelRuntime.getAuth(session.model)).auth.apiKey, process.env.CUSTOM_TEST_KEY);
     session.sessionManager.appendMessage({ role: "user", content: "本地历史", timestamp: Date.now() });
