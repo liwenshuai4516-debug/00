@@ -33,6 +33,11 @@
 
 该脚本仅供手动排查，不接入应用启动流程或 `npm test`。它以 `projectTrusted: false` 加载资源，不进行桌面项目信任询问，因此结果不等同于已信任项目的完整资源列表。官方 loader 的 `reload()` 会执行已启用扩展的工厂代码，不能视为纯静态文件读取；自动验证使用临时配置与工作目录。
 
+### 开发脚本与测试配置位置
+
+- `scripts/pi-check.mjs`：手动检查模型连通性。在项目根目录执行 `node --env-file=.env scripts/pi-check.mjs`，会发送一次真实模型请求；不属于离线检查或应用启动流程。
+- `config/playwright.ui.config.cjs`：Playwright UI 测试配置，由 `scripts/run-ui-case.cjs` 指定加载；用例仍位于项目根目录下的 `qa/ui/cases/`，执行入口仍为 `QA_TARGET_URL="页面地址" npm run ui:case -- <case-id>`。
+
 ## 当前项目的技能维护入口
 
 本仓库维护的技能统一位于 `.pi/skills/`，随仓库版本管理：

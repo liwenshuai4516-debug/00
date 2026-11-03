@@ -1,3 +1,4 @@
+// 手动检查模型连通性：在项目根目录执行 node --env-file=.env scripts/pi-check.mjs。
 import {
   createAgentSession,
   DefaultResourceLoader,
