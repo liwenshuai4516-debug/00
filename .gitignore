@@ -17,3 +17,7 @@ node_modules/
 /resources/testing/ui/bin/
 /resources/testing/ui/browsers/
 /dist/
+# WaterMate 客户端运行时数据：会话历史、笔记、凭据与沙箱临时目录，禁止入库
+/.watermate/
+# Pi 项目级依赖安装目录，由包管理器按 .pi/settings.json 重建
+/.pi/npm/
