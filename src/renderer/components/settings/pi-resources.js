@@ -1,3 +1,5 @@
+import { getPiExtensionLabel, translatePiDescription, translatePiDiagnostic } from "./pi-resource-translations.js";
+
 export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
   const panel = dialog.querySelector("#settings-resources-panel");
   const list = panel.querySelector("[data-pi-packages]");
@@ -67,7 +69,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
       use.setAttribute("aria-label", `${use.textContent}：${item.name}`);
       const footer = node("div", "pi-card-footer");
       footer.append(node("code", "", command), use);
-      card.append(heading, node("p", "pi-card-description", item.description || "暂无描述"), footer);
+      card.append(heading, node("p", "pi-card-description", translatePiDescription(item.description)), footer);
       container.append(card);
     }
     if (!entries.length) empty(container, isSkill ? "还没有可用技能" : "还没有提示词模板", "添加资源或安装扩展包后，重载资源即可在这里查看。");
@@ -113,9 +115,12 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
     for (const item of entries) {
       const row = node("article", "pi-extension-row");
       const info = node("div", "pi-extension-info");
+      const label = getPiExtensionLabel(item);
       const location = node("details", "pi-extension-location");
       location.append(node("summary", "", "查看路径"), node("code", "", item.path));
-      info.append(node("h4", "", item.path.split(/[\\/]/).pop()), location);
+      info.append(node("h4", "", label.name));
+      if (label.description) info.append(node("p", "pi-extension-description", label.description));
+      info.append(location);
       row.append(info, node("span", "pi-badge", "已加载"));
       container.append(row);
     }
@@ -128,7 +133,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
     for (const item of entries) {
       const row = node("div", "pi-diagnostic-row");
       row.dataset.type = item.type;
-      row.append(node("span", "pi-badge", item.type === "error" ? "错误" : "提示"), node("p", "", item.message));
+      row.append(node("span", "pi-badge", item.type === "error" ? "错误" : "提示"), node("p", "", translatePiDiagnostic(item.message)));
       if (item.path) row.append(node("code", "", item.path));
       container.append(row);
     }

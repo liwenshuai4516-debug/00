@@ -36,6 +36,7 @@
 .pi-extension-list, .pi-package-list { display: grid; gap: 12px; }
 .pi-extension-row { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
 .pi-extension-info { min-width: 0; flex: 1; }
+.pi-extension-description { margin: 8px 0; line-height: 1.7; }
 .pi-extension-row > .pi-badge { flex: 0 0 auto; }
 .pi-extension-location { margin-top: 4px; color: var(--muted); font-size: 12px; }
 .pi-extension-location summary { padding: 4px 0; }

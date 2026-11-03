@@ -105,6 +105,8 @@ R4：服务器确认上传成功后显示“上传成功”和文件名；服务
 
 布局沿用现有设置导航和原生 DOM，样式独立放在 `src/renderer/styles/pi-resources.css`，颜色使用应用主题变量。依据固定版本的 [Skills](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/skills.md)、[Extensions](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/extensions.md) 与 [Packages](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md)；不改变官方安装、项目范围、过滤和重载行为。
 
+资源说明的中文译文归类在设置组件的 `pi-resource-translations.js`，覆盖当前安装的 Playwright、Postman、MCP、子智能体及钉钉卡片等英文描述和子智能体模板；按原文匹配，只用于显示，不修改第三方文件、模型读取的描述或命令。已有中文描述保留，混合描述中的 `Use when` 显示为“适用于”；新增或变更后未收录的描述保留原文，不以泛化中文冒充翻译，也不请求模型或外部翻译服务。已知加载诊断提供中文说明，未知错误保留原始排错信息。扩展标题采用入口所属目录名称，单文件扩展去掉脚本后缀；编译目录入口优先采用 Pi 登记的 npm 包名，内置及已知扩展显示中文名称与用途。完整路径仍可展开查看。
+
 通过公开 `DefaultPackageManager` 执行 npm、Git、本地来源的安装、更新、移除和更新检查；本地包按标准目录或可选 pi 清单发现，不要求 pi-package 关键词。个人与项目范围由官方设置保存，项目范围需先信任。资源筛选直接使用官方 `extensions/skills/prompts/themes` 字符串数组和 `autoload` 布尔值；空数组禁用该类资源，空对象恢复默认发现。
 
 安装/筛选/更新后显式重载才应用到当前会话，不自动激活新扩展。`update(source)` 的实际范围遵循官方 API，同一来源同时配置在个人与项目时可能一并更新；范围选择不是更新隔离。安装器可能执行代码；SDK 没有取消或事务回滚契约，失败会明确提示核对磁盘与登记，不承诺还原。

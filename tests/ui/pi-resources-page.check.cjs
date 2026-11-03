@@ -16,11 +16,11 @@ async function main() {
     skills: [
       { name: "qa-requirement-review", description: "梳理需求范围、识别歧义与缺失约束，形成可以直接讨论的评审清单。" },
       { name: "qa-case-design", description: "从需求和验收标准出发，设计覆盖业务规则、边界条件与异常场景的测试用例。" },
-      { name: "qa-api-test", description: "围绕接口契约组织请求、断言与证据，验证服务行为与预期一致。" },
+      { name: "qa-api-test", description: "Makes coding agents faster and more accurate with fewer tokens when designing, implementing, mocking, testing, monitoring, documenting, or deploying an API." },
       { name: "qa-ui-test", description: "检查关键页面交互与用户流程，记录可复现的步骤和验证结果。" },
     ],
-    prompts: [{ name: "review", description: "审查当前变更，重点关注行为、边界与验证证据。" }],
-    extensions: [{ path: "builtin:codemode" }, { path: "/workspace/需求与测试项目/.pi/extensions/session-tools.ts" }],
+    prompts: [{ name: "review", description: "Review/fix loop until clean" }],
+    extensions: [{ name: "codemode", path: "builtin:codemode" }, { name: "pi-subagents", path: "/packages/pi-subagents/index.js" }],
     packages: [
       { source: "npm:@example/pi-tools@1.0.0", scope: "user", installedPath: "/temporary/npm/pi-tools", filtered: false, filters: {} },
       { source: "git:github.com/example/qa-workflows@v1", scope: "project", installedPath: "/temporary/git/qa-workflows", filtered: true, filters: { skills: [] } },
@@ -72,6 +72,8 @@ async function main() {
     await wait(ready);
     await check("默认展示技能卡片和真实数量，资源分类不干扰设置导航", `document.querySelectorAll('.pi-resource-card').length===5&&document.querySelector('[data-pi-kind=skills]').getAttribute('aria-pressed')==='true'&&document.querySelector('[data-pi-count=skills]').textContent==='4'&&document.querySelectorAll('.settings-categories [role=tab]').length===5`);
     await check("工作目录和项目信任独立显示，不占用操作状态", `document.querySelector('[data-pi-cwd]').textContent==='/workspace/需求与测试项目'&&document.querySelector('[data-pi-trust]').textContent==='项目资源已信任'&&document.querySelector('[data-pi-status]').textContent===''`);
+    await check("英文技能和模板描述显示中文，执行命令保留原名", `document.querySelector('[data-pi-items=skills]').textContent.includes('帮助编程智能体')&&document.querySelector('[data-pi-items=prompts]').textContent.includes('反复审查和修复')&&document.querySelector('[data-pi-command="/skill:qa-api-test"]')!==null`);
+    await check("扩展显示中文名称与用途，不以 index.js 作为标题", `document.querySelector('[data-pi-items=extensions]').textContent.includes('子智能体协作')&&document.querySelector('[data-pi-items=extensions]').textContent.includes('代码执行')&&[...document.querySelectorAll('.pi-extension-row h4')].every(title=>!title.textContent.includes('index.'))&&document.querySelectorAll('.pi-extension-description').length===2`);
     const artifacts = process.env.PI_UI_ARTIFACT_DIR || "/tmp/pi-resources-design";
     await fs.mkdir(artifacts, { recursive: true });
     for (const theme of ["dark", "sakura"]) {
@@ -83,7 +85,7 @@ async function main() {
           await click(`[data-pi-kind="${kind}"]`);
           await run(`document.querySelector('#settings-resources-panel').scrollTop=0;document.querySelector('.pi-install-section').open=true;new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
           await check(`${theme} ${width} ${kind} 无横向溢出`, `document.querySelector('#settings-resources-panel').scrollWidth<=document.querySelector('#settings-resources-panel').clientWidth+1`);
-          if (kind === "skills" || (kind === "packages" && width === 1280)) await fs.writeFile(path.join(artifacts, `${theme}-${kind}-${width}.png`), (await win.webContents.capturePage()).toPNG());
+          if (kind === "skills" || (["extensions", "packages"].includes(kind) && width === 1280)) await fs.writeFile(path.join(artifacts, `${theme}-${kind}-${width}.png`), (await win.webContents.capturePage()).toPNG());
         }
       }
     }

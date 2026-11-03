@@ -62,3 +62,24 @@ test("npm/Git 来源交给官方管理器，失败不谎报成功或虚构回滚
   }
   await assert.rejects(service.manage({ action: "install", source: "--help", scope: "user" }), /包来源/);
 });
+
+test("扩展列表返回可识别名称，不把入口文件作为名称", async () => {
+  const extensions = [
+    { path: "builtin:codemode" },
+    { path: "/packages/pi-subagents/index.js" },
+    { path: "/packages/pi-chrome/extensions/chrome-profile-bridge/index.ts" },
+    { path: "/packages/example/dist/index.mjs", sourceInfo: { source: "npm:@example/session-tools@1.0.0" } },
+    { path: "/project/.pi/extensions/session-tools.ts" },
+    { path: "C:\\project\\.pi\\extensions\\my-extension\\index.js" },
+    { path: "/packages/postman/dist/pi-extension.js", sourceInfo: { source: "npm:@postman/postman-plugin" } },
+  ];
+  const session = {
+    desktopServices: {}, sessionId: "names", sessionManager: { getCwd: () => "/temporary" },
+    settingsManager: { isProjectTrusted: () => true }, promptTemplates: [],
+    resourceLoader: { getSkills: () => ({ skills: [] }), getExtensions: () => ({ extensions }) },
+  };
+  const service = createPiPackageService({ getSession: async () => session }, () => ({ listConfiguredPackages: () => [] }));
+  const listed = (await service.list()).extensions;
+  assert.deepEqual(listed.map(item => item.name), ["codemode", "pi-subagents", "chrome-profile-bridge", "@example/session-tools", "session-tools", "my-extension", "@postman/postman-plugin"]);
+  assert.deepEqual(listed.map(item => item.path), extensions.map(item => item.path));
+});

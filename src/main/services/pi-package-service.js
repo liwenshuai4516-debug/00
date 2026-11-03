@@ -27,7 +27,19 @@ function createPiPackageService(sessionService, createManager) {
       }),
       skills: skills.map(({ name, description }) => ({ name, description })),
       prompts: session.promptTemplates.map(({ name, description }) => ({ name, description })),
-      extensions: loader.getExtensions().extensions.map(({ path }) => ({ path })),
+      extensions: loader.getExtensions().extensions.map(({ path: extensionPath, resolvedPath, sourceInfo }) => {
+        const parts = (resolvedPath || extensionPath).split(/[\\/]/);
+        let name = parts.pop().replace(/\.[cm]?[jt]s$/i, "");
+        const packageName = sourceInfo?.source.match(/^npm:((?:@[^/]+\/)?[^@]+)/)?.[1];
+        if (name === "index") {
+          name = parts.pop();
+          // 编译输出目录不是扩展名称；这时采用 Pi 已登记的 npm 包名。
+          if (packageName && ["src", "dist", "lib", "build"].includes(name)) name = packageName;
+        }
+        if (packageName && ["pi-extension", "extension"].includes(name)) name = packageName;
+        if (extensionPath.startsWith("builtin:")) name = extensionPath.slice("builtin:".length);
+        return { path: extensionPath, name };
+      }),
       diagnostics: session.desktopResourceDiagnostics ?? [],
     };
   }
