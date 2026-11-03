@@ -1,0 +1,84 @@
+/* 资源设置独立归类；配色沿用应用主题，列表与包操作共用轻量卡片。 */
+.pi-resources-panel { min-width: 0; min-height: 0; padding: 28px 32px; overflow: auto; }
+.pi-resources-heading { display: flex; justify-content: space-between; align-items: start; gap: 20px; }
+.model-settings-dialog .pi-resources-heading h3 { font-size: 21px; letter-spacing: -0.4px; }
+.pi-resources-heading > div:first-child { max-width: 420px; }
+.pi-resource-tools { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; }
+.pi-resources-panel p { font-size: 13px; }
+.pi-resource-context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 24px 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; }
+.pi-resource-context > div { min-width: 0; flex: 1 1 220px; }
+.pi-eyebrow { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+.pi-resource-context code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.pi-badge { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 3px 8px; border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+.pi-resource-navigation { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.model-settings-dialog .pi-resource-navigation button { display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; background: transparent; color: var(--muted); }
+.model-settings-dialog .pi-resource-navigation button[aria-pressed="true"] { background: var(--surface); color: var(--text); }
+.pi-resource-navigation span { font-size: 11px; opacity: 0.8; font-variant-numeric: tabular-nums; }
+.pi-resource-tools [data-pi-reload] { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+.pi-resource-tools [data-pi-reload]:hover:not(:disabled) { background: var(--primary-hover); }
+.pi-resources-panel [data-pi-status] { margin: 0 0 16px; }
+.pi-resources-panel [data-pi-status]:empty { display: none; }
+.pi-resources-panel [data-pi-status][data-state="error"] { border-left: 2px solid var(--error-border); padding: 8px 12px; background: var(--removed-background); color: var(--text); border-radius: 0 6px 6px 0; }
+.pi-reload-notice { margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px; }
+.pi-resources-panel .pi-section-description { margin: 0 0 18px; }
+.pi-resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.pi-resource-card { display: flex; flex-direction: column; min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.pi-card-heading { display: flex; align-items: center; gap: 10px; }
+.pi-card-symbol { display: grid; place-items: center; flex: 0 0 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font: 18px ui-monospace, monospace; }
+.pi-resources-panel h4 { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.pi-resources-panel .pi-card-description { flex: 1; margin: 14px 0 20px; line-height: 1.7; }
+.pi-card-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.pi-card-footer code { min-width: 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.model-settings-dialog .pi-card-footer button { min-height: 36px; padding: 6px 10px; font-size: 12px; background: var(--page); }
+.pi-resource-empty { grid-column: 1 / -1; padding: 32px 20px; border: 1px dashed var(--border); border-radius: 12px; text-align: center; }
+.pi-resource-empty strong { font-size: 14px; font-weight: 500; }
+.pi-resource-empty p { margin-bottom: 0; }
+.pi-extension-list, .pi-package-list { display: grid; gap: 12px; }
+.pi-extension-row { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
+.pi-extension-info { min-width: 0; flex: 1; }
+.pi-extension-row > .pi-badge { flex: 0 0 auto; }
+.pi-extension-location { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.pi-extension-location summary { padding: 4px 0; }
+.pi-extension-location code, .pi-filter-editor > code { display: block; margin: 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.pi-install-section { margin-bottom: 24px; border: 1px solid var(--border); border-radius: 12px; }
+.pi-install-section > summary { padding: 16px; font-size: 14px; font-weight: 500; }
+.pi-install-section > summary span { margin-left: 10px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.pi-install-body { padding: 0 16px 16px; }
+.pi-install-fields { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 12px; margin: 16px 0; }
+.pi-install-fields > div { min-width: 0; }
+.pi-resources-panel input, .pi-resources-panel select, .pi-resources-panel textarea { display: block; width: 100%; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.pi-install-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.pi-install-footer small { flex: 1 1 220px; font-size: 11px; }
+.pi-resources-panel .pi-primary-button { background: var(--primary); color: var(--on-primary); min-width: 80px; border-color: transparent; }
+.pi-resources-panel .pi-primary-button:hover:not(:disabled) { background: var(--primary-hover); }
+.pi-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.pi-package-row { min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: 12px; }
+.pi-package-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.pi-package-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.model-settings-dialog .pi-package-actions button { min-height: 36px; padding: 6px 10px; font-size: 12px; }
+.pi-package-actions .pi-remove-button { margin-left: auto; color: var(--muted); border-color: transparent; }
+.pi-remove-confirm { margin-top: 14px; padding: 12px; border: 1px solid var(--error-border); border-radius: 8px; }
+.pi-remove-confirm button { margin-right: 8px; }
+.pi-filter-editor { margin-top: 18px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.pi-filter-editor textarea { margin: 8px 0 16px; font: 12px/1.7 ui-monospace, monospace; resize: vertical; }
+.pi-diagnostics { margin-top: 28px; padding-top: 8px; border-top: 1px solid var(--border); }
+.pi-diagnostics > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; color: var(--muted); font-size: 13px; }
+.pi-diagnostics > summary::after { content: "+"; margin-left: auto; font-size: 18px; }
+.pi-diagnostics[open] > summary::after { content: "−"; }
+.pi-diagnostic-row { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.pi-diagnostic-row[data-type="error"] { border-color: var(--error-border); }
+.pi-diagnostic-row p { white-space: pre-wrap; }
+.pi-diagnostic-row code { display: block; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .pi-resources-heading { flex-direction: column; gap: 12px; }
+  .pi-resource-grid { grid-template-columns: minmax(0, 1fr); }
+  .pi-install-fields { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .pi-resources-panel { padding: 20px 16px; }
+  .model-settings-dialog .pi-resources-heading h3 { font-size: 18px; }
+  .pi-resource-navigation { gap: 4px; }
+  .model-settings-dialog .pi-resource-navigation button { flex: 1 1 40%; padding: 8px; font-size: 12px; }
+  .pi-resource-card, .pi-package-row { padding: 14px; }
+  .pi-install-section > summary span { display: block; margin: 6px 0 0 16px; }
+}

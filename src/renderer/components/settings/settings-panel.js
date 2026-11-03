@@ -47,6 +47,7 @@ export function createSettingsPanel(
     else models.hide();
     if (tab.dataset.settingsTab === "prompt") prompts.show();
     if (tab.dataset.settingsTab === "resources") void resources.show();
+    else resources.hide();
   }
   tabs.forEach((tab, index) => {
     tab.addEventListener("click", () => selectTab(tab));

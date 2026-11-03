@@ -50,27 +50,7 @@
 @media (max-width: 700px) {
   .prompt-settings { padding: 16px; }
 }
-.pi-resources-panel {
-  padding: 24px;
-  overflow-y: auto;
-  min-width: 0;
-}
-.pi-resources-panel input, .pi-resources-panel textarea, .pi-resources-panel select {
-  display: block;
-  width: 100%;
-  margin: 8px 0 16px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-.pi-package-actions, .pi-package-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 12px 0;
-}
-.pi-package-row p { width: 100%; overflow-wrap: anywhere; }
-.pi-resources-panel pre, .extension-widgets pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.extension-widgets pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .extension-dialog {
   width: min(600px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);

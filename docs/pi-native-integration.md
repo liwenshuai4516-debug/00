@@ -101,6 +101,10 @@ R4：服务器确认上传成功后显示“上传成功”和文件名；服务
 
 设置 → 技能与扩展包，展示当前会话资源及诊断。技能/模板按钮只把官方命令插入输入框，供使用者检查后发送。
 
+界面按技能、提示词模板、扩展、扩展包四类展示，并提供当前目录、项目信任与数量。技能和模板使用卡片，扩展按需展开路径；包安装单独收起，包列表区分个人/项目、已安装/未安装和筛选状态。资源筛选使用官方 JSON，移除可确认或取消，诊断按级别和来源折叠展示。安装及筛选后的“待应用”提示只有成功重载才清除；刷新列表不会代替重载。未信任项目的包操作在页面禁用，主进程仍按原契约校验。界面只读取当前会话已经加载的资源，不把已登记的包冒充为已加载能力。
+
+布局沿用现有设置导航和原生 DOM，样式独立放在 `src/renderer/styles/pi-resources.css`，颜色使用应用主题变量。依据固定版本的 [Skills](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/skills.md)、[Extensions](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/extensions.md) 与 [Packages](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md)；不改变官方安装、项目范围、过滤和重载行为。
+
 通过公开 `DefaultPackageManager` 执行 npm、Git、本地来源的安装、更新、移除和更新检查；本地包按标准目录或可选 pi 清单发现，不要求 pi-package 关键词。个人与项目范围由官方设置保存，项目范围需先信任。资源筛选直接使用官方 `extensions/skills/prompts/themes` 字符串数组和 `autoload` 布尔值；空数组禁用该类资源，空对象恢复默认发现。
 
 安装/筛选/更新后显式重载才应用到当前会话，不自动激活新扩展。`update(source)` 的实际范围遵循官方 API，同一来源同时配置在个人与项目时可能一并更新；范围选择不是更新隔离。安装器可能执行代码；SDK 没有取消或事务回滚契约，失败会明确提示核对磁盘与登记，不承诺还原。
@@ -137,6 +141,8 @@ git:git@github.com:liwenshuai4516-debug/00.git@c4f570dc00c1a7aa56989316047fcdc86
 ```bash
 NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" npm test
 PI_UI_ARTIFACT_DIR=/tmp/pi-desktop-ui node_modules/.bin/electron tests/ui/pi-desktop.check.cjs
+# 资源界面：模拟多资源数据、空状态、失败、互斥、焦点、迟到响应及深色/樱粉宽窄布局；不访问真实配置。
+PI_UI_ARTIFACT_DIR=/tmp/pi-resources-ui node_modules/.bin/electron tests/ui/pi-resources-page.check.cjs
 # 以下只在明确授权远程安装/真实推理后执行，不属于 npm test。
 NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" node scripts/verify-pi-remote.mjs 'git:git@github.com:liwenshuai4516-debug/00.git@c4f570dc00c1a7aa56989316047fcdc868c3f4a4'
 node_modules/.bin/electron scripts/verify-pi-live.cjs

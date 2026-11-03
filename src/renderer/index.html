@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="./styles/model-settings.css" />
   <link rel="stylesheet" href="./styles/context-usage.css" />
   <link rel="stylesheet" href="./styles/settings.css" />
+  <link rel="stylesheet" href="./styles/pi-resources.css" />
   <link rel="stylesheet" href="./styles/themes/sakura.css" />
   <script type="module" src="./theme/theme-preference.js" blocking="render"></script>
 
@@ -364,23 +365,75 @@
       </details>
     </section>
     <section id="settings-resources-panel" class="pi-resources-panel" role="tabpanel" aria-labelledby="settings-resources-tab" hidden>
-      <p id="pi-resources-intro">包可包含技能、模板、扩展和主题。安装可能执行来源中的代码，请确认来源可信。修改后重载资源应用到当前对话。</p>
-      <label for="pi-package-source">包来源</label>
-      <input id="pi-package-source" data-pi-source placeholder="npm:包名@版本、git:地址@ref 或本地路径" />
-      <label for="pi-package-scope">配置范围</label>
-      <select id="pi-package-scope" data-pi-scope><option value="user">个人</option><option value="project">项目（需要信任）</option></select>
-      <div class="pi-package-actions">
-        <button type="button" data-pi-install>安装</button><button type="button" data-pi-refresh>重新读取</button>
-        <button type="button" data-pi-check>检查更新</button><button type="button" data-pi-reload>重载资源</button>
+      <div class="pi-resources-heading">
+        <div>
+          <h3>为工作流添加更多能力</h3>
+          <p id="pi-resources-intro">发现当前可用的技能、模板与扩展，按需添加你信任的资源包。</p>
+        </div>
+        <div class="pi-resource-tools">
+          <button type="button" data-pi-refresh>刷新列表</button>
+          <button type="button" data-pi-reload>重载资源</button>
+        </div>
       </div>
+      <div class="pi-resource-context">
+        <div><span class="pi-eyebrow">当前目录</span><code data-pi-cwd>正在读取…</code></div>
+        <span class="pi-badge" data-pi-trust>读取信任状态…</span>
+      </div>
+      <div class="pi-resource-navigation" role="group" aria-label="资源分类">
+        <button type="button" data-pi-kind="skills" aria-pressed="true" aria-controls="pi-skills-view">技能 <span data-pi-count="skills">—</span></button>
+        <button type="button" data-pi-kind="prompts" aria-pressed="false" aria-controls="pi-prompts-view">提示词模板 <span data-pi-count="prompts">—</span></button>
+        <button type="button" data-pi-kind="extensions" aria-pressed="false" aria-controls="pi-extensions-view">扩展 <span data-pi-count="extensions">—</span></button>
+        <button type="button" data-pi-kind="packages" aria-pressed="false" aria-controls="pi-packages-view">扩展包 <span data-pi-count="packages">—</span></button>
+      </div>
+      <div class="pi-reload-notice" data-pi-reload-notice hidden>有修改待应用。重载资源后用于当前对话。</div>
       <p data-pi-status role="status" aria-atomic="true"></p>
-      <div data-pi-packages></div>
-      <div hidden>
-        <label for="pi-package-filters">资源筛选（Pi 官方 JSON 格式；空对象恢复全部资源）</label>
-        <textarea id="pi-package-filters" data-pi-filters rows="8" spellcheck="false"></textarea>
-        <button type="button" data-pi-save-filters>保存筛选</button>
+      <div data-pi-resources>
+        <section id="pi-skills-view" data-pi-view="skills" aria-label="技能">
+          <p class="pi-section-description">技能提供专门的工作方法。选择后将命令放入输入框，由你确认发送。</p>
+          <div class="pi-resource-grid" data-pi-items="skills"></div>
+        </section>
+        <section id="pi-prompts-view" data-pi-view="prompts" aria-label="提示词模板" hidden>
+          <p class="pi-section-description">把常用提示词作为命令插入输入框，可继续补充本次任务的要求。</p>
+          <div class="pi-resource-grid" data-pi-items="prompts"></div>
+        </section>
+        <section id="pi-extensions-view" data-pi-view="extensions" aria-label="已加载扩展" hidden>
+          <p class="pi-section-description">扩展为当前会话提供工具、命令和其他能力。这里只展示已加载的扩展。</p>
+          <div class="pi-extension-list" data-pi-items="extensions"></div>
+        </section>
       </div>
-      <div data-pi-resources></div>
+      <section id="pi-packages-view" data-pi-view="packages" aria-label="扩展包管理" hidden>
+        <details class="pi-install-section">
+          <summary>安装扩展包 <span>npm / Git / 本地目录</span></summary>
+          <div class="pi-install-body">
+            <p>包可包含技能、模板、扩展和 Pi 主题。安装可能执行来源中的代码，请确认来源可信。</p>
+            <div class="pi-install-fields">
+              <div>
+                <label for="pi-package-source">包来源</label>
+                <input id="pi-package-source" data-pi-source placeholder="npm:包名@版本、git:地址@ref 或本地路径" autocomplete="off" />
+              </div>
+              <div>
+                <label for="pi-package-scope">配置范围</label>
+                <select id="pi-package-scope" data-pi-scope><option value="user">个人</option><option value="project">项目（需要信任）</option></select>
+              </div>
+            </div>
+            <div class="pi-install-footer"><small>个人配置可跨项目使用；项目配置需要信任该项目。</small><button type="button" class="pi-primary-button" data-pi-install>安装</button></div>
+          </div>
+        </details>
+        <div class="pi-section-heading"><h3>已配置的包</h3><button type="button" data-pi-check>检查更新</button></div>
+        <div class="pi-package-list" data-pi-packages></div>
+        <section class="pi-filter-editor" data-pi-filter-editor hidden>
+          <div class="pi-section-heading"><h3>资源筛选</h3><button type="button" data-pi-cancel-filters>收起</button></div>
+          <code data-pi-filter-source></code>
+          <p id="pi-filter-hint">沿用 Pi 官方格式：未填写的类别使用包默认值，[] 禁用该类资源，{} 恢复默认发现。</p>
+          <label for="pi-package-filters">筛选配置（JSON）</label>
+          <textarea id="pi-package-filters" data-pi-filters rows="8" spellcheck="false" aria-describedby="pi-filter-hint"></textarea>
+          <button type="button" data-pi-save-filters>保存筛选</button>
+        </section>
+      </section>
+      <details class="pi-diagnostics" data-pi-diagnostics>
+        <summary>加载诊断 <span class="pi-badge" data-pi-diagnostic-count>—</span></summary>
+        <div data-pi-diagnostic-items></div>
+      </details>
     </section>
     <section id="settings-prompt-panel" class="prompt-settings" role="tabpanel" aria-labelledby="settings-prompt-tab"
       hidden>
