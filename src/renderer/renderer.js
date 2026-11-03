@@ -18,6 +18,7 @@ import {
 
 import { createModelSelector } from "./components/model-selector.js";
 import { createSettingsPanel } from "./components/settings/settings-panel.js";
+import { getPiSkillName, translatePiDescription } from "./components/settings/pi-resource-translations.js";
 
 import { createComposerPersistence } from "./components/composer-persistence.js";
 import { createWindowCloseController } from "./components/window-close-controller.js";
@@ -850,41 +851,6 @@ const slashLabels = {
   "google-account": "Google 账号",
   search: "搜索结果",
   chrome: "Chrome 浏览器",
-  // 技能
-  "skill:dingtalk-aicard": "钉钉 AI 卡片",
-  "skill:dingtalk-aisearch": "钉钉 AI 搜问",
-  "skill:dingtalk-aitable": "钉钉 AI 表格",
-  "skill:dingtalk-calendar": "钉钉日历",
-  "skill:dingtalk-chat": "钉钉群聊",
-  "skill:dingtalk-contact": "钉钉通讯录",
-  "skill:dingtalk-doc": "钉钉文档",
-  "skill:dingtalk-drive": "钉盘",
-  "skill:dingtalk-event": "钉钉事件",
-  "skill:dingtalk-mail": "钉钉邮箱",
-  "skill:dingtalk-minutes": "钉钉 AI 听记",
-  "skill:dingtalk-misc": "钉钉长尾产品",
-  "skill:dingtalk-shared": "共享执行契约",
-  "skill:dingtalk-tag": "数字员工",
-  "skill:dingtalk-todo": "钉钉待办",
-  "skill:dingtalk-wiki": "钉钉知识库",
-  "skill:qa-case-design": "测试用例设计",
-  "skill:qa-requirement-review": "需求评审",
-  "skill:qa-skill-smoke": "技能冒烟验证",
-  "skill:comprehensive-topology-analysis": "全面拓扑分析",
-  "skill:database-inspector": "数据库巡检",
-  "skill:docx": "Word 文档",
-  "skill:dws-cli": "钉钉命令行",
-  "skill:history": "历史查询",
-  "skill:notes": "会话笔记",
-  "skill:oa-operations": "OA 操作",
-  "skill:pdf": "PDF 文档",
-  "skill:water-safe-knowledge-base": "供水安全知识库",
-  "skill:water-safe-operate": "供水安全调度",
-  "skill:water-ui": "动态界面",
-  "skill:waterwork-knowledge-base": "水厂知识库",
-  "skill:waterwork-operate": "水厂运营",
-  "skill:web-search": "网页搜索",
-  "skill:xlsx": "电子表格",
 };
 
 // 只替换需要中文化的说明；技能与模板若自带中文说明则保留原文。
@@ -1042,7 +1008,7 @@ function applySlashCommand(command) {
 // 中文名称也参与匹配：中文按包含，英文仍按前缀，避免无关结果。
 function matchesSlashToken(command, token) {
   if (command.name.toLowerCase().startsWith(token)) return true;
-  const label = (slashLabels[command.name] ?? "").toLowerCase();
+  const label = (command.name.startsWith("skill:") ? getPiSkillName(command.name.slice(6)) : slashLabels[command.name] ?? "").toLowerCase();
   if (!label) return false;
   return /[\u4e00-\u9fa5]/.test(token) ? label.includes(token) : label.startsWith(token);
 }
@@ -1084,7 +1050,7 @@ function drawSlashMenu(token) {
     }
     nameCell.append(name);
 
-    const label = slashLabels[command.name];
+    const label = command.name.startsWith("skill:") ? getPiSkillName(command.name.slice(6)) : slashLabels[command.name];
     if (label) {
       const labelText = document.createElement("span");
       labelText.className = "slash-command-label";
@@ -1094,7 +1060,7 @@ function drawSlashMenu(token) {
 
     // 中文说明替换英文原文；悬停仍可核对原始说明。
     const originalDescription = command.description ?? "";
-    const localizedDescription = slashDescriptions[command.name];
+    const localizedDescription = slashDescriptions[command.name] ?? (command.name.startsWith("skill:") ? translatePiDescription(originalDescription) : undefined);
     const description = document.createElement("span");
     description.className = "slash-command-description";
     description.textContent = localizedDescription ?? originalDescription;

@@ -1,4 +1,4 @@
-import { getPiExtensionLabel, translatePiDescription, translatePiDiagnostic } from "./pi-resource-translations.js";
+import { getPiExtensionLabel, getPiSkillName, translatePiDescription, translatePiDiagnostic } from "./pi-resource-translations.js";
 
 export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
   const panel = dialog.querySelector("#settings-resources-panel");
@@ -88,11 +88,12 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
     container.replaceChildren();
     const isSkill = kind === "skills";
     for (const item of entries) {
+      const displayName = isSkill ? getPiSkillName(item.name) : item.name;
       const card = node("article", "pi-resource-card");
       const heading = node("div", "pi-card-heading");
       const mark = node("span", "pi-card-symbol", isSkill ? "✦" : "/");
       mark.setAttribute("aria-hidden", "true");
-      heading.append(mark, node("h4", "", item.name));
+      heading.append(mark, node("h4", "", displayName));
       const command = isSkill ? `/skill:${item.name}` : `/${item.name}`;
       const use = button(isSkill ? "使用技能" : "插入模板", () => {
         try {
@@ -101,7 +102,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
         } catch (error) { report(`无法插入：${error.message}`, "error"); }
       });
       use.dataset.piCommand = command;
-      use.setAttribute("aria-label", `${use.textContent}：${item.name}`);
+      use.setAttribute("aria-label", `${use.textContent}：${displayName}`);
       const footer = node("div", "pi-card-footer");
       footer.append(node("code", "", command), use);
       if (isSkill && item.control) {
@@ -111,13 +112,13 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
           const accept = button("确认停用", () => void operate({ action: "disable-skill", source: item.control.source, scope: item.control.scope }));
           accept.dataset.confirmSkill = "";
           if (item.control.scope === "project") accept.dataset.requiresTrust = "";
-          confirm.append(node("p", "", `在${item.control.scope === "user" ? "个人" : "当前项目"}配置中停用“${item.name}”？重载后不再加载此技能，同包其他技能和源文件保留。`), accept, button("取消", () => { confirm.remove(); disable.focus(); }));
+          confirm.append(node("p", "", `在${item.control.scope === "user" ? "个人" : "当前项目"}配置中停用“${displayName}”？重载后不再加载此技能，同包其他技能和源文件保留。`), accept, button("取消", () => { confirm.remove(); disable.focus(); }));
           card.append(confirm);
           update();
           accept.focus();
         });
         disable.dataset.disableSkill = "";
-        disable.setAttribute("aria-label", `停用此技能：${item.name}`);
+        disable.setAttribute("aria-label", `停用此技能：${displayName}`);
         if (item.control.scope === "project") disable.dataset.requiresTrust = "";
         if (item.control.disabled) {
           disable.dataset.skillDisabled = "";

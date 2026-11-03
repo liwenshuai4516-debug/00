@@ -73,6 +73,7 @@ async function main() {
     await check("默认展示技能卡片和真实数量，资源分类不干扰设置导航", `document.querySelectorAll('.pi-resource-card').length===5&&document.querySelector('[data-pi-kind=skills]').getAttribute('aria-pressed')==='true'&&document.querySelector('[data-pi-count=skills]').textContent==='4'&&document.querySelectorAll('.settings-categories [role=tab]').length===5`);
     await check("工作目录和项目信任独立显示，不占用操作状态", `document.querySelector('[data-pi-cwd]').textContent==='/workspace/需求与测试项目'&&document.querySelector('[data-pi-trust]').textContent==='项目资源已信任'&&document.querySelector('[data-pi-status]').textContent===''`);
     await check("英文技能和模板描述显示中文，执行命令保留原名", `document.querySelector('[data-pi-items=skills]').textContent.includes('帮助编程智能体')&&document.querySelector('[data-pi-items=prompts]').textContent.includes('反复审查和修复')&&document.querySelector('[data-pi-command="/skill:qa-api-test"]')!==null`);
+    await check("技能标题和操作名称使用中文，实际命令保留技能标识", `[...document.querySelectorAll('[data-pi-items=skills] h4')].map(title=>title.textContent).join('|')==='需求评审|测试用例设计|接口测试|界面测试'&&document.querySelector('[data-pi-command="/skill:qa-requirement-review"]').getAttribute('aria-label')==='使用技能：需求评审'`);
     await check("扩展显示中文名称与用途，不以 index.js 作为标题", `document.querySelector('[data-pi-items=extensions]').textContent.includes('子智能体协作')&&document.querySelector('[data-pi-items=extensions]').textContent.includes('代码执行')&&[...document.querySelectorAll('.pi-extension-row h4')].every(title=>!title.textContent.includes('index.'))&&document.querySelectorAll('.pi-extension-description').length===2`);
     await check("包内技能和扩展有卸载所属包入口，独立技能与内置扩展不冒充包", `document.querySelectorAll('[data-pi-items=skills] .pi-remove-button').length===1&&document.querySelectorAll('[data-pi-items=extensions] .pi-remove-button').length===1&&document.querySelector('[data-pi-items=extensions] .pi-resource-origin').textContent.includes('内置扩展')`);
     const artifacts = process.env.PI_UI_ARTIFACT_DIR || "/tmp/pi-resources-design";
@@ -124,7 +125,9 @@ async function main() {
     await click('[data-pi-kind="skills"]');
     await click('[data-disable-skill]');
     await check("单项停用明确保留同包其他技能与文件", `document.querySelector('[data-confirm-skill]').closest('.pi-remove-confirm').textContent.includes('同包其他技能和源文件保留')`);
+    await check("技能停用确认使用中文名", `document.querySelector('[data-confirm-skill]').closest('.pi-remove-confirm').textContent.includes('停用“需求评审”')`);
     await run(`document.querySelector('[data-confirm-skill]').closest('.pi-resource-card').scrollIntoView({block:'center'});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    await run("new Promise(resolve=>setTimeout(resolve,180))");
     await fs.writeFile(path.join(artifacts, "single-skill-disable-confirmation.png"), (await win.webContents.capturePage()).toPNG());
     await click('[data-confirm-skill]'); await wait("!window.busy");
     assert.deepEqual(calls.at(-1), { action: "disable-skill", source: "/fixture/first/SKILL.md", scope: "user" });
@@ -175,6 +178,21 @@ async function main() {
     await click("#settings-theme-tab");
     late.resolve(); await run("new Promise(resolve=>setTimeout(resolve,30))");
     await check("切换设置分类后迟到资源响应不覆盖当前界面", `!document.querySelector('#settings-theme-panel').hidden&&document.querySelector('#settings-resources-panel').hidden&&document.querySelector('#model-settings-title').textContent==='主题'`);
+    // 直接运行页面的命令菜单代码，核对中文检索与原始命令插入的衔接。
+    const rendererSource = await fs.readFile(path.join(renderer, "renderer.js"), "utf8");
+    const menuSource = rendererSource.slice(rendererSource.indexOf("const slashMenu ="), rendererSource.indexOf("// 解析内置命令"));
+    await click('[data-close]');
+    await run(`(async()=>{
+      const {getPiSkillName,translatePiDescription}=await import('./components/settings/pi-resource-translations.js');
+      const input=document.querySelector('#message-input'),composerState={sessionId:'fixture-a'};
+      ${menuSource}
+      slashCommands=[{name:'skill:playwright-trace',source:'skill',description:'Inspect Playwright trace files from the command line — list actions, view requests, console, errors, snapshots and screenshots.'}];
+      slashCommandsOwner=composerState.sessionId;
+      input.disabled=false;input.readOnly=false;input.value='/追踪';updateSlashMenu();
+    })()`);
+    await check("命令菜单可按中文技能名检索并显示中文描述", `!document.querySelector('#slash-command-menu').hidden&&document.querySelector('.slash-command-label').textContent==='浏览器测试追踪分析'&&document.querySelector('.slash-command-description').textContent.includes('通过命令行分析 Playwright 测试追踪文件')`);
+    await click('.slash-command-item');
+    await check("中文检索选中技能仍插入官方命令", `document.querySelector('#message-input').value==='/skill:playwright-trace'&&document.querySelector('#slash-command-menu').hidden`);
     console.log(`Pi 资源设置 ${passed} 项页面检查通过。截图：${artifacts}`);
   } finally { win.destroy(); await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }
