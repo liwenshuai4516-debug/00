@@ -1,6 +1,24 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("agent", {
+  extensionUiReady: () => ipcRenderer.invoke("agent:extension-ui-ready"),
+  respondExtensionUi: (response) => ipcRenderer.invoke("agent:extension-ui-response", {
+    id: response?.id, value: response?.value, cancelled: response?.cancelled === true,
+  }),
+  syncExtensionEditor: (sessionId, text) => ipcRenderer.send("agent:extension-editor-state", sessionId, text),
+  onExtensionUi: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("agent:extension-ui", listener);
+    return () => ipcRenderer.removeListener("agent:extension-ui", listener);
+  },
+  listPiResources: () => ipcRenderer.invoke("agent:list-pi-resources"),
+  managePiPackage: (request) => ipcRenderer.invoke("agent:manage-pi-package", request),
+  onPiPackageProgress: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("agent:pi-package-progress", listener);
+    return () => ipcRenderer.removeListener("agent:pi-package-progress", listener);
+  },
+
   // 固定关闭协议；不向页面暴露 Electron 事件或通用 send。
   closeReady: () => ipcRenderer.send("agent:close-ready"),
   onPrepareClose: (callback) => {

@@ -4,6 +4,7 @@ const os = require("node:os");
 const { mkdtemp, mkdir, rm, writeFile } = require("node:fs/promises");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
+require("../../src/main/resources/extension-ui-bridge.js").createExtensionUiBridge().register(ipcMain);
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("disable-http-cache");
 app.on("window-all-closed", () => {});
@@ -253,7 +254,7 @@ async function main() {
     await open();
     await check(
       "主题与模型管理位于同级设置分类",
-      `document.querySelectorAll('[role=tablist] [role=tab]').length===4 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'`,
+      `document.querySelectorAll('[role=tablist] [role=tab]').length===5 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'`,
     );
     await run(
       `document.querySelector('#profile-name').value='未保存的模型名称';document.querySelector('#profile-key').value='仅测试未保存值';window.originalMessage=document.querySelector('.chat-message');window.originalForm=document.querySelector('#model-profile-form');undefined;`,
@@ -315,11 +316,12 @@ async function main() {
     await run(
       `document.querySelector('#settings-model-tab').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true}))`,
     );
-    // 新增提示词分类后，End 应选择最后一项“提示词”。
+    // End 跟随实际最后一项；资源面板不影响提示词内容。
     await check(
-      "End选择提示词，菜单与内容对应",
-      `document.activeElement.id==='settings-prompt-tab' && !document.querySelector('#settings-prompt-panel').hidden && document.querySelector('#model-settings-title').textContent==='提示词'`,
+      "End选择技能与扩展包，菜单与内容对应",
+      `document.activeElement.id==='settings-resources-tab' && !document.querySelector('#settings-resources-panel').hidden && document.querySelector('#model-settings-title').textContent==='技能与扩展包'`,
     );
+    await click("#settings-prompt-tab");
 
     // 等待默认配置与当前会话快照读取完成。
     await wait(`!document.querySelector('#prompt-default').disabled`);

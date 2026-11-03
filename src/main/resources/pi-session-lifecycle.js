@@ -11,12 +11,14 @@ async function closePiSession(session, reason = "quit", targetSessionFile) {
   if (state.pending) return state.pending;
 
   state.pending = Promise.resolve().then(async () => {
+    session.desktopCancelUi?.();
     await session.abort?.();
-    if (!state.shutdownSent) {
+    if (!state.shutdownSent && !session.desktopRuntimeInvalidated) {
       await session.extensionRunner?.emit({ type: "session_shutdown", reason, targetSessionFile });
       state.shutdownSent = true;
     }
     await session.settingsManager?.flush();
+    session.desktopClearUi?.();
     session.dispose();
   });
   try {

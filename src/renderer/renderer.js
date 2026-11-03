@@ -1,3 +1,4 @@
+import { createExtensionUi } from "./components/extension-ui.js";
 import { createProposalPanel } from "./components/proposal-panel.js";
 import { createProjectPanel } from "./components/project-panel.js";
 import { mountHistoryPreview } from "./components/history-preview.js";
@@ -33,6 +34,7 @@ for (const template of TASK_TEMPLATES) {
 }
 
 // 页面忙碌与输入就绪分别管理，保存确认不能解除其他操作的忙碌状态。
+let extensionUiPanel;
 let pageBusy = true;
 let pageGenerating = false;
 
@@ -127,8 +129,13 @@ const composerPersistence = createComposerPersistence(
   (state) => {
     composerState = state;
     renderComposerState();
+    extensionUiPanel?.setSession(state.sessionId);
   },
 );
+
+extensionUiPanel = createExtensionUi(window.agent, input, {
+  canEdit: () => composerState.loaded && !composing && !closing && !input.readOnly,
+});
 
 templateSelect.addEventListener("change", renderComposerState);
 templateInsert.addEventListener("click", () => {
@@ -470,6 +477,7 @@ const settingsPanel = createSettingsPanel(
   modelApi,
   setBusy,
   () => Promise.all([modelSelector.refresh(), sessionInfoPanel.refresh()]),
+  text => composerPersistence.appendTemplate(text),
 );
 
 const projectPanel = createProjectPanel(
@@ -749,7 +757,7 @@ const archivePreview = mountHistoryPreview(
 // 项目清单独立读取，不依赖当前模型会话初始化成功。
 projectPanel.refresh();
 
-loadHistory();
+extensionUiPanel.ready.then(loadHistory).catch(error => addMessage("error", `扩展交互连接失败：${error.message}`));
 
 // Enter 发送；Shift+Enter 保留 textarea 的默认换行行为。
 input.addEventListener("keydown", (event) => {
@@ -836,6 +844,7 @@ form.addEventListener("submit", async (event) => {
   });
 
   const unsubscribeTool = window.agent.onToolEvent((event) => {
+    if (event.type === "message") { addMessage("status", event.text); return; }
     if (event.type === "start") {
       setRequestStatus(`正在调用工具：${event.name}`);
 
@@ -895,6 +904,12 @@ form.addEventListener("submit", async (event) => {
     } else {
       setRequestStatus(result.stopped ? "生成已停止。" : "本次回复已结束。");
       if (result.stopped) addMessage("status", "生成已停止");
+    }
+    if (result.sessionChanged) {
+      // 先完成原会话发送收尾，再绑定官方 runtime 实际替换后的会话。
+      await bindComposer(await window.agent.currentSession());
+      showHistory(await window.agent.loadHistory());
+      await modelSelector.refresh();
     }
     if (result.warning) addMessage("status", result.warning);
     await refreshSessions();

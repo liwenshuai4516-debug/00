@@ -206,6 +206,7 @@ test("启动接线向会话、输入和聊天服务注入同一个状态存储",
   const sessions = {};
   const received = {};
   const factories = {
+    createExtensionUiBridge: () => ({ register() {}, cancelAll() {}, disconnect() {} }),
     createWorkspaceSettings: () => ({ load() {}, save() {} }),
     createSessionStateStore: () => store,
     createSessionService(...args) { received.sessions = args; return sessions; },

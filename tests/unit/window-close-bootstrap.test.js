@@ -17,6 +17,7 @@ test("实际启动入口每次开窗均装守卫，退出中阻止新窗口，�
     loadFile(filename) { calls.push(["load", this, filename]); }
   }
   const factories = {
+    createExtensionUiBridge: () => ({ register() {}, cancelAll() {}, disconnect() {} }),
     registerAppQuitGuard(receivedApp, receivedWindow) {
       assert.equal(receivedApp, app); assert.equal(receivedWindow, BrowserWindow);
       calls.push(["quit-guard"]); return quitGuard;

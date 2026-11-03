@@ -284,6 +284,8 @@
 
         <button type="button" id="settings-prompt-tab" class="settings-category" role="tab" data-settings-tab="prompt"
           aria-selected="false" aria-controls="settings-prompt-panel" tabindex="-1">提示词</button>
+        <button type="button" id="settings-resources-tab" class="settings-category" role="tab" data-settings-tab="resources"
+          aria-selected="false" aria-controls="settings-resources-panel" tabindex="-1">技能与扩展包</button>
       </nav>
     </aside>
     <header class="model-manager-header">
@@ -524,6 +526,25 @@
         <p role="status" aria-atomic="true"></p>
         <div class="history-preview-content" aria-busy="false"></div>
       </details>
+    </section>
+    <section id="settings-resources-panel" class="pi-resources-panel" role="tabpanel" aria-labelledby="settings-resources-tab" hidden>
+      <p id="pi-resources-intro">包可包含技能、模板、扩展和主题。安装可能执行来源中的代码，请确认来源可信。修改后重载资源应用到当前对话。</p>
+      <label for="pi-package-source">包来源</label>
+      <input id="pi-package-source" data-pi-source placeholder="npm:包名@版本、git:地址@ref 或本地路径" />
+      <label for="pi-package-scope">配置范围</label>
+      <select id="pi-package-scope" data-pi-scope><option value="user">个人</option><option value="project">项目（需要信任）</option></select>
+      <div class="pi-package-actions">
+        <button type="button" data-pi-install>安装</button><button type="button" data-pi-refresh>重新读取</button>
+        <button type="button" data-pi-check>检查更新</button><button type="button" data-pi-reload>重载资源</button>
+      </div>
+      <p data-pi-status role="status" aria-atomic="true"></p>
+      <div data-pi-packages></div>
+      <div hidden>
+        <label for="pi-package-filters">资源筛选（Pi 官方 JSON 格式；空对象恢复全部资源）</label>
+        <textarea id="pi-package-filters" data-pi-filters rows="8" spellcheck="false"></textarea>
+        <button type="button" data-pi-save-filters>保存筛选</button>
+      </div>
+      <div data-pi-resources></div>
     </section>
     <section id="settings-prompt-panel" class="prompt-settings" role="tabpanel" aria-labelledby="settings-prompt-tab"
       hidden>

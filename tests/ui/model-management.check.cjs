@@ -7,6 +7,7 @@ const { createModelSettingsStore } = require("../../src/main/storage/model-setti
 const { createModelCredentialsStore } = require("../../src/main/storage/model-credentials-store.js");
 const { createModelSettingsService, createSettingsCatalog } = require("../../src/main/services/model-settings-service.js");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
+require("../../src/main/resources/extension-ui-bridge.js").createExtensionUiBridge().register(ipcMain);
 app.disableHardwareAcceleration();
 app.on("window-all-closed", () => {});
 

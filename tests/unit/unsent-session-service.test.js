@@ -270,13 +270,13 @@ test("实际启动工厂正确分开配置服务与恢复快照，按原配置�
       let ready = 0;
       const store = createSessionStateStore(path.join(base, "state"));
       const factory = new Function(
-        "app", "modelSettingsService", "require", "dialog", "promptSettingsStore", "sessionStateStore",
+        "app", "modelSettingsService", "require", "dialog", "promptSettingsStore", "sessionStateStore", "extensionUi",
         "return (" + factorySource + ");",
       )(
         { whenReady: async () => { ready += 1; }, quit() {} }, settings,
         require("node:module").createRequire(${JSON.stringify(root + "/src/main/bootstrap.js")}),
         { showMessageBox: async () => ({ response: 0, checkboxChecked: false }) },
-        { read: async () => ({ version: 1, revision: 0, testAgentPrompt: "隔离测试提示词" }) }, store,
+        { read: async () => ({ version: 1, revision: 0, testAgentPrompt: "隔离测试提示词" }) }, store, {},
       );
       await store.registerSession("target", workspace, "empty", { provider: PROFILE_PREFIX + b.id, modelId: "same" });
       await store.saveDraft("target", workspace, "保留输入", 0);

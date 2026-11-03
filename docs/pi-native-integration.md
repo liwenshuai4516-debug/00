@@ -31,32 +31,59 @@
 
 `/reload` 调用官方 session.reload，不请求模型，并与聊天发送及其他主进程操作互斥。扩展 ctx.reload 接入同一重载函数。加载诊断和运行事件错误分别报告。
 
-当前扩展运行在 SDK 的非终端 json 模式，hasUI=false。通用工具、事件和命令可用；TUI 自定义组件、对话框、完整命令会话控制、Pi 主题到 Electron 配色的映射尚需专门适配。不能把文件加载成功当成所有桌面交互都受支持。
+桌面通过 `bindExtensions({ mode: "rpc", uiContext, commandContextActions })` 绑定，`hasUI=true`；无界面检查仍使用 json/hasUI=false。选择、确认、输入支持信号取消和超时，多行编辑支持预填；通知、状态、字符串数组组件、标题、编辑器正文与工具展开接入页面。正文等输入绑定完成且组词结束后经原保存链路应用，页面销毁/重载会结束等待，迟到响应不再消费。
 
-## 包与验收范围
+继承官方默认非 TUI UI context；自定义终端组件返回 undefined，终端编辑器、输入监听、页眉页脚、工作指示器与主题切换等不支持的方法维持官方非 TUI 行为。Pi 终端主题不会自动转换为 CSS。不要仅凭 hasUI 判断 TUI 组件可用，应结合 mode。
 
-配置中的本地包已按官方标准目录或可选 pi 清单加载；不要求 pi-package 画廊关键词。当前未新增安装、更新、删除界面，远程包与安装过程未验收。
+`waitForIdle/newSession/fork/navigateTree/switchSession/reload` 通过公开 SDK 执行。`AgentSessionRuntime` 负责真实会话替换和 withSession；宿主重绑事件、输入与停止目标，仍检查应用历史归属和归档状态。官方替换先释放旧会话；创建失败明确提示重新打开，setup/withSession 在替换后失败时继续跟随实际新对象，不虚构回滚。显式 display=true 的扩展自定义消息按纯文本展示并恢复。
 
-离线检查使用临时配置、目录和会话，屏蔽真实个人技能目录，不请求模型。覆盖技能格式/链接/冲突、项目允许/拒绝、祖先目录边界、模板参数、系统提示词、原生读写/命令、扩展启动/重载/关闭，以及本地 stdio MCP 工具与子进程退出。
+## 包管理
 
-真实桌面仍需人工核对信任弹窗、自动技能选择、停止、模型登录/推理和关闭行为；保留的历史提示词快照不会被静默重写。已有快照若引用旧工具，以桌面追加的实际工具说明为准。
+设置 → 技能与扩展包，展示当前会话资源及诊断。技能/模板按钮只把官方命令插入输入框，供使用者检查后发送。
+
+通过公开 `DefaultPackageManager` 执行 npm、Git、本地来源的安装、更新、移除和更新检查；本地包按标准目录或可选 pi 清单发现，不要求 pi-package 关键词。个人与项目范围由官方设置保存，项目范围需先信任。资源筛选直接使用官方 `extensions/skills/prompts/themes` 字符串数组和 `autoload` 布尔值；空数组禁用该类资源，空对象恢复默认发现。
+
+安装/筛选/更新后显式重载才应用到当前会话，不自动激活新扩展。`update(source)` 的实际范围遵循官方 API，同一来源同时配置在个人与项目时可能一并更新；范围选择不是更新隔离。安装器可能执行代码；SDK 没有取消或事务回滚契约，失败会明确提示核对磁盘与登记，不承诺还原。
+
+## 本轮验收（2026-11-03）
+
+| 类型 | 实际结果 | 边界 |
+| --- | --- | --- |
+| 单元与真实 SDK 临时夹具 | 616 项通过，无失败或跳过 | 不请求模型；覆盖 RPC bridge 来源校验、取消、会话替换及替换后失败、包范围/筛选、关闭和原有功能 |
+| Electron 组件与设置集成 | `pi-desktop.check.cjs` 16 项通过，含 1280/390 宽度截图 | 真实 SDK/IPC/预加载/DOM 组件；会话及包为临时夹具，组词用事件模拟 |
+| 既有页面回归 | 主题 43、模型 23、项目重命名 16、归档 17、置顶 19、上下文 19、关闭 14、未发送会话 18 项通过 | 模拟业务接口；补齐新 bridge，并修正旧分类数量与未发送项选择器 |
+| 真实模型 | 应用默认 `deepseek/deepseek-flash`：流式短答、技能选择并 read → write → edit → bash、文件最终内容、主动停止及子进程退出均通过 | 复用已有认证，仅临时资源/工作目录/历史；没有切换模型或更改凭据，不代表所有供应商、登录和额度均可用 |
+| 真实远程 Git | 本仓库固定 ref 安装登记 → 解析 → 更新 → 检查更新 → 移除登记通过，固定 ref 未移动 | 来源见下；该 ref 包资源均为 0，不把个人技能算入远程资源，不代表远程扩展功能或公共 npm 注册表已验收 |
+| 原生系统点击 | 未完成：桌面控制工具报告 Mac 锁定，无法操作窗口 | 不计入通过；原生输入法、信任窗口、真实 MCP 登录和完整系统关窗仍需单独验收 |
+
+真实 Git 来源取自 AGENTS.md：
+
+```text
+git:git@github.com:liwenshuai4516-debug/00.git@c4f570dc00c1a7aa56989316047fcdc868c3f4a4
+```
+
+使用 `ResolvedResource.metadata.origin/source` 统计该包资源；`resolve()` 还会包含顶层个人资源，不能直接累计全部结果。
+
+真实模型最终一轮：短答 4 段文本增量（约 1.8 秒），技能与四个原生工具完成（约 4.7 秒），工具等待时经应用停止入口中止（约 1.8 秒），PID 已不存在。脚本只保存模型标识、步骤、计数和状态，不保存密钥、供应商请求或真实聊天内容。正常中止由应用发送服务识别，不能仅把 SDK 中止异常算作请求失败。
+
+验收中另修复凭据状态缓存竞态：配置安装改用 `getAuth(model)` 实际读取认证，避免后台目录刷新合并后 `hasConfiguredAuth` 误报登录/注销状态。扩展消息不再被旧草稿类型名单隐藏。原生点击尝试未成功，截图来自离线 Electron 页面，不能当作人工验收证据。
+
+可复现入口：
+
+```bash
+NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" npm test
+PI_UI_ARTIFACT_DIR=/tmp/pi-desktop-ui node_modules/.bin/electron tests/ui/pi-desktop.check.cjs
+# 以下只在明确授权远程安装/真实推理后执行，不属于 npm test。
+NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" node scripts/verify-pi-remote.mjs 'git:git@github.com:liwenshuai4516-debug/00.git@c4f570dc00c1a7aa56989316047fcdc868c3f4a4'
+node_modules/.bin/electron scripts/verify-pi-live.cjs
+```
+
+原生点击辅助模式：`PI_UI_MANUAL_SELECT=1` 运行上述桌面检查，在可见临时窗口选择“乙”并确认后，继续自动检查；这只验证组件原生点击，不覆盖全部操作系统场景。真实模型脚本默认用应用新会话默认选择；当前应用未运行，未读取旧历史猜测最后使用模型。可用 `PI_ACCEPTANCE_REPORT` 指定本地结果文件，报告不要包含真实配置与历史。
+
+截图：[桌面资源设置](images/pi-resources.png)、[窄窗资源设置](images/pi-resources-narrow.png)。
 
 ## 工作区复核（2026-11-03）
 
 本次按已安装的官方 1.4.0 随包文档与公开声明复核会话创建、资源加载、工具选择、信任顺序及扩展生命周期。运行入口没有旧 `AuthStorage`、私有资源扫描、技能专用 read 或草稿工具允许名单；无引用的旧技能读取与旧信任模块已移除，旧接入计划已废止。
 
 提示词设置保存的是应用追加的测试职责，并按会话保留快照；不替代 Pi 原生系统提示词、SYSTEM.md、APPEND_SYSTEM.md 或资源发现。界面内置的测试任务模板只写入待发送输入，不替代 Pi 官方提示词模板。旧草稿的服务、历史展示与对应测试继续保留，原生 Agent 不注册这组工具。
-
-自动验证结果：
-
-- 使用测试隔离预加载执行 `npm test`：611 项通过，无失败或跳过，包括真实 SDK 临时资源、信任、生命周期、设置、MCP 和提示词快照检查。
-- Electron 离线页面检查：`theme-settings.check.cjs` 43 项、`sidebar-layout.check.cjs` 39 项、`model-management.check.cjs` 23 项通过；使用临时配置与模拟业务接口，未请求真实模型。
-- 修复 3 项过期测试：启动组装的提示词存储参数、桌面追加提示词断言、真实启动工厂的宿主依赖注入。
-
-单测复现命令（项目根目录）：
-
-```bash
-NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" npm test
-```
-
-以上验证覆盖当前已接通的核心链路；完整扩展桌面交互、远程包安装管理及真实供应商验收仍属于未完项。

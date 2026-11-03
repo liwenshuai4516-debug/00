@@ -185,9 +185,9 @@ test("未知类型在登记保存开始状态前被拒绝", async (t) => {
   assert.deepEqual(await readdir(workspace), []);
 });
 
-test("历史仍忽略隐藏的新建记录和未知的自定义消息", () => {
+test("历史忽略隐藏的新建记录并展示扩展明确要求显示的消息", () => {
   assert.deepEqual(toHistory([
     { role: "custom", customType: "workspace-create-applied", display: false, content: "隐藏" },
     { role: "custom", customType: "unknown", display: true, content: "未知" },
-  ]), []);
+  ]), [{ role: "status", text: "未知" }]);
 });

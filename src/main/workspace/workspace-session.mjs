@@ -9,7 +9,7 @@ const BINDING_TYPE = "desktop-workspace-binding";
 
 // 返回不能继续使用的原因；空字符串表示绑定检查通过。
 // 先只读检查，再交给 SDK 打开，避免被拒绝的旧文件先被迁移。
-async function getSessionBindingError(
+export async function getSessionBindingError(
   sessionPath,
   workspaceRoot,
   expectedSessionId,

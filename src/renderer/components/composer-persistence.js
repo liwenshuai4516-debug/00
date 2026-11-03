@@ -16,6 +16,7 @@ export function createComposerPersistence(input, api, onState) {
     if (disposed || entry?.sessionId !== currentId) return;
     onState({
       sessionId: currentId,
+      loaded: entry.loaded && !entry.error,
       message: entry.dismissing
         ? "正在解除发送限制……"
         : entry.pendingCheckError

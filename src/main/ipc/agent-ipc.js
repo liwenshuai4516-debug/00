@@ -33,6 +33,15 @@ function registerAgentIpc(
   const { registerModelIpc } = require("./model-ipc.js");
   registerModelIpc(ipcMain, modelSettingsService, sessionService, runIdleOperation);
 
+  const { createPiPackageService } = require("../services/pi-package-service.js");
+  const piPackages = createPiPackageService(sessionService);
+  ipcMain.handle("agent:list-pi-resources", () => runIdleOperation(() => piPackages.list()));
+  ipcMain.handle("agent:manage-pi-package", (event, input) => runIdleOperation(() =>
+    piPackages.manage({ action: input?.action, source: input?.source, scope: input?.scope, filters: input?.filters }, progress => {
+      if (!event.sender.isDestroyed()) event.sender.send("agent:pi-package-progress", progress);
+    }),
+  ));
+
   ipcMain.handle("agent:read-prompt-settings", async () => {
     const settings = await promptSettingsStore.read();
     const { AGENT_SYSTEM_PROMPT } = await import("../prompts/agent-system-prompt.mjs");
@@ -232,7 +241,10 @@ function registerAgentIpc(
   });
 
   // 停止生成不经过上述互斥入口。
-  ipcMain.handle("agent:stop", () => chatService.stop());
+  ipcMain.handle("agent:stop", () => {
+    sessionService.cancelExtensionUi?.();
+    return chatService.stop();
+  });
 }
 
 module.exports = { registerAgentIpc };

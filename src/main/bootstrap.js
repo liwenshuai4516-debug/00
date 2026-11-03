@@ -100,6 +100,10 @@ app.on("will-quit", () => {
   modelSettingsService.enrichment.dispose();
 });
 
+const { createExtensionUiBridge } = require("./resources/extension-ui-bridge.js");
+const extensionUi = createExtensionUiBridge();
+extensionUi.register(ipcMain);
+
 // 每次创建会话按自身记录解析配置；新会话才读取默认选择。
 async function createConfiguredAgent(
   sessionDir,
@@ -117,7 +121,12 @@ async function createConfiguredAgent(
     sessionDir, resume, sessionPath, workspaceDir,
     modelSettingsService, recovery, resumeOptions,
     { promptSettingsStore, sessionStateStore },
-    createDesktopPiOptions(dialog, () => app.quit()),
+    {
+      ...createDesktopPiOptions(dialog, () => app.quit()),
+      createUiContext: extensionUi.createContext,
+      cancelUi: extensionUi.cancelSession,
+      cancelPendingUi: extensionUi.cancelPending,
+    },
   );
 }
 
@@ -147,6 +156,7 @@ const sessionService = createSessionService(
   workspaceSettings.save,
   sessionStateStore,
 );
+sessionService.cancelExtensionUi = extensionUi.cancelAll;
 // 文件草稿与 Pi 会话保存在当前项目的 sessions 目录内。
 
 const composerDraftService = createComposerDraftService(
@@ -274,6 +284,7 @@ function createWindow() {
   // 每次创建窗口都绑定，包括 macOS 关闭后重新打开的窗口。
   registerWindowLifecycle(window, {
     async stop() {
+      extensionUi.disconnect();
       // 两项清理都要执行，避免其中一步失败后跳过另一项。
       try {
         sessionService.cancelCompaction();

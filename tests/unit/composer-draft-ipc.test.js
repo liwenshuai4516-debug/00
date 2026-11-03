@@ -159,6 +159,7 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
   let ipcArguments;
 
   const factories = {
+    createExtensionUiBridge: () => ({ register() {}, cancelAll() {}, disconnect() {} }),
     createWorkspaceSettings: () => ({ load() {}, save() {} }),
     createSessionService: () => sessionService,
     createModelSettingsService: () => modelSettingsService,

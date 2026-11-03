@@ -8,6 +8,7 @@ const { createSessionService } = require("../../src/main/services/session-servic
 const { createSessionStateStore } = require("../../src/main/storage/session-state-store.js");
 const { createComposerDraftService } = require("../../src/main/services/composer-draft-service.js");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
+require("../../src/main/resources/extension-ui-bridge.js").createExtensionUiBridge().register(ipcMain);
 const temporary = mkdtempSync(path.join(os.tmpdir(), "session-archive-ui-"));
 mkdirSync(path.join(temporary, "user-data"));
 app.setPath("userData", path.join(temporary, "user-data"));

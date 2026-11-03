@@ -7,6 +7,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const { createSessionService } = require("../../src/main/services/session-service.js");
 const { createSessionStateStore } = require("../../src/main/storage/session-state-store.js");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
+require("../../src/main/resources/extension-ui-bridge.js").createExtensionUiBridge().register(ipcMain);
 const temporary = mkdtempSync(path.join(os.tmpdir(), "session-pin-ui-"));
 mkdirSync(path.join(temporary, "user-data"));
 app.setPath("userData", path.join(temporary, "user-data"));

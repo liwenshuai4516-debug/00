@@ -1,5 +1,6 @@
 import { createModelSettingsPanel } from "../model-settings-panel.js";
 import { createThemeSettings } from "../theme/theme-settings.js";
+import { createPiResourcesPanel } from "./pi-resources.js";
 import { createPromptSettings } from "./prompt-settings.js";
 
 export function createSettingsPanel(
@@ -8,7 +9,9 @@ export function createSettingsPanel(
   api,
   setPageBusy,
   refreshProfiles,
+  insertText,
 ) {
+  const resources = createPiResourcesPanel(dialog, api, setPageBusy, insertText);
   const prompts = createPromptSettings(dialog, api, setPageBusy);
   const models = createModelSettingsPanel(
     dialog,
@@ -16,7 +19,7 @@ export function createSettingsPanel(
     api,
     setPageBusy,
     refreshProfiles,
-    () => !prompts.isSaving(),
+    () => !prompts.isSaving() && !resources.isSaving(),
   );
   const appearance = createThemeSettings(
     dialog.querySelector("[data-theme-panel]"),
@@ -45,6 +48,7 @@ export function createSettingsPanel(
       theme: "theme-settings-intro",
       archive: "archive-settings-intro",
       prompt: "prompt-settings-intro",
+      resources: "pi-resources-intro",
     };
 
     dialog.setAttribute(
@@ -52,6 +56,7 @@ export function createSettingsPanel(
       descriptions[tab.dataset.settingsTab],
     );
     if (tab.dataset.settingsTab === "prompt") prompts.show();
+    if (tab.dataset.settingsTab === "resources") void resources.show();
   }
   tabs.forEach((tab, index) => {
     tab.addEventListener("click", () => selectTab(tab));
@@ -79,6 +84,7 @@ export function createSettingsPanel(
     if (dialog.open && dialog.querySelector("#settings-prompt-tab").getAttribute("aria-selected") === "true") {
       prompts.show();
     }
+    if (dialog.open && dialog.querySelector("#settings-resources-tab").getAttribute("aria-selected") === "true") void resources.show();
   });
 
   return {
@@ -86,7 +92,8 @@ export function createSettingsPanel(
       busy = value;
       models.setBusy(value);
       appearance.setBusy(value);
-          prompts.setBusy(value);
+      prompts.setBusy(value);
+      resources.setBusy(value);
 
       for (const tab of tabs) tab.disabled = value;
       dialog.querySelector("#archive-session-search").disabled = value;

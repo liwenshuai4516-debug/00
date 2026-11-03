@@ -56,7 +56,7 @@ test("长结果只截断展示，不修改原始消息", () => {
   assert.equal(content[0].text, original);
 });
 
-test("历史显示保存记录，忽略隐藏或未知的自定义消息", () => {
+test("历史显示保存记录与扩展显式展示的自定义消息，忽略隐藏消息", () => {
   assert.deepEqual(toHistory([
     {
       role: "custom",
@@ -78,6 +78,7 @@ test("历史显示保存记录，忽略隐藏或未知的自定义消息", () =>
     },
   ]), [
     { role: "status", text: "文件已保存：example.js" },
+    { role: "status", text: "其他消息" },
   ]);
 });
 test("压缩摘要使用状态角色展示，并保留摘要与后续消息的顺序", () => {

@@ -30,9 +30,6 @@ function toHistory(messages) {
           message.role,
         ) ||
         (message.role === "custom" &&
-          ["workspace-edit-applied", "workspace-create-applied"].includes(
-            message.customType,
-          ) &&
           message.display === true),
     )
     .map((message) => {

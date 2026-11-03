@@ -7,6 +7,7 @@ const temporary = mkdtempSync(path.join(os.tmpdir(), "window-close-ui-"));
 const { app, BrowserWindow, ipcMain } = require("electron");
 const root = path.resolve(__dirname, "../..");
 const { registerAgentIpc } = require(path.join(root, "src/main/ipc/agent-ipc.js"));
+require("../../src/main/resources/extension-ui-bridge.js").createExtensionUiBridge().register(ipcMain);
 mkdirSync(path.join(temporary, "user-data"));
 app.setPath("userData", path.join(temporary, "user-data"));
 app.commandLine.appendSwitch("disable-http-cache");

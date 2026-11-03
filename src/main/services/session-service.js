@@ -65,6 +65,17 @@ function createSessionService(
       );
     }
     observedSession = session;
+    // 扩展命令由官方 runtime 替换会话，主进程必须立即跟随实际对象。
+    session.desktopOnReplacement = async (next) => {
+      const oldCwd = session.sessionManager.getCwd();
+      sessionPromise = Promise.resolve(observeSession(next));
+      if (next.sessionManager.getCwd() !== oldCwd) await saveWorkspaceDir(next.sessionManager.getCwd());
+    };
+    session.desktopBeforeSwitch = async (sessionId) => {
+      if ((await sessionStateStore?.load(sessionId))?.archivedAt != null) {
+        throw new Error("该会话已归档，请先恢复后再继续对话。");
+      }
+    };
     return session;
   }
 

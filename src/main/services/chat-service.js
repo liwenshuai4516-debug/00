@@ -145,7 +145,8 @@ function createChatService(
           if (!request.stopped) throw error;
         } finally {
           try {
-            await sessionService.syncSessionRegistration?.(session.sessionId);
+            const actual = session.desktopRuntime?.session ?? session;
+            await sessionService.syncSessionRegistration?.(actual.sessionId);
           } catch (error) {
             // 本地登记失败不改变已经完成的请求结果；保留快照供后续核对。
             registrationWarning = `恢复登记同步失败：${error.message}${consumed ? "；发送快照未清理。" : "。"}`;
@@ -153,10 +154,13 @@ function createChatService(
         }
       }
 
+      const actual = session.desktopRuntime?.session ?? session;
       const result = {
+        ...((actual !== session || session.desktopHistoryChanged === true) ? { sessionChanged: true } : {}),
         stopped: request.stopped,
         ...(registrationWarning ? { warning: registrationWarning } : {}),
       };
+      session.desktopHistoryChanged = false;
       if (!consumed) return result;
       result.outcome = request.stopped ? "stopped" : "completed";
       result.draft = consumed;
@@ -180,6 +184,7 @@ function createChatService(
       // 消费后异常不能证明远端未处理；保留快照，页面不可自动重发。
       return {
         stopped: request.stopped,
+        ...(request.session?.desktopRuntime && request.session.desktopRuntime.session !== request.session ? { sessionChanged: true } : {}),
         outcome: "unconfirmed",
         draft: consumed,
         error: error.message,
@@ -199,7 +204,9 @@ function createChatService(
 
     // session 赋值后，发送函数已经进入执行阶段。
     if (request.session) {
-      await request.session.abort();
+      const current = request.session.desktopRuntime?.session ?? request.session;
+      current.desktopCancelUi?.();
+      await current.abort();
     }
   }
 

@@ -9,9 +9,10 @@ import { AGENT_SYSTEM_PROMPT } from "./prompts/agent-system-prompt.mjs";
 import messageAdapter from "./adapters/message-adapter.js";
 import modelConfig from "./config/model-config.js";
 import requestStatus from "./adapters/request-status.js";
+import { bindDesktopRuntime } from "./resources/desktop-session-runtime.mjs";
 import { TEST_AGENT_PROMPT } from "./prompts/test-agent-prompt.mjs";
 
-const { formatToolResult } = messageAdapter;
+const { formatToolResult, toHistory } = messageAdapter;
 const { readModelConfig } = modelConfig;
 const { getRequestStatus } = requestStatus;
 
@@ -33,7 +34,11 @@ export async function createPiAgent(
 
   // 目录检查、会话恢复和目录绑定统一交给新模块处理。
   const { workspaceRoot, sessionManager, source } =
-    await createWorkspaceSession({
+    resourceOptions?.runtimeTarget ? {
+      workspaceRoot: workspaceDir,
+      sessionManager: resourceOptions.runtimeTarget.sessionManager,
+      source: resourceOptions.runtimeTarget.sessionStartEvent?.reason === "new" ? "empty" : "history",
+    } : await createWorkspaceSession({
       sessionDir,
       // 显式目录供后续选择入口使用；旧调用仍采用启动配置。
       workspaceDir,
@@ -42,6 +47,12 @@ export async function createPiAgent(
       recovery,
       archivedSessionIds: resumeOptions?.archivedSessionIds,
     });
+
+  if (resourceOptions?.runtimeTarget) {
+    // 官方 runtime 新建/分叉可能没有应用绑定；只给新目标补充元数据。
+    const bindings = sessionManager.getEntries().filter(entry => entry.type === "custom" && entry.customType === "desktop-workspace-binding");
+    if (bindings.length === 0) sessionManager.appendCustomEntry("desktop-workspace-binding", { version: 1, workspaceRoot });
+  }
 
   let promptSnapshot = null;
   if (promptOptions !== undefined) {
@@ -124,6 +135,7 @@ export async function createPiAgent(
     settingsManager,
     resourceLoader,
     sessionManager,
+    sessionStartEvent: resourceOptions?.runtimeTarget?.sessionStartEvent,
   });
 
   session.desktopReloadResources = async () => {
@@ -131,29 +143,18 @@ export async function createPiAgent(
     await session.reload();
     session.desktopResourceDiagnostics.push(...await reportDiagnostics());
   };
-  try {
-    await session.bindExtensions({
-      // 使用 SDK 的非终端模式，不把终端组件冒充桌面组件。
-      mode: "json",
-      commandContextActions: { reload: session.desktopReloadResources },
-      shutdownHandler: resourceOptions?.shutdown,
-      onError: (error) => {
-        const diagnostic = { type: "error", path: error.extensionPath, message: `${error.event}: ${error.error}` };
-        session.desktopResourceDiagnostics ??= [];
-        session.desktopResourceDiagnostics.push(diagnostic);
-        Promise.resolve().then(() => resourceOptions?.onDiagnostics?.([diagnostic])).catch(() => {
-          console.error("Pi 扩展错误提示未能展示。");
-        });
-      },
+  session.desktopReportDiagnostics = reportDiagnostics;
+  session.desktopServices = { cwd: workspaceRoot, agentDir, settingsManager, modelRuntime: runtime, resourceLoader, diagnostics: [] };
+  session.desktopOnExtensionError = (error) => {
+    const diagnostic = { type: "error", path: error.extensionPath, message: `${error.event}: ${error.error}` };
+    session.desktopResourceDiagnostics ??= [];
+    session.desktopResourceDiagnostics.push(diagnostic);
+    Promise.resolve().then(() => resourceOptions?.onDiagnostics?.([diagnostic])).catch(() => {
+      console.error("Pi 扩展错误提示未能展示。");
     });
-    session.desktopResourceDiagnostics = [
-      ...(session.desktopResourceDiagnostics ?? []),
-      ...await reportDiagnostics(),
-    ];
-  } catch (error) {
-    await sessionLifecycle.closePiSession(session);
-    throw error;
-  }
+  };
+  session.desktopCancelUi = () => (resourceOptions?.cancelPendingUi ?? resourceOptions?.cancelUi)?.(session.sessionId);
+  session.desktopClearUi = () => resourceOptions?.cancelUi?.(session.sessionId);
 
   // 仅记录创建时的可信来源；后续产生消息时仍需推进持久化登记。
   session.desktopSessionOrigin = source;
@@ -162,6 +163,17 @@ export async function createPiAgent(
 
   // 仅主进程持有配置服务；不把密钥或服务对象返回页面。
   if (managed) session.desktopModelSettings = modelSettings;
+  if (!resourceOptions?.runtimeTarget) {
+    try {
+      await bindDesktopRuntime(session, (target) => createPiAgent(
+        sessionDir, false, undefined, target.cwd, modelSettings, undefined, undefined,
+        promptOptions, { ...resourceOptions, runtimeTarget: target },
+      ), resourceOptions);
+    } catch (error) {
+      await sessionLifecycle.closePiSession(session);
+      throw error;
+    }
+  }
   return session;
 }
 
@@ -173,10 +185,14 @@ export async function sendMessage(
   onToolEvent,
   onStatus = () => {},
 ) {
-  const unsubscribe = session.subscribe((event) => {
+  if (session.desktopRuntimeInvalidated) throw new Error("当前 Pi 会话已释放，请新建或重新打开对话。");
+  const receive = (event) => {
     // 生命周期状态独立展示，不混入正文或工具结果。
     const status = getRequestStatus(event);
     if (status) onStatus(status);
+    if (event.type === "message_end" && event.message.role === "custom" && event.message.display === true) {
+      onToolEvent({ type: "message", text: toHistory([event.message])[0]?.text ?? "" });
+    }
     // 将工具开始和结束事件交给主进程。
     if (event.type === "tool_execution_start") {
       onToolEvent({
@@ -220,7 +236,13 @@ export async function sendMessage(
       // 每收到一段文本，就立即通知主进程。
       onText(event.assistantMessageEvent.delta);
     }
-  });
+  };
+  let unsubscribe = session.subscribe(receive);
+  const rebind = (next) => {
+    unsubscribe();
+    unsubscribe = next.subscribe(receive);
+  };
+  session.desktopRuntimeListeners?.add(rebind);
 
   try {
     // CLI 的 /reload 属于宿主命令；走现有发送互斥，不请求模型。
@@ -241,5 +263,6 @@ export async function sendMessage(
   } finally {
     // 请求结束后取消订阅，防止下一次重复接收。
     unsubscribe();
+    session.desktopRuntimeListeners?.delete(rebind);
   }
 }

@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
+require("../../src/main/resources/extension-ui-bridge.js").createExtensionUiBridge().register(ipcMain);
 const temporary = mkdtempSync(path.join(os.tmpdir(), "context-usage-ui-"));
 mkdirSync(path.join(temporary, "user-data"));
 app.setPath("userData", path.join(temporary, "user-data"));
@@ -158,7 +159,7 @@ async function main() {
       await click('#new-chat-button'); await idle(); assert.equal(await label(), "上下文待估算");
       await click('.session-project-open'); await idle(); assert.equal(await label(), "上下文约 15.0%");
       await click('#select-workspace-button'); await idle(); assert.equal(await label(), "上下文待估算");
-      usage.set("u", estimate(17)); await click('[data-unsent-id="u"]'); await idle(); assert.equal(await label(), "上下文约 17.0%");
+      usage.set("u", estimate(17)); await click('button[data-session-id="u"]'); await idle(); assert.equal(await label(), "上下文约 17.0%");
     });
     await check("保存文件事实后刷新用量，保留输入与草稿状态", async () => {
       await edit("保存文件时保留输入"); await js(`document.getElementById('proposal-review-panel').open=true`);

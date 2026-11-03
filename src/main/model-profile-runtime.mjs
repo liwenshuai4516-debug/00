@@ -28,8 +28,10 @@ export async function installModelProfile(runtime, profile) {
         baseUrl: profile.model.baseUrl, models: [profile.model] });
     }
     await runtime.refresh({ allowNetwork: false });
-    if (!runtime.hasConfiguredAuth(providerId)) throw new Error("供应商尚未登录或没有激活密钥，请在设置中配置。");
-    return runtime.getModel(providerId, profile.modelId);
+    const selected = runtime.getModel(providerId, profile.modelId);
+    // 刷新可能与后台目录刷新合并；实际凭据读取比目录中的缓存标志可靠。
+    if (!selected || !await runtime.getAuth(selected)) throw new Error("供应商尚未登录或没有激活密钥，请在设置中配置。");
+    return selected;
   }
   const existing = runtime.getModel(providerId, profile.modelId);
   if (existing && runtime.hasConfiguredAuth(providerId)) return existing;

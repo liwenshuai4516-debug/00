@@ -7,6 +7,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const { createProjectStore } = require("../../src/main/storage/project-store.js");
 const { createProjectService } = require("../../src/main/services/project-service.js");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
+require("../../src/main/resources/extension-ui-bridge.js").createExtensionUiBridge().register(ipcMain);
 const temporary = mkdtempSync(path.join(os.tmpdir(), "project-rename-ui-"));
 mkdirSync(path.join(temporary, "user-data"));
 app.setPath("userData", path.join(temporary, "user-data"));
