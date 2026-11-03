@@ -72,13 +72,13 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 
 ## Pi 资源能力接入任务（2026-11-03）
 
-本节为待实施计划，不能据此认定能力已接通。使用者本轮要求手动实现业务代码；助手只更新计划并提供带关键中文注释的建议代码，后续实施方式以使用者新指令为准。
+本节按阶段记录接入进度，未勾选项不能据此认定能力已接通。使用者要求手动实现业务代码；助手只更新计划并提供带关键中文注释的建议代码，后续实施方式以使用者新指令为准。
 
 ### 规范与事实基线
 
 - 规范固定为官方仓库 `earendil-works/pi` 的 `v1.4.0`，不混用旧包名对应的旧版 API 或主分支的新行为：[SDK](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/sdk.md)、[Skills](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/skills.md)、[Prompt Templates](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/prompt-templates.md)、[Extensions](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/extensions.md)、[Packages](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md)、[Security](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/security.md)。具体签名以当前安装包导出的 `.d.ts` 为准。
 - Skill 与“技能”是同一能力，使用 Agent Skills 的 `SKILL.md` 格式；模板复用提示词，扩展执行代码并注册工具/命令/事件，Package 分发这些资源。保留 Electron + 原生 DOM + 进程内 SDK 架构。
-- 当前 `pi-agent.mjs` 已传入 `DefaultResourceLoader`，但五类默认资源加载均关闭；使用 `SettingsManager.inMemory()`，不会自动读取 CLI 写入磁盘的包配置。工具为现有自定义名称的允许名单，未绑定扩展启动生命周期。
+- 当前 `pi-agent.mjs` 已传入 `DefaultResourceLoader`，五类默认资源加载仍关闭，已显式登记内置 `qa-skill-smoke`；使用 `SettingsManager.inMemory({}, { projectTrusted: false })`，不会自动读取 CLI 写入磁盘的包配置。工具为现有自定义名称的允许名单，未绑定扩展启动生命周期。
 - `noSkills: true` / `noExtensions: true` 禁用相应默认发现结果，不阻止显式 `additionalSkillPaths` / `additionalExtensionPaths` 加载；这些开关也不能代替信任策略或保证完全不扫描外部目录。
 - Pi 1.4.0 的默认系统提示词依赖活动 `read` / `bash` 工具展示技能目录；当前自定义读取工具不满足该条件。但 `session.prompt()` 仍能展开已登记技能的 `/skill:name` 命令，两者必须分别验收。
 - 官方对部分非法技能字段只警告；缺少描述或无法解析等情况才跳过加载。同名技能保留首先发现者并产生诊断，不自行假设所有警告都会导致拒绝。
@@ -86,8 +86,9 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 
 ### 依赖顺序与验收清单
 
-- [ ] **P0 最小技能闭环（第一步）**：新增随应用提供的 `src/main/resources/skills/qa-skill-smoke/SKILL.md`；在现有 loader 中显式传入该文件的绝对路径，保留 `noSkills: true` 及其他关闭项。资源用 `import.meta.url` 定位，不能随会话工作目录变化；资源设置明确 `projectTrusted: false`，本步不调整模型凭据来源。演示技能设 `disable-model-invocation: true`，只验证显式调用，无脚本或外部参考文件。通过 `getSkills()` 检查登记与诊断，使用官方 `session.prompt("/skill:qa-skill-smoke ...")` 展开。验证：隔离临时配置和会话中，只有指定技能被加载；项目 `.pi/skills` 与 `.pi/extensions` 夹具不加载；送至模拟 Agent 的用户文本包含技能正文和参数，未请求模型；原工作目录工具允许名单不变。技能缺失/格式错误要明确报错，不把原命令静默发送视为成功。
-- [ ] **P1 配置来源与信任**：外部资源接入前确定应用私有资源配置目录，由主进程从 `app.getPath("userData")` 提供并明确传入；不因资源隔离迁移模型凭据。明确区分应用内置、用户显式选择及项目资源，使用官方 `SettingsManager` 的设置作用域；首次加入外部持久化设置时核验模型默认值、`sessionDir` 等影响，不能直接替换现有全部配置。接通 `resourceLoader.reload({ resolveProjectTrust })` 的信任决策，再允许项目 `.pi` / `.agents` 资源；显式路径不是项目信任的替代品。验证：未决定/拒绝信任时项目资源不加载，允许后仅目标项目生效；切换目录不继承错误信任，用户原 Pi 配置不被改写。
+- [x] **P0 最小技能闭环（第一步）**：已接入随应用提供的 `src/main/resources/skills/qa-skill-smoke/SKILL.md`，通过 `import.meta.url` 定位并显式登记，保留五类默认资源关闭项和 `projectTrusted: false`；内置资源诊断或缺失会明确中止初始化。技能设 `disable-model-invocation: true`，仅通过 `/skill:qa-skill-smoke` 显式调用，无脚本或外部参考文件。使用者反馈完成；已核对实际源码，并在隔离临时配置与会话中验证仅指定技能加载、项目技能/扩展夹具不加载、SDK 展开正文和参数、原工具允许名单保持不变，未请求模型。真实模型回复未逐项核对，不据此宣称自动匹配、外部资源或扩展已验收。
+- [ ] **P1a 应用私有资源目录（下一步）**：在 `bootstrap.js` 的 `createConfiguredAgent` 中以第九个 `resourceOptions` 参数传入 `{ agentDir: path.join(app.getPath("userData"), "pi-resources") }`；`pi-agent.mjs` 检查绝对路径并创建目录，同时传给 loader 和 `createAgentSession`。旧调用未传此参数时沿用 `getAgentDir()`，便于现有独立初始化检查继续使用临时配置。保留当前内存设置、`projectTrusted: false`、显式内置技能和工具允许名单；SDK 会话继续接收已创建的 `modelRuntime`，不能因新增资源目录改变凭据来源。本步目录准备不代表已经加载私有 `settings.json`，也不代表完全停止 SDK 的外部目录探测。验证：私有目录可重复创建、相对路径/文件占位失败可见，旧调用与内置技能展开正常，模型及工作目录绑定保持不变。仅在临时副本验证建议代码，不代表工作区已实施。
+- [ ] **P1b 配置来源与信任**：完成 P1a 后，再明确应用内置、用户显式选择及项目资源，使用官方 `SettingsManager` 的设置作用域；首次加入外部持久化设置时核验模型默认值、`sessionDir` 等影响，不能直接替换现有全部配置。接通 `resourceLoader.reload({ resolveProjectTrust })` 的信任决策，再允许项目 `.pi` / `.agents` 资源；显式路径不是项目信任的替代品。验证：未决定/拒绝信任时项目资源不加载，允许后仅目标项目生效；切换目录不继承错误信任，用户原 Pi 配置不被改写。
 - [ ] **P2 自动匹配与配套资源读取**：先实现仅访问已启用技能资源的只读工具，复核真实路径、符号链接、文件类型、UTF-8、大小及取消；拒绝越界和凭据文件，不放宽工作目录工具的现有边界。随后解决当前工具名与 SDK 技能目录展示的兼容：优先评估具备受限文件读取实现的 `read` 工具；如采用宿主注入，则使用官方 `formatSkillsForPrompt(skills, "indirect")` 并明确真实读取工具，两种方案只落地一种，目录与 loader 登记保持同源、无重复注入。验证：上下文只含名称/描述/路径，正文按需读取；引用相对技能目录解析；越界和符号链接逃逸被拒绝；`disable-model-invocation` 技能不进入自动目录。真实模型是否选中技能单独人工验收，不能由离线目录断言代替。
 - [ ] **P3 模板、列表与显式调用界面**：按官方 Markdown 模板和参数替换规则接入 Prompt Templates；经有限 IPC 返回技能/模板名称、描述、来源、状态与诊断，输入框增加选择及 `/` 补全。保持现有提示词快照、输入保存、未确认发送语义与输入法保护；未知命令、正文读取失败及无需模型的命令不能被误判成已接受的推理发送。验证：`/skill:name 参数` 与模板参数展开正确；同名、缺描述、加载错误可见；切换会话后迟到列表不覆盖新会话；键盘和中文组词可用。
 - [ ] **P4 扩展工具、生命周期与桌面适配**：首批加载经核对的应用扩展，使用官方 `registerTool` / `registerCommand` / `pi.on`。同时接入加载期 `getExtensions().errors` 与运行期 `bindExtensions({ onError, ... })`，不能以 `onError` 代替加载诊断；工具选择须允许已批准扩展工具，并继续禁用未经授权的内置 `bash/edit/write`。适配可支持的 `ExtensionUIContext` 和命令操作，其余明确显示不兼容，不把 TUI 组件当作 DOM。长连接在 `session_start` 启动；核对 SDK 的实际关闭 API，确保切换/关闭/重载发出 `session_shutdown`、等待清理后再 dispose，不能假设 `dispose()` 会代发该事件。验证：工具登记、启用、调用分别通过；启动与清理次数正确，工厂抛错/事件抛错可见；切换失败保留原会话，旧上下文失效。
@@ -100,7 +101,7 @@ MCP、codemode、tool_search 在 Pi 1.4.0 中有官方扩展工厂，但本轮�
 
 已接通模型与供应商管理、会话模型记忆、工作目录与项目打开/重命名、Markdown/高亮、文件新建与修改草稿、整理与导出、输入自动保存与发送核对、未发送空会话找回、正常关闭保存、置顶与可撤销归档、上下文用量常驻入口；这些不再列为待实现。
 
-原有功能待办：**无历史待确认发送的专用入口**。统一对话列表中的空会话条目目前展示阻塞原因并禁止重建；尚需专用查看与显式处理入口，不能绕过确认或自动重发。新增 Pi 资源能力接入待办见上节，均尚未实施。
+原有功能待办：**无历史待确认发送的专用入口**。统一对话列表中的空会话条目目前展示阻塞原因并禁止重建；尚需专用查看与显式处理入口，不能绕过确认或自动重发。Pi 资源能力接入已完成上节 P0，其余阶段尚未实施。
 
 验证边界：使用者已反馈完成模型记忆、文件草稿、整理/导出及正常关闭/重启必做场景；生成、整理、系统窗口及真实输入法组词中关闭未逐项反馈。置顶、归档、上下文用量及模型管理已有离线自动检查，不能据此宣称真实供应商登录、推理或全部系统场景已验收。其余工作区改动须按各自范围另行核验。
 
