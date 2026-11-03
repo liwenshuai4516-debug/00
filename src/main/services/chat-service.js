@@ -59,6 +59,7 @@ function createChatService(
     let consumed;
     let workspaceDir;
     let registrationWarning;
+    let completionStatus;
 
     try {
       const sendMessage = await loadSender();
@@ -92,7 +93,7 @@ function createChatService(
         request.session = session;
 
         try {
-          await sendMessage(
+          const senderResult = await sendMessage(
             session,
             text.trim(),
             (delta) => {
@@ -140,6 +141,7 @@ function createChatService(
               if (!request.stopped) onStatus(status);
             },
           );
+          completionStatus = senderResult?.completionStatus;
         } catch (error) {
           // 主动停止产生的中断不作为请求失败展示。
           if (!request.stopped) throw error;
@@ -158,6 +160,8 @@ function createChatService(
       const result = {
         ...((actual !== session || session.desktopHistoryChanged === true) ? { sessionChanged: true } : {}),
         stopped: request.stopped,
+        // 宿主命令没有模型回复；保留其完成提示，停止状态仍优先。
+        ...(!request.stopped && completionStatus ? { completionStatus } : {}),
         ...(registrationWarning ? { warning: registrationWarning } : {}),
       };
       session.desktopHistoryChanged = false;

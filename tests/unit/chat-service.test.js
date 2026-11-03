@@ -4,6 +4,25 @@ const {
   createChatService,
 } = require("../../src/main/services/chat-service.js");
 
+test("宿主命令的完成提示随结果返回，停止后不返回成功提示", async () => {
+  const gate = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const service = createChatService(
+    { getSession: async () => ({ abort: async () => gate.resolve() }) },
+    async () => async (_session, text) => {
+      if (text === "等待") { started.resolve(); await gate.promise; }
+      return { completionStatus: "Pi 资源已重新加载。" };
+    },
+  );
+  assert.deepEqual(await service.send("/reload", () => {}, () => {}), {
+    stopped: false, completionStatus: "Pi 资源已重新加载。",
+  });
+  const pending = service.send("等待", () => {}, () => {});
+  await started.promise;
+  await service.stop();
+  assert.deepEqual(await pending, { stopped: true });
+});
+
 test("初始化期间拒绝重复发送，停止后不调用模型", async () => {
   let sendCalls = 0;
 

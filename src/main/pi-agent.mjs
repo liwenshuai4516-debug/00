@@ -248,8 +248,9 @@ export async function sendMessage(
     // CLI 的 /reload 属于宿主命令；走现有发送互斥，不请求模型。
     if (text.trim() === "/reload") {
       await session.desktopReloadResources();
-      onStatus("Pi 资源已重新加载。");
-      return;
+      const completionStatus = "Pi 资源已重新加载。";
+      onStatus(completionStatus);
+      return { completionStatus };
     }
     let disposition;
     await session.prompt(text, {

@@ -902,7 +902,7 @@ form.addEventListener("submit", async (event) => {
       );
       addMessage("error", result.error || "请求结果尚未确认。");
     } else {
-      setRequestStatus(result.stopped ? "生成已停止。" : "本次回复已结束。");
+      setRequestStatus(result.stopped ? "生成已停止。" : result.completionStatus || "本次回复已结束。");
       if (result.stopped) addMessage("status", "生成已停止");
     }
     if (result.sessionChanged) {

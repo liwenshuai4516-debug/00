@@ -59,7 +59,13 @@ const chat = {
   listProposals: async () => { calls.push(["proposals",current]); failure("proposals"); return [{ id:`proposal-${current}` }]; },
   async send(text,onText,onTool,onStatus,draft,onAck) {
     generating=true; entry(current).text=""; entry(current).revision++;
-    const ack={ sessionId:current,text:"",revision:entry(current).revision,sendId:"send-1" }; onAck(ack); onText("模拟回复");
+    const ack={ sessionId:current,text:"",revision:entry(current).revision,sendId:"send-1" }; onAck(ack);
+    if (text.trim() === "/reload") {
+      const completionStatus = "Pi 资源已重新加载。";
+      onStatus(completionStatus); generating=false;
+      return { outcome:"completed",stopped:false,draft:ack,completionStatus };
+    }
+    onText("模拟回复");
     runningGate=flags.sendGate; await pause("sendGate"); generating=false; return { outcome:"completed",stopped:true,draft:ack };
   },
   stop: async () => { runningGate?.resolve(); },
@@ -206,6 +212,14 @@ async function main() {
     await click("#stop-button"); await idle();
     assert.equal(await js('document.getElementById("message-input").value'),"");
     assert.equal(await js('document.getElementById("stop-button").disabled'),true);
+  });
+  await check("重载完成状态不被普通回复结束覆盖且不生成助手正文",async () => {
+    const replies=await js('document.querySelectorAll("[data-role=assistant]").length');
+    assert.ok(replies > 0);
+    await edit("/reload"); await click("#send-button"); await idle();
+    assert.equal(await js('document.getElementById("request-status").textContent'),"Pi 资源已重新加载。");
+    assert.equal(await js('document.querySelectorAll("[data-role=assistant]").length'),replies);
+    assert.equal(await js('document.getElementById("message-input").value'),"");
   });
   await check("列表迟到结果在页面离开后失效",async () => {
     const gate=Promise.withResolvers(); flags.listGate=gate;

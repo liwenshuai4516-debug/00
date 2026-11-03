@@ -41,7 +41,7 @@
 
 内置 codemode、tool-search 和 MCP 通过公开工厂登记，支持其官方 builtin 配置和替换行为。会话调用 bindExtensions 启动运行时；切换或关闭时等待 session_shutdown 与设置保存后再 dispose。输入保存失败或会话清理失败时保留窗口。
 
-`/reload` 调用官方 session.reload，不请求模型，并与聊天发送及其他主进程操作互斥。扩展 ctx.reload 接入同一重载函数。加载诊断和运行事件错误分别报告。
+`/reload` 调用官方 session.reload，不请求模型，并与聊天发送及其他主进程操作互斥。成功后页面保留“Pi 资源已重新加载。”，不会被普通回复结束提示覆盖；具体技能是否加载需在资源列表核对。扩展 ctx.reload 接入同一重载函数。加载诊断和运行事件错误分别报告。
 
 桌面通过 `bindExtensions({ mode: "rpc", uiContext, commandContextActions })` 绑定，`hasUI=true`；无界面检查仍使用 json/hasUI=false。选择、确认、输入支持信号取消和超时，多行编辑支持预填；通知、状态、字符串数组组件、标题、编辑器正文与工具展开接入页面。正文等输入绑定完成且组词结束后经原保存链路应用，页面销毁/重载会结束等待，迟到响应不再消费。
 

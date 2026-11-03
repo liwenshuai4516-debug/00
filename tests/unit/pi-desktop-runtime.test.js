@@ -74,7 +74,11 @@ test("官方 runtime 的扩展命令新建、分叉、切换、树导航、withS
       await sendMessage(forked, "/desktop-switch " + oldPath, () => {}, () => {});
       assert.equal((await service.getSession()).sessionId, original.sessionId);
       const final = await service.getSession();
-      await sendMessage(final, "/reload", () => {}, () => {});
+      const { createChatService } = require(${JSON.stringify(root + "/src/main/services/chat-service.js")});
+      const chat = createChatService(service, async () => sendMessage);
+      const result = await chat.send("/reload", () => assert.fail("重载不应生成回复"), () => {});
+      assert.equal(result.completionStatus, "Pi 资源已重新加载。");
+      assert.equal(result.stopped, false);
       assert.ok(statuses.length >= 4);
       await sendMessage(final, "/desktop-setup-fail", () => {}, () => {});
       assert.ok(final.desktopResourceDiagnostics.some(item => item.message.includes("setup failed")));
