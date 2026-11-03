@@ -20,6 +20,8 @@ function resolveUiTestingRuntime(app, projectRoot) {
     ),
     config: path.join(directory, "playwright.config.cjs"),
     verify: path.join(directory, "verify.cjs"),
+    login: path.join(directory, "login.cjs"),
+    runner: path.join(directory, "run.cjs"),
     skill: path.join(directory, "skills/qa-ui-basic/SKILL.md"),
   };
 }

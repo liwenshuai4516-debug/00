@@ -19,7 +19,7 @@ module.exports = defineConfig({
   timeout: 30_000,
 
   // 官方录制通过暂停 seed 测试维持页面，不能套用正式批次时限。
-  globalTimeout: recording ? 0 : 60_000,
+  globalTimeout: recording ? 0 : 600_000,
 
   expect: {
     timeout: 10_000,
@@ -42,9 +42,12 @@ module.exports = defineConfig({
       name: "chromium",
       use: {
         browserName: "chromium",
-        headless: true,
+        headless: process.env.QA_UI_HEADED !== "1",
+        storageState: process.env.QA_UI_STORAGE_STATE || undefined,
         viewport: { width: 1280, height: 720 },
-        trace: "on",
+        // trace 的 context-options 会保存 storageState 内容；带登录态时必须关闭。
+        trace: process.env.QA_UI_STORAGE_STATE ? "off"
+          : { mode: "on", snapshots: false, sources: false },
         screenshot: "only-on-failure",
       },
     },

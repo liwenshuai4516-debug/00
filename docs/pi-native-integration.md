@@ -36,7 +36,7 @@
 ### 开发脚本与测试配置位置
 
 - `scripts/pi-check.mjs`：手动检查模型连通性。在项目根目录执行 `node --env-file=.env scripts/pi-check.mjs`，会发送一次真实模型请求；不属于离线检查或应用启动流程。
-- `config/playwright.ui.config.cjs`：Playwright UI 测试配置，由 `scripts/run-ui-case.cjs` 指定加载；用例仍位于项目根目录下的 `qa/ui/cases/`，执行入口仍为 `QA_TARGET_URL="页面地址" npm run ui:case -- <case-id>`。
+- UI 测试通过内置 `qa_ui_login` / `qa_ui_prepare` 准备，再执行返回的批次命令。用例位于 `qa/ui/cases/`；登录、批次汇总与证据说明见 [内置 UI 测试](ui-testing-runtime.md)。失效的旧脚本入口与旧配置已移除。
 
 ## 当前项目的技能维护入口
 

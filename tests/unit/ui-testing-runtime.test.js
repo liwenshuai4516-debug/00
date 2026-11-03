@@ -9,7 +9,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const runFile = promisify(execFile);
 
-for (const scenario of ["resources", "recording", "replay"]) {
+for (const scenario of ["resources", "recording", "replay", "login-batch"]) {
   test(`内置 UI 测试：${scenario}（临时目录，不请求模型）`, async (t) => {
     const runtime = resolveUiTestingRuntime({ isPackaged: false }, path.resolve(__dirname, "../.."));
     if (scenario !== "resources" && (process.platform === "win32" ||
