@@ -580,6 +580,27 @@ select option {
 .dismiss-send-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .dismiss-send-actions button { min-height: 44px; }
 
+.unsent-send-dialog {
+  box-sizing: border-box;
+  width: min(640px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+.unsent-send-dialog::backdrop { background: color-mix(in srgb, var(--page) 75%, transparent); }
+.unsent-send-dialog h2 { margin-top: 0; font-size: 18px; }
+.unsent-send-dialog h3 { font-size: 14px; }
+.unsent-send-dialog p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.unsent-send-dialog pre { max-height: 24dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.unsent-send-dialog [data-confirm] { padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.unsent-send-dialog [hidden] { display: none !important; }
+.unsent-send-dialog :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.session-inspect-send { min-height: 36px; margin-top: 4px; font-size: 12px; }
+
 @media (max-width: 1100px) {
   :root {
     --sidebar-width: 232px;

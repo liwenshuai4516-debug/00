@@ -22,6 +22,7 @@ Object.assign(entry("a"), { text: "原输入", revision: 1 });
 Object.assign(entry("b"), { text: " 完整原文\r\n第二行 \n", revision: 2 });
 Object.assign(entry("c"), { text: "", revision: 3 });
 let current = "a", workspace = "/qa/one", serial = 0, generating = false, runningGate;
+let pendingSend = { id:"pending-c",text:" 待确认原文\r\n<img src=x onerror=alert(1)>\n第二行 ",draftRevision:2 };
 const history = id => id === "b" ? [] : [{ role: "user", text: `保留消息 ${id}` }];
 const failure = name => { if (flags[name]) { flags[name] = false; throw Error(`模拟${name}失败`); } };
 const pause = async name => { if (flags[name]) { const gate = flags[name]; flags[name] = null; await gate.promise; } };
@@ -33,7 +34,18 @@ const session = {
   listUnsentSessions: async () => {
     calls.push(["list",current,workspace]); await pause("listGate"); failure("list");
     if (workspace !== "/qa/one") return [];
-    return ["a","b","c"].filter(id => id === "c" || entry(id).text.length).map(id => ({ id, title:id === "c" ? "待确认输入" : `摘要 ${id}`, workspaceDir:workspace, blockedReason:id === "c" ? "仍有待确认发送，暂不能重建。" : "" }));
+    return ["a","b","c"].filter(id => (id === "c" && pendingSend) || entry(id).text.length).map(id => ({ id, title:id === "c" ? "待确认输入" : `摘要 ${id}`, workspaceDir:workspace, blockedReason:id === "c" && pendingSend ? "仍有待确认发送，暂不能重建。" : "" }));
+  },
+  inspectUnsentSend: async id => {
+    calls.push(["inspectUnsent",id]); await pause("inspectUnsentGate"); failure("inspectUnsent");
+    assert.equal(id,"c");
+    if (!pendingSend) throw Error("发送记录已变化");
+    return { sessionId:id,workspaceDir:workspace,text:entry(id).text,pendingSend:{ ...pendingSend } };
+  },
+  dismissUnsentSend: async (id,sendId) => {
+    calls.push(["dismissUnsent",id,sendId]); failure("dismissUnsent");
+    if (sendId !== pendingSend?.id) throw Error("发送记录已变化");
+    pendingSend=null; failure("dismissAck"); return { sessionId:id,sendId };
   },
   restoreUnsentSession: async id => {
     calls.push(["restore",id,entry(current).text]); await pause("restoreGate"); failure("restore");
@@ -58,6 +70,7 @@ const chat = {
   isBusy: () => generating,
   listProposals: async () => { calls.push(["proposals",current]); failure("proposals"); return [{ id:`proposal-${current}` }]; },
   async send(text,onText,onTool,onStatus,draft,onAck) {
+    calls.push(["send",text]);
     generating=true; entry(current).text=""; entry(current).revision++;
     const ack={ sessionId:current,text:"",revision:entry(current).revision,sendId:"send-1" }; onAck(ack);
     if (text.trim() === "/reload") {
@@ -220,6 +233,111 @@ async function main() {
     assert.equal(await js('document.getElementById("request-status").textContent'),"Pi 资源已重新加载。");
     assert.equal(await js('document.querySelectorAll("[data-role=assistant]").length'),replies);
     assert.equal(await js('document.getElementById("message-input").value'),"");
+  });
+  const inspectPending = () => click('.session-row[data-session-id=c] .session-inspect-send');
+  const pendingStatus = text => until(`document.querySelector("#unsent-send-dialog [data-status]").textContent.includes(${JSON.stringify(text)})`);
+  await check("受阻条目提供专用只读入口，原文按安全文本完整展示，不切换或发送",async () => {
+    const selected=current, inputText=await js('document.getElementById("message-input").value');
+    const actions=calls.filter(c=>["send","restore"].includes(c[0])).length;
+    Object.assign(entry("c"),{ text:"另存的新输入\n第二行",revision:4 });
+    await inspectPending(); await idle();
+    assert.equal(await js('document.getElementById("unsent-send-dialog").open'),true);
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-pending-text]").textContent'),pendingSend.text);
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-draft-text]").textContent'),entry("c").text);
+    assert.equal(await js('document.querySelectorAll("#unsent-send-dialog img").length'),0);
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-confirm]").hidden'),true);
+    assert.equal(current,selected);
+    assert.equal(await js('document.getElementById("message-input").value'),inputText);
+    assert.equal(calls.filter(c=>["send","restore"].includes(c[0])).length,actions);
+  });
+  await check("第一步只展开说明，取消或关闭均不清理快照",async () => {
+    const count=calls.filter(c=>c[0]==="dismissUnsent").length;
+    await click('#unsent-send-dialog [data-dismiss]');
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-confirm]").hidden'),false);
+    assert.equal(await js('document.activeElement.hasAttribute("data-cancel-confirm")'),true);
+    await click('#unsent-send-dialog [data-cancel-confirm]');
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-confirm]").hidden'),true);
+    await click('#unsent-send-dialog [data-close]');
+    assert.equal(calls.filter(c=>c[0]==="dismissUnsent").length,count);
+    assert.ok(pendingSend);
+  });
+  await check("读取失败禁用清理，重新核对期间阻止切换且可重试",async () => {
+    flags.inspectUnsent=true; await inspectPending(); await idle();
+    await pendingStatus("核对失败");
+    assert.match(await js('document.querySelector("#unsent-send-dialog [data-status]").textContent'),/核对失败/);
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-dismiss]").disabled'),true);
+    const gate=Promise.withResolvers(); flags.inspectUnsentGate=gate;
+    await click('#unsent-send-dialog [data-reload]');
+    assert.equal(await js('document.getElementById("new-chat-button").disabled'),true);
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-accept]").disabled'),true);
+    // 模拟上一次关闭事件在弹窗重开后的读取期间才派发。
+    await js('document.getElementById("unsent-send-dialog").dispatchEvent(new Event("close"))');
+    gate.resolve(); await idle();
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-dismiss]").disabled'),false);
+  });
+  await check("过期确认不清理新快照，失败后必须重新核对和二次确认",async () => {
+    const before=pendingSend.text;
+    pendingSend={ ...pendingSend,id:"new-pending-c",text:"新的待确认发送" };
+    await click('#unsent-send-dialog [data-dismiss]');
+    await click('#unsent-send-dialog [data-accept]'); await idle();
+    await pendingStatus("结果未确认");
+    assert.match(await js('document.querySelector("#unsent-send-dialog [data-status]").textContent'),/结果未确认/);
+    assert.equal(pendingSend.id,"new-pending-c");
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-accept]").disabled'),true);
+    await click('#unsent-send-dialog [data-reload]'); await idle();
+    assert.notEqual(await js('document.querySelector("#unsent-send-dialog [data-pending-text]").textContent'),before);
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-confirm]").hidden'),true);
+  });
+  await check("写入失败保留原文，显式重查后成功只解除条目限制，不自动打开",async () => {
+    const selected=current, currentInput=await js('document.getElementById("message-input").value');
+    flags.dismissUnsent=true;
+    await click('#unsent-send-dialog [data-dismiss]');
+    await click('#unsent-send-dialog [data-accept]'); await idle();
+    await pendingStatus("结果未确认");
+    assert.ok(pendingSend);
+    await click('#unsent-send-dialog [data-reload]'); await idle();
+    const sendCount=calls.filter(c=>c[0]==="send").length;
+    await click('#unsent-send-dialog [data-dismiss]');
+    await click('#unsent-send-dialog [data-accept]'); await idle();
+    await pendingStatus("快照已清理");
+    assert.equal(pendingSend,null);
+    assert.equal(entry("c").text,"另存的新输入\n第二行");
+    assert.equal(current,selected);
+    assert.equal(await js('document.getElementById("message-input").value'),currentInput);
+    assert.equal(calls.filter(c=>c[0]==="send").length,sendCount);
+    assert.equal(await js('document.querySelector(".session-open[data-session-id=c]").disabled'),false);
+    assert.match(await js('document.querySelector("#unsent-send-dialog [data-status]").textContent'),/快照已清理/);
+    await click('#unsent-send-dialog [data-close]');
+    await until('document.activeElement.id === "message-input"');
+  });
+  await check("清理已落盘但返回丢失时不会自动重复；重查发现变化后保持禁用",async () => {
+    pendingSend={ id:"ack-lost",text:"只清理一次",draftRevision:2 };
+    await click('#new-chat-button'); await idle();
+    await inspectPending(); await idle(); flags.dismissAck=true;
+    const count=calls.filter(c=>c[0]==="dismissUnsent").length;
+    await click('#unsent-send-dialog [data-dismiss]');
+    await click('#unsent-send-dialog [data-accept]'); await idle();
+    await pendingStatus("结果未确认");
+    assert.equal(pendingSend,null);
+    assert.equal(calls.filter(c=>c[0]==="dismissUnsent").length,count+1);
+    await click('#unsent-send-dialog [data-reload]'); await idle();
+    assert.equal(calls.filter(c=>c[0]==="dismissUnsent").length,count+1);
+    assert.equal(await js('document.querySelector("#unsent-send-dialog [data-dismiss]").disabled'),true);
+    await click('#unsent-send-dialog [data-close]');
+  });
+  await check("375宽度专用弹窗可滚动且无横向溢出",async () => {
+    pendingSend={ id:"narrow",text:"中文".repeat(1000),draftRevision:2 };
+    await click('#new-chat-button'); await idle();
+    await inspectPending(); await idle();
+    win.setContentSize(375,760);
+    await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+    assert.equal(await js('document.querySelector("#unsent-send-dialog").scrollWidth <= document.querySelector("#unsent-send-dialog").clientWidth + 1'),true);
+    assert.equal(await js('document.documentElement.scrollWidth <= innerWidth + 1'),true);
+    await fs.writeFile(path.join(temporary,"pending-send-375.png"),(await win.webContents.capturePage()).toPNG());
+    win.setContentSize(1120,820);
+    await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+    await fs.writeFile(path.join(temporary,"pending-send-1120.png"),(await win.webContents.capturePage()).toPNG());
+    await click('#unsent-send-dialog [data-close]');
   });
   await check("列表迟到结果在页面离开后失效",async () => {
     const gate=Promise.withResolvers(); flags.listGate=gate;

@@ -84,7 +84,7 @@ for (const method of ["listUnsentSessions", "restoreUnsentSession"]) {
       try {
         for (const name of [
           "list-unsent-sessions", "restore-unsent-session", "new-chat", "open-session",
-          "open-project", "select-workspace", "switch-model", "switch-model-profile",
+          "open-project", "select-workspace", "switch-model", "inspect-unsent-send", "dismiss-unsent-send",
           "compact-session", "export-conversation", "get-proposal", "apply-proposal",
           "discard-proposal", "list-proposals", "inspect-composer-send", "dismiss-composer-send",
         ]) {

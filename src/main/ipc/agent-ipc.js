@@ -154,6 +154,13 @@ function registerAgentIpc(
     runIdleOperation(() => sessionService.listUnsentSessions()),
   );
 
+  ipcMain.handle("agent:inspect-unsent-send", (_event, sessionId) =>
+    runIdleOperation(() => sessionService.inspectUnsentSend(sessionId)),
+  );
+  ipcMain.handle("agent:dismiss-unsent-send", (_event, sessionId, sendId) =>
+    runIdleOperation(() => sessionService.dismissUnsentSend(sessionId, sendId)),
+  );
+
   // 页面只提交编号，状态快照、目录和模型均由主进程读取。
   ipcMain.handle("agent:restore-unsent-session", (_event, sessionId) =>
     runIdleOperation(() => sessionService.restoreUnsentSession(sessionId)),

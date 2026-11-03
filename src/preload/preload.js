@@ -80,6 +80,8 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 当前目录由主进程决定；读取不接受页面路径，恢复只传原会话编号。
   listUnsentSessions: () => ipcRenderer.invoke("agent:list-unsent-sessions"),
+  inspectUnsentSend: (sessionId) => ipcRenderer.invoke("agent:inspect-unsent-send", sessionId),
+  dismissUnsentSend: (sessionId, sendId) => ipcRenderer.invoke("agent:dismiss-unsent-send", sessionId, sendId),
   restoreUnsentSession: (sessionId) =>
     ipcRenderer.invoke("agent:restore-unsent-session", sessionId),
 

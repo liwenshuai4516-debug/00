@@ -469,6 +469,28 @@
       </div>
     </form>
   </dialog>
+  <dialog id="unsent-send-dialog" class="unsent-send-dialog" aria-labelledby="unsent-send-title">
+    <h2 id="unsent-send-title">查看待确认发送</h2>
+    <p>此对话没有可打开的历史，无法确认原请求是否已被处理。查看不会打开对话或重新发送。</p>
+    <p data-workspace></p>
+    <h3>待确认的发送原文</h3>
+    <pre data-pending-text tabindex="0" aria-label="待确认的发送原文"></pre>
+    <h3>另存的未发送输入</h3>
+    <pre data-draft-text tabindex="0" aria-label="另存的未发送输入"></pre>
+    <p data-status role="status" aria-live="polite"></p>
+    <div data-confirm hidden>
+      <p>清理会移除上方发送原文快照，请先复制保留需要的内容。这不表示请求已成功或未成功；另存输入保持不变，不会自动恢复或重发。没有另存输入时，该条目将不再显示。</p>
+      <div class="dismiss-send-actions">
+        <button type="button" data-cancel-confirm>取消清理</button>
+        <button type="button" data-accept>确认清理快照</button>
+      </div>
+    </div>
+    <div class="dismiss-send-actions">
+      <button type="button" data-close autofocus>关闭</button>
+      <button type="button" data-reload>重新核对</button>
+      <button type="button" data-dismiss aria-expanded="false">清理这份快照…</button>
+    </div>
+  </dialog>
   <!-- 原生模态窗口阻止键盘、鼠标及已有配置弹窗中的新操作。 -->
   <dialog id="window-close-dialog" class="window-close-dialog" aria-labelledby="window-close-title"
     aria-describedby="window-close-status">

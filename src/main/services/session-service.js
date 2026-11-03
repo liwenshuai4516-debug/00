@@ -568,6 +568,55 @@ function createSessionService(
       }));
   }
 
+  function validateUnsentSend(state, workspaceRoot) {
+    if (!state) throw new Error("未找到该会话的输入状态，请刷新列表。");
+    if (state.workspaceDir !== workspaceRoot) {
+      throw new Error("该输入属于其他工作目录，请先打开原项目。");
+    }
+    if (state.archivedAt !== null) throw new Error("该会话已归档，请先恢复归档。");
+    if (state.registration?.source !== "empty" ||
+      readSessionRegistration(state.sessionId)?.source === "history") {
+      throw new Error("该会话缺少可信空会话登记，请从历史入口核对。");
+    }
+    if (!state.pendingSend) throw new Error("发送记录已变化，请刷新列表后重新核对。");
+  }
+
+  async function readUnsentSend(sessionId) {
+    if (!sessionStateStore) throw new Error("尚未配置会话状态存储。");
+    const workspaceRoot = await readRecoveryWorkspace();
+    const state = await sessionStateStore.load(sessionId);
+    validateUnsentSend(state, workspaceRoot);
+    // 真实历史始终优先；不把历史文件丢失或旧 empty 登记当作重建证明。
+    if ((await readSessions()).some(session => session.id === sessionId)) {
+      throw new Error("该会话已有历史，请从历史入口核对。");
+    }
+    return state;
+  }
+
+  async function inspectUnsentSend(sessionId) {
+    const state = await readUnsentSend(sessionId);
+    return {
+      sessionId,
+      workspaceDir: state.workspaceDir,
+      text: state.draft.text,
+      pendingSend: { ...state.pendingSend },
+    };
+  }
+
+  async function dismissUnsentSend(sessionId, sendId) {
+    if (typeof sendId !== "string" || !sendId) throw new Error("发送编号无效。");
+    const inspected = await readUnsentSend(sessionId);
+    await sessionStateStore.update(sessionId, inspected.workspaceDir, state => {
+      // 与延迟输入保存共用串行更新，确认只对应刚查看的那份快照。
+      validateUnsentSend(state, inspected.workspaceDir);
+      if (state.pendingSend.id !== sendId) {
+        throw new Error("发送记录已变化，请重新核对后再处理。");
+      }
+      return { ...state, pendingSend: null };
+    });
+    return { sessionId, sendId };
+  }
+
   // 只由后续IPC互斥入口调用；页面只给编号，不给快照、目录或模型。
   async function restoreUnsentSession(sessionId) {
     if (!sessionStateStore) throw new Error("尚未配置会话状态存储。");
@@ -829,6 +878,8 @@ function createSessionService(
     setSessionArchived,
 
     listUnsentSessions,
+    inspectUnsentSend,
+    dismissUnsentSend,
     restoreUnsentSession,
     previewSession,
     openSession,

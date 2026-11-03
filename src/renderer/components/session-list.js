@@ -298,6 +298,19 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           reason.className = "session-blocked-reason";
           reason.textContent = session.blockedReason;
           row.append(reason);
+          if (actions.onInspectUnsent) {
+            const inspect = document.createElement("button");
+            inspect.type = "button";
+            inspect.className = "session-inspect-send";
+            inspect.textContent = "查看待确认发送";
+            inspect.setAttribute("aria-label", `查看待确认发送：${session.title}`);
+            inspect.disabled = busy;
+            inspect.addEventListener("click", () => {
+              if (!busy) actions.onInspectUnsent(session.id);
+            });
+            row.append(inspect);
+            actionControls.push(inspect);
+          }
         }
         items.appendChild(row);
       }

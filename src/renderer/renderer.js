@@ -6,6 +6,7 @@ import { createSessionInfoPanel } from "./components/session-info-panel.js";
 import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
+import { createUnsentSendPanel } from "./components/unsent-send-panel.js";
 import { TASK_TEMPLATES } from "./components/task-templates.js";
 
 import {
@@ -256,6 +257,28 @@ let historySessions = [];
 let draftSessions = [];
 let draftSessionOwner = "";
 
+const unsentSendPanel = createUnsentSendPanel(
+  document.getElementById("unsent-send-dialog"), window.agent,
+  async operation => {
+    if (pageBusy || closing || archiveSyncPending) throw new Error("请等待当前操作结束。");
+    setBusy(true);
+    try { return await operation(); }
+    finally { setBusy(false); }
+  },
+  async () => {
+    if ((await refreshUnsentSessions()) === false) throw new Error("请关闭弹窗后刷新对话列表。");
+  },
+);
+
+function inspectUnsentSend(sessionId) {
+  if (pageBusy || closing || archiveSyncPending) return;
+  // 当前会话沿用已有输入核对与清理流程，避免两份组件状态不同步。
+  if (sessionId === composerState.sessionId) {
+    unconfirmedSend.open = true;
+    unconfirmedText.focus();
+  } else unsentSendPanel.open(sessionId);
+}
+
 const sessionList = createSessionList(
   document.getElementById("session-list"),
   selectSidebarSession,
@@ -265,6 +288,7 @@ const sessionList = createSessionList(
     onReload: reloadSessionList,
     onSetArchived: setSessionArchived,
     onRenameProject: (project) => projectPanel.rename(project),
+    onInspectUnsent: inspectUnsentSend,
   },
 );
 const archiveList = createSessionList(
@@ -546,6 +570,7 @@ function setBusy(busy, generating = false) {
     list.setBusy(blocked, archiveSyncPending && !busy && !closing),
   );
   projectPanel.setBusy(blocked);
+  unsentSendPanel.setBusy(blocked);
   stopButton.disabled = closing || !generating;
   renameButton.disabled = blocked;
   closeController?.notify();
