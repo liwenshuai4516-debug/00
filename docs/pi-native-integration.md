@@ -13,11 +13,17 @@
 - 个人和项目 `.agents/skills`，包括官方祖先目录及仓库边界规则。
 - `SYSTEM.md`、`APPEND_SYSTEM.md` 与上下文文件。
 
-技能保留官方独立 Markdown、便携 `SKILL.md` 目录与链接支持；参考文件、脚本和资产按实际 Pi 工具使用。警告、冲突与加载失败通过主进程诊断提示，名称冲突遵循官方先发现者保留规则。应用内置技能通过显式路径追加，不抢占其他来源的名称。
+技能保留官方独立 Markdown、便携 `SKILL.md` 目录与链接支持；参考文件、脚本和资产按实际 Pi 工具使用。警告、冲突与加载失败通过主进程诊断提示，名称冲突遵循官方先发现者保留规则。
 
-## 当前项目的需求评审技能
+## 当前项目的技能维护入口
 
-本仓库的 `.pi/skills/qa-requirement-review/SKILL.md` 与 `references/checklist.md` 提供需求评审能力，随仓库版本管理。项目资源由 Pi 官方 loader 按实际会话工作目录和项目信任决定加载。
+本仓库维护的技能统一位于 `.pi/skills/`，随仓库版本管理：
+
+- `qa-requirement-review`：需求评审，附 `references/checklist.md`。
+- `qa-case-design`：测试用例设计，附 `references/case-format.md`。
+- `qa-skill-smoke`：仅显式调用的技能加载演示，不进入自动匹配目录。
+
+原 `src/main/resources/skills/` 已迁移，loader 不再用 `additionalSkillPaths` 追加源码资源。项目资源由 Pi 官方 loader 按实际会话工作目录和项目信任决定加载；切换到其他项目不会自动携带这些技能。官方个人技能、配置路径和包资源发现继续保留，本次只统一本仓库的维护位置。
 
 在应用中打开本仓库目录，允许项目信任并新建会话；已有受信任会话编辑技能后发送 `/reload`。在“设置 → 技能与扩展包”确认 `qa-requirement-review` 已加载，然后发送：
 

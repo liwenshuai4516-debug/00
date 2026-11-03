@@ -27,6 +27,8 @@ const create = (options = {}) => createPiAgent(
 );
 
 if (scenario === "resources") {
+  // 复制仓库实际技能，核对迁移后的路径及信任行为；不改工作区资源。
+  await fs.cp(new URL("../../.pi/skills/", import.meta.url), path.join(workspace, ".pi", "skills"), { recursive: true });
   await put(path.join(agentDir, "skills", "standalone.md"), skill("standalone"));
   const linked = path.join(base, "linked-skill");
   await put(path.join(linked, "SKILL.md"), skill("linked"));
@@ -62,6 +64,10 @@ if (scenario === "resources") {
       assert.ok(!prompt.includes("<name>outside-repo</name>"));
       assert.equal(prompt.includes("<name>project</name>"), trusted);
       assert.equal(prompt.includes("<name>ancestor</name>"), trusted);
+      for (const name of ["qa-case-design", "qa-requirement-review", "qa-skill-smoke"]) {
+        assert.equal(session.resourceLoader.getSkills().skills.filter(item => item.name === name).length, trusted ? 1 : 0);
+        assert.equal(prompt.includes(`<name>${name}</name>`), trusted && name !== "qa-skill-smoke");
+      }
       assert.ok(prompt.includes("PROJECT_CONTEXT"));
       assert.equal(prompt.includes("PROJECT_SYSTEM"), trusted);
       assert.equal(prompt.includes("PROJECT_APPEND"), trusted);
@@ -88,6 +94,19 @@ if (scenario === "resources") {
       await session.prompt("/skill:collision");
       assert.match(JSON.stringify(captured), trusted ? /PROJECT_COLLISION/ : /USER_COLLISION/);
       if (trusted) {
+        for (const [name, marker] of [["qa-case-design", "case-format.md"], ["qa-requirement-review", "checklist.md"], ["qa-skill-smoke", "PI_SKILL_SMOKE_OK"]]) {
+          await session.prompt(`/skill:${name} PROJECT_SKILL_ARGUMENT`);
+          assert.ok(JSON.stringify(captured).includes(marker));
+          assert.match(JSON.stringify(captured), /PROJECT_SKILL_ARGUMENT/);
+        }
+        for (const [name, file, marker] of [["qa-case-design", "case-format.md", "来源"], ["qa-requirement-review", "checklist.md", "边界值"]]) {
+          const result = await read.execute(name, { path: path.join(workspace, ".pi", "skills", name, "references", file) });
+          assert.ok(JSON.stringify(result.content).includes(marker));
+        }
+        await fs.appendFile(path.join(workspace, ".pi/skills/qa-case-design/SKILL.md"), "\nPROJECT_SKILL_RELOADED\n");
+        await session.desktopReloadResources();
+        await session.prompt("/skill:qa-case-design");
+        assert.match(JSON.stringify(captured), /PROJECT_SKILL_RELOADED/);
         await session.prompt("/review one two");
         assert.match(JSON.stringify(captured), /REVIEW one one two/);
       }

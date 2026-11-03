@@ -8,7 +8,6 @@ import {
   ProjectTrustStore,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
-import { fileURLToPath } from "node:url";
 
 // SDK 没有导出 CLI 的信任决策函数；按公开事件契约接上宿主交互。
 async function resolveTrust({ cwd, agentDir, settingsManager, extensionsResult, ask, diagnostics }) {
@@ -60,7 +59,6 @@ export async function createPiResources({ cwd, appendSystemPrompt, askProjectTru
     cwd,
     agentDir,
     settingsManager,
-    additionalSkillPaths: [fileURLToPath(new URL("./skills/", import.meta.url))],
     // 保留 APPEND_SYSTEM.md 的官方发现，再追加宿主说明。
     appendSystemPromptOverride: (base) => [...base, ...(appendSystemPrompt ?? [])],
     // 采用官方内置扩展身份，保留配置禁用与第三方替换语义。

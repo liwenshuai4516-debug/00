@@ -30,7 +30,9 @@ test("有效配置能初始化及新建真实 Pi 会话，不请求模型", asyn
         first.getAllTools().find(tool => tool.name === "read").sourceInfo.source,
         "sdk",
       );
-      assert.ok(first.systemPrompt.includes("<name>qa-case-design</name>"));
+      // 无技能的其他工作目录不再自动携带本仓库的项目技能。
+      assert.ok(!first.systemPrompt.includes("<name>qa-case-design</name>"));
+      assert.ok(!first.systemPrompt.includes("<name>qa-requirement-review</name>"));
       assert.ok(!first.systemPrompt.includes("<name>qa-skill-smoke</name>"));
             // 核对真实 Pi 会话返回的信息，不请求模型。
      assert.deepEqual(await service.getSessionInfo(), {
