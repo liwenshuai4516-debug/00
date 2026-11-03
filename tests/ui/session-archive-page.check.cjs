@@ -50,7 +50,7 @@ async function main() {
   const session = {
     loadHistory: () => service.loadHistory(), currentSession: () => { if (flags.currentFail) throw Error("模拟编号核对失败"); return service.currentSession(); },
     getSessionInfo: async () => ({ sessionId: await service.currentSession(), workspaceDir: (await service.getSession()).sessionManager.getCwd(), provider: "mock", modelId: "model", contextUsage: null }),
-    listModelProfiles: async () => ({ currentProfileId: "mock", profiles: [{ id: "mock", name: "测试模型", provider: "mock", modelId: "model" }] }),
+    listModels: async () => ({ provider: "mock", modelId: "model", models: [{ id: "model", name: "测试模型", provider: "mock" }] }),
     listUnsentSessions: () => service.listUnsentSessions(),
     listSessions: () => { if (flags.listFail) throw Error("模拟列表失败"); return service.listSessions(); },
     openSession: id => service.openSession(id),
@@ -65,7 +65,6 @@ async function main() {
       return result;
     },
   };
-  const flow = { list: () => [], subscribe: () => () => {} };
   registerAgentIpc(ipcMain, session, {
     isBusy: () => Boolean(flags.generating),
     listProposals: async () => proposals.get(await service.currentSession()) ?? [],
@@ -77,8 +76,7 @@ async function main() {
       if (flags.saveFail) throw Error("模拟输入保存失败");
       return composer.saveDraft(...args);
     },
-  }, { read: async () => ({ profiles: [], providers: [], defaultProfileId: null, encryptionAvailable: true }),
-    oauth: flow, enrichment: flow });
+  }, { readConfiguration: async () => ({ modelsPath: path.join(root, "models.json") }) });
   await app.whenReady();
   const win = new BrowserWindow({ width: 1120, height: 820, show: false,
     webPreferences: { preload: path.join(root, "src/preload/preload.js"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });

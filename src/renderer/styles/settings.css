@@ -1,6 +1,6 @@
 /* 设置左侧纵向导航，右侧业务面板保持各自滚动与表单状态。 */
 .model-settings-dialog[open] { grid-template-columns: 184px minmax(0, 1fr); }
-.settings-sidebar { grid-column: 1; grid-row: 1 / 4; min-width: 0; overflow: auto; padding: 24px 12px; border-right: 1px solid var(--border); background: var(--sidebar); }
+.settings-sidebar { grid-column: 1; grid-row: 1 / 3; min-width: 0; overflow: auto; padding: 24px 12px; border-right: 1px solid var(--border); background: var(--sidebar); }
 .settings-sidebar h2 { margin: 0 12px 24px; font-size: 20px; }
 .settings-categories { display: flex; flex-direction: column; gap: 8px; }
 .model-settings-dialog .settings-category { min-height: 44px; border: 0; color: var(--muted); background: transparent; text-align: left; overflow-wrap: anywhere; }
@@ -8,7 +8,6 @@
 .model-manager-header { grid-column: 2; grid-row: 1; min-width: 0; flex-wrap: wrap; }
 .model-manager-toolbar { flex-wrap: wrap; }
 .model-settings-dialog > [role="tabpanel"] { grid-column: 2; grid-row: 2; min-width: 0; }
-.model-manager-feedback { grid-column: 2; grid-row: 3; min-width: 0; }
 .archive-settings { min-height: 0; overflow: auto; padding: 24px 32px; }
 .archive-settings > input { margin-bottom: 20px; }
 .archive-settings > label { margin-top: 24px; }
@@ -38,8 +37,6 @@
   .settings-sidebar h2 { margin: 0 6px 20px; font-size: 18px; }
   .model-settings-dialog .settings-category { padding: 10px 8px; }
   .model-manager-mark { display: none; }
-  .model-thinking-section { align-items: stretch; flex-direction: column; }
-  .model-thinking-section select { min-width: 0; }
   .model-manager-toolbar { flex-basis: 100%; }
   .theme-settings, .archive-settings { padding: 16px; }
   .theme-choices { grid-template-columns: minmax(0, 1fr); }

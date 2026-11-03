@@ -46,65 +46,11 @@ contextBridge.exposeInMainWorld("agent", {
     }, expectedRevision),
   getSessionPromptInfo: () => ipcRenderer.invoke("agent:session-prompt-info"),
 
-  readModelSettings: () => ipcRenderer.invoke("agent:read-model-settings"),
-  listSettingsModels: (provider) =>
-    ipcRenderer.invoke("agent:list-settings-models", provider),
-  fetchModelCatalog: (input) => ipcRenderer.invoke("agent:fetch-model-catalog", {
-    baseUrl: input?.baseUrl, apiKey: input?.apiKey, api: input?.api, profileId: input?.profileId, provider: input?.provider,
-  }),
-  testModelConnection: input => ipcRenderer.invoke("agent:test-model-connection", {
-    baseUrl: input?.baseUrl, apiKey: input?.apiKey, api: input?.api, profileId: input?.profileId, provider: input?.provider,
-  }),
-  cloneModelProfile: (id, name) => ipcRenderer.invoke("agent:clone-model-profile", id, name),
-  refreshProfileModels: id => ipcRenderer.invoke("agent:refresh-profile-models", id),
-  refreshBuiltinModels: provider => ipcRenderer.invoke("agent:refresh-builtin-models", provider),
-  appendBuiltinModel: (provider, input) => ipcRenderer.invoke("agent:append-builtin-model", provider, {
-    modelId: input?.modelId, api: input?.api, contextWindow: input?.contextWindow, maxTokens: input?.maxTokens,
-    reasoning: input?.reasoning, vision: input?.vision,
-  }),
-  providerAuth: provider => ipcRenderer.invoke("agent:provider-auth", provider),
-  addProviderKey: (provider, name, key) => ipcRenderer.invoke("agent:add-provider-key", provider, name, key),
-  activateProviderKey: (provider, id) => ipcRenderer.invoke("agent:activate-provider-key", provider, id),
-  removeProviderKey: (provider, id) => ipcRenderer.invoke("agent:remove-provider-key", provider, id),
-  startProviderOAuth: provider => ipcRenderer.invoke("agent:provider-oauth-start", provider),
-  replyProviderOAuth: (flowId, promptId, value) => ipcRenderer.invoke("agent:provider-oauth-reply", flowId, promptId, value),
-  cancelProviderOAuth: id => ipcRenderer.invoke("agent:provider-oauth-cancel", id),
-  listProviderOAuthFlows: () => ipcRenderer.invoke("agent:list-provider-oauth-flows"),
-  logoutProviderOAuth: provider => ipcRenderer.invoke("agent:provider-oauth-logout", provider),
-  openProviderOAuthLink: id => ipcRenderer.invoke("agent:open-provider-oauth-link", id),
-  enrichModels: (ids, hints) => ipcRenderer.invoke("agent:enrich-models", ids, hints),
-  cancelModelEnrichment: id => ipcRenderer.invoke("agent:cancel-model-enrichment", id),
-  listModelEnrichments: () => ipcRenderer.invoke("agent:list-model-enrichments"),
+  readModelConfiguration: () => ipcRenderer.invoke("agent:read-model-configuration"),
+  openModelsConfiguration: () => ipcRenderer.invoke("agent:open-models-configuration"),
+  reloadModels: () => ipcRenderer.invoke("agent:reload-models"),
+  setDefaultModel: () => ipcRenderer.invoke("agent:set-default-model"),
   setThinkingLevel: level => ipcRenderer.invoke("agent:set-thinking-level", level),
-  onModelSettingsEvent: callback => {
-    const listener = (_event, value) => callback(value);
-    ipcRenderer.on("agent:model-settings-event", listener);
-    void ipcRenderer.invoke("agent:watch-model-settings").catch(() => callback({ type: "error", message: "设置状态监听失败，请关闭后重开设置。" }));
-    return () => { ipcRenderer.removeListener("agent:model-settings-event", listener); void ipcRenderer.invoke("agent:unwatch-model-settings").catch(() => {}); };
-  },
-  saveModelSettings: (settings) =>
-    ipcRenderer.invoke("agent:save-model-settings", {
-      name: settings?.name,
-      kind: settings?.kind,
-      provider: settings?.provider,
-      modelId: settings?.modelId,
-      baseUrl: settings?.baseUrl,
-      authMode: settings?.authMode,
-      apiKey: settings?.apiKey,
-      api: settings?.api,
-      contextWindow: settings?.contextWindow,
-      maxTokens: settings?.maxTokens,
-      replaceId: settings?.replaceId,
-      reasoning: settings?.reasoning,
-      vision: settings?.vision,
-    }),
-  setDefaultModelProfile: (id) =>
-    ipcRenderer.invoke("agent:set-default-model-profile", id),
-  hideModelProfile: (id) => ipcRenderer.invoke("agent:hide-model-profile", id),
-  clearDefaultModelProfile: () => ipcRenderer.invoke("agent:clear-default-model-profile"),
-  listModelProfiles: () => ipcRenderer.invoke("agent:list-model-profiles"),
-  switchModelProfile: (id) =>
-    ipcRenderer.invoke("agent:switch-model-profile", id),
   // 可选输入版本用于消费已保存的原文；没有版本时沿用原调用。
   sendMessage: (message, draftRequest) => {
     if (draftRequest === undefined) {
@@ -168,8 +114,8 @@ contextBridge.exposeInMainWorld("agent", {
   // 页面只读取模型编号和名称，实际目录由主进程提供。
   listModels: () => ipcRenderer.invoke("agent:list-models"),
 
-  // 只提交模型编号，供应商、地址和实际模型由主进程决定。
-  switchModel: (modelId) => ipcRenderer.invoke("agent:switch-model", modelId),
+  // 只提交供应商和模型编号，地址与实际模型由主进程解析。
+  switchModel: (modelId, provider) => ipcRenderer.invoke("agent:switch-model", modelId, provider),
   // 整理当前会话，以及取消正在进行的整理。
   compactSession: () => ipcRenderer.invoke("agent:compact-session"),
 

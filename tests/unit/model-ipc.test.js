@@ -1,34 +1,27 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { EventEmitter } = require("node:events");
 const { registerModelIpc } = require("../../src/main/ipc/model-ipc.js");
 
-test("模型事件按窗口订阅，重复订阅不累积，关闭与重开清理监听", () => {
-  const handlers = new Map(), oauth = new Set(), enrichment = new Set();
-  const subscribe = listeners => listener => { listeners.add(listener); return () => listeners.delete(listener); };
+test("官方配置入口不转发路径；重读、默认与思考强度共用互斥", async () => {
+  const handlers = new Map(), calls = [];
+  let locked = false;
   registerModelIpc({ handle: (name, fn) => handlers.set(name, fn) }, {
-    oauth: { subscribe: subscribe(oauth) }, enrichment: { subscribe: subscribe(enrichment) },
-  }, {}, fn => fn());
-  const sent = [];
-  const sender = Object.assign(new EventEmitter(), { id: 1, isDestroyed: () => false, send: (...args) => sent.push(args) });
-  const call = name => handlers.get(`agent:${name}`)({ sender });
-  call("watch-model-settings"); call("watch-model-settings");
-  assert.equal(oauth.size, 1); assert.equal(sender.listenerCount("destroyed"), 1);
-  [...oauth][0]({ status: "running" }); assert.equal(sent[0][0], "agent:model-settings-event");
-  call("unwatch-model-settings"); assert.equal(oauth.size, 0); assert.equal(sender.listenerCount("destroyed"), 0);
-  call("watch-model-settings"); sender.emit("destroyed");
-  assert.equal(oauth.size, 0); assert.equal(enrichment.size, 0);
-});
-
-test("凭据变更共用互斥并刷新当前会话，登录回复与取消不被互斥阻塞", async () => {
-  const handlers = new Map(); let locked = false, refreshed = 0, cancelled = 0, replied = 0;
-  registerModelIpc({ handle: (name, fn) => handlers.set(name, fn) }, {
-    addKey: async () => "added", oauth: { reply: () => { replied++; }, cancel: () => { cancelled++; } }, enrichment: {},
-  }, { refreshModelAuth: async () => { refreshed++; } }, fn => { if (locked) throw Error("忙碌"); return fn(); });
+    readConfiguration: (...args) => { calls.push(["read", ...args]); return { modelsPath: "/pi/models.json" }; },
+    openConfiguration: (...args) => calls.push(["open", ...args]),
+  }, {
+    reloadModels: (...args) => calls.push(["reload", ...args]),
+    setDefaultModel: (...args) => calls.push(["default", ...args]),
+    setThinkingLevel: (...args) => calls.push(["thinking", ...args]),
+  }, action => { if (locked) throw Error("忙碌"); return action(); });
   const call = (name, ...args) => handlers.get(`agent:${name}`)({}, ...args);
-  assert.equal(await call("add-provider-key", "p", "name", "placeholder"), "added"); assert.equal(refreshed, 1);
+  await call("read-model-configuration", "/untrusted");
+  await call("open-models-configuration", "/untrusted");
+  await call("reload-models", "other-session");
+  await call("set-default-model", "other-model");
+  await call("set-thinking-level", "high", "other-session");
+  assert.deepEqual(calls, [["read"], ["open"], ["reload"], ["default"], ["thinking", "high"]]);
   locked = true;
-  assert.throws(() => call("add-provider-key", "p", "name", "placeholder"), /忙碌/);
-  call("provider-oauth-reply", "flow", "prompt", "reply"); call("provider-oauth-cancel", "flow");
-  assert.equal(replied, 1); assert.equal(cancelled, 1);
+  for (const name of ["reload-models", "set-default-model", "set-thinking-level"]) assert.throws(() => call(name), /忙碌/);
+  assert.ok(!handlers.has("agent:save-model-settings"));
+  assert.ok(!handlers.has("agent:provider-oauth-start"));
 });

@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const agent = {};
 for (const name of [
   "listUnsentSessions", "loadHistory", "currentSession", "listSessions", "getSessionInfo", "listProposals", "listProjects",
-  "listModelProfiles", "switchModelProfile", "readModelSettings", "fetchModelCatalog", "loadComposerDraft", "saveComposerDraft", "inspectComposerSend",
+  "listModels", "switchModel", "readModelConfiguration", "openModelsConfiguration", "reloadModels", "setDefaultModel", "setThinkingLevel", "loadComposerDraft", "saveComposerDraft", "inspectComposerSend",
   "addProject", "openProject", "openSession", "sendMessage", "stop", "newChat",
 ]) {
   agent[name] = (...args) => ipcRenderer.invoke("sidebar-check", name, args);

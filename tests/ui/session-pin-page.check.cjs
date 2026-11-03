@@ -50,7 +50,7 @@ async function main() {
     loadHistory: async () => [{ role: "user", text: "原聊天内容" }],
     currentSession: async () => current,
     getSessionInfo: async () => ({ sessionId: current, workspaceDir: workspace, provider: "test", modelId: "mock", contextUsage: null }),
-    listModelProfiles: async () => ({ currentProfileId: "mock", profiles: [{ id: "mock", name: "测试模型", provider: "test", modelId: "mock" }] }),
+    listModels: async () => ({ provider: "test", modelId: "mock", models: [{ id: "mock", name: "测试模型", provider: "test" }] }),
     listUnsentSessions: async () => [],
     listSessions: async () => {
       if (flags.listFail) throw Error("模拟列表失败");

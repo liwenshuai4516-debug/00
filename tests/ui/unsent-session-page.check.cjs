@@ -28,7 +28,7 @@ const pause = async name => { if (flags[name]) { const gate = flags[name]; flags
 const session = {
   loadHistory: async () => history(current), currentSession: async () => current,
   getSessionInfo: async () => ({ sessionId: current, workspaceDir: workspace, modelId: current === "b" ? "Pro" : "Flash", provider: "mock", contextUsage: null }),
-  listModelProfiles: async () => ({ currentProfileId: current === "b" ? "pro" : "flash", profiles: [{ id:"flash", name:"Flash", provider:"mock", modelId:"Flash" },{ id:"pro",name:"Pro",provider:"mock",modelId:"Pro" }] }),
+  listModels: async () => ({ provider: "mock", modelId: current === "b" ? "Pro" : "Flash", models: [{ id:"Flash", name:"Flash", provider:"mock" },{ id:"Pro",name:"Pro",provider:"mock" }] }),
   listSessions: async () => { failure("historyList"); return []; },
   listUnsentSessions: async () => {
     calls.push(["list",current,workspace]); await pause("listGate"); failure("list");
@@ -121,7 +121,7 @@ async function main() {
     assert.equal(current,"b"); assert.equal(entry("a").text,"离开前最新输入");
     assert.equal(await js('document.getElementById("message-input").value'),entry("b").text.replace(/\r\n/g,"\n"));
     assert.equal(await js('document.querySelector(".session-open[data-session-id=b]").getAttribute("aria-current")'),"true");
-    assert.equal(await js('document.getElementById("model-select").value'),"pro");
+    assert.equal(await js('document.getElementById("model-select").value'),JSON.stringify(["mock","Pro"]));
     assert.equal(await js('document.querySelectorAll("#proposal-list article").length'),1);
   });
   await check("恢复原会话保留输入和文件草稿",async () => {

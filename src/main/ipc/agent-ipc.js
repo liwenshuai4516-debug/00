@@ -9,7 +9,7 @@ function registerAgentIpc(
   workspaceSelectionService,
   projectService,
   composerDraftService,
-  modelSettingsService,
+  modelProviderService,
     promptSettingsStore,
 
 ) {
@@ -31,7 +31,7 @@ function registerAgentIpc(
   }
 
   const { registerModelIpc } = require("./model-ipc.js");
-  registerModelIpc(ipcMain, modelSettingsService, sessionService, runIdleOperation);
+  registerModelIpc(ipcMain, modelProviderService, sessionService, runIdleOperation);
 
   const { createPiPackageService } = require("../services/pi-package-service.js");
   const piPackages = createPiPackageService(sessionService);
@@ -96,8 +96,8 @@ function registerAgentIpc(
   ipcMain.handle("agent:list-models", () => sessionService.listModels());
   // 切换模型与生成、整理、保存和会话切换共用互斥入口。
 
-  ipcMain.handle("agent:switch-model", (_event, modelId) => {
-    return runIdleOperation(() => sessionService.switchModel(modelId));
+  ipcMain.handle("agent:switch-model", (_event, modelId, provider) => {
+    return runIdleOperation(() => sessionService.switchModel(modelId, provider));
   });
 
   // 整理只针对主进程当前会话，不接收页面指定的会话编号。

@@ -78,7 +78,7 @@ test("真实 Pi 会话恢复各自模型、遵循分支并拒绝无效记录", a
       // 未登记模型与跨供应商记录必须明确拒绝，不能静默回退。
       for (const [provider, modelId, error] of [
         ["deepseek", "missing-model", /Pi 未找到模型/],
-        ["openai", "gpt-4", /会话模型属于其他供应商/],
+        ["unknown-provider", "gpt-4", /Pi 未找到模型/],
       ]) {
         manager.appendModelChange(provider, modelId);
         const before = await readFile(file, "utf8");

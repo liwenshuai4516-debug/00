@@ -187,17 +187,13 @@ test("切换目录准备失败仍读取原会话，不登记未采用的候选",
 
 test("模型切换部分失败后，下一次输入保存取实际模型；返回副本不可改内部登记", async (t) => {
   const s = await setup(t);
-  s.first.desktopModelSettings = {
-    async switchProfile(agent) {
-      agent.model = { provider: "desktop-profile-partial", id: "partial-model" };
-      throw new Error("模拟更新后失败");
-    },
-  };
-  await assert.rejects(s.sessions.switchModelProfile("selected"), /模拟更新后失败/);
+  s.first.modelRuntime = { getModel: () => ({ provider: "custom", id: "partial-model" }) };
+  s.first.setModel = async model => { s.first.model = model; throw new Error("模拟更新后失败"); };
+  await assert.rejects(s.sessions.switchModel("partial-model", "custom"), /模拟更新后失败/);
   const descriptor = s.sessions.readSessionRegistration(s.first.sessionId);
   descriptor.model.provider = "caller-change";
   await s.composer.saveDraft(s.first.sessionId, "保留实际选择", 0);
-  assert.equal((await s.store.load(s.first.sessionId)).registration.model.provider, "desktop-profile-partial");
+  assert.equal((await s.store.load(s.first.sessionId)).registration.model.provider, "custom");
 });
 
 

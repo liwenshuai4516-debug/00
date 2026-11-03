@@ -28,8 +28,8 @@ const session = {
     if (flags.infoFail) throw Error("模拟读取失败 <img src=x>");
     return snapshot;
   },
-  listModelProfiles: async () => ({ currentProfileId: models.get(current) ?? "flash", profiles: ["flash", "pro"].map(id => ({ id, name: id, provider: "mock", modelId: id })) }),
-  async switchModelProfile(id) {
+  listModels: async () => ({ provider: "mock", modelId: models.get(current) ?? "flash", models: ["flash", "pro"].map(id => ({ id, name: id, provider: "mock" })) }),
+  async switchModel(id) {
     calls.push(["model", current, id]); await pause("modelGate");
     models.set(current, id); usage.set(current, estimate(id === "pro" ? 12 : 32));
     if (flags.modelFail) throw Error("模拟部分切换后失败");
@@ -144,7 +144,7 @@ async function main() {
     await check("同会话模型切换清旧值，部分切换后报错仍显示实际模型用量", async () => {
       const old = flags.infoGate = Promise.withResolvers(); await openDetails(); await click('#context-usage [data-refresh]');
       const gate = flags.modelGate = Promise.withResolvers(); flags.modelFail = true;
-      await js(`document.getElementById('model-select').value='pro';document.getElementById('model-select').dispatchEvent(new Event('change'))`);
+      await js(`document.getElementById('model-select').value=JSON.stringify(['mock','pro']);document.getElementById('model-select').dispatchEvent(new Event('change'))`);
       await until(`document.getElementById('model-select').disabled`); assert.equal(await label(), "上下文读取中…");
       gate.resolve(); await idle(); flags.modelFail = false; assert.equal(await label(), "上下文约 12.0%");
       old.resolve(); await js(`new Promise(r=>setTimeout(r,50))`); assert.equal(await label(), "上下文约 12.0%");

@@ -1,4 +1,4 @@
-import { createModelSettingsPanel } from "../model-settings-panel.js";
+import { createModelProviders } from "./model-providers.js";
 import { createThemeSettings } from "../theme/theme-settings.js";
 import { createPiResourcesPanel } from "./pi-resources.js";
 import { createPromptSettings } from "./prompt-settings.js";
@@ -8,19 +8,12 @@ export function createSettingsPanel(
   openButton,
   api,
   setPageBusy,
-  refreshProfiles,
+  refreshModels,
   insertText,
 ) {
   const resources = createPiResourcesPanel(dialog, api, setPageBusy, insertText);
   const prompts = createPromptSettings(dialog, api, setPageBusy);
-  const models = createModelSettingsPanel(
-    dialog,
-    openButton,
-    api,
-    setPageBusy,
-    refreshProfiles,
-    () => !prompts.isSaving() && !resources.isSaving(),
-  );
+  const models = createModelProviders(dialog.querySelector("#settings-model-panel"), api, setPageBusy, refreshModels);
   const appearance = createThemeSettings(
     dialog.querySelector("[data-theme-panel]"),
   );
@@ -31,7 +24,6 @@ export function createSettingsPanel(
 
   function selectTab(tab) {
     if (busy) return;
-    const showModels = tab.dataset.settingsTab === "model";
     for (const item of tabs) {
       item.setAttribute("aria-selected", String(item === tab));
       item.tabIndex = item === tab ? 0 : -1;
@@ -39,10 +31,6 @@ export function createSettingsPanel(
     for (const panel of panels)
       panel.hidden = panel.id !== tab.getAttribute("aria-controls");
     heading.textContent = tab.textContent;
-    for (const element of dialog.querySelectorAll(
-      ".model-manager-feedback, [data-default-label], [data-refresh-official]",
-    ))
-      element.hidden = !showModels;
     const descriptions = {
       model: "model-settings-intro",
       theme: "theme-settings-intro",
@@ -55,6 +43,8 @@ export function createSettingsPanel(
       "aria-describedby",
       descriptions[tab.dataset.settingsTab],
     );
+    if (tab.dataset.settingsTab === "model") void models.show();
+    else models.hide();
     if (tab.dataset.settingsTab === "prompt") prompts.show();
     if (tab.dataset.settingsTab === "resources") void resources.show();
   }
@@ -79,17 +69,27 @@ export function createSettingsPanel(
     });
   });
 
-  // 设置窗口保留上次分类，再次打开时刷新当前对话快照。
+  // 设置弹窗由设置容器管理；模型配置不再控制其他分类的生命周期。
+  function close() {
+    if (busy || prompts.isSaving() || resources.isSaving()) return;
+    models.hide();
+    dialog.close();
+    openButton.focus();
+  }
   openButton.addEventListener("click", () => {
-    if (dialog.open && dialog.querySelector("#settings-prompt-tab").getAttribute("aria-selected") === "true") {
-      prompts.show();
-    }
-    if (dialog.open && dialog.querySelector("#settings-resources-tab").getAttribute("aria-selected") === "true") void resources.show();
+    if (busy) return;
+    dialog.showModal();
+    selectTab(tabs.find(tab => tab.getAttribute("aria-selected") === "true"));
   });
+  dialog.querySelector("[data-close]").addEventListener("click", close);
+  dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
 
   return {
     setBusy(value) {
       busy = value;
+      dialog.setAttribute("aria-busy", String(value));
+      openButton.disabled = value;
+      dialog.querySelector("[data-close]").disabled = value;
       models.setBusy(value);
       appearance.setBusy(value);
       prompts.setBusy(value);

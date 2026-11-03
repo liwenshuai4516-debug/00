@@ -160,7 +160,7 @@ test("真实SDK恢复原模型；真实历史遵循分支而非旧登记；无�
       assert.deepEqual(first.messages, []);
       await assert.rejects(fs.stat(first.sessionFile), { code: "ENOENT" });
       first.dispose();
-      for (const model of [{ provider: "deepseek", modelId: "missing-model" }, { provider: "openai", modelId: "gpt-4" }]) {
+      for (const model of [{ provider: "deepseek", modelId: "missing-model" }, { provider: "unknown-provider", modelId: "gpt-4" }]) {
         await assert.rejects(create({ ...recovery, registration: { source: "empty", model } }), /Pi 未找到模型|其他供应商/);
         assert.equal(await fs.readFile(stateFile, "utf8"), before);
       }
@@ -191,7 +191,7 @@ test("真实SDK恢复原模型；真实历史遵循分支而非旧登记；无�
   });
 });
 
-test("真实SDK按配置编号重建，同名模型不串地址和凭据，配置丢失明确拒绝", async (t) => {
+test("真实SDK按官方供应商编号重建，同名模型不串地址和凭据，配置丢失明确拒绝", async (t) => {
   const f = await setup(t);
   const root = path.resolve(__dirname, "../..");
   const script = `
@@ -201,31 +201,28 @@ test("真实SDK按配置编号重建，同名模型不串地址和凭据，配�
     globalThis.fetch = async () => assert.fail("测试不得请求模型或网络");
     async function check() {
       const { createPiAgent } = await import(${JSON.stringify(root + "/src/main/pi-agent.mjs")});
-      const { createModelSettingsStore, PROFILE_PREFIX } = require(${JSON.stringify(root + "/src/main/storage/model-settings-store.js")});
-      const { createModelSettingsService } = require(${JSON.stringify(root + "/src/main/services/model-settings-service.js")});
       const { createSessionStateStore } = require(${JSON.stringify(root + "/src/main/storage/session-state-store.js")});
       const base = process.argv[1], workspace = path.join(base, "workspace"), dir = path.join(base, "sessions");
-      const settings = createModelSettingsService(createModelSettingsStore(path.join(base, "models.json"), {
-        isEncryptionAvailable: () => true, encryptString: value => Buffer.from(value), decryptString: buffer => buffer.toString(),
-      }, { PI_PROVIDER: "deepseek", PI_MODEL: "deepseek-flash" }));
-      const input = { name: "A", kind: "custom", provider: "同名供应商", modelId: "same-model", baseUrl: "https://a.example.invalid/v1", authMode: "saved", apiKey: "placeholder-A", api: "openai-completions", contextWindow: 32000, maxTokens: 2000 };
-      const a = await settings.save(input);
-      const b = await settings.save({ ...input, name: "B", baseUrl: "https://b.example.invalid/v1", apiKey: "placeholder-B" });
-      await settings.setDefault(a.id);
+      const provider = (baseUrl, apiKey) => ({ baseUrl, apiKey, api: "openai-completions", models: [{ id: "same-model" }] });
+      await fs.mkdir(process.env.PI_CODING_AGENT_DIR, { recursive: true });
+      await fs.writeFile(path.join(process.env.PI_CODING_AGENT_DIR, "models.json"), JSON.stringify({ providers: {
+        alpha: provider("https://a.example.invalid/v1", "placeholder-A"), beta: provider("https://b.example.invalid/v1", "placeholder-B"),
+      } }));
+      const settings = {};
       const store = createSessionStateStore(path.join(base, "state"));
-      await store.registerSession("original-id", workspace, "empty", { provider: PROFILE_PREFIX + b.id, modelId: input.modelId });
+      await store.registerSession("original-id", workspace, "empty", { provider: "beta", modelId: "same-model" });
       const recovery = await store.load("original-id");
       const stateFile = path.join(base, "state", "original-id.json"), before = await fs.readFile(stateFile, "utf8");
       const session = await createPiAgent(dir, false, undefined, workspace, settings, recovery);
       assert.equal(session.sessionId, recovery.sessionId);
-      assert.equal(session.model.provider, PROFILE_PREFIX + b.id);
+      assert.equal(session.model.provider, "beta");
       assert.equal(session.model.baseUrl, "https://b.example.invalid/v1");
       assert.ok((await session.modelRuntime.getAuth(session.model)).auth.apiKey === "placeholder-B");
       assert.deepEqual(session.messages, []);
       await assert.rejects(fs.stat(session.sessionFile), { code: "ENOENT" });
       session.dispose();
-      const missing = { ...recovery, registration: { source: "empty", model: { provider: PROFILE_PREFIX + "missing", modelId: input.modelId } } };
-      await assert.rejects(createPiAgent(dir, false, undefined, workspace, settings, missing), /配置不存在/);
+      const missing = { ...recovery, registration: { source: "empty", model: { provider: "missing", modelId: "same-model" } } };
+      await assert.rejects(createPiAgent(dir, false, undefined, workspace, settings, missing), /Pi 未找到模型/);
       assert.equal(await fs.readFile(stateFile, "utf8"), before);
     }
     check().catch(error => { console.error(error); process.exitCode = 1; });

@@ -260,16 +260,12 @@ function createSessionService(
     const session = await getSession(true);
     const model = session.model;
     const usage = session.getContextUsage();
-    const profileInfo = session.desktopModelSettings
-      ? await session.desktopModelSettings.describeCurrent(session)
-      : null;
 
     return {
       sessionId: session.sessionId,
       workspaceDir: session.sessionManager.getCwd(),
       provider: model?.provider ?? "",
       modelId: model?.id ?? "",
-      ...(profileInfo ?? {}),
       thinkingLevel: session.thinkingLevel ?? "off",
       thinkingLevels: session.getAvailableThinkingLevels?.() ?? ["off"],
 
@@ -290,68 +286,69 @@ function createSessionService(
     const session = await getSession(true);
     const model = session.model;
 
-    if (!model) {
-      throw new Error("当前会话尚未选择模型。");
-    }
-
-    const models = session.modelRuntime.getModels(model.provider);
+    const models = await session.modelRuntime.getAvailable();
 
     return {
-      provider: model.provider,
-      modelId: model.id,
+      provider: model?.provider ?? "",
+      modelId: model?.id ?? "",
       // 页面只需要模型编号和名称，不返回完整 SDK 对象。
       models: models.map((item) => ({
         id: item.id,
         name: item.name,
+        provider: item.provider,
       })),
     };
   }
 
-  // 页面只提交编号，实际模型与供应商由主进程决定。
-  async function switchModel(modelId) {
+  // 页面只提交供应商和模型编号，实际模型由官方运行时解析。
+  async function switchModel(modelId, provider) {
     if (typeof modelId !== "string" || !modelId.trim()) {
       throw new Error("请选择模型。");
     }
 
+    if (provider !== undefined && (typeof provider !== "string" || !provider.trim())) throw new Error("请选择供应商。");
     const session = await getSession(true);
     const current = session.model;
 
-    if (!current) {
-      throw new Error("当前会话尚未选择模型。");
+    if (!current && provider === undefined) {
+      throw new Error("请选择供应商和模型。");
     }
 
     const model = session.modelRuntime.getModel(
-      current.provider,
+      provider?.trim() ?? current?.provider,
       modelId.trim(),
     );
 
     if (!model) {
-      throw new Error("当前供应商未登记该模型。");
+      throw new Error("Pi 未登记该供应商的模型。");
     }
 
     return switchAndSync(session, async () => {
       // 相同选择仍同步登记，允许登记写入失败后重试，不重复切换模型。
-      if (model.id !== current.id) {
+      if (model.id !== current?.id || model.provider !== current?.provider) {
         await session.setModel(model, { persist: false });
       }
       return { provider: session.model.provider, modelId: session.model.id };
     });
   }
 
-  async function listModelProfiles() {
+  async function reloadModels() {
     const session = await getSession(true);
-    if (!session.desktopModelSettings)
-      throw new Error("当前会话未启用多配置。");
-    return session.desktopModelSettings.listForSession(session);
+    await session.modelRuntime.refresh({ allowNetwork: false });
+    if (session.modelRuntime.getError()) throw new Error("Pi 模型配置加载失败，请检查 models.json 和认证配置。");
+    const current = session.model;
+    const model = current && session.modelRuntime.getModel(current.provider, current.id);
+    if (model && model !== current) await switchAndSync(session, () => session.setModel(model, { persist: false }));
+    return listModels();
   }
 
-  async function switchModelProfile(id) {
+  async function setDefaultModel() {
     const session = await getSession(true);
-    if (!session.desktopModelSettings)
-      throw new Error("当前会话未启用多配置。");
-    return switchAndSync(session, () =>
-      session.desktopModelSettings.switchProfile(session, id),
-    );
+    if (!session.model) throw new Error("请先选择模型。");
+    session.settingsManager.setDefaultModelAndProvider(session.model.provider, session.model.id);
+    await session.settingsManager.flush();
+    if (session.settingsManager.drainErrors().length) throw new Error("Pi 默认模型保存失败，请检查 settings.json 的写入权限。");
+    return { provider: session.model.provider, modelId: session.model.id };
   }
 
   async function setThinkingLevel(level) {
@@ -359,10 +356,6 @@ function createSessionService(
     if (!session.getAvailableThinkingLevels?.().includes(level)) throw new Error("当前模型不支持所选思考强度。");
     session.setThinkingLevel(level, { persist: false });
     return { thinkingLevel: session.thinkingLevel, thinkingLevels: session.getAvailableThinkingLevels() };
-  }
-
-  async function refreshModelAuth() {
-    if (observedSession) await observedSession.modelRuntime.refresh({ allowNetwork: false });
   }
 
   // 记录用户确认保存的事实，不主动请求模型回复。
@@ -817,10 +810,9 @@ function createSessionService(
     getSessionInfo,
     listModels,
     switchModel,
-    listModelProfiles,
-    switchModelProfile,
+    reloadModels,
+    setDefaultModel,
     setThinkingLevel,
-    refreshModelAuth,
     compactSession,
     cancelCompaction,
     recordWorkspaceEdit,

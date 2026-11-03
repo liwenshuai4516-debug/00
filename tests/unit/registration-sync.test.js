@@ -20,12 +20,6 @@ async function setup(t) {
     async setModel(model) { session.switches += 1; session.model = model; },
     async abort() {}, dispose() {},
   };
-  session.desktopModelSettings = {
-    async switchProfile(agent, id) {
-      agent.model = { provider: `desktop-profile-${id}`, id: "same-model" };
-      return { provider: "展示供应商", modelId: "same-model" };
-    },
-  };
   const sessions = createSessionService("unused", async () => session, () => root, undefined, store);
   const composer = createComposerDraftService(sessions, store);
   await composer.loadCurrentDraft();
@@ -42,16 +36,16 @@ async function setup(t) {
   return state;
 }
 
-test("已保存输入后只切换模型或配置，也同步实际选择且保留版本与快照", async (t) => {
+test("已保存输入后只切换模型，也同步实际选择且保留版本与快照", async (t) => {
   const s = await setup(t);
   await s.store.consumeDraft("a", s.root, "原文", 1);
   await s.store.saveDraft("a", s.root, "后来输入", 2);
   const before = await s.store.load("a");
   await s.sessions.switchModel("pro");
   assert.equal((await s.store.load("a")).registration.model.modelId, "pro");
-  await s.sessions.switchModelProfile("selected");
+  await s.sessions.switchModel("pro");
   const after = await s.store.load("a");
-  assert.deepEqual(after.registration.model, { provider: "desktop-profile-selected", modelId: "same-model" });
+  assert.deepEqual(after.registration.model, { provider: "deepseek", modelId: "pro" });
   assert.deepEqual(after.draft, before.draft);
   assert.deepEqual(after.pendingSend, before.pendingSend);
 });

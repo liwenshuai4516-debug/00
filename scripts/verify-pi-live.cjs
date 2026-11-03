@@ -1,44 +1,46 @@
 // 仅在用户明确授权真实模型验收后手动运行；不加入 npm test。
-const { app, safeStorage } = require("electron");
+const { app } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
 const assert = require("node:assert/strict");
 const { loadEnvFile } = require("node:process");
-const { createModelSettingsStore } = require("../src/main/storage/model-settings-store.js");
-const { createModelCredentialsStore } = require("../src/main/storage/model-credentials-store.js");
-const { createModelSettingsService } = require("../src/main/services/model-settings-service.js");
 
-app.setName("lws");
-app.setPath("userData", path.join(app.getPath("appData"), "lws"));
 app.on("window-all-closed", () => {});
 
 async function main() {
-  await app.whenReady();
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "pi-live-acceptance-"));
+  app.setPath("userData", temporary);
+  await app.whenReady();
   const report = { status: "blocked", steps: [] };
-  let session, settingsService;
+  let session;
   try {
     try { loadEnvFile(path.resolve(__dirname, "../.env")); } catch (error) { if (error.code !== "ENOENT") throw error; }
-    const protection = {
-      isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
-      encryptString: value => safeStorage.encryptString(value),
-      decryptString: value => safeStorage.decryptString(value),
-    };
-    // 仅在进程内使用现有默认模型及凭据；不读取真实聊天历史，不输出地址或密钥。
-    const store = createModelSettingsStore(path.join(app.getPath("userData"), "model-settings.json"), protection);
-    const credentialsStore = createModelCredentialsStore(path.join(app.getPath("userData"), "model-credentials.json"), protection);
-    settingsService = createModelSettingsService(store, undefined, { credentialsStore });
-    const profile = await settingsService.resolveSelection();
-    const runtime = await settingsService.createRuntime();
-    const { installModelProfile } = await import("../src/main/model-profile-runtime.mjs");
-    const model = await installModelProfile(runtime, profile);
-    report.model = { provider: profile.provider, id: model.id, selection: "application-default" };
-    const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } = await import("@mariozechner/pi-coding-agent");
+    const { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = await import("@mariozechner/pi-coding-agent");
     const { createChatService } = require("../src/main/services/chat-service.js");
     const cwd = path.join(temporary, "workspace"), agentDir = path.join(temporary, "agent");
     await fs.mkdir(cwd);
     await fs.mkdir(agentDir);
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    // 只在进程内读取 .env 认证，用官方配置登记临时供应商，不写入真实密钥或读取个人配置。
+    const { readModelConfig } = require("../src/main/config/model-config.js");
+    const startup = readModelConfig();
+    const sourceRuntime = await ModelRuntime.create();
+    const source = sourceRuntime.getModel(startup.provider, startup.modelId);
+    assert.ok(source, "未找到 .env 模型");
+    const auth = await sourceRuntime.getAuth(source);
+    assert.ok(auth?.auth.apiKey, "未找到 .env 认证");
+    process.env.PI_ACCEPTANCE_KEY = auth.auth.apiKey;
+    const definition = {};
+    for (const field of ["id", "name", "api", "reasoning", "input", "cost", "contextWindow", "maxTokens", "compat", "thinkingLevelMap"]) {
+      if (source[field] !== undefined) definition[field] = source[field];
+    }
+    await fs.writeFile(path.join(agentDir, "models.json"), JSON.stringify({ providers: {
+      "acceptance-custom": { api: source.api, baseUrl: startup.baseUrl || source.baseUrl, apiKey: "$PI_ACCEPTANCE_KEY", models: [definition] },
+    } }));
+    const runtime = await ModelRuntime.create();
+    const model = runtime.getModel("acceptance-custom", source.id);
+    report.model = { provider: model.provider, id: model.id, selection: "temporary-models.json" };
     const skillFile = path.join(cwd, "SKILL.md");
     await fs.writeFile(skillFile, "---\nname: acceptance-files\ndescription: 本次临时文件验收步骤\n---\n在当前目录使用 write 新建 evidence.txt，内容为 alpha；使用 edit 把 alpha 改为 beta；使用 bash 执行 cat evidence.txt 检查，最后简短回复完成。\n");
     const settingsManager = SettingsManager.inMemory({ retry: { enabled: false }, compaction: { enabled: false } });
@@ -96,8 +98,7 @@ async function main() {
   } finally {
     await session?.abort();
     session?.dispose();
-    settingsService?.oauth.dispose();
-    settingsService?.enrichment.dispose();
+    delete process.env.PI_ACCEPTANCE_KEY;
     if (process.env.PI_ACCEPTANCE_REPORT) await fs.writeFile(process.env.PI_ACCEPTANCE_REPORT, JSON.stringify(report, null, 2) + "\n");
     console.log(JSON.stringify(report));
     await fs.rm(temporary, { recursive: true, force: true });

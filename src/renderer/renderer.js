@@ -456,9 +456,9 @@ window.addEventListener(
 // 模型选择器与设置页共用切换入口，在请求前使旧模型估算失效。
 const modelApi = {
   ...window.agent,
-  switchModelProfile(id) {
+  switchModel(id, provider) {
     sessionInfoPanel.invalidate();
-    return window.agent.switchModelProfile(id);
+    return window.agent.switchModel(id, provider);
   },
 };
 

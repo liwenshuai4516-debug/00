@@ -63,11 +63,10 @@ async function main() {
   ), () => cwd, async () => {}, stateStore);
   service.cancelExtensionUi = bridge.cancelAll;
   // 模型菜单只展示临时 SDK 模型；不读取应用真实配置或触发真实认证。
-  service.listModelProfiles = async () => ({ currentProfileId: "fixture", profiles: [{ id: "fixture", name: "离线系统验收", provider: "openai", modelId: "gpt-4" }] });
+  service.listModels = async () => ({ provider: "openai", modelId: "gpt-4", models: [{ id: "gpt-4", name: "离线系统验收", provider: "openai" }] });
   const chat = createChatService(service, undefined, undefined, stateStore);
   const composer = createComposerDraftService(service, stateStore);
-  const flow = { list: () => [], subscribe: () => () => {} };
-  const models = { read: async () => ({ profiles: [], providers: [], defaultProfileId: "", encryptionAvailable: false }), oauth: flow, enrichment: flow };
+  const models = { readConfiguration: async () => ({ modelsPath: path.join(agentDir, "models.json") }), openConfiguration: async () => {} };
   registerAgentIpc(ipcMain, service, chat, {}, {}, {}, {}, { listProjects: async () => [] }, composer, models, promptStore);
   const quit = registerAppQuitGuard(app, BrowserWindow);
   ipcMain.on("pi-system:composition", (_event, type) => {

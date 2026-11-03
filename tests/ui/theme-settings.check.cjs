@@ -37,19 +37,7 @@ async function main() {
   let draft = { sessionId: "theme-demo", text: "保留聊天输入", revision: 1 };
   let switches = 0,
     releaseSwitch;
-  const profile = {
-    id: "demo",
-    name: "演示模型",
-    kind: "custom",
-    provider: "demo",
-    modelId: "demo-model",
-    baseUrl: "https://example.invalid/v1",
-    authMode: "saved",
-    hasSavedKey: true,
-    api: "openai-completions",
-    contextWindow: 32000,
-    maxTokens: 2000,
-  };
+
 
   let promptSettings = {
     version: 1,
@@ -85,18 +73,17 @@ async function main() {
       modelId: "demo-model",
       contextUsage: null,
     }),
-    listModelProfiles: async () => ({
-      currentProfileId: "demo",
-      profiles: [profile],
+    listModels: async () => ({
+      provider: "demo", modelId: "demo-model",
+      models: [{ id: "demo-model", name: "演示模型", provider: "demo" }],
     }),
-    switchModelProfile: async () => {
+    setDefaultModel: async () => {
       switches++;
       await new Promise((resolve) => {
         releaseSwitch = resolve;
       });
     },
   };
-  const flow = { list: () => [], subscribe: () => () => {} };
   registerAgentIpc(
     ipcMain,
     session,
@@ -113,15 +100,7 @@ async function main() {
         (draft = { sessionId: id, text, revision: revision + 1 }),
     },
     {
-      read: async () => ({
-        profiles: [profile],
-        providers: [],
-        defaultProfileId: "demo",
-        encryptionAvailable: true,
-      }),
-      providerAuth: async () => ({ keys: [], mode: "none" }),
-      oauth: flow,
-      enrichment: flow,
+      readConfiguration: async () => ({ modelsPath: "/demo/pi/models.json" }),
     },
     {
       read: async () => ({ ...promptSettings }),
@@ -257,12 +236,12 @@ async function main() {
       `document.querySelectorAll('[role=tablist] [role=tab]').length===5 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'`,
     );
     await run(
-      `document.querySelector('#profile-name').value='未保存的模型名称';document.querySelector('#profile-key').value='仅测试未保存值';window.originalMessage=document.querySelector('.chat-message');window.originalForm=document.querySelector('#model-profile-form');undefined;`,
+      `window.originalMessage=document.querySelector('.chat-message');window.originalPanel=document.querySelector('#settings-model-panel');undefined;`,
     );
     await click("#settings-theme-tab");
     await check(
       "主题面板独立展示，模型操作和状态收起",
-      `!document.querySelector('#settings-theme-panel').hidden && document.querySelector('#settings-model-panel').hidden && document.querySelector('.model-manager-feedback').hidden && document.querySelector('[data-refresh-official]').hidden`,
+      `!document.querySelector('#settings-theme-panel').hidden && document.querySelector('#settings-model-panel').hidden && !document.querySelector('#model-profile-form')`,
     );
     await click('input[name="appearance-theme"][value="sakura"]');
     await check(
@@ -270,28 +249,16 @@ async function main() {
       `document.documentElement.dataset.theme==='sakura' && localStorage.getItem('agent-client:theme')==='sakura' && document.querySelector('[data-theme-status]').textContent.includes('下次启动') && getComputedStyle(document.body).backgroundColor==='rgb(253, 242, 245)'`,
     );
     await check(
-      "主题切换保留聊天节点、输入和未保存模型表单",
-      `document.querySelector('.chat-message')===window.originalMessage && document.querySelector('#model-profile-form')===window.originalForm && document.querySelector('#message-input').value==='保留聊天输入' && document.querySelector('#profile-name').value==='未保存的模型名称' && document.querySelector('#profile-key').value==='仅测试未保存值'`,
+      "主题切换保留聊天节点、输入和模型配置入口",
+      `document.querySelector('.chat-message')===window.originalMessage && document.querySelector('#settings-model-panel')===window.originalPanel && document.querySelector('#message-input').value==='保留聊天输入'`,
     );
     assert.equal(switches, 0);
     await click("#settings-model-tab");
     await check(
-      "返回模型管理保留编辑内容，模型页面跟随樱粉",
-      `document.querySelector('#profile-name').value==='未保存的模型名称' && getComputedStyle(document.querySelector('.new-profile-editor')).backgroundColor==='rgb(253, 242, 245)' && getComputedStyle(document.querySelector('.model-add-provider')).backgroundColor==='rgb(219, 39, 119)' && getComputedStyle(document.querySelector('#profile-name')).color==='rgb(74, 43, 53)'`,
+      "返回模型设置保留节点，模型页面跟随樱粉",
+      `document.querySelector('#settings-model-panel')===window.originalPanel && getComputedStyle(document.querySelector('#model-settings-dialog')).backgroundColor==='rgb(253, 242, 245)' && getComputedStyle(document.querySelector('[data-models-path]')).color==='rgb(125, 85, 97)'`,
     );
-    const savePoint = await run(
-      `(()=>{const rect=document.querySelector('.model-save-button').getBoundingClientRect();return {x:Math.round(rect.x+rect.width/2),y:Math.round(rect.y+rect.height/2)}})()`,
-    );
-    win.webContents.sendInputEvent({ type: "mouseMove", ...savePoint });
-    await frame();
-    const saveColors = await run(
-      `(()=>{const css=getComputedStyle(document.querySelector('.model-save-button'));return [css.color,css.backgroundColor]})()`,
-    );
-    assert.ok(contrast(...saveColors) >= 4.5, "保存按钮悬停后文字仍可读");
-    passed++;
-    console.log("PASS 主要保存按钮悬停状态可读");
-    win.webContents.sendInputEvent({ type: "mouseMove", x: 0, y: 0 });
-    await click("[data-apply]");
+    await click("[data-default-model]");
     await wait(`document.querySelector('#settings-theme-tab').disabled`);
     await check(
       "模型操作期间分类和主题选择共用忙碌保护",
@@ -402,7 +369,7 @@ async function main() {
 
     // 从实际渲染结果测量正文、次要文字、行内代码、语法高亮及主要按钮的对比度。
     const colors = await run(
-      `(()=>{const css=e=>getComputedStyle(e);const body=css(document.body);const code=document.querySelector('.markdown-body pre');const samples=[['正文',body.color,body.backgroundColor],['次要文字',css(document.querySelector('.theme-choice small')).color,body.backgroundColor],['行内代码',css(document.querySelector('.markdown-body p code')).color,css(document.querySelector('.markdown-body p code')).backgroundColor],['主要按钮',css(document.querySelector('.model-add-provider')).color,css(document.querySelector('.model-add-provider')).backgroundColor]];for(const e of document.querySelectorAll('.hljs span'))samples.push([e.className,css(e).color,css(code).backgroundColor]);return samples})()`,
+      `(()=>{const css=e=>getComputedStyle(e);const body=css(document.body);const code=document.querySelector('.markdown-body pre');const samples=[['正文',body.color,body.backgroundColor],['次要文字',css(document.querySelector('.theme-choice small')).color,body.backgroundColor],['行内代码',css(document.querySelector('.markdown-body p code')).color,css(document.querySelector('.markdown-body p code')).backgroundColor],['主题卡片',css(document.querySelector('.theme-choice')).color,body.backgroundColor]];for(const e of document.querySelectorAll('.hljs span'))samples.push([e.className,css(e).color,css(code).backgroundColor]);return samples})()`,
     );
     assert.ok(colors.length > 7);
     for (const [label, foreground, background] of colors)
@@ -494,7 +461,7 @@ async function main() {
     await click('input[value="dark"][name="appearance-theme"]');
     await check(
       "恢复深色移除樱粉影响，包括代码高亮",
-      `getComputedStyle(document.body).backgroundColor==='rgb(24, 24, 24)' && getComputedStyle(document.querySelector('.hljs-keyword')).color!=='rgb(202, 26, 65)' && getComputedStyle(document.querySelector('.model-add-provider')).backgroundColor==='rgb(236, 236, 236)'`,
+      `getComputedStyle(document.body).backgroundColor==='rgb(24, 24, 24)' && getComputedStyle(document.querySelector('.hljs-keyword')).color!=='rgb(202, 26, 65)' && getComputedStyle(document.querySelector('#model-settings-dialog')).backgroundColor==='rgb(24, 24, 24)'`,
     );
     await click('input[value="sakura"][name="appearance-theme"]');
     await run(

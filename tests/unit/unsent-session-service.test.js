@@ -245,24 +245,21 @@ test("默认工厂接通真实SDK：原编号原模型、历史优先和拒绝�
   });
 });
 
-test("实际启动工厂正确分开配置服务与恢复快照，按原配置恢复同名模型", async (t) => {
+test("实际启动工厂按官方供应商恢复同名模型与输入", async (t) => {
   const s = await setup(t);
   const root = path.resolve(__dirname, "../..");
   const script = `
     const assert = require("node:assert/strict"), path = require("node:path"), fs = require("node:fs/promises");
     const { createSessionService } = require(${JSON.stringify(root + "/src/main/services/session-service.js")});
     const { createSessionStateStore } = require(${JSON.stringify(root + "/src/main/storage/session-state-store.js")});
-    const { createModelSettingsStore, PROFILE_PREFIX } = require(${JSON.stringify(root + "/src/main/storage/model-settings-store.js")});
-    const { createModelSettingsService } = require(${JSON.stringify(root + "/src/main/services/model-settings-service.js")});
     globalThis.fetch = async () => assert.fail("不得请求模型或网络");
     async function check() {
       const base = process.argv[1], workspace = path.join(base, "workspace");
-      const settings = createModelSettingsService(createModelSettingsStore(path.join(base, "models.json"), {
-        isEncryptionAvailable: () => true, encryptString: value => Buffer.from(value), decryptString: buffer => buffer.toString(),
-      }, { PI_PROVIDER: "deepseek", PI_MODEL: "deepseek-flash" }));
-      const input = { name: "A", kind: "custom", provider: "同名供应商", modelId: "same", baseUrl: "https://a.example.invalid/v1", authMode: "saved", apiKey: "placeholder-A", api: "openai-completions", contextWindow: 32000, maxTokens: 2000 };
-      const a = await settings.save(input), b = await settings.save({ ...input, name: "B", baseUrl: "https://b.example.invalid/v1", apiKey: "placeholder-B" });
-      await settings.setDefault(a.id);
+      const provider = (baseUrl, apiKey) => ({ baseUrl, apiKey, api: "openai-completions", models: [{ id: "same" }] });
+      await fs.mkdir(process.env.PI_CODING_AGENT_DIR, { recursive: true });
+      await fs.writeFile(path.join(process.env.PI_CODING_AGENT_DIR, "models.json"), JSON.stringify({ providers: {
+        alpha: provider("https://a.example.invalid/v1", "placeholder-A"), beta: provider("https://b.example.invalid/v1", "placeholder-B"),
+      } }));
       // 提取实际工厂并注入宿主依赖，不执行 bootstrap 或读取 .env。
       const source = await fs.readFile(${JSON.stringify(root + "/src/main/bootstrap.js")}, "utf8");
       const begin = source.indexOf("async function createConfiguredAgent("), end = source.indexOf("\\n\\n// 在应用入口", begin);
@@ -270,20 +267,20 @@ test("实际启动工厂正确分开配置服务与恢复快照，按原配置�
       let ready = 0;
       const store = createSessionStateStore(path.join(base, "state"));
       const factory = new Function(
-        "app", "modelSettingsService", "require", "dialog", "promptSettingsStore", "sessionStateStore", "extensionUi",
+        "app", "require", "dialog", "promptSettingsStore", "sessionStateStore", "extensionUi",
         "return (" + factorySource + ");",
       )(
-        { whenReady: async () => { ready += 1; }, quit() {} }, settings,
+        { whenReady: async () => { ready += 1; }, quit() {} },
         require("node:module").createRequire(${JSON.stringify(root + "/src/main/bootstrap.js")}),
         { showMessageBox: async () => ({ response: 0, checkboxChecked: false }) },
         { read: async () => ({ version: 1, revision: 0, testAgentPrompt: "隔离测试提示词" }) }, store, {},
       );
-      await store.registerSession("target", workspace, "empty", { provider: PROFILE_PREFIX + b.id, modelId: "same" });
+      await store.registerSession("target", workspace, "empty", { provider: "beta", modelId: "same" });
       await store.saveDraft("target", workspace, "保留输入", 0);
       const service = createSessionService(path.join(base, "sessions"), factory, () => workspace, undefined, store);
       await service.restoreUnsentSession("target");
       const restored = await service.getSession();
-      assert.equal(restored.sessionId, "target");assert.equal(restored.model.provider, PROFILE_PREFIX + b.id);
+      assert.equal(restored.sessionId, "target");assert.equal(restored.model.provider, "beta");
       assert.equal(restored.model.baseUrl, "https://b.example.invalid/v1");
       assert.ok((await restored.modelRuntime.getAuth(restored.model)).auth.apiKey === "placeholder-B");
       assert.equal(ready, 1);assert.deepEqual(restored.messages, []);

@@ -49,8 +49,9 @@ async function main() {
     dir, resume, file, workspace, { provider: "openai", modelId: "gpt-4", baseUrl: "https://example.invalid/v1" },
     undefined, undefined, undefined, { createUiContext: bridge.createContext, cancelUi: bridge.cancelSession, cancelPendingUi: bridge.cancelPending },
   ), () => cwd, async () => {});
-  const flow = { list: () => [], subscribe: () => () => {} };
-  registerAgentIpc(ipcMain, service, { isBusy: () => false }, {}, {}, {}, {}, {}, {}, { oauth: flow, enrichment: flow });
+  registerAgentIpc(ipcMain, service, { isBusy: () => false }, {}, {}, {}, {}, {}, {}, {
+    readConfiguration: async () => ({ modelsPath: path.join(agentDir, "models.json") }),
+  });
   let win, passed = 0;
   const errors = [], network = [];
   try {
@@ -134,7 +135,7 @@ async function main() {
     await run(`(async()=>{
       const {createSettingsPanel}=await import('./components/settings/settings-panel.js');
       const dialog=document.querySelector('#model-settings-dialog');
-      const api={...window.agent, readModelSettings:async()=>({profiles:[],providers:[],defaultProfileId:'',encryptionAvailable:true})};
+      const api={...window.agent, readModelConfiguration:async()=>({modelsPath:'/temporary/models.json'})};
       window.resources=createSettingsPanel(dialog,document.querySelector('#model-settings-button'),api,busy=>window.resources.setBusy(busy),async()=>{},text=>{if(window.rejectInsert)throw Error('请先核对输入');window.inserted=text});
       window.resources.setBusy(false);document.querySelector('#model-settings-button').click();
       document.querySelector('#settings-resources-tab').click();

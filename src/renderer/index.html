@@ -276,7 +276,7 @@
       <h2>设置</h2>
       <nav class="settings-categories" role="tablist" aria-label="设置分类" aria-orientation="vertical">
         <button type="button" id="settings-model-tab" class="settings-category" role="tab" data-settings-tab="model"
-          aria-selected="true" aria-controls="settings-model-panel">模型管理</button>
+          aria-selected="true" aria-controls="settings-model-panel">模型与供应商</button>
         <button type="button" id="settings-theme-tab" class="settings-category" role="tab" data-settings-tab="theme"
           aria-selected="false" aria-controls="settings-theme-panel" tabindex="-1">主题</button>
         <button type="button" id="settings-archive-tab" class="settings-category" role="tab" data-settings-tab="archive"
@@ -293,211 +293,47 @@
         <span class="model-manager-mark"><svg class="icon" aria-hidden="true">
             <use href="#icon-settings" />
           </svg></span>
-        <h2 id="model-settings-title">模型管理</h2>
+        <h2 id="model-settings-title">模型与供应商</h2>
       </div>
       <div class="model-manager-toolbar">
-        <span class="model-default-badge" data-default-label></span>
-        <button type="button" data-refresh-official title="刷新所选内置供应商的官方目录" disabled>刷新官方目录</button>
         <button type="button" data-close class="model-close-button" autofocus aria-label="关闭设置" title="关闭设置">×</button>
       </div>
     </header>
-    <div id="settings-model-panel" class="settings-layout" role="tabpanel" aria-labelledby="settings-model-tab">
-      <aside class="settings-navigation" aria-label="模型供应商">
-        <button type="button" class="model-add-provider" data-add-provider disabled><span aria-hidden="true">＋</span>
-          添加自定义服务商</button>
-        <div class="model-provider-groups">
-          <section aria-labelledby="custom-providers-title">
-            <h3 id="custom-providers-title">自定义服务商 <span data-custom-count></span></h3>
-            <nav data-custom-providers aria-label="自定义服务商"></nav>
-          </section>
-          <section aria-labelledby="builtin-providers-title">
-            <h3 id="builtin-providers-title">官方内置服务商 <span data-builtin-count></span></h3>
-            <nav data-builtin-providers aria-label="官方内置服务商"></nav>
-          </section>
+    <section id="settings-model-panel" class="model-providers settings-content" role="tabpanel" aria-labelledby="settings-model-tab">
+      <p id="model-settings-intro">使用 Pi 官方的 models.json 配置兼容接口；特殊协议和认证通过 Provider 扩展接入。</p>
+      <section>
+        <h3>自定义供应商</h3>
+        <p>配置文件：<code data-models-path></code></p>
+        <p>在文本编辑器中保存配置，然后重新读取。认证沿用 Pi 的环境变量、auth.json 或 models.json，不在页面回填密钥。</p>
+        <div class="model-provider-actions">
+          <button type="button" data-open-models disabled>打开 models.json</button>
+          <button type="button" data-reload-models disabled>重新读取模型</button>
         </div>
-      </aside>
-      <div class="settings-content">
-        <p id="model-settings-intro" class="sr-only">选择左侧服务商，在右侧编辑模型配置。已有对话保留自己的模型选择。</p>
-        <section class="new-profile-editor" aria-labelledby="provider-editor-title">
-          <form id="model-profile-form">
-            <fieldset disabled>
-              <legend class="sr-only">模型配置编辑</legend>
-              <div class="provider-editor-heading">
-                <div>
-                  <p class="model-eyebrow">服务商配置</p>
-                  <h3 id="provider-editor-title" data-editor-title>新增服务商</h3>
-                </div>
-                <div class="profile-actions">
-                  <button type="button" data-cancel-edit hidden>取消编辑</button>
-                  <button type="button" data-test-connection>测试连接</button>
-                  <button type="submit" class="model-save-button" disabled>保存</button>
-                </div>
-              </div>
-              <div class="model-settings-fields">
-                <div class="provider-kind-field">
-                  <label for="profile-kind">供应商类型</label>
-                  <select id="profile-kind" name="kind">
-                    <option value="builtin">内置目录</option>
-                    <option value="custom">自定义兼容接口</option>
-                  </select>
-                </div>
-                <div class="provider-name-field">
-                  <label for="profile-name">配置名称</label>
-                  <input id="profile-name" name="name" required maxlength="80" autocomplete="off" />
-                </div>
-                <fieldset data-builtin>
-                  <div><label for="profile-builtin-provider">供应商</label><select id="profile-builtin-provider"
-                      name="builtinProvider" required></select></div>
-                  <div><label for="profile-builtin-model">模型</label><select id="profile-builtin-model"
-                      name="builtinModelId" required></select></div>
-                </fieldset>
-                <fieldset data-custom hidden disabled>
-                  <div class="provider-id-field">
-                    <label for="profile-custom-provider">服务商 ID</label>
-                    <input id="profile-custom-provider" name="customProvider" required autocomplete="off"
-                      placeholder="如 my-proxy" />
-                  </div>
-                  <div class="provider-api-field">
-                    <label for="profile-api">API 类型</label>
-                    <select id="profile-api" name="api">
-                      <option value="openai-completions">OpenAI Chat Completions</option>
-                      <option value="openai-responses">OpenAI Responses</option>
-                      <option value="anthropic-messages">Anthropic Messages</option>
-                      <option value="google-generative-ai">Google Gemini</option>
-                    </select>
-                  </div>
-                  <section class="model-parameter-card" aria-labelledby="model-parameters-title">
-                    <div class="model-section-heading">
-                      <h4 id="model-parameters-title">模型参数</h4>
-                      <div class="profile-actions"><button type="button" data-fetch-models>获取模型列表</button><button
-                          type="button" data-show-enrichment>补参数</button></div>
-                    </div>
-                    <div class="model-identity-row">
-                      <div><label for="profile-custom-model">模型 ID</label><input id="profile-custom-model"
-                          name="customModelId" list="profile-model-options" required autocomplete="off"
-                          spellcheck="false" /><datalist id="profile-model-options"></datalist></div>
-                      <label class="model-checkbox"><input type="checkbox" name="vision" />图片输入</label>
-                      <label class="model-checkbox"><input type="checkbox" name="reasoning" />思考强度</label>
-                    </div>
-                    <div class="model-limits-row">
-                      <div><label for="profile-context">上下文窗口（tokens）</label><input id="profile-context"
-                          name="contextWindow" type="number" min="1" step="1" required /></div>
-                      <div><label for="profile-max-tokens">最大输出（tokens）</label><input id="profile-max-tokens"
-                          name="maxTokens" type="number" min="1" step="1" required /></div>
-                    </div>
-                  </section>
-                </fieldset>
-                <div class="provider-url-field">
-                  <label for="profile-base-url">baseUrl</label>
-                  <input id="profile-base-url" name="baseUrl" type="url" autocomplete="off" spellcheck="false"
-                    placeholder="https://api.example.com/v1" />
-                </div>
-                <div class="provider-auth-field">
-                  <label for="profile-auth">凭据来源</label>
-                  <select id="profile-auth" name="authMode">
-                    <option value="saved">输入并加密保存 API 密钥</option>
-                    <option value="sdk">已有的 SDK API 密钥</option>
-                    <option value="provider">供应商激活密钥</option>
-                    <option value="oauth">供应商 OAuth 登录</option>
-                  </select>
-                </div>
-                <div data-key class="provider-key-field">
-                  <label for="profile-key">API 密钥</label>
-                  <input id="profile-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"
-                    placeholder="已保存时，留空不修改" required />
-                </div>
-              </div>
-              <details class="model-environment-tools">
-                <summary>从启动配置填写</summary>
-                <button type="button" data-environment>读取 .env 配置</button>
-                <small data-environment-hint>只读取模型、供应商与地址，密钥不回填。</small>
-              </details>
-            </fieldset>
-          </form>
-        </section>
-        <fieldset data-saved-controls class="saved-profile-controls" disabled>
-          <legend>已保存模型</legend>
-          <div class="saved-model-heading">
-            <div><label for="saved-model-profiles">模型配置</label><select id="saved-model-profiles" data-profiles></select>
-            </div>
-            <div class="profile-actions"><button type="button" data-edit>编辑配置</button><button type="button"
-                data-clone>复制配置</button><button type="button" data-hide>移除配置</button></div>
-          </div>
-          <div class="saved-model-list" data-model-cards aria-label="当前服务商的模型配置"></div>
-          <p data-selected-info class="selected-profile-info"></p>
-          <div class="profile-actions"><button type="button" data-apply>用于当前对话</button><button type="button"
-              data-default>设为新对话默认</button><button type="button" data-clear-default>恢复原有默认</button><button type="button"
-              data-refresh-profile>刷新模型列表</button></div>
-          <p data-profile-catalog hidden></p>
-        </fieldset>
-        <details data-enrichment class="model-management-section">
-          <summary>模型参数补全</summary>
-          <div class="model-section-body">
-            <label for="enrichment-ids">模型编号（每行一个，留空使用正在编辑的模型）</label><textarea id="enrichment-ids" rows="2"
-              maxlength="30000"></textarea>
-            <label for="enrichment-hint">参考目录编号（可选，用于单个模型）</label><input id="enrichment-hint" autocomplete="off" />
-            <div class="profile-actions"><button type="button" data-enrich>从公开目录补全</button><button type="button"
-                data-cancel-enrich hidden>取消补全</button></div>
-            <p data-enrich-status role="status"></p>
-            <div data-enrich-results></div>
-          </div>
+        <details>
+          <summary>兼容接口配置示例</summary>
+          <pre tabindex="0" aria-label="models.json 配置示例">{
+  "providers": {
+    "my-provider": {
+      "baseUrl": "https://api.example.com/v1",
+      "api": "openai-completions",
+      "apiKey": "$MY_API_KEY",
+      "models": [{ "id": "my-model" }]
+    }
+  }
+}</pre>
+          <p>将地址、模型编号和环境变量名替换为实际值。models.json 同样支持 headers、modelOverrides 等官方字段。Provider 扩展放入 Pi 资源目录，修改后在聊天中执行 /reload。</p>
         </details>
-        <details data-catalog-tools class="model-management-section">
-          <summary>内置模型目录</summary>
-          <div class="model-section-body">
-            <label for="catalog-provider">供应商</label><select id="catalog-provider" data-catalog-provider></select>
-            <div class="profile-actions"><button type="button" data-refresh-builtin>刷新官方目录</button></div>
-            <details>
-              <summary>手动补充模型</summary>
-              <form data-append-model class="model-auxiliary-form">
-                <div><label for="catalog-model-id">模型编号</label><input id="catalog-model-id" name="modelId" required
-                    autocomplete="off" /></div>
-                <div><label for="catalog-api">接口协议</label><select id="catalog-api" name="api">
-                    <option value="openai-completions">OpenAI Chat Completions</option>
-                    <option value="openai-responses">OpenAI Responses</option>
-                    <option value="anthropic-messages">Anthropic Messages</option>
-                    <option value="google-generative-ai">Google Gemini</option>
-                  </select></div>
-                <div><label for="catalog-context">上下文窗口</label><input id="catalog-context" name="contextWindow"
-                    type="number" min="1" step="1" required /></div>
-                <div><label for="catalog-max-tokens">最大输出 tokens</label><input id="catalog-max-tokens" name="maxTokens"
-                    type="number" min="1" step="1" required /></div>
-                <label class="model-checkbox"><input name="reasoning" type="checkbox" />支持思考强度</label><label
-                  class="model-checkbox"><input name="vision" type="checkbox" />支持图片输入</label>
-                <button type="submit">补充到目录</button>
-              </form>
-            </details>
-            <p data-catalog-status role="status"></p>
-          </div>
-        </details>
-        <details data-provider-auth class="model-management-section">
-          <summary>供应商凭据与 OAuth</summary>
-          <div class="model-section-body">
-            <label for="auth-provider">供应商</label><select id="auth-provider" data-auth-provider></select>
-            <p data-auth-status role="status"></p>
-            <div data-provider-keys></div>
-            <form class="model-auxiliary-form">
-              <div><label for="provider-key-name">密钥名称</label><input id="provider-key-name" name="keyName"
-                  maxlength="80" required autocomplete="off" /></div>
-              <div><label for="provider-key-value">API 密钥</label><input id="provider-key-value" name="key"
-                  type="password" required autocomplete="new-password" /></div>
-              <button type="submit">添加命名密钥</button>
-            </form>
-            <div class="profile-actions"><button type="button" data-login>OAuth 登录</button><button type="button"
-                data-logout>退出 OAuth 登录</button><button type="button" data-refresh-auth>刷新认证状态</button></div>
-            <div data-oauth-flow aria-live="polite"></div>
-          </div>
-        </details>
-        <section class="model-management-section model-thinking-section" data-thinking>
-          <div>
-            <h3>当前对话的思考强度</h3>
-            <p data-thinking-status role="status"></p>
-          </div>
-          <div><label for="model-thinking-level" class="sr-only">思考强度</label><select id="model-thinking-level"
-              disabled></select></div>
-        </section>
-      </div>
-    </div>
+      </section>
+      <section>
+        <h3>当前对话</h3>
+        <p data-current-model></p>
+        <p>通过聊天输入框右下角切换可用模型；不同供应商的模型会分组显示。</p>
+        <button type="button" data-default-model disabled>设为新对话默认</button>
+        <label for="model-thinking-level">思考强度</label>
+        <select id="model-thinking-level" disabled></select>
+      </section>
+      <p data-provider-status role="status" aria-atomic="true"></p>
+    </section>
     <section id="settings-theme-panel" class="theme-settings" data-theme-panel role="tabpanel"
       aria-labelledby="settings-theme-tab" hidden>
       <div>
@@ -563,10 +399,7 @@
       <textarea id="prompt-current" rows="8" readonly></textarea>
       <p data-prompt-current-info role="status" aria-atomic="true"></p>
     </section>
-    <footer class="model-manager-feedback">
-      <p data-model-status role="status" aria-atomic="true">尚未读取配置。</p><button type="button" data-retry
-        hidden>重新读取</button>
-    </footer>
+
   </dialog>
   <dialog id="project-rename-dialog" class="project-rename-dialog" aria-labelledby="project-rename-title">
     <form novalidate>

@@ -43,7 +43,7 @@ async function main() {
     currentSession: async () => "a", loadHistory: async () => [{ role: "user", text: "原聊天内容" }],
     listSessions: async () => sessions, listUnsentSessions: async () => [],
     getSessionInfo: async () => ({ sessionId: "a", workspaceDir: workspace, provider: "test", modelId: "mock", contextUsage: null }),
-    listModelProfiles: async () => ({ currentProfileId: "mock", profiles: [{ id: "mock", name: "原模型", provider: "test", modelId: "mock" }] }),
+    listModels: async () => ({ provider: "test", modelId: "mock", models: [{ id: "mock", name: "原模型", provider: "test" }] }),
   };
   const chat = {
     isBusy: () => generating, listProposals: async () => [{ id: "file" }],

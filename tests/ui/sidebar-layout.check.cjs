@@ -40,9 +40,8 @@ async function main() {
       return projects;
     }
     if (name === "getSessionInfo") return { sessionId: current, workspaceDir: "/demo/a", provider: "demo", modelId: "demo", contextUsage: null };
-    if (name === "listModelProfiles") return { currentProfileId: "demo", profiles: [{ id: "demo", name: "演示模型", provider: "demo", modelId: "demo" }] };
-    if (name === "readModelSettings") return { profiles: [{ id: "demo", name: "演示模型", kind: "custom", provider: "demo", modelId: "demo-model", baseUrl: "https://example.invalid/v1", authMode: "saved", hasSavedKey: true, api: "openai-completions", contextWindow: 32000, maxTokens: 2000 }], providers: [], defaultProfileId: "demo", encryptionAvailable: true };
-    if (name === "fetchModelCatalog") return ["model-a", "model-b"];
+    if (name === "listModels") return { provider: "demo", modelId: "demo", models: [{ id: "demo", name: "演示模型", provider: "demo" }] };
+    if (name === "readModelConfiguration") return { modelsPath: "/demo/pi/models.json" };
     if (name === "loadComposerDraft") return getDraft();
     if (name === "inspectComposerSend") return { ...getDraft(), pendingSend: null };
     if (name === "saveComposerDraft") {
@@ -103,14 +102,7 @@ async function main() {
     await click("#session-search-toggle");
     await click("#model-settings-button");
     await wait(`document.getElementById('model-settings-dialog').open&&document.getElementById('model-settings-dialog').getAttribute('aria-busy')==='false'`);
-    await check("设置左侧纵向显示模型管理、主题与已归档", `document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'&&document.querySelector('#settings-theme-tab').textContent.trim()==='主题'&&document.querySelector('#model-settings-dialog [data-profiles]')!==null&&document.querySelector('#settings-archive-tab').textContent.trim()==='已归档的聊天'&&document.querySelector('[role=tablist]').getAttribute('aria-orientation')==='vertical'`);
-    await click("[data-edit]");
-    await check("编辑加载非敏感字段，密钥留空并保留默认配置", `document.querySelector('#profile-name').value==='演示模型'&&document.querySelector('#profile-custom-model').value==='demo-model'&&document.querySelector('#profile-key').value===''&&!document.querySelector('#profile-key').required&&document.querySelector('[data-hide]').disabled`);
-    await click("[data-cancel-edit]");
-    await run(`const form=document.querySelector('#model-settings-dialog form');form.elements.kind.value='custom';form.elements.kind.dispatchEvent(new Event('change'));form.elements.baseUrl.value='https://example.invalid/v1';form.elements.apiKey.value='example-key';`);
-    await click("[data-fetch-models]");
-    await wait(`document.querySelectorAll('#profile-model-options option').length===2`);
-    await check("获取模型列表可用于选择且状态不显示密钥", `document.querySelector('#profile-model-options option').value==='model-a'&&!document.querySelector('#model-settings-dialog [role=status]').textContent.includes('example-key')`);
+    await check("设置左侧纵向显示模型、主题与已归档，模型页使用官方配置入口", `document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'&&document.querySelector('#settings-theme-tab').textContent.trim()==='主题'&&document.querySelector('[data-open-models]')!==null&&!document.querySelector('#model-profile-form')&&document.querySelector('#settings-archive-tab').textContent.trim()==='已归档的聊天'&&document.querySelector('[role=tablist]').getAttribute('aria-orientation')==='vertical'`);
     await click("#model-settings-dialog [data-close]");
     await check("关闭设置返回入口", `!document.getElementById('model-settings-dialog').open&&document.activeElement.id==='model-settings-button'`);
     win.setSize(390, 700);

@@ -15,19 +15,9 @@ const {
   BrowserWindow,
   ipcMain,
   dialog,
-  safeStorage,
   shell,
 } = require("electron");
-const {
-  createModelSettingsStore,
-} = require("./storage/model-settings-store.js");
-const {
-  createModelSettingsService,
-} = require("./services/model-settings-service.js");
-const { createModelCatalogStore } = require("./storage/model-catalog-store.js");
-const {
-  createModelCredentialsStore,
-} = require("./storage/model-credentials-store.js");
+const { createModelProviderService } = require("./services/model-provider-service.js");
 const path = require("node:path");
 const { loadEnvFile } = require("node:process");
 const { createSessionService } = require("./services/session-service.js");
@@ -65,40 +55,7 @@ try {
   if (error.code !== "ENOENT") throw error;
 }
 
-const modelSettingsStore = createModelSettingsStore(
-  path.join(app.getPath("userData"), "model-settings.json"),
-  {
-    isEncryptionAvailable: () =>
-      safeStorage.isEncryptionAvailable() &&
-      (process.platform !== "linux" ||
-        safeStorage.getSelectedStorageBackend() !== "basic_text"),
-    encryptString: (value) => safeStorage.encryptString(value),
-    decryptString: (value) => safeStorage.decryptString(value),
-  },
-);
-const modelCredentialsStore = createModelCredentialsStore(
-  path.join(app.getPath("userData"), "model-credentials.json"),
-  {
-    isEncryptionAvailable: () => modelSettingsStore.canEncrypt(),
-    encryptString: (value) => safeStorage.encryptString(value),
-    decryptString: (value) => safeStorage.decryptString(value),
-  },
-);
-const modelSettingsService = createModelSettingsService(
-  modelSettingsStore,
-  undefined,
-  {
-    catalogStore: createModelCatalogStore(
-      path.join(app.getPath("userData"), "model-catalogs"),
-    ),
-    credentialsStore: modelCredentialsStore,
-    openExternal: (url) => shell.openExternal(url),
-  },
-);
-app.on("will-quit", () => {
-  modelSettingsService.oauth.dispose();
-  modelSettingsService.enrichment.dispose();
-});
+const modelProviderService = createModelProviderService(file => shell.openPath(file));
 
 const { createExtensionUiBridge } = require("./resources/extension-ui-bridge.js");
 const extensionUi = createExtensionUiBridge();
@@ -119,7 +76,7 @@ async function createConfiguredAgent(
   const { createDesktopPiOptions } = require("./resources/desktop-pi-options.js");
   return createPiAgent(
     sessionDir, resume, sessionPath, workspaceDir,
-    modelSettingsService, recovery, resumeOptions,
+    undefined, recovery, resumeOptions,
     { promptSettingsStore, sessionStateStore },
     {
       ...createDesktopPiOptions(dialog, () => app.quit()),
@@ -258,7 +215,7 @@ registerAgentIpc(
   workspaceSelectionService,
   projectService,
   composerDraftService,
-  modelSettingsService,
+  modelProviderService,
   promptSettingsStore,
 );
 

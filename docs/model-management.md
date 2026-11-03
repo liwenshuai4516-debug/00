@@ -1,58 +1,56 @@
-# 模型与供应商管理
+# 模型与供应商
 
-设置入口位于侧栏底部；历史对话可收起到“最近”，搜索时自动展开。设置只包含模型相关功能，沿用原生 DOM、Electron IPC 与现有深色样式，没有引入新框架。
+按 Pi `v1.4.0` 的 [Custom Providers](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/custom-provider.md) 与 [Models](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/models.md) 接入。兼容已有协议的接口使用 `models.json`；动态模型发现、特殊认证和自定义流式协议使用 Provider 扩展。沿用 Electron、原生 DOM、现有设置分类及主题配色。
 
-模型管理布局按参考图调整为顶部工具栏、左侧供应商导航、右侧配置表单和模型参数卡片。自定义供应商按 ID 分组，点击供应商或模型卡片只选择编辑对象；保存、应用到当前对话和设置默认仍是独立操作。凭据、目录与参数补全收在对应折叠区；窄窗口将供应商列表改为横向滚动，表单保持独立滚动。页面背景、控件和边框全部使用现有主题变量。
+## 配置与使用
 
-## 使用与数据语义
+设置 → 模型与供应商：
 
-- 内置目录读取 Pi 1.4 的供应商和模型；自定义接口支持 OpenAI Chat Completions、Responses、Anthropic Messages 和 Google Gemini。自定义模型的上下文窗口、输出上限、思考与图片能力可手工填写。
-- 新增、编辑、复制、移除配置，以及切换当前对话模型、设置新对话默认、恢复原有默认。编辑生成新编号并保留旧快照；移除仅隐藏配置，已有对话仍按原编号恢复。编辑时密钥留空保留原密钥，页面从不回填已存密钥。
-- 供应商可以保存多个命名密钥，选择激活项、删除。删除当前密钥后停止使用，不自动选择其他项。凭据来源“使用供应商激活密钥”的配置按请求读取激活项；单套配置独立保存的密钥不受该操作影响。
-- OAuth 支持 SDK 提供的登录链接、设备码、文本/秘密/选项/手工授权码提示、回复、取消和退出。关闭设置不取消登录，重开恢复当前流程；退出应用取消未完成流程。不同配置共用同一供应商的 OAuth 凭据和 SDK 刷新锁，不复制临时访问令牌。
-- 获取/测试模型列表与刷新已保存配置的目录支持原地址留空密钥探测、404 回退和超时。改变地址后必须显式输入密钥才能探测。测试成功仅表示模型列表可读，不证明推理、权限或额度可用。
-- 官方目录通过 SDK 显式刷新；手工补充内置模型保存在本地目录中。刷新合并保留已有参数，不覆盖已保存配置快照。
-- 参数补全读取 OpenRouter 和 models.dev 公开目录，显示来源、匹配编号、歧义和进度，可取消。可填写明确的参考目录编号；只向当前模型表单的空白字段补充，手工修改的能力选项不会被覆盖。未知参数不填零，不自动保存或切换模型。
-- 思考强度限定当前模型支持的档位，写入当前会话，不更改全局默认。
+1. “打开 models.json”打开官方目录的配置文件；首次不存在时创建空 `providers`，不覆盖已有文件。目录由 `getAgentDir()` 决定，默认 `~/.pi/agent`，可由 `PI_CODING_AGENT_DIR` 指定。
+2. 在文本编辑器中保存，然后点击“重新读取模型”。页面提供兼容接口的折叠示例。字段、环境变量引用与命令取值均遵循官方格式，建议用 `$YOUR_API_KEY` 引用已有环境变量。
+3. 聊天输入框右下角选择当前模型。目录使用官方 `ModelRuntime.getAvailable()`，按供应商分组，以供应商和模型 ID 区分同名模型。
+4. “设为新对话默认”通过官方 `SettingsManager` 保存当前选择；思考强度只调整当前对话。
 
-旧的 V1/V2 `model-settings.json` 继续读取；首次成功修改时才升级旧记录。原有 SDK 凭据可继续使用。没有隐式导入来源项目的明文配置、覆盖 `.env` 或移动历史会话。
+Provider 扩展放入官方资源目录或受信任项目，通过扩展工厂的 `registerProvider` 登记；异步工厂在启动选择模型前完成。修改扩展后在聊天中执行 `/reload`。普通“重新读取模型”只刷新模型运行时，不重新执行扩展工厂。特殊协议实现、原生 Provider、虚拟模型及认证契约见官方文档，不再额外维护桌面私有格式。此页不提供自建 OAuth 登录流程；已有 Pi 环境变量、`auth.json` 与 `models.json` 认证由官方运行时解析。
 
-## 代码归类
+新对话选择优先级为：官方设置中的默认供应商和模型 → `.env` 的 `PI_PROVIDER`/`PI_MODEL` → SDK 自动选择。两个环境字段可以同时留空。恢复对话优先使用历史或可信空会话登记中的供应商与模型，默认设置不会覆盖它们。`.env` 的 `PI_BASE_URL` 仅作为未在 `models.json` 登记供应商的地址后备；官方配置和 Provider 扩展可覆盖该后备。
 
-- `src/main/storage/model-settings-store.js`：配置快照、默认项、隐藏状态、目录元信息。
-- `src/main/storage/model-catalog-store.js`：独立保存 SDK 官方目录快照，重启恢复，不读取个人 `models.json`。
-- `src/main/storage/model-credentials-store.js`：命名密钥与 OAuth 凭据，系统加密、串行写入和原子发布。文件位于 `userData/model-credentials.json`，不向页面返回明文或密文。
-- `src/main/model/`：目录探测、参数补全、OAuth 流程与运行时凭据适配。
-- `src/main/services/model-settings-service.js`：模型管理业务组装。
-- `src/main/ipc/model-ipc.js`：固定接口白名单、共用操作互斥、按窗口管理事件订阅；由现有 `agent-ipc.js` 注册。
-- `src/renderer/components/model/`：供应商导航、凭据、目录、补全局部交互；现有 `model-settings-panel.js` 负责组装。样式仍在 `src/renderer/styles/model-settings.css`。
+页面只接收官方配置路径、模型编号、名称及必要会话信息，不读取或回填配置原文与密钥。文件路径由主进程固定生成。重读、切换、设默认及思考强度共用现有操作互斥；切换报错后重新读取 SDK 的实际选择。配置损坏时仍可通过设置打开文件修正。
+
+## 旧实现移除
+
+已删除应用私有的配置档案、复制/隐藏快照、命名密钥、OAuth 流程、目录探测和参数补全，以及对应存储、IPC、组件与专项测试。旧的 `model-settings.json`、`model-credentials.json` 和 `model-catalogs` 不再读取，不自动迁移或删除用户文件；`.env` 与正式聊天历史不改写。
+
+历史中由旧实现生成的 `desktop-profile-*` 是私有供应商 ID。若官方目录中未登记该 ID，恢复会明确报模型不可用，不自动换成默认模型。需要在官方配置中登记历史使用的供应商 ID 和模型，或新建对话；不保留旧配置服务来暗中恢复凭据。
+
+## 代码位置
+
+- `src/main/pi-agent.mjs`：官方运行时、扩展模型登记、启动与历史选择。
+- `src/main/services/model-provider-service.js`：官方配置文件入口，首次安全创建。
+- `src/main/services/session-service.js`：可用模型、切换、刷新、默认和思考强度。
+- `src/main/ipc/model-ipc.js`、`src/preload/preload.js`：有限接口与共用互斥。
+- `src/renderer/components/settings/model-providers.js`：设置页；`components/model-selector.js`：当前模型选择。
+- `src/renderer/styles/model-settings.css`：设置外框与模型页样式。
 
 ## 验证
 
-针对性单元/真实 SDK 初始化检查：
-
 ```bash
-node --test tests/unit/model-settings.test.js tests/unit/model-profiles.test.js \
-  tests/unit/model-settings-env.test.js tests/unit/model-catalog-fetch.test.js \
-  tests/unit/model-catalog-store.test.js \
-  tests/unit/model-credentials.test.js tests/unit/model-runtime-credentials.test.js \
-  tests/unit/model-oauth.test.js tests/unit/model-enrichment.test.js \
-  tests/unit/model-ipc.test.js tests/unit/model-thinking.test.js \
-  tests/unit/model-switch.test.js tests/unit/model-list.test.js \
-  tests/unit/model-restore.test.js tests/unit/pi-agent-init.test.js \
-  tests/unit/session-info.test.js tests/unit/agent-ipc.test.js
+node --require ./tests/helpers/pi-test-isolation.cjs --test \
+  tests/unit/custom-providers.test.js tests/unit/model-provider-service.test.js \
+  tests/unit/model-config.test.js tests/unit/model-ipc.test.js \
+  tests/unit/model-list.test.js tests/unit/model-switch.test.js \
+  tests/unit/model-thinking.test.js tests/unit/model-restore.test.js \
+  tests/unit/pi-agent-init.test.js tests/unit/session-info.test.js \
+  tests/unit/agent-ipc.test.js tests/unit/registration-sync.test.js \
+  tests/unit/composer-registration.test.js tests/unit/empty-session-rebuild.test.js \
+  tests/unit/unsent-session-service.test.js tests/unit/pi-native-runtime.test.js
+node_modules/.bin/electron tests/ui/model-providers.check.cjs
+node_modules/.bin/electron tests/ui/sidebar-layout.check.cjs
+node_modules/.bin/electron tests/ui/theme-settings.check.cjs
 ```
 
-实际 Electron 页面、预加载和 IPC 接线：
+SDK 专项使用临时配置、会话与本地 HTTP/SSE 服务，覆盖官方配置优先级、跨供应商同名模型、历史恢复、异步 Provider 扩展、重读、坏配置、增量回复、原生 write 工具落盘和 SDK 取消结果。页面专项覆盖新入口、旧接口移除、操作互斥、错误后实际选择、配置修复、迟到响应和深色/樱粉下的宽窄布局。自动测试不读取真实 `.env`、个人资源或聊天历史，不请求外部模型。
 
-```bash
-./node_modules/.bin/electron tests/ui/model-management.check.cjs
-./node_modules/.bin/electron tests/ui/sidebar-layout.check.cjs
-./node_modules/.bin/electron tests/ui/window-close-page.check.cjs
-```
+2026-11-03 经用户明确授权，另在临时官方 `models.json` 中登记 `acceptance-custom`，使用 `.env` 中已有的 `deepseek/deepseek-flash` 模型信息和进程内认证，真实请求收到 5 段文本增量。未将密钥写入配置，未读取正式历史或修改正式 Pi 配置。随后使用下述脚本再次通过自定义供应商完成真实流式回复、read/write/edit/bash 临时文件操作、主动停止与子进程退出。以上结果不代表所有供应商、OAuth 或协议均已验收。需再次授权真实请求时，可手动运行 `node_modules/.bin/electron scripts/verify-pi-live.cjs` 检查同一路径及原生工具；不属于默认自动测试。
 
-页面专项使用临时配置、系统加密和模拟服务商，验证编辑、复制、默认、密钥增删激活、授权提示/重开/回复/取消/退出、参数补全、目录刷新、思考强度、聊天输入保留及宽窄布局。真实 SDK 专项验证动态密钥、恢复和并发 OAuth 刷新，供应商刷新实现由本地替身提供。测试不读取个人 `.env`、SDK 配置或真实会话，不请求付费模型；真实供应商登录和推理不在本轮自动验收结论内。
-
-2026-11-02 收尾：仅含 HEAD 与本次功能的精确副本通过 59 项单元/SDK 检查、模型管理 13 项、侧栏 35 项、正常关闭 14 项页面检查及 36 个脚本语法检查。已查看 1280/390 宽度设置截图。原工作区无关的格式、视觉和业务改动保留，未计入该提交的验收结论。
-
-2026-11-02 布局更新：实际工作区与仅含最新提交及本次布局改动的副本均通过模型管理 23 项、侧栏 35 项、正常关闭 14 项页面检查；4 个修改脚本语法检查通过。额外核对供应商与模型卡片选择不隐式保存或切换会话、顶部目录刷新保留模型选择、主题背景变量，以及 1280/800/390 宽度布局截图。本轮只调整渲染层布局与对应导航接线，没有新增后台接口或框架。
+本次相关的 83 项单元/SDK 检查通过；Electron 模型页 20、侧栏 37、主题 42、上下文 19、未发送会话 19、关闭 14、扩展桌面 16、归档 17、置顶 19、项目重命名 16 项通过。页面结果使用模拟或临时业务数据，与上述真实模型验证分别记录。

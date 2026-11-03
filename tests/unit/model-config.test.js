@@ -21,7 +21,6 @@ test("清理模型配置两端的普通空格和不换行空格", () => {
 
 test("缺少或只有空白的供应商、模型返回明确错误", () => {
   const cases = [
-    {},
     { PI_MODEL: "model" },
     { PI_PROVIDER: "provider" },
     { PI_PROVIDER: " ", PI_MODEL: "model" },
@@ -30,7 +29,7 @@ test("缺少或只有空白的供应商、模型返回明确错误", () => {
 
   for (const env of cases) {
     assert.throws(() => readModelConfig(env), {
-      message: "请在 .env 中配置 PI_PROVIDER 和 PI_MODEL。",
+      message: "请同时配置 PI_PROVIDER 和 PI_MODEL，或均留空使用 Pi 默认模型。",
     });
   }
 });
@@ -86,4 +85,8 @@ test("拒绝相对地址、缺少协议和非 HTTP 协议", () => {
       },
     );
   }
+});
+
+test("未设置启动模型时交给 Pi 默认模型选择", () => {
+  assert.deepEqual(readModelConfig({}), { provider: "", modelId: "", baseUrl: "" });
 });

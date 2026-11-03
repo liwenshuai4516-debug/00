@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import {
   createAgentSession,
   ModelRuntime,
@@ -22,15 +24,13 @@ export async function createPiAgent(
   resume = false,
   sessionPath,
   workspaceDir = process.env.AGENT_WORKSPACE_DIR,
-  modelSettings,
+  modelOptions,
   recovery,
   resumeOptions,
   promptOptions,
   resourceOptions,
 ) {
-  const managed = typeof modelSettings?.resolveSelection === "function";
-  // 保留原四参数和旧配置对象调用，独立初始化检查仍在创建目录前校验。
-  const legacyConfig = managed ? null : (modelSettings ?? readModelConfig());
+  const startupModel = modelOptions ?? readModelConfig();
 
   // 目录检查、会话恢复和目录绑定统一交给新模块处理。
   const { workspaceRoot, sessionManager, source } =
@@ -102,29 +102,34 @@ export async function createPiAgent(
           .findLast((entry) => entry.type === "model_change") ??
         sessionManager.buildSessionContext().model);
 
-  const runtime =
-    managed && modelSettings.createRuntime
-      ? await modelSettings.createRuntime()
-      : await ModelRuntime.create();
-  let model;
-  if (managed) {
-    const profile = await modelSettings.resolveSelection(savedSelection);
-    const { installModelProfile } = await import("./model-profile-runtime.mjs");
-    model = await installModelProfile(runtime, profile);
-  } else {
-    const { provider, modelId, baseUrl, apiKey } = legacyConfig;
-    if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey);
-    if (baseUrl) runtime.registerProvider(provider, { baseUrl });
-    if (savedSelection && savedSelection.provider !== provider) {
-      throw new Error(
-        "会话模型属于其他供应商，请恢复对应供应商配置或新建对话。",
-      );
+  // 模型、凭据和 models.json 均由 Pi 官方运行时读取，不再建立应用配置档案。
+  const runtime = await ModelRuntime.create();
+  if (startupModel.apiKey) await runtime.setRuntimeApiKey(startupModel.provider, startupModel.apiKey);
+  if (runtime.getError()) throw new Error("Pi 模型配置加载失败，请检查 models.json 和认证配置。");
+  if (startupModel.baseUrl) {
+    let providers = {};
+    try {
+      providers = JSON.parse(await readFile(path.join(agentDir, "models.json"), "utf8")).providers ?? {};
+    } catch (error) {
+      if (error.code !== "ENOENT") throw new Error("Pi 模型配置加载失败，请检查 models.json。");
     }
-    const selectedModelId = savedSelection?.modelId ?? modelId;
-    model = runtime.getModel(provider, selectedModelId);
-    if (!model)
-      throw new Error(`Pi 未找到模型：${provider}/${selectedModelId}。`);
+    // .env 仅作后备，不能覆盖用户已在官方配置中登记的供应商。
+    if (!Object.hasOwn(providers, startupModel.provider)) runtime.registerProvider(startupModel.provider, { baseUrl: startupModel.baseUrl });
   }
+  // SDK 在 AgentSession 构造时绑定扩展；先用公开登记 API 解析工厂排队的模型，避免启动时回退到其他模型。
+  const extensions = resourceLoader.getExtensions().runtime;
+  for (const { name, config } of extensions.pendingProviderRegistrations) runtime.registerProvider(name, config);
+  for (const { provider } of extensions.pendingNativeProviderRegistrations) runtime.registerNativeProvider(provider);
+  for (const { definition } of extensions.pendingVirtualModelRegistrations) runtime.registerVirtualModel(definition);
+  await runtime.refresh({ allowNetwork: false });
+  if (runtime.getError()) throw new Error("Pi 模型配置加载失败，请检查 models.json 和 Provider 扩展。");
+  const defaultProvider = settingsManager.getDefaultProvider();
+  const defaultModel = settingsManager.getDefaultModel();
+  const selection = savedSelection ?? (defaultProvider && defaultModel
+    ? { provider: defaultProvider, modelId: defaultModel }
+    : startupModel.provider && startupModel.modelId ? startupModel : undefined);
+  const model = selection ? runtime.getModel(selection.provider, selection.modelId) : undefined;
+  if (selection && !model) throw new Error(`Pi 未找到模型：${selection.provider}/${selection.modelId}。请检查 models.json 或 Provider 扩展。`);
 
   // 不传 tools/customTools：沿用 Pi 的默认工具及 defaultTools 配置。
   const { session } = await createAgentSession({
@@ -161,12 +166,10 @@ export async function createPiAgent(
   // 只在主进程保留本会话的实际快照，页面通过专用接口读取必要字段。
   if (promptSnapshot) session.desktopPromptSnapshot = promptSnapshot;
 
-  // 仅主进程持有配置服务；不把密钥或服务对象返回页面。
-  if (managed) session.desktopModelSettings = modelSettings;
   if (!resourceOptions?.runtimeTarget) {
     try {
       await bindDesktopRuntime(session, (target) => createPiAgent(
-        sessionDir, false, undefined, target.cwd, modelSettings, undefined, undefined,
+        sessionDir, false, undefined, target.cwd, modelOptions, undefined, undefined,
         promptOptions, { ...resourceOptions, runtimeTarget: target },
       ), resourceOptions);
     } catch (error) {

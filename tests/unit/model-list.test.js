@@ -4,22 +4,22 @@ const {
   createSessionService,
 } = require("../../src/main/services/session-service.js");
 
-test("读取当前供应商模型目录，只返回页面需要的字段", async () => {
+test("读取当前供应商模型目录，只返回页面需要的字段，支持跨供应商目录", async () => {
   const catalog = [
     {
+      provider: "deepseek",
       id: "deepseek-flash",
       name: "DeepSeek Flash",
       baseUrl: "https://example.invalid",
       internalData: "不返回页面",
     },
-    { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { provider: "another", id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
   ];
   let creations = 0;
   const session = {
     model: { provider: "deepseek", id: "deepseek-flash" },
     modelRuntime: {
-      getModels(provider) {
-        assert.equal(provider, "deepseek");
+      async getAvailable() {
         return catalog;
       },
     },
@@ -35,8 +35,8 @@ test("读取当前供应商模型目录，只返回页面需要的字段", async
     provider: "deepseek",
     modelId: "deepseek-flash",
     models: [
-      { id: "deepseek-flash", name: "DeepSeek Flash" },
-      { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+      { id: "deepseek-flash", name: "DeepSeek Flash", provider: "deepseek" },
+      { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", provider: "another" },
     ],
   };
 
@@ -51,19 +51,12 @@ test("读取当前供应商模型目录，只返回页面需要的字段", async
   assert.equal(creations, 1);
 });
 
-test("当前会话没有模型时返回明确错误", async () => {
+test("尚未选择模型时仍可列出已配置模型供首次选择", async () => {
   const service = createSessionService("unused", async () => ({
     model: undefined,
-    modelRuntime: {
-      getModels() {
-        assert.fail("没有当前模型时不能读取目录");
-      },
-    },
+    modelRuntime: { getAvailable: async () => [] },
   }));
-
-  await assert.rejects(service.listModels(), {
-    message: "当前会话尚未选择模型。",
-  });
+  assert.deepEqual(await service.listModels(), { provider: "", modelId: "", models: [] });
 });
 test("模型列表 IPC 不转发页面指定的供应商或会话", async () => {
   const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");

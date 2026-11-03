@@ -1,8 +1,7 @@
-/* 模型管理采用工具栏、供应商导航和编辑区布局；颜色全部来自应用主题。 */
+/* 设置弹窗沿用应用主题；模型页仅提供 Pi 官方配置入口。 */
 .model-settings-dialog {
-  --model-navigation-width: 252px;
-  width: min(1440px, calc(100vw - 32px));
-  height: min(960px, calc(100dvh - 32px));
+  width: min(1100px, calc(100vw - 32px));
+  height: min(860px, calc(100dvh - 32px));
   max-width: none;
   max-height: calc(100dvh - 32px);
   padding: 0;
@@ -12,124 +11,35 @@
   color: var(--text);
   background: var(--page);
 }
-.model-settings-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.model-settings-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .model-settings-dialog::backdrop { background: color-mix(in srgb, var(--page) 75%, transparent); }
 .model-settings-dialog [hidden] { display: none !important; }
 .model-manager-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--page); }
 .model-manager-brand, .model-manager-toolbar { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.model-manager-brand h2 { margin: 0; white-space: nowrap; font-size: 20px; font-weight: 600; }
+.model-manager-brand h2 { margin: 0; font-size: 20px; font-weight: 600; }
 .model-manager-mark { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius); background: var(--surface); }
-.model-default-badge { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--muted); }
-.model-default-badge:empty { display: none; }
 .model-settings-dialog .model-close-button { width: 44px; padding: 0; border: 0; font-size: 26px; background: transparent; }
-.settings-layout { display: grid; grid-template-columns: var(--model-navigation-width) minmax(0, 1fr); min-height: 0; }
-.settings-navigation { display: flex; flex-direction: column; min-height: 0; padding: 16px 10px; border-right: 1px solid var(--border); background: var(--sidebar); }
-.model-settings-dialog .model-add-provider { flex: 0 0 auto; width: 100%; margin-bottom: 20px; color: var(--on-primary); background: var(--primary); border-color: var(--primary); font-weight: 600; }
-.model-settings-dialog .model-add-provider:hover:not(:disabled) { background: var(--primary-hover); }
-.model-provider-groups { min-height: 0; overflow: auto; scrollbar-gutter: stable; }
-.model-provider-groups section + section { margin-top: 24px; }
-.model-provider-groups h3 { margin: 0; padding: 4px 10px 12px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.model-provider-groups nav { display: grid; gap: 4px; }
-.model-settings-dialog .model-provider-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; text-align: left; }
-.model-provider-item::before { content: ""; flex: 0 0 6px; height: 6px; border-radius: 50%; background: var(--muted); }
-.model-provider-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.model-provider-item small { flex-shrink: 0; margin-left: auto; color: var(--muted); font-size: 12px; }
-.model-settings-dialog .model-provider-item[aria-current="true"] { border-color: var(--border); background: var(--hover); color: var(--text); }
-.model-provider-item[aria-current="true"]::before { background: var(--text); }
-.model-provider-empty { padding: 0 10px; }
-.settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 24px; scrollbar-gutter: stable; }
+.settings-content { min-width: 0; min-height: 0; overflow: auto; padding: 24px; }
 .model-settings-dialog p { margin: 8px 0; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
-.model-settings-dialog h3, .model-settings-dialog h4 { margin: 0; font-size: 16px; font-weight: 600; }
+.model-settings-dialog h3 { margin: 0; font-size: 16px; font-weight: 600; }
 .model-settings-dialog fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-.new-profile-editor, .model-settings-dialog .saved-profile-controls, .model-management-section { min-width: 0; margin: 0 0 20px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--page); }
-.provider-editor-heading, .model-section-heading, .saved-model-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-.model-settings-dialog .model-eyebrow { margin: 0 0 4px; font-size: 12px; }
-.model-settings-dialog #provider-editor-title { font-size: 18px; overflow-wrap: anywhere; }
-.model-settings-dialog .profile-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .model-settings-dialog button { min-height: 44px; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
-.model-settings-dialog .model-save-button { color: var(--on-primary); background: var(--primary); border-color: var(--primary); font-weight: 600; }
-.model-settings-dialog .model-save-button:hover:not(:disabled) { background: var(--primary-hover); }
-.model-settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-.model-settings-fields > div, .model-settings-fields [data-custom] > div { min-width: 0; }
-.model-settings-fields [data-custom] { display: contents; }
-.model-settings-fields [data-builtin] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-column: 1 / -1; gap: 20px; order: 3; }
-.provider-kind-field { order: 1; }
-.provider-name-field { order: 2; }
-.provider-id-field { order: 3; }
-.provider-api-field { order: 4; }
-.provider-url-field { order: 5; }
-.provider-auth-field { order: 6; }
-.provider-key-field { order: 7; grid-column: 1 / -1; }
 .model-settings-dialog label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 13px; }
 .model-settings-dialog input, .model-settings-dialog select, .model-settings-dialog textarea { width: 100%; min-width: 0; min-height: 44px; margin: 0; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--page); }
 .model-settings-dialog textarea { resize: vertical; padding: 10px; }
 .model-settings-dialog input::placeholder, .model-settings-dialog textarea::placeholder { color: var(--muted); }
 .model-settings-dialog small { display: block; color: var(--muted); line-height: 1.6; }
 .model-settings-dialog :where(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.model-settings-dialog .model-parameter-card { grid-column: 1 / -1; order: 8; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); }
-.model-section-heading { margin-bottom: 16px; }
-.model-identity-row { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
-.model-identity-row > div { flex: 1 1 240px; min-width: 0; }
-.model-settings-dialog .model-checkbox { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 10px; margin: 0; border: 1px solid var(--border); border-radius: 8px; color: var(--text); white-space: nowrap; }
-.model-settings-dialog .model-checkbox input { width: 16px; min-height: 16px; margin: 0; accent-color: var(--text); }
-.model-limits-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; padding: 14px; border-radius: 8px; background: var(--surface); }
-.model-environment-tools { margin-top: 20px; color: var(--muted); font-size: 13px; }
 .model-settings-dialog summary { cursor: pointer; }
-.model-environment-tools button { margin: 12px 0 8px; }
-.model-settings-dialog .saved-profile-controls legend { padding: 0 6px; font-size: 15px; font-weight: 600; }
-.saved-model-heading { margin: 4px 0 16px; }
-.saved-model-heading > div:first-child { flex: 1 1 260px; min-width: 0; }
-.saved-model-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 8px; }
-.model-settings-dialog .saved-model-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; text-align: left; background: var(--surface); }
-.saved-model-item span { min-width: 0; overflow-wrap: anywhere; }
-.saved-model-item small { flex-shrink: 0; font-size: 12px; }
-.model-settings-dialog .saved-model-item[aria-current="true"] { border-color: var(--text); }
-.model-settings-dialog .selected-profile-info { white-space: pre-wrap; font-size: 12px; margin: 12px 0; }
-.model-management-section > summary { font-size: 14px; font-weight: 600; }
-.model-section-body { display: grid; gap: 12px; margin-top: 20px; }
-.model-section-body > label { margin: 0; }
-.model-section-body form { margin: 0; }
-.model-section-body details { padding-top: 8px; }
-.model-auxiliary-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 16px; }
-.model-auxiliary-form > button { justify-self: start; }
-.provider-key-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.provider-key-row span { flex: 1 1 160px; overflow-wrap: anywhere; }
-.enrichment-result { padding: 12px 0; border-top: 1px solid var(--border); }
-.enrichment-result p { white-space: pre-wrap; }
-[data-oauth-flow] { display: grid; gap: 8px; overflow-wrap: anywhere; }
-[data-profile-catalog] { white-space: pre-wrap; max-height: 160px; overflow: auto; }
-.model-thinking-section { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.model-thinking-section > div { min-width: 0; }
-.model-thinking-section select { min-width: 120px; }
-.model-manager-feedback { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--border); background: var(--page); }
-.model-manager-feedback p { flex: 1; margin: 0; font-size: 12px; }
-@media (max-width: 1000px) {
-  .model-settings-dialog { --model-navigation-width: 216px; }
-  .model-default-badge { max-width: 160px; }
-  .settings-content { padding: 16px; }
-  .provider-editor-heading, .saved-model-heading { align-items: start; flex-direction: column; }
-  .saved-model-heading > div:first-child { flex: auto; width: 100%; }
-}
+.model-providers > section { padding: 20px 0; border-bottom: 1px solid var(--border); }
+.model-provider-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.model-providers pre { max-width: 100%; padding: 16px; overflow: auto; border-radius: 8px; background: var(--surface); font-size: 13px; }
+.model-providers label { margin-top: 20px; }
 @media (max-width: 700px) {
   .model-settings-dialog { width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
   .model-manager-header { align-items: start; flex-wrap: wrap; gap: 8px; padding: 12px; }
   .model-manager-brand { gap: 8px; }
   .model-manager-brand h2 { font-size: 18px; }
   .model-manager-toolbar { justify-content: end; flex: 1; gap: 8px; }
-  .model-default-badge { display: none; }
-  .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .settings-navigation { padding: 10px 12px; border-right: 0; border-bottom: 1px solid var(--border); max-height: 196px; }
-  .model-settings-dialog .model-add-provider { margin-bottom: 10px; }
-  .model-provider-groups { display: flex; flex: 0 1 auto; gap: 16px; overflow: auto; }
-  .model-provider-groups section { flex: 0 0 auto; max-width: 100%; }
-  .model-provider-groups section + section { margin: 0; }
-  .model-provider-groups h3 { padding: 0 4px 6px; }
-  .model-provider-groups nav { display: flex; gap: 6px; }
-  .model-settings-dialog .model-provider-item { flex: 0 0 auto; width: auto; max-width: 200px; white-space: nowrap; }
-  .settings-content { padding: 12px; }
-  .new-profile-editor, .model-settings-dialog .saved-profile-controls, .model-management-section { padding: 16px; margin-bottom: 12px; }
-  .model-settings-fields, .model-settings-fields [data-builtin], .model-limits-row, .model-auxiliary-form { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .model-section-heading { align-items: start; flex-direction: column; }
-  .model-settings-dialog .model-parameter-card { padding: 12px; }
-  .model-manager-feedback { padding: 8px 12px; }
+  .settings-content { padding: 16px; }
 }

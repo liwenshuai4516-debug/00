@@ -61,7 +61,7 @@ test("拒绝未登记编号和跨供应商编号，缺少当前模型时也拒�
   const { service, session, models, calls } = setup();
 
   for (const id of ["unknown", "openai/gpt-4"]) {
-    await assert.rejects(service.switchModel(id), /当前供应商未登记/);
+    await assert.rejects(service.switchModel(id), /Pi 未登记/);
   }
 
   assert.equal(session.model, models[0]);
@@ -70,7 +70,7 @@ test("拒绝未登记编号和跨供应商编号，缺少当前模型时也拒�
   session.model = undefined;
   await assert.rejects(
     service.switchModel("deepseek-v4-pro"),
-    /当前会话尚未选择模型/,
+    /请选择供应商和模型/,
   );
 });
 
@@ -121,12 +121,12 @@ test("生成期间拒绝切换，空闲时只转发模型编号", async () => {
     await handler(
       {},
       "deepseek-v4-pro",
-      "other-provider",
+      "deepseek",
       "other-session",
     ),
     expected,
   );
-  assert.deepEqual(calls, [["deepseek-v4-pro"]]);
+  assert.deepEqual(calls, [["deepseek-v4-pro", "deepseek"]]);
 });
 
 test("切换期间阻止冲突操作，失败后释放互斥状态", async () => {

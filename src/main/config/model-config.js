@@ -5,8 +5,8 @@ function readModelConfig(env = process.env) {
   const modelId = (env.PI_MODEL ?? "").trim();
   const baseUrl = (env.PI_BASE_URL ?? "").trim();
 
-  if (!provider || !modelId) {
-    throw new Error("请在 .env 中配置 PI_PROVIDER 和 PI_MODEL。");
+  if (Boolean(provider) !== Boolean(modelId)) {
+    throw new Error("请同时配置 PI_PROVIDER 和 PI_MODEL，或均留空使用 Pi 默认模型。");
   }
 
   if (baseUrl) {

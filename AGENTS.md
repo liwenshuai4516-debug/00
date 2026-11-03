@@ -20,7 +20,7 @@
 | `src/main/lifecycle/` | 窗口关闭、退出协调及聊天停止 |
 | `src/main/pi-agent.mjs` | Pi 会话创建、模型与工具组装 |
 | `src/main/services/`、`src/main/storage/` | 业务操作与持久化 |
-| `src/main/model/`、`src/main/ipc/model-ipc.js` | 模型目录、凭据、OAuth、参数补全与受限接口 |
+| `src/main/services/model-provider-service.js`、`src/main/ipc/model-ipc.js` | Pi 官方配置文件入口、原生模型选择与受限接口 |
 | `src/main/tools/`、`src/main/workspace/` | 工作目录工具及路径、读取约束 |
 | `src/preload/preload.js` | 向页面暴露有限的主进程接口 |
 | `src/renderer/` | 页面与交互；`components/` 放组件，`styles/` 放样式 |
@@ -46,7 +46,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - Pi SDK 固定为 `1.4.0`；npm 别名为 `"@mariozechner/pi-coding-agent": "npm:@earendil-works/pi-coding-agent@1.4.0"`，源码保留原导入路径。升级依赖同步修改 `package.json` 与 `package-lock.json`。
 - SDK 要求 Node.js 至少 `22.19.0`。初始化使用 `await ModelRuntime.create()`、`getModel()` 和 `createAgentSession({ modelRuntime, ... })`；不沿用旧版 `AuthStorage`、`authStorage` / `modelRegistry` 会话选项。
 - `SessionManager.list(cwd, sessionDir)` 按目录筛选；侧栏和只读历史预览使用 `listAll(sessionDir)`，自动恢复仍校验实际目录与应用绑定，不认领其他目录的会话。
-- 模型选择按会话持久化；恢复时尊重历史选择，不能总用启动默认覆盖。配置编辑、应用到当前会话、设置新会话默认是独立操作；隐藏配置不破坏旧会话快照。
+- 模型使用官方 `ModelRuntime`、`models.json`、`auth.json` 与 Provider 扩展，不建立应用私有配置档案。模型选择按会话持久化，恢复尊重历史；新对话优先官方设置默认，再用 `.env` 后备或 SDK 自动选择。配置重读、切换当前模型、设置新对话默认是独立操作。旧私有供应商历史未登记时明确不可用，不自动改写历史或迁移凭据。
 - SDK 切换报错可能发生在状态已改变之后；失败后读取实际选择，并同步恢复登记。模型目录可读不代表推理权限或额度可用。页面不接收完整 SDK 对象或已存凭据。
 
 ## 数据与操作边界
@@ -84,7 +84,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - 项目信任顺序为：受保护资源检查 → 用户扩展 project_trust 首个 yes/no → 最近保存决定 → global defaultProjectTrust → 宿主询问。通过公开 `LoadExtensionsResult` 事件处理器和 `ProjectTrustStore` 适配；未公开导出的 CLI resolver 不深层导入。上下文文件按 Pi 规则不受此信任开关保护；信任与 cwd 都不是工具或扩展的隔离边界。
 - 不覆盖原生系统提示词；保留 SYSTEM.md/APPEND_SYSTEM.md 的发现与优先级，通过公开 appendSystemPromptOverride 追加桌面结果说明和已有业务提示词。业务提示词快照继续按原会话保存，不改写使用者已存内容；其中若引用旧草稿工具，以当前实际工具为准。
 - 通过公开工厂登记 codemode、tool-search、mcp 的 builtin 身份，保留禁用和第三方替换语义。bindExtensions 启动运行时，运行期 onError 与加载期诊断分别接通。桌面有 UI bridge 时使用官方 rpc/hasUI=true，无界面的检查使用 json/hasUI=false；选择、确认、输入、多行编辑、通知、状态及文本组件按 RPC 契约适配。自定义终端组件、终端编辑器、页眉页脚和终端主题等沿用官方非 TUI 行为，不伪装为完整 TUI。扩展会话命令通过公开 AgentSessionRuntime 执行，并同步宿主会话、订阅及输入归属。
-- 宿主通过官方 SDK 的显式 model/modelRuntime/sessionManager 参数保留模型管理、会话目录绑定与旧历史，不复制 CLI 的模型选择和会话发现。这是公开 SDK 的宿主覆盖，不另建资源格式。Pi 主题加载与 Electron 主题映射属于不同工作，未自动把终端主题转换为 CSS。
+- 宿主通过官方 SDK 的 model/modelRuntime/sessionManager 参数接通官方模型目录、会话目录绑定与旧历史，模型配置遵循 Custom Providers，保留桌面选择与恢复语义。这是公开 SDK 的宿主覆盖，不另建资源格式。Pi 主题加载与 Electron 主题映射属于不同工作，未自动把终端主题转换为 CSS。
 
 ### 当前执行与后续验收
 

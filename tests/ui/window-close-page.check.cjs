@@ -29,7 +29,7 @@ const pause = async name => { if (flags[name]) { const gate = flags[name]; flags
 const session = {
   loadHistory: async () => { await pause("initGate"); return history(current); }, currentSession: async () => current,
   getSessionInfo: async () => ({ sessionId: current, workspaceDir: workspace, modelId: current === "b" ? "Pro" : "Flash", provider: "mock", contextUsage: null }),
-  listModelProfiles: async () => ({ currentProfileId: current === "b" ? "pro" : "flash", profiles: [{ id:"flash", name:"Flash", provider:"mock", modelId:"Flash" },{ id:"pro",name:"Pro",provider:"mock",modelId:"Pro" }] }),
+  listModels: async () => ({ provider: "mock", modelId: current === "b" ? "Pro" : "Flash", models: [{ id:"Flash", name:"Flash", provider:"mock" },{ id:"Pro",name:"Pro",provider:"mock" }] }),
   listSessions: async () => { failure("historyList"); return ["a", "b"].map(id => ({ id, title: `对话 ${id}`, workspaceDir: workspace, updatedAt: 10 })); },
   listUnsentSessions: async () => {
     calls.push(["list",current,workspace]); await pause("listGate"); failure("list");
@@ -68,7 +68,7 @@ const chat = {
 };
 registerAgentIpc(ipcMain,session,chat,{}, {}, { exportConversation:async () => ({ canceled:true }) },
   { selectWorkspace:async () => { workspace="/qa/two"; current="other"; return { sessionId:current,workspaceDir:workspace }; } },
-  { listProjects:async () => [{ id:"p",name:"测试项目",workspaceDir:"/qa/one" }],openProject:async () => { workspace="/qa/one"; current="a"; return { sessionId:current,history:history(current) }; },addProject:async () => ({ canceled:true }) },composer,{oauth:{list:()=>[],subscribe:()=>()=>{}},enrichment:{list:()=>[],subscribe:()=>()=>{}},read:async()=>({profiles:[],providers:[],defaultProfileId:"",encryptionAvailable:false,environment:null})});
+  { listProjects:async () => [{ id:"p",name:"测试项目",workspaceDir:"/qa/one" }],openProject:async () => { workspace="/qa/one"; current="a"; return { sessionId:current,history:history(current) }; },addProject:async () => ({ canceled:true }) },composer,{readConfiguration:async()=>({modelsPath:path.join(root,"models.json")})});
 
 
 const { registerWindowCloseGuard } = require(path.join(root, "src/main/lifecycle/window-close-guard.js"));
