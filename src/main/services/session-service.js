@@ -1,3 +1,4 @@
+const { closePiSession } = require("../resources/pi-session-lifecycle.js");
 const { existsSync } = require("node:fs");
 const { toHistory } = require("../adapters/message-adapter.js");
 const { readFile, realpath, stat } = require("node:fs/promises");
@@ -480,12 +481,12 @@ function createSessionService(
         archivedAt: archived ? (current.archivedAt ?? Date.now()) : null,
       }));
     } catch (error) {
-      next?.dispose();
+      await closePiSession(next);
       throw error;
     }
     if (next) {
       sessionPromise = Promise.resolve(observeSession(next));
-      previous.dispose();
+      await closePiSession(previous, "new", next.sessionFile);
     }
     return { id: sessionId, archivedAt: state.archivedAt, changed: Boolean(next), ...replacement };
   }
@@ -561,11 +562,11 @@ function createSessionService(
         sessionId, workspaceRoot, registration.source, registration.model,
       );
     } catch (error) {
-      nextSession.dispose();
+      await closePiSession(nextSession);
       throw error;
     }
     sessionPromise = Promise.resolve(observeSession(nextSession));
-    previousSession?.dispose();
+    await closePiSession(previousSession, nextSession.desktopSessionOrigin === "empty" ? "new" : "resume", nextSession.sessionFile);
     return result;
   }
 
@@ -622,7 +623,7 @@ function createSessionService(
     // 创建成功后再替换，打开失败时保留旧会话。
     const nextSession = await createSession(false, selected.path);
     sessionPromise = Promise.resolve(observeSession(nextSession));
-    previousSession?.dispose();
+    await closePiSession(previousSession, nextSession.desktopSessionOrigin === "empty" ? "new" : "resume", nextSession.sessionFile);
 
     return getHistory(nextSession);
   }
@@ -632,7 +633,7 @@ function createSessionService(
 
     const nextSession = await createSession();
     sessionPromise = Promise.resolve(observeSession(nextSession));
-    previousSession?.dispose();
+    await closePiSession(previousSession, "new", nextSession.sessionFile);
 
     // 返回实际创建的编号，供页面关联该会话的输入草稿。
     return nextSession.sessionId;
@@ -662,13 +663,13 @@ function createSessionService(
       nextWorkspaceDir = nextSession.sessionManager.getCwd();
       await saveWorkspaceDir(nextWorkspaceDir);
     } catch (error) {
-      nextSession.dispose();
+      await closePiSession(nextSession);
       throw error;
     }
 
     // 两项准备均成功后才替换，失败时保留原会话及其草稿。
     sessionPromise = Promise.resolve(observeSession(nextSession));
-    previousSession?.dispose();
+    await closePiSession(previousSession, "new", nextSession.sessionFile);
 
     return {
       sessionId: nextSession.sessionId,
@@ -718,12 +719,12 @@ function createSessionService(
       };
       await saveWorkspaceDir(result.workspaceDir);
     } catch (error) {
-      nextSession.dispose();
+      await closePiSession(nextSession);
       throw error;
     }
 
     sessionPromise = Promise.resolve(observeSession(nextSession));
-    previousSession?.dispose();
+    await closePiSession(previousSession, nextSession.desktopSessionOrigin === "empty" ? "new" : "resume", nextSession.sessionFile);
     return result;
   }
 
@@ -741,8 +742,16 @@ function createSessionService(
     session.setSessionName(name.trim());
   }
 
+  async function closeSession() {
+    const session = sessionPromise ? await sessionPromise.catch(() => undefined) : undefined;
+    await closePiSession(session);
+    sessionPromise = undefined;
+    observedSession = undefined;
+  }
+
   return {
     getSession,
+    closeSession,
     readSessionRegistration,
     syncSessionRegistration,
     loadHistory,

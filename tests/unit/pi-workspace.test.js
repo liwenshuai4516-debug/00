@@ -66,13 +66,13 @@ test("显式目录用于真实 Pi 会话及文件工具，无效目录不回退"
 
         // 直接执行真实读取工具，不调用 prompt 或请求模型。
         const reader = session.agent.state.tools.find(
-          tool => tool.name === "read_workspace_text_file"
+          tool => tool.name === "read"
         );
         const result = await reader.execute("test-read", {
           path: "marker.txt",
         });
 
-        assert.equal(result.details.text, "所选目录");
+        assert.equal(result.content.find(block => block.type === "text").text, "所选目录");
         assert.equal(
           process.env.AGENT_WORKSPACE_DIR,
           originalDefault,

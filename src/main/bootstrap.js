@@ -77,8 +77,12 @@ app.on("will-quit", () => { modelSettingsService.oauth.dispose(); modelSettingsS
 async function createConfiguredAgent(sessionDir, resume, sessionPath, workspaceDir, recovery, resumeOptions) {
   await app.whenReady();
   const { createPiAgent } = await import("./pi-agent.mjs");
+  const { createDesktopPiOptions } = require("./resources/desktop-pi-options.js");
   return createPiAgent(
-    sessionDir, resume, sessionPath, workspaceDir, modelSettingsService, recovery, resumeOptions,
+    sessionDir, resume, sessionPath, workspaceDir,
+    modelSettingsService, recovery, resumeOptions,
+    undefined,
+    createDesktopPiOptions(dialog, () => app.quit()),
   );
 }
 
@@ -218,7 +222,9 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  registerWindowCloseGuard(window, ipcMain, quitGuard.cancelQuit);
+  registerWindowCloseGuard(window, ipcMain, quitGuard.cancelQuit, () =>
+    sessionService.closeSession(),
+  );
 
   // 每次创建窗口都绑定，包括 macOS 关闭后重新打开的窗口。
   registerWindowLifecycle(window, {

@@ -1,12 +1,10 @@
 import {
   createAgentSession,
-  DefaultResourceLoader,
-  getAgentDir,
   ModelRuntime,
-  SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { createWorkspaceSession } from "./workspace/workspace-session.mjs";
-import { createAgentTools } from "./tools/index.mjs";
+import { createPiResources } from "./resources/pi-resources.mjs";
+import sessionLifecycle from "./resources/pi-session-lifecycle.js";
 import { AGENT_SYSTEM_PROMPT } from "./prompts/agent-system-prompt.mjs";
 import messageAdapter from "./adapters/message-adapter.js";
 import modelConfig from "./config/model-config.js";
@@ -25,6 +23,8 @@ export async function createPiAgent(
   modelSettings,
   recovery,
   resumeOptions,
+  promptOptions,
+  resourceOptions,
 ) {
   const managed = typeof modelSettings?.resolveSelection === "function";
   // 保留原四参数和旧配置对象调用，独立初始化检查仍在创建目录前校验。
@@ -41,22 +41,13 @@ export async function createPiAgent(
     archivedSessionIds: resumeOptions?.archivedSessionIds,
   });
 
-  const settingsManager = SettingsManager.inMemory();
-
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: workspaceRoot,
-    agentDir: getAgentDir(),
-    settingsManager,
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    systemPrompt: AGENT_SYSTEM_PROMPT,
-    appendSystemPrompt: [],
-  });
-
-  await resourceLoader.reload();
+  const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
+    await createPiResources({
+      cwd: workspaceRoot,
+      appendSystemPrompt: [AGENT_SYSTEM_PROMPT],
+      askProjectTrust: resourceOptions?.askProjectTrust,
+      onDiagnostics: resourceOptions?.onDiagnostics,
+    });
 
   // 仅真正重建的空会话采用登记模型；找到历史时仍遵循原分支选择。
   const savedSelection = source === "empty" && recovery !== undefined
@@ -82,19 +73,45 @@ export async function createPiAgent(
     if (!model) throw new Error(`Pi 未找到模型：${provider}/${selectedModelId}。`);
   }
 
-  // 工具、模型上下文和会话使用同一个真实工作目录。
-  const agentTools = createAgentTools(workspaceRoot);
-
+  // 不传 tools/customTools：沿用 Pi 的默认工具及 defaultTools 配置。
   const { session } = await createAgentSession({
     cwd: workspaceRoot,
+    agentDir,
     modelRuntime: runtime,
     model,
     settingsManager,
     resourceLoader,
-    tools: agentTools.map((tool) => tool.name),
-    customTools: agentTools,
     sessionManager,
   });
+
+  session.desktopReloadResources = async () => {
+    session.desktopResourceDiagnostics = [];
+    await session.reload();
+    session.desktopResourceDiagnostics.push(...await reportDiagnostics());
+  };
+  try {
+    await session.bindExtensions({
+      // 使用 SDK 的非终端模式，不把终端组件冒充桌面组件。
+      mode: "json",
+      commandContextActions: { reload: session.desktopReloadResources },
+      shutdownHandler: resourceOptions?.shutdown,
+      onError: (error) => {
+        const diagnostic = { type: "error", path: error.extensionPath, message: `${error.event}: ${error.error}` };
+        session.desktopResourceDiagnostics ??= [];
+        session.desktopResourceDiagnostics.push(diagnostic);
+        Promise.resolve().then(() => resourceOptions?.onDiagnostics?.([diagnostic])).catch(() => {
+          console.error("Pi 扩展错误提示未能展示。");
+        });
+      },
+    });
+    session.desktopResourceDiagnostics = [
+      ...(session.desktopResourceDiagnostics ?? []),
+      ...await reportDiagnostics(),
+    ];
+  } catch (error) {
+    await sessionLifecycle.closePiSession(session);
+    throw error;
+  }
 
   // 仅记录创建时的可信来源；后续产生消息时仍需推进持久化登记。
   session.desktopSessionOrigin = source;
@@ -162,9 +179,19 @@ export async function sendMessage(
   });
 
   try {
-    await session.prompt(text);
+    // CLI 的 /reload 属于宿主命令；走现有发送互斥，不请求模型。
+    if (text.trim() === "/reload") {
+      await session.desktopReloadResources();
+      onStatus("Pi 资源已重新加载。");
+      return;
+    }
+    let disposition;
+    await session.prompt(text, {
+      preflightResult: (result) => { disposition = result; },
+    });
 
-    if (session.agent.state.errorMessage) {
+    // 扩展消费命令时没有新推理，不能把上次模型错误算到本次命令。
+    if (disposition === "started" && session.agent.state.errorMessage) {
       throw new Error(session.agent.state.errorMessage);
     }
   } finally {

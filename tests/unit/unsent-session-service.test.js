@@ -263,13 +263,21 @@ test("实际启动工厂正确分开配置服务与恢复快照，按原配置�
       const input = { name: "A", kind: "custom", provider: "同名供应商", modelId: "same", baseUrl: "https://a.example.invalid/v1", authMode: "saved", apiKey: "placeholder-A", api: "openai-completions", contextWindow: 32000, maxTokens: 2000 };
       const a = await settings.save(input), b = await settings.save({ ...input, name: "B", baseUrl: "https://b.example.invalid/v1", apiKey: "placeholder-B" });
       await settings.setDefault(a.id);
-      // 提取实际启动文件中的工厂，仅重定位动态导入；不执行bootstrap或读取.env。
+      // 提取实际工厂并注入宿主依赖，不执行 bootstrap 或读取 .env。
       const source = await fs.readFile(${JSON.stringify(root + "/src/main/bootstrap.js")}, "utf8");
       const begin = source.indexOf("async function createConfiguredAgent("), end = source.indexOf("\\n\\n// 在应用入口", begin);
       const factorySource = source.slice(begin, end).replace('import("./pi-agent.mjs")', 'import(' + JSON.stringify(${JSON.stringify(root + "/src/main/pi-agent.mjs")}) + ')');
       let ready = 0;
-      const factory = new Function("app", "modelSettingsService", "return (" + factorySource + ");")({ whenReady: async () => { ready += 1; } }, settings);
       const store = createSessionStateStore(path.join(base, "state"));
+      const factory = new Function(
+        "app", "modelSettingsService", "require", "dialog", "promptSettingsStore", "sessionStateStore",
+        "return (" + factorySource + ");",
+      )(
+        { whenReady: async () => { ready += 1; }, quit() {} }, settings,
+        require("node:module").createRequire(${JSON.stringify(root + "/src/main/bootstrap.js")}),
+        { showMessageBox: async () => ({ response: 0, checkboxChecked: false }) },
+        { read: async () => ({ version: 1, revision: 0, testAgentPrompt: "隔离测试提示词" }) }, store,
+      );
       await store.registerSession("target", workspace, "empty", { provider: PROFILE_PREFIX + b.id, modelId: "same" });
       await store.saveDraft("target", workspace, "保留输入", 0);
       const service = createSessionService(path.join(base, "sessions"), factory, () => workspace, undefined, store);

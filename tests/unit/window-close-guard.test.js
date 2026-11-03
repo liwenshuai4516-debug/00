@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { registerWindowCloseGuard } = require("../../src/main/lifecycle/window-close-guard.js");
 
-function setup(t, ipcMain = new EventEmitter()) {
+function setup(t, ipcMain = new EventEmitter(), beforeClose) {
   const window = new EventEmitter();
   const contents = new EventEmitter();
   const sent = [];
@@ -22,7 +22,7 @@ function setup(t, ipcMain = new EventEmitter()) {
     return event;
   };
   const ownEvent = () => ({ sender: contents, senderFrame: contents.mainFrame });
-  registerWindowCloseGuard(window, ipcMain);
+  registerWindowCloseGuard(window, ipcMain, undefined, beforeClose);
   t.after(() => { if (!destroyed) window.emit("closed"); });
   return {
     window, contents, ipcMain, sent, ownEvent,
@@ -202,4 +202,35 @@ test("隐藏窗口不请求保存，也不触发关闭", t => {
   s.ready(); s.window.emit("hide");
   assert.equal(s.sent.length, 0);
   assert.equal(s.window.isDestroyed(), false);
+});
+
+test("输入保存后等待 Pi 清理完成，等待期间不重复关闭", async t => {
+  let release, calls = 0;
+  const pending = new Promise(resolve => { release = resolve; });
+  const s = setup(t, undefined, async () => { calls++; await pending; });
+  s.ready(); s.window.close();
+  const result = { requestId: s.last().requestId, saved: true };
+  s.result(result); s.result(result); s.window.close();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls, 1);
+  assert.equal(s.window.isDestroyed(), false);
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.window.isDestroyed(), true);
+});
+
+test("Pi 清理失败保留窗口，并允许再次关闭", async t => {
+  let calls = 0;
+  t.mock.method(console, "error", () => {});
+  const s = setup(t, undefined, async () => {
+    if (++calls === 1) throw new Error("清理失败");
+  });
+  s.ready(); s.window.close();
+  s.result({ requestId: s.last().requestId, saved: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.window.isDestroyed(), false);
+  s.window.close();
+  s.result({ requestId: s.last().requestId, saved: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.window.isDestroyed(), true);
 });

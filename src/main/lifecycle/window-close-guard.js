@@ -1,11 +1,12 @@
 const { randomUUID } = require("node:crypto");
 
 // 只负责关闭握手；停止生成、等待页面操作和保存输入由页面接线负责。
-function registerWindowCloseGuard(window, ipcMain, onBlocked = () => {}) {
+function registerWindowCloseGuard(window, ipcMain, onBlocked = () => {}, beforeClose) {
   const contents = window.webContents;
   let ready = false;
   let pendingId = null;
   let approved = false;
+  let finalizing = false;
 
   function isMainFrame(event) {
     return event.sender === contents && event.senderFrame === contents.mainFrame;
@@ -27,7 +28,7 @@ function registerWindowCloseGuard(window, ipcMain, onBlocked = () => {}) {
   function onClose(event) {
     if (approved) return;
     event.preventDefault();
-    if (pendingId) return;
+    if (pendingId || finalizing) return;
     pendingId = randomUUID();
     sendRequest();
   }
@@ -42,13 +43,31 @@ function registerWindowCloseGuard(window, ipcMain, onBlocked = () => {}) {
   function onResult(event, result) {
     if (
       !isMainFrame(event) || !pendingId ||
-      result?.requestId !== pendingId || typeof result.saved !== "boolean"
+      result?.requestId !== pendingId || typeof result.saved !== "boolean" || finalizing
     ) return;
-    pendingId = null;
     if (!result.saved) {
+      pendingId = null;
       onBlocked();
       return;
     }
+    if (beforeClose) {
+      // 页面确认输入落盘后，再等待扩展释放连接与设置写入。
+      const requestId = pendingId;
+      finalizing = true;
+      Promise.resolve().then(beforeClose).then(() => {
+        if (pendingId === requestId && ready) finishClose();
+      }).catch(() => {
+        pendingId = null;
+        onBlocked();
+        console.error("Pi 会话清理失败，窗口已保留，请重试关闭。");
+      }).finally(() => { finalizing = false; });
+      return;
+    }
+    finishClose();
+  }
+
+  function finishClose() {
+    pendingId = null;
     if (window.isDestroyed()) return;
     // 只放行这次同步close；若被其他监听器取消，下次仍须重新保存。
     approved = true;
