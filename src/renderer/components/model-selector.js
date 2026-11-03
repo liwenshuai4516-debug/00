@@ -62,7 +62,7 @@ export function createModelSelector(element, api, setPageBusy, refreshInfo) {
       ready = info.models.length > 0;
       retryButton.hidden = ready;
       select.title = `${info.provider}/${info.modelId}`;
-      status.textContent = prefix || (ready ? "" : "没有可用模型，请在设置中配置供应商认证。");
+      status.textContent = prefix || info.warning || (ready ? "" : "没有可用模型，请在设置中配置供应商认证。");
       status.hidden = !status.textContent;
     } catch (error) {
       if (token !== sequence) return;

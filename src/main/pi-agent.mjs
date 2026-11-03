@@ -129,7 +129,11 @@ export async function createPiAgent(
     ? { provider: defaultProvider, modelId: defaultModel }
     : startupModel.provider && startupModel.modelId ? startupModel : undefined);
   const model = selection ? runtime.getModel(selection.provider, selection.modelId) : undefined;
-  if (selection && !model) throw new Error(`Pi 未找到模型：${selection.provider}/${selection.modelId}。请检查 models.json 或 Provider 扩展。`);
+  if (selection && !model) {
+    const error = new Error(`Pi 未找到模型：${selection.provider}/${selection.modelId}。请检查 models.json 或 Provider 扩展，或新建对话。`);
+    if (savedSelection) error.code = "PI_SAVED_MODEL_UNAVAILABLE";
+    throw error;
+  }
 
   // 不传 tools/customTools：沿用 Pi 的默认工具及 defaultTools 配置。
   const { session } = await createAgentSession({

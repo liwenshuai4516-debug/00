@@ -15,8 +15,8 @@ async function main() {
   let current = { provider: "alpha", id: "same" };
   const models = [{ ...current, name: "同名模型" }, { provider: "beta", id: "same", name: "<img src=x onerror=alert(1)>" }];
   const calls = [];
-  let failed = false, configFailed = false, gate, infoGate;
-  const list = () => ({ provider: current.provider, modelId: current.id, models });
+  let failed = false, configFailed = false, gate, infoGate, warning;
+  const list = () => ({ provider: current.provider, modelId: current.id, models, warning });
   ipcMain.handle("agent:list-models", () => list());
   ipcMain.handle("agent:session-info", async () => {
     if (infoGate) { const pending = infoGate; infoGate = undefined; await pending.promise; }
@@ -60,6 +60,12 @@ async function main() {
       setBusy(false);await window.models.refresh();
     })()`);
     await check("原生模型按供应商分组，同名模型编号互不混淆且按文本展示", `document.querySelectorAll('#model-select optgroup').length===2&&document.querySelectorAll('#model-select option')[1].textContent.includes('<img')&&!document.querySelector('#model-select img')&&document.querySelector('#model-select').value===JSON.stringify(['alpha','same'])`);
+    warning = "上次对话的模型已不可用，已新建对话。旧记录和输入仍保留。";
+    await run("window.models.refresh()");
+    await check("自动恢复失败提示新对话原因，同时模型选择保持可用", `!document.querySelector('#model-select').disabled&&document.querySelector('#model-select').value===JSON.stringify(['alpha','same'])&&document.querySelector('#model-status').textContent.includes('已新建对话')&&!document.querySelector('#model-status').hidden`);
+    warning = undefined;
+    await run("window.models.refresh()");
+    await check("离开恢复候选后不残留上次恢复提示", `document.querySelector('#model-status').hidden`);
     await check("旧配置档案、密钥管理与目录探测接口和节点均已移除", `!window.agent.saveModelSettings&&!window.agent.listModelProfiles&&!window.agent.startProviderOAuth&&!window.agent.enrichModels&&!document.querySelector('#model-profile-form')&&!document.querySelector('[data-provider-auth]')&&!document.querySelector('[data-enrichment]')`);
     await click("#model-settings-button");
     await wait(`document.querySelector('[data-current-model]').textContent==='alpha/same'&&!document.querySelector('[data-open-models]').disabled`);

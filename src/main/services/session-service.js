@@ -167,6 +167,13 @@ function createSessionService(
       // 同步保存 Promise，确保并发调用共享同一次初始化。
       sessionPromise = Promise.resolve()
         .then(() => createSession(resume))
+        .catch(async (error) => {
+          if (!resume || error.code !== "PI_SAVED_MODEL_UNAVAILABLE") throw error;
+          // 自动恢复失败不阻断模型选择；新编号承载新模型，不改写旧历史或输入。
+          const fresh = await createSession();
+          fresh.desktopRestoreWarning = "上次对话的模型已不可用，已新建对话。旧记录和输入仍保留，可在右下角选择可用模型。";
+          return fresh;
+        })
         .then(observeSession)
         .catch((error) => {
           sessionPromise = undefined;
@@ -291,6 +298,7 @@ function createSessionService(
     return {
       provider: model?.provider ?? "",
       modelId: model?.id ?? "",
+      ...(session.desktopRestoreWarning ? { warning: session.desktopRestoreWarning } : {}),
       // 页面只需要模型编号和名称，不返回完整 SDK 对象。
       models: models.map((item) => ({
         id: item.id,

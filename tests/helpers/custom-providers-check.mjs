@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { createPiAgent, sendMessage } from "../../src/main/pi-agent.mjs";
 import sessionModule from "../../src/main/services/session-service.js";
 import lifecycle from "../../src/main/resources/pi-session-lifecycle.js";
+import sessionState from "../../src/main/storage/session-state-store.js";
 
 const [root, scenario] = process.argv.slice(2);
 const agentDir = process.env.PI_CODING_AGENT_DIR;
@@ -20,6 +21,45 @@ process.env.CUSTOM_TEST_KEY = "offline-fixture-key";
 const create = (dir, resume, file, cwd, recovery, options) => createPiAgent(dir, resume, file, cwd, {}, recovery, options);
 const service = sessionModule.createSessionService(path.join(root, "sessions"), create, () => workspace);
 if (scenario !== "stream") globalThis.fetch = async () => assert.fail("离线验证不得访问网络");
+
+if (scenario === "unavailable-startup") {
+  await writeConfig({ alpha: provider("https://alpha.invalid/v1") });
+  await fs.writeFile(settingsPath, JSON.stringify({ defaultProvider: "alpha", defaultModel: "same" }));
+  const previous = await service.getSession();
+  previous.sessionManager.appendMessage({ role: "user", content: "保留的旧对话", timestamp: Date.now() });
+  previous.sessionManager.appendModelChange("desktop-profile-obsolete", "same");
+  const id = previous.sessionId, file = previous.sessionFile;
+  await service.closeSession();
+  const before = await fs.readFile(file, "utf8");
+  const store = sessionState.createSessionStateStore(path.join(root, "state"));
+  await store.registerSession(id, workspace, "history", { provider: "desktop-profile-obsolete", modelId: "same" });
+  await store.saveDraft(id, workspace, "旧对话尚未发送的输入", 0);
+  const saved = await store.load(id);
+  const reopened = sessionModule.createSessionService(path.join(root, "sessions"), create, () => workspace, undefined, store);
+  try {
+    // 启动时不让已移除模型的历史阻断模型目录；新对话须有不同编号和明确提示。
+    const [history, list] = await Promise.all([reopened.loadHistory(), reopened.listModels()]);
+    assert.deepEqual(history, []);
+    const fresh = await reopened.getSession();
+    assert.notEqual(fresh.sessionId, id);
+    assert.equal(list.provider, "alpha");
+    assert.ok(list.models.some(model => model.provider === "alpha"));
+    assert.match(list.warning, /已新建对话/);
+    assert.deepEqual(fresh.messages, []);
+    assert.equal(await fs.readFile(file, "utf8"), before);
+    assert.deepEqual(await store.load(id), saved);
+    // 明确打开原记录不能默默换模型，也不能替换已可用的新对话。
+    await assert.rejects(reopened.openSession(id), /Pi 未找到模型/);
+    assert.equal((await reopened.getSession()).sessionId, fresh.sessionId);
+    await reopened.newChat();
+    assert.equal((await reopened.listModels()).warning, undefined);
+    assert.equal(await fs.readFile(file, "utf8"), before);
+    assert.deepEqual(await store.load(id), saved);
+  } finally { await reopened.closeSession(); }
+  // 默认配置自身无效仍须报错，不能把所有初始化失败都当成旧历史问题。
+  await fs.writeFile(settingsPath, JSON.stringify({ defaultProvider: "unknown", defaultModel: "missing" }));
+  await assert.rejects(sessionModule.createSessionService(path.join(root, "sessions"), create, () => workspace).listModels(), /Pi 未找到模型：unknown\/missing/);
+}
 
 if (scenario === "configuration") {
   await writeConfig({ alpha: provider("https://alpha.invalid/v1"), beta: provider("https://beta.invalid/v1") });

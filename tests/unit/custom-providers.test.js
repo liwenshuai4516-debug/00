@@ -6,7 +6,7 @@ const os = require("node:os");
 const { promisify } = require("node:util");
 const { execFile } = require("node:child_process");
 
-for (const scenario of ["configuration", "extension", "reload", "stream"]) {
+for (const scenario of ["configuration", "extension", "reload", "stream", "unavailable-startup"]) {
   test(`Pi Custom Providers：${scenario}（隔离资源与本地协议夹具）`, async t => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-custom-providers-"));
     t.after(() => fs.rm(root, { recursive: true, force: true }));
