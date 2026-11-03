@@ -753,16 +753,26 @@ async function loadHistory() {
     const history = await window.agent.loadHistory();
     await bindComposer(await window.agent.currentSession());
     showHistory(history);
-    await sessionInfoPanel.refresh();
-
-    await restoreProposalPanel();
-    await refreshSessions();
   } catch (error) {
     addMessage("error", error.message);
   } finally {
-    // 操作结束后读取实际会话的模型，再恢复交互。
-    await modelSelector.refresh();
-    await refreshUnsentSessions();
+    // 会话和输入绑定完成后并行读取展示信息，避免独立读取的耗时累加。
+    const updates = await Promise.allSettled([
+      modelSelector.refresh(),
+      sessionInfoPanel.refresh(),
+      refreshSessions(),
+      (async () => {
+        // 这两个读取共用主进程互斥入口，仍须按顺序执行。
+        try {
+          await restoreProposalPanel();
+        } finally {
+          await refreshUnsentSessions();
+        }
+      })(),
+    ]);
+    for (const update of updates) {
+      if (update.status === "rejected") addMessage("error", `页面信息读取失败：${update.reason.message}`);
+    }
     setBusy(false);
     input.focus();
   }
@@ -1502,7 +1512,6 @@ async function startNewChat() {
     await bindComposer(sessionId);
 
     setRequestStatus("就绪");
-    await sessionInfoPanel.refresh();
 
     messages.replaceChildren();
 
@@ -1515,9 +1524,12 @@ async function startNewChat() {
   } catch (error) {
     addMessage("error", error.message);
   } finally {
-    // 操作结束后读取实际会话的模型，再恢复交互。
-    await modelSelector.refresh();
-    await refreshUnsentSessions();
+    // 三项读取互不依赖；输入仍在全部读取结束后恢复发送。
+    await Promise.all([
+      modelSelector.refresh(),
+      sessionInfoPanel.refresh(),
+      refreshUnsentSessions(),
+    ]);
     setBusy(false);
     input.focus();
   }

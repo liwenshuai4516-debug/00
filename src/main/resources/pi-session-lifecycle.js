@@ -11,6 +11,7 @@ async function closePiSession(session, reason = "quit", targetSessionFile) {
   if (state.pending) return state.pending;
 
   state.pending = Promise.resolve().then(async () => {
+    const started = performance.now();
     session.desktopCancelUi?.();
     await session.abort?.();
     if (!state.shutdownSent && !session.desktopRuntimeInvalidated) {
@@ -20,6 +21,8 @@ async function closePiSession(session, reason = "quit", targetSessionFile) {
     await session.settingsManager?.flush();
     session.desktopClearUi?.();
     session.dispose();
+    const elapsed = Math.round(performance.now() - started);
+    if (elapsed >= 500) console.info(`[Pi 会话关闭] 扩展清理与设置保存：${elapsed} ms`);
   });
   try {
     await state.pending;

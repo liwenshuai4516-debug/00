@@ -33,6 +33,14 @@ export async function createPiAgent(
   promptOptions,
   resourceOptions,
 ) {
+  let stageStarted = performance.now();
+  function recordStage(stage) {
+    const now = performance.now();
+    const elapsed = Math.round(now - stageStarted);
+    // 只记录慢步骤名称和耗时，不输出目录、配置、凭据或会话内容。
+    if (elapsed >= 500) console.info(`[Pi 会话准备] ${stage}：${elapsed} ms`);
+    stageStarted = now;
+  }
   const startupModel = modelOptions ?? readModelConfig();
 
   // 目录检查、会话恢复和目录绑定统一交给新模块处理。
@@ -88,6 +96,7 @@ export async function createPiAgent(
     }
   }
 
+  recordStage("目录与会话状态");
   const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
     await createPiResources({
       cwd: workspaceRoot,
@@ -95,6 +104,7 @@ export async function createPiAgent(
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
     });
+  recordStage("资源与扩展发现（含项目信任）");
 
   // 仅真正重建的空会话采用登记模型；找到历史时仍遵循原分支选择。
   const savedSelection =
@@ -106,7 +116,8 @@ export async function createPiAgent(
         sessionManager.buildSessionContext().model);
 
   // 模型、凭据和 models.json 均由 Pi 官方运行时读取，不再建立应用配置档案。
-  const runtime = await ModelRuntime.create();
+  // 等后备配置和扩展供应商登记完成后统一刷新，避免初始化时重复检查整个目录。
+  const runtime = await ModelRuntime.create({ refreshOnCreate: false });
   if (startupModel.apiKey) await runtime.setRuntimeApiKey(startupModel.provider, startupModel.apiKey);
   if (runtime.getError()) throw new Error("Pi 模型配置加载失败，请检查 models.json 和认证配置。");
   if (startupModel.baseUrl) {
@@ -137,6 +148,7 @@ export async function createPiAgent(
     if (savedSelection) error.code = "PI_SAVED_MODEL_UNAVAILABLE";
     throw error;
   }
+  recordStage("模型目录与认证");
 
   // 不传 tools/customTools：沿用 Pi 的默认工具及 defaultTools 配置。
   const { session } = await createAgentSession({
@@ -185,6 +197,7 @@ export async function createPiAgent(
       throw error;
     }
   }
+  recordStage("会话与扩展启动");
   return session;
 }
 

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import http from "node:http";
 import { once } from "node:events";
+import { ModelRuntime } from "@mariozechner/pi-coding-agent";
 import { createPiAgent, sendMessage } from "../../src/main/pi-agent.mjs";
 import sessionModule from "../../src/main/services/session-service.js";
 import lifecycle from "../../src/main/resources/pi-session-lifecycle.js";
@@ -21,6 +22,26 @@ process.env.CUSTOM_TEST_KEY = "offline-fixture-key";
 const create = (dir, resume, file, cwd, recovery, options) => createPiAgent(dir, resume, file, cwd, {}, recovery, options);
 const service = sessionModule.createSessionService(path.join(root, "sessions"), create, () => workspace);
 if (scenario !== "stream") globalThis.fetch = async () => assert.fail("离线验证不得访问网络");
+
+if (scenario === "startup") {
+  await writeConfig({ alpha: provider("https://alpha.invalid/v1") });
+  await fs.writeFile(settingsPath, JSON.stringify({ defaultProvider: "alpha", defaultModel: "same" }));
+  const refresh = ModelRuntime.prototype.refresh;
+  let catalogChecks = 0;
+  ModelRuntime.prototype.refresh = async function (...args) {
+    catalogChecks++;
+    return refresh.apply(this, args);
+  };
+  try {
+    const session = await service.getSession();
+    assert.equal(session.model.provider, "alpha");
+    assert.equal(catalogChecks, 1, "没有扩展登记的初始化只检查一次模型目录");
+    assert.ok((await service.listModels()).models.some(model => model.provider === "alpha"));
+  } finally {
+    ModelRuntime.prototype.refresh = refresh;
+    await service.closeSession();
+  }
+}
 
 if (scenario === "unavailable-startup") {
   await writeConfig({ alpha: provider("https://alpha.invalid/v1") });
