@@ -14,7 +14,7 @@ async function main() {
   const data = {
     sessionId: "fixture-a", cwd: "/workspace/需求与测试项目", projectTrusted: true,
     skills: [
-      { name: "qa-requirement-review", description: "梳理需求范围、识别歧义与缺失约束，形成可以直接讨论的评审清单。", package: { source: "npm:@example/pi-tools@1.0.0", scope: "user", configured: true } },
+      { name: "qa-requirement-review", description: "梳理需求范围、识别歧义与缺失约束，形成可以直接讨论的评审清单。", package: { source: "npm:@example/pi-tools@1.0.0", scope: "user", configured: true }, control: { source: "/fixture/first/SKILL.md", scope: "user", disabled: false } },
       { name: "qa-case-design", description: "从需求和验收标准出发，设计覆盖业务规则、边界条件与异常场景的测试用例。" },
       { name: "qa-api-test", description: "Makes coding agents faster and more accurate with fewer tokens when designing, implementing, mocking, testing, monitoring, documenting, or deploying an API." },
       { name: "qa-ui-test", description: "检查关键页面交互与用户流程，记录可复现的步骤和验证结果。" },
@@ -122,6 +122,15 @@ async function main() {
     await check("取消移除关闭确认并恢复焦点，不执行移除操作", `!document.querySelector('[data-confirm-remove]')&&document.activeElement.classList.contains('pi-remove-button')`);
     assert.equal(calls.some(call => call.action === "remove"), false);
     await click('[data-pi-kind="skills"]');
+    await click('[data-disable-skill]');
+    await check("单项停用明确保留同包其他技能与文件", `document.querySelector('[data-confirm-skill]').closest('.pi-remove-confirm').textContent.includes('同包其他技能和源文件保留')`);
+    await run(`document.querySelector('[data-confirm-skill]').closest('.pi-resource-card').scrollIntoView({block:'center'});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    await fs.writeFile(path.join(artifacts, "single-skill-disable-confirmation.png"), (await win.webContents.capturePage()).toPNG());
+    await click('[data-confirm-skill]'); await wait("!window.busy");
+    assert.deepEqual(calls.at(-1), { action: "disable-skill", source: "/fixture/first/SKILL.md", scope: "user" });
+    data.skills[0].control.disabled = true;
+    await click('[data-pi-refresh]'); await wait(ready);
+    await check("停用待重载时禁止重复操作和插入技能命令", `document.querySelector('[data-disable-skill]').disabled&&document.querySelector('[data-pi-command="/skill:qa-requirement-review"]').disabled`);
     await click('[data-pi-items="skills"] .pi-remove-button');
     await check("技能卸载确认明确影响整包、范围、本地源文件与重载", `document.querySelector('[data-pi-items=skills] .pi-remove-confirm').textContent.includes('卸载整个包')&&document.querySelector('[data-pi-items=skills] .pi-remove-confirm').textContent.includes('保留源文件')&&document.querySelector('[data-pi-items=skills] .pi-remove-confirm').textContent.includes('重载')`);
     await fs.writeFile(path.join(artifacts, "uninstall-confirmation.png"), (await win.webContents.capturePage()).toPNG());

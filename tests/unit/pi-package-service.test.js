@@ -212,3 +212,50 @@ test("官方 npm 与 Git 卸载仅处理所选范围的安装和配置", async t
   }
   assert.deepEqual(settingsManager.getGlobalSettings().packages, []);
 });
+
+test("单项停用使用官方精确排除，不影响同包技能、模板和独立技能文件", async t => {
+  const { SettingsManager, DefaultResourceLoader } = await import("@mariozechner/pi-coding-agent");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-disable-skill-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const cwd = path.join(root, "workspace"), agentDir = path.join(root, "agent"), packageDir = path.join(root, "package");
+  await fs.mkdir(cwd);
+  for (const [directory, name] of [[path.join(packageDir, "skills/first"), "first"], [path.join(packageDir, "skills/second"), "second"], [path.join(agentDir, "skills/standalone"), "standalone"], [path.join(cwd, ".pi/skills/project-only"), "project-only"], [path.join(cwd, ".agents/skills/agents-only"), "agents-only"]]) {
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, "SKILL.md"), `---\nname: ${name}\ndescription: 测试技能\n---\n正文`);
+  }
+  await fs.mkdir(path.join(packageDir, "prompts"));
+  await fs.writeFile(path.join(packageDir, "prompts/review.md"), "审查 $1");
+  const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
+  settingsManager.setPackages([{ source: packageDir, prompts: ["prompts/*.md"], autoload: true, skills: ["skills/**", "+skills/first/SKILL.md"] }]);
+  const loader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
+  await loader.reload();
+  const session = { desktopServices: { cwd, agentDir, settingsManager }, settingsManager, resourceLoader: loader, sessionId: "skills", sessionManager: { getCwd: () => cwd }, promptTemplates: loader.getPrompts().prompts };
+  const service = createPiPackageService({ getSession: async () => session });
+  const projectSkill = (await service.list()).skills.find(item => item.name === "project-only");
+  settingsManager.setProjectTrusted(false);
+  await assert.rejects(service.manage({ action: "disable-skill", source: projectSkill.control.source, scope: "project" }), /先信任/);
+  settingsManager.setProjectTrusted(true);
+  await assert.rejects(service.manage({ action: "disable-skill", source: projectSkill.control.source, scope: "user" }), /技能来源已变化/);
+  async function disable(name) {
+    const skill = (await service.list()).skills.find(item => item.name === name);
+    assert.ok(skill.control, "技能具有单项停用入口");
+    await service.manage({ action: "disable-skill", source: skill.control.source, scope: skill.control.scope });
+    assert.equal((await service.list()).skills.find(item => item.name === name).control.disabled, true, "重载前标记为待应用");
+    await fs.access(skill.control.source);
+    await loader.reload();
+    assert.ok(!loader.getSkills().skills.some(item => item.name === name));
+  }
+  await disable("first");
+  assert.ok(loader.getSkills().skills.some(item => item.name === "second"));
+  assert.equal(loader.getPrompts().prompts.length, 1);
+  assert.deepEqual(settingsManager.getGlobalSettings().packages, [{ source: packageDir, prompts: ["prompts/*.md"], autoload: true, skills: ["skills/**", "-skills/first/SKILL.md"] }]);
+  await disable("standalone");
+  await disable("project-only");
+  await disable("agents-only");
+  assert.ok(loader.getSkills().skills.some(item => item.name === "second"));
+  await assert.rejects(service.manage({ action: "disable-skill", source: path.join(root, "not-loaded.md"), scope: "user" }), /技能.*变化|技能.*不存在/);
+  const reopened = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
+  const next = new DefaultResourceLoader({ cwd, agentDir, settingsManager: reopened });
+  await next.reload();
+  assert.deepEqual(next.getSkills().skills.map(item => item.name), ["second"]);
+});

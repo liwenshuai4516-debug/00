@@ -26,7 +26,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
   }
   function update() {
     for (const control of panel.querySelectorAll("button, input, select, textarea")) {
-      control.disabled = busy || running || loading || (control.hasAttribute("data-requires-trust") && !projectTrusted);
+      control.disabled = busy || running || loading || control.hasAttribute("data-skill-disabled") || (control.hasAttribute("data-requires-trust") && !projectTrusted);
     }
     panel.querySelector("[data-pi-install]").disabled ||= !source.value.trim();
     panel.querySelector("[data-pi-reload-notice]").hidden = !needsReload;
@@ -104,6 +104,27 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
       use.setAttribute("aria-label", `${use.textContent}：${item.name}`);
       const footer = node("div", "pi-card-footer");
       footer.append(node("code", "", command), use);
+      if (isSkill && item.control) {
+        const disable = button(item.control.disabled ? "已停用，待重载" : "停用此技能", () => {
+          if (card.querySelector("[data-confirm-skill]")) return;
+          const confirm = node("div", "pi-remove-confirm");
+          const accept = button("确认停用", () => void operate({ action: "disable-skill", source: item.control.source, scope: item.control.scope }));
+          accept.dataset.confirmSkill = "";
+          if (item.control.scope === "project") accept.dataset.requiresTrust = "";
+          confirm.append(node("p", "", `在${item.control.scope === "user" ? "个人" : "当前项目"}配置中停用“${item.name}”？重载后不再加载此技能，同包其他技能和源文件保留。`), accept, button("取消", () => { confirm.remove(); disable.focus(); }));
+          card.append(confirm);
+          update();
+          accept.focus();
+        });
+        disable.dataset.disableSkill = "";
+        disable.setAttribute("aria-label", `停用此技能：${item.name}`);
+        if (item.control.scope === "project") disable.dataset.requiresTrust = "";
+        if (item.control.disabled) {
+          disable.dataset.skillDisabled = "";
+          use.dataset.skillDisabled = "";
+        }
+        footer.append(disable);
+      }
       card.append(heading, node("p", "pi-card-description", translatePiDescription(item.description)), footer);
       packageControls(card, item, isSkill ? "技能" : "模板");
       container.append(card);
@@ -207,7 +228,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
       if (result.reloaded) needsReload = false;
       await refresh();
       if (request.action === "filter") { filterPanel.hidden = true; selectedFilter = undefined; }
-      report(request.action === "remove" ? "资源包已卸载；点击“重载资源”更新当前会话。" : result.needsReload ? "配置已保存；点击“重载资源”应用到当前会话。" :
+      report(request.action === "disable-skill" ? "此技能已停用；点击“重载资源”应用，同包其他能力保留。" : request.action === "remove" ? "资源包已卸载；点击“重载资源”更新当前会话。" : result.needsReload ? "配置已保存；点击“重载资源”应用到当前会话。" :
         result.updates ? `检查完成，${result.updates.length} 个来源可更新。` : "资源已重新加载。");
     } catch (error) {
       report(result ? `操作已完成，刷新失败：${error.message}。请刷新列表核对。` : `操作未完成：${error.message}。安装器可能已改动磁盘，请刷新列表核对。`, "error");

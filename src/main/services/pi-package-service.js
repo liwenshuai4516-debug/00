@@ -1,3 +1,5 @@
+const path = require("node:path");
+
 function createPiPackageService(sessionService, createManager) {
   async function context() {
     const session = await sessionService.getSession(true);
@@ -8,6 +10,17 @@ function createPiPackageService(sessionService, createManager) {
       ...services, builtinExtensions: ["codemode", "tool-search", "mcp"],
     });
     return { session, manager };
+  }
+
+  function skillControl(session, skill) {
+    const info = skill.sourceInfo;
+    if (!skill.filePath || !["user", "project"].includes(info?.scope)) return undefined;
+    const settings = info.scope === "project" ? session.settingsManager.getProjectSettings() : session.settingsManager.getGlobalSettings();
+    const entry = info.origin === "package" ? (settings.packages ?? []).find(item => (typeof item === "string" ? item : item.source) === info.source) : undefined;
+    if (info.origin === "package" && (!entry || !info.baseDir)) return undefined;
+    const pattern = info.origin === "package" ? path.relative(info.baseDir, skill.filePath).split(path.sep).join("/") : skill.filePath.split(path.sep).join("/");
+    const patterns = info.origin === "package" ? entry.skills ?? [] : settings.skills ?? [];
+    return { source: skill.filePath, scope: info.scope, disabled: patterns.includes(`-${pattern}`), pattern };
   }
 
   async function list() {
@@ -31,7 +44,11 @@ function createPiPackageService(sessionService, createManager) {
         for (const key of ["extensions", "skills", "prompts", "themes", "autoload"]) if (entry?.[key] !== undefined) filters[key] = entry[key];
         return { source, scope, filtered, installedPath, filters };
       }),
-      skills: skills.map(({ name, description, sourceInfo }) => ({ name, description, package: owningPackage(sourceInfo) })),
+      skills: skills.map(skill => {
+        const { name, description, sourceInfo } = skill;
+        const control = skillControl(session, skill);
+        return { name, description, package: owningPackage(sourceInfo), control: control && { source: control.source, scope: control.scope, disabled: control.disabled } };
+      }),
       prompts: session.promptTemplates.map(({ name, description, sourceInfo }) => ({ name, description, package: owningPackage(sourceInfo) })),
       extensions: loader.getExtensions().extensions.map(({ path: extensionPath, resolvedPath, sourceInfo }) => {
         const parts = (resolvedPath || extensionPath).split(/[\\/]/);
@@ -53,7 +70,7 @@ function createPiPackageService(sessionService, createManager) {
   async function manage(input, onProgress = () => {}) {
     const { action, scope } = input ?? {};
     let { source } = input ?? {};
-    if (!["install", "update", "remove", "filter", "reload", "check"].includes(action)) throw new Error("包操作无效。");
+    if (!["install", "update", "remove", "filter", "reload", "check", "disable-skill"].includes(action)) throw new Error("包操作无效。");
     if (action === "install" && typeof source === "string") {
       source = source.trim();
       const command = source.match(/^pi\s+install(?:\s+([\s\S]*))?$/);
@@ -76,6 +93,29 @@ function createPiPackageService(sessionService, createManager) {
       if (action === "reload") {
         await session.desktopReloadResources();
         return { reloaded: true };
+      }
+      if (action === "disable-skill") {
+        const skill = session.resourceLoader.getSkills().skills.find(item => item.filePath === source);
+        const control = skill && skillControl(session, skill);
+        if (!control || control.scope !== scope) throw new Error("技能来源已变化或技能不存在，请刷新列表后重试。");
+        const settings = session.settingsManager;
+        const scoped = scope === "project" ? settings.getProjectSettings() : settings.getGlobalSettings();
+        const exclude = patterns => [...patterns.filter(item => item !== `+${control.pattern}` && item !== `-${control.pattern}`), `-${control.pattern}`];
+        if (skill.sourceInfo.origin === "package") {
+          const packages = scoped.packages.map(item => {
+            if ((typeof item === "string" ? item : item.source) !== skill.sourceInfo.source) return item;
+            const entry = typeof item === "string" ? { source: item } : item;
+            return { ...entry, skills: exclude(entry.skills ?? []) };
+          });
+          if (scope === "project") settings.setProjectPackages(packages);
+          else settings.setPackages(packages);
+        } else {
+          const patterns = exclude(scoped.skills ?? []);
+          if (scope === "project") settings.setProjectSkillPaths(patterns);
+          else settings.setSkillPaths(patterns);
+        }
+        await settings.flush();
+        return { changed: true, needsReload: true };
       }
       const local = scope === "project";
       if (action !== "install" && !manager.listConfiguredPackages().some(item => item.source === source && item.scope === scope)) {
