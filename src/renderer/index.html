@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>闪电31</title>
   <link rel="stylesheet" href="./styles/app.css" />
   <link rel="stylesheet" href="./styles/message-scroll.css" />
-    <link rel="stylesheet" href="../../node_modules/@highlightjs/cdn-assets/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="../../node_modules/@highlightjs/cdn-assets/styles/github-dark.min.css" />
   <link rel="stylesheet" href="./styles/markdown.css" />
   <link rel="stylesheet" href="./styles/session-list.css" />
   <link rel="stylesheet" href="./styles/project-panel.css" />
@@ -19,23 +20,49 @@
   <link rel="stylesheet" href="./styles/settings.css" />
   <link rel="stylesheet" href="./styles/themes/sakura.css" />
   <script type="module" src="./theme/theme-preference.js" blocking="render"></script>
+
 </head>
+
+
 <body>
   <!-- 图标只用于展示，不承载业务行为。 -->
   <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <defs>
-      <symbol id="icon-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></symbol>
-      <symbol id="icon-new" viewBox="0 0 24 24"><path d="M12 4H6a3 3 0 0 0-3 3v11a3 3 0 0 0 3 3h11a3 3 0 0 0 3-3v-6M15 3l6 6M10 14l2-6 5-5 6 6-5 5-6 2Z"/></symbol>
-      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
-      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
-      <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3 8h18M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
-      <symbol id="icon-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
-      <symbol id="icon-files" viewBox="0 0 24 24"><path d="M8 3h8l4 4v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM15 3v5h5M3 7v13M10 12h6M10 16h6"/></symbol>
-      <symbol id="icon-send" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></symbol>
-      <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="icon-sidebar" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <path d="M9 4v16" />
+      </symbol>
+      <symbol id="icon-new" viewBox="0 0 24 24">
+        <path d="M12 4H6a3 3 0 0 0-3 3v11a3 3 0 0 0 3 3h11a3 3 0 0 0 3-3v-6M15 3l6 6M10 14l2-6 5-5 6 6-5 5-6 2Z" />
+      </symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24">
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 5 5" />
+      </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="icon-folder" viewBox="0 0 24 24">
+        <path d="M3 8h18M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+      </symbol>
+      <symbol id="icon-more" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1" />
+        <circle cx="12" cy="12" r="1" />
+        <circle cx="19" cy="12" r="1" />
+      </symbol>
+      <symbol id="icon-files" viewBox="0 0 24 24">
+        <path d="M8 3h8l4 4v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM15 3v5h5M3 7v13M10 12h6M10 16h6" />
+      </symbol>
+      <symbol id="icon-send" viewBox="0 0 24 24">
+        <path d="M12 19V5m-6 6 6-6 6 6" />
+      </symbol>
+      <symbol id="icon-stop" viewBox="0 0 24 24">
+        <rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none" />
+      </symbol>
       <symbol id="icon-settings" viewBox="0 0 24 24">
         <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
-        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.09a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.73v.5a2 2 0 0 1-1 1.73l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.09a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.09a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.73v-.5a2 2 0 0 1 1-1.73l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.09a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
+        <path
+          d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.09a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.73v.5a2 2 0 0 1-1 1.73l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.09a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.09a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.73v-.5a2 2 0 0 1 1-1.73l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.09a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" />
       </symbol>
     </defs>
   </svg>
@@ -45,9 +72,11 @@
       <div class="sidebar-brand">
         <h2>闪电31</h2>
         <div class="sidebar-top-actions">
-          <button id="session-search-toggle" class="icon-button" type="button" aria-label="搜索对话"
-            title="搜索对话" aria-controls="session-search-field" aria-expanded="false">
-            <svg class="icon" aria-hidden="true"><use href="#icon-search" /></svg>
+          <button id="session-search-toggle" class="icon-button" type="button" aria-label="搜索对话" title="搜索对话"
+            aria-controls="session-search-field" aria-expanded="false">
+            <svg class="icon" aria-hidden="true">
+              <use href="#icon-search" />
+            </svg>
           </button>
           <button id="sidebar-close" class="icon-button" type="button" aria-label="收起侧栏">
             <svg class="icon" aria-hidden="true">
@@ -57,20 +86,27 @@
         </div>
       </div>
       <button id="new-chat-button" class="sidebar-action" type="button">
-        <svg class="icon" aria-hidden="true"><use href="#icon-new"/></svg>
+        <svg class="icon" aria-hidden="true">
+          <use href="#icon-new" />
+        </svg>
         新建对话
       </button>
       <label id="session-search-field" class="search-field" for="session-search" hidden>
         <span class="sr-only">搜索对话</span>
-        <svg class="icon" aria-hidden="true"><use href="#icon-search"/></svg>
+        <svg class="icon" aria-hidden="true">
+          <use href="#icon-search" />
+        </svg>
         <input id="session-search" type="search" autocomplete="off" placeholder="搜索对话" aria-controls="session-list" />
       </label>
+
       <div class="sidebar-conversations">
         <section id="project-panel" class="project-panel" aria-labelledby="project-list-title" aria-busy="false">
           <div class="project-panel-heading">
             <h3 id="project-list-title" class="sidebar-section-title">项目</h3>
             <button id="add-project-button" class="icon-button" type="button" aria-label="添加项目" title="添加项目" disabled>
-              <svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg>
+              <svg class="icon" aria-hidden="true">
+                <use href="#icon-plus" />
+              </svg>
             </button>
           </div>
           <p class="sr-only" role="status" aria-atomic="true">正在读取项目……</p>
@@ -82,7 +118,9 @@
 
       <div class="sidebar-footer">
         <button id="model-settings-button" class="sidebar-action" type="button" disabled>
-          <svg class="icon" aria-hidden="true"><use href="#icon-settings" /></svg>
+          <svg class="icon" aria-hidden="true">
+            <use href="#icon-settings" />
+          </svg>
           设置
         </button>
       </div>
@@ -91,24 +129,32 @@
     <main class="chat-main">
       <header class="chat-header">
         <div class="conversation-heading">
-          <button id="sidebar-toggle" class="icon-button" type="button" aria-label="展开侧栏" aria-controls="app-sidebar" aria-expanded="false">
-            <svg class="icon" aria-hidden="true"><use href="#icon-sidebar"/></svg>
+          <button id="sidebar-toggle" class="icon-button" type="button" aria-label="展开侧栏" aria-controls="app-sidebar"
+            aria-expanded="false">
+            <svg class="icon" aria-hidden="true">
+              <use href="#icon-sidebar" />
+            </svg>
           </button>
-          <svg class="icon heading-folder" aria-hidden="true"><use href="#icon-folder"/></svg>
+          <svg class="icon heading-folder" aria-hidden="true">
+            <use href="#icon-folder" />
+          </svg>
           <h1 id="conversation-title">项目助手</h1>
         </div>
         <div class="header-actions">
           <button id="cancel-compaction-button" type="button" hidden>取消整理</button>
           <details id="conversation-menu" class="conversation-menu">
             <summary aria-label="对话操作" title="对话操作">
-              <svg class="icon" aria-hidden="true"><use href="#icon-more"/></svg>
+              <svg class="icon" aria-hidden="true">
+                <use href="#icon-more" />
+              </svg>
             </summary>
             <div class="conversation-menu-body">
               <h2>对话操作</h2>
               <button id="select-workspace-button" type="button" disabled
                 title="选择后新建对话，原对话和文件草稿保留。">选择工作目录并新建对话…</button>
               <button id="compact-session-button" type="button" disabled title="调用模型整理前文，保留原始历史文件。">整理上下文</button>
-              <button id="export-conversation-button" type="button" disabled title="导出当前上下文的展示文本，包括摘要和保留消息。">导出对话</button>
+              <button id="export-conversation-button" type="button" disabled
+                title="导出当前上下文的展示文本，包括摘要和保留消息。">导出对话</button>
               <div class="rename-controls">
                 <label for="session-name">重命名当前对话</label>
                 <input id="session-name" type="text" maxlength="40" placeholder="输入新的对话名称" />
@@ -140,24 +186,43 @@
         <p id="request-status" role="status" aria-atomic="true">就绪</p>
         <form id="message-form" class="composer">
           <label for="message-input" class="sr-only">输入消息</label>
-          <textarea id="message-input" rows="3" autocomplete="off" placeholder="向闪电31发送消息" aria-describedby="message-input-hint composer-draft-status"></textarea>
+          <textarea id="message-input" rows="3" autocomplete="off" placeholder="向闪电31发送消息"
+            aria-describedby="message-input-hint composer-draft-status"></textarea>
+          <!-- 模板先进入输入框，由用户补充资料后自行发送。 -->
+          <div class="task-template-row">
+            <label for="task-template-select" class="sr-only">测试任务模板</label>
+            <select id="task-template-select" disabled>
+              <option value="">选择测试任务模板</option>
+            </select>
+            <button id="task-template-insert" type="button" disabled>插入模板</button>
+          </div>
+
           <div class="composer-actions">
-            <button id="draft-toggle" class="draft-toggle" type="button" aria-controls="proposal-review-panel" aria-expanded="false">
-              <svg class="icon" aria-hidden="true"><use href="#icon-files"/></svg>
+            <button id="draft-toggle" class="draft-toggle" type="button" aria-controls="proposal-review-panel"
+              aria-expanded="false">
+              <svg class="icon" aria-hidden="true">
+                <use href="#icon-files" />
+              </svg>
               <span>文件草稿</span>
             </button>
             <div id="model-selector" class="model-selector" aria-busy="false">
               <label for="model-select" class="sr-only">当前对话模型</label>
-              <select id="model-select" aria-describedby="model-status" disabled><option value="">正在读取模型……</option></select>
+              <select id="model-select" aria-describedby="model-status" disabled>
+                <option value="">正在读取模型……</option>
+              </select>
               <button type="button" hidden>重新读取</button>
               <p id="model-status" role="status" aria-atomic="true">正在读取当前模型……</p>
             </div>
             <div class="send-actions">
               <button id="stop-button" class="round-button" type="button" disabled aria-label="停止生成" title="停止生成">
-                <svg class="icon" aria-hidden="true"><use href="#icon-stop"/></svg>
+                <svg class="icon" aria-hidden="true">
+                  <use href="#icon-stop" />
+                </svg>
               </button>
               <button id="send-button" class="round-button primary-button" type="submit" aria-label="发送消息" title="发送消息">
-                <svg class="icon" aria-hidden="true"><use href="#icon-send"/></svg>
+                <svg class="icon" aria-hidden="true">
+                  <use href="#icon-send" />
+                </svg>
               </button>
             </div>
           </div>
@@ -184,8 +249,10 @@
         <div class="composer-meta-row">
           <p id="message-input-hint">Enter 发送 · Shift+Enter 换行</p>
           <div id="context-usage" class="context-usage">
-            <button id="context-usage-toggle" type="button" aria-controls="context-usage-details" aria-expanded="false">上下文读取中…</button>
-            <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title" hidden>
+            <button id="context-usage-toggle" type="button" aria-controls="context-usage-details"
+              aria-expanded="false">上下文读取中…</button>
+            <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title"
+              hidden>
               <h2 id="context-usage-title">上下文用量</h2>
               <p data-usage></p>
               <p>这是当前模型上下文的估算，不代表费用、账号配额或全部原始历史。</p>
@@ -208,14 +275,22 @@
     <aside class="settings-sidebar" aria-label="设置">
       <h2>设置</h2>
       <nav class="settings-categories" role="tablist" aria-label="设置分类" aria-orientation="vertical">
-        <button type="button" id="settings-model-tab" class="settings-category" role="tab" data-settings-tab="model" aria-selected="true" aria-controls="settings-model-panel">模型管理</button>
-        <button type="button" id="settings-theme-tab" class="settings-category" role="tab" data-settings-tab="theme" aria-selected="false" aria-controls="settings-theme-panel" tabindex="-1">主题</button>
-        <button type="button" id="settings-archive-tab" class="settings-category" role="tab" data-settings-tab="archive" aria-selected="false" aria-controls="settings-archive-panel" tabindex="-1">已归档的聊天</button>
+        <button type="button" id="settings-model-tab" class="settings-category" role="tab" data-settings-tab="model"
+          aria-selected="true" aria-controls="settings-model-panel">模型管理</button>
+        <button type="button" id="settings-theme-tab" class="settings-category" role="tab" data-settings-tab="theme"
+          aria-selected="false" aria-controls="settings-theme-panel" tabindex="-1">主题</button>
+        <button type="button" id="settings-archive-tab" class="settings-category" role="tab" data-settings-tab="archive"
+          aria-selected="false" aria-controls="settings-archive-panel" tabindex="-1">已归档的聊天</button>
+
+        <button type="button" id="settings-prompt-tab" class="settings-category" role="tab" data-settings-tab="prompt"
+          aria-selected="false" aria-controls="settings-prompt-panel" tabindex="-1">提示词</button>
       </nav>
     </aside>
     <header class="model-manager-header">
       <div class="model-manager-brand">
-        <span class="model-manager-mark"><svg class="icon" aria-hidden="true"><use href="#icon-settings" /></svg></span>
+        <span class="model-manager-mark"><svg class="icon" aria-hidden="true">
+            <use href="#icon-settings" />
+          </svg></span>
         <h2 id="model-settings-title">模型管理</h2>
       </div>
       <div class="model-manager-toolbar">
@@ -226,7 +301,8 @@
     </header>
     <div id="settings-model-panel" class="settings-layout" role="tabpanel" aria-labelledby="settings-model-tab">
       <aside class="settings-navigation" aria-label="模型供应商">
-        <button type="button" class="model-add-provider" data-add-provider disabled><span aria-hidden="true">＋</span> 添加自定义服务商</button>
+        <button type="button" class="model-add-provider" data-add-provider disabled><span aria-hidden="true">＋</span>
+          添加自定义服务商</button>
         <div class="model-provider-groups">
           <section aria-labelledby="custom-providers-title">
             <h3 id="custom-providers-title">自定义服务商 <span data-custom-count></span></h3>
@@ -245,7 +321,10 @@
             <fieldset disabled>
               <legend class="sr-only">模型配置编辑</legend>
               <div class="provider-editor-heading">
-                <div><p class="model-eyebrow">服务商配置</p><h3 id="provider-editor-title" data-editor-title>新增服务商</h3></div>
+                <div>
+                  <p class="model-eyebrow">服务商配置</p>
+                  <h3 id="provider-editor-title" data-editor-title>新增服务商</h3>
+                </div>
                 <div class="profile-actions">
                   <button type="button" data-cancel-edit hidden>取消编辑</button>
                   <button type="button" data-test-connection>测试连接</button>
@@ -255,58 +334,75 @@
               <div class="model-settings-fields">
                 <div class="provider-kind-field">
                   <label for="profile-kind">供应商类型</label>
-                  <select id="profile-kind" name="kind"><option value="builtin">内置目录</option><option value="custom">自定义兼容接口</option></select>
+                  <select id="profile-kind" name="kind">
+                    <option value="builtin">内置目录</option>
+                    <option value="custom">自定义兼容接口</option>
+                  </select>
                 </div>
                 <div class="provider-name-field">
                   <label for="profile-name">配置名称</label>
                   <input id="profile-name" name="name" required maxlength="80" autocomplete="off" />
                 </div>
                 <fieldset data-builtin>
-                  <div><label for="profile-builtin-provider">供应商</label><select id="profile-builtin-provider" name="builtinProvider" required></select></div>
-                  <div><label for="profile-builtin-model">模型</label><select id="profile-builtin-model" name="builtinModelId" required></select></div>
+                  <div><label for="profile-builtin-provider">供应商</label><select id="profile-builtin-provider"
+                      name="builtinProvider" required></select></div>
+                  <div><label for="profile-builtin-model">模型</label><select id="profile-builtin-model"
+                      name="builtinModelId" required></select></div>
                 </fieldset>
                 <fieldset data-custom hidden disabled>
                   <div class="provider-id-field">
                     <label for="profile-custom-provider">服务商 ID</label>
-                    <input id="profile-custom-provider" name="customProvider" required autocomplete="off" placeholder="如 my-proxy" />
+                    <input id="profile-custom-provider" name="customProvider" required autocomplete="off"
+                      placeholder="如 my-proxy" />
                   </div>
                   <div class="provider-api-field">
                     <label for="profile-api">API 类型</label>
                     <select id="profile-api" name="api">
-                      <option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option>
-                      <option value="anthropic-messages">Anthropic Messages</option><option value="google-generative-ai">Google Gemini</option>
+                      <option value="openai-completions">OpenAI Chat Completions</option>
+                      <option value="openai-responses">OpenAI Responses</option>
+                      <option value="anthropic-messages">Anthropic Messages</option>
+                      <option value="google-generative-ai">Google Gemini</option>
                     </select>
                   </div>
                   <section class="model-parameter-card" aria-labelledby="model-parameters-title">
                     <div class="model-section-heading">
                       <h4 id="model-parameters-title">模型参数</h4>
-                      <div class="profile-actions"><button type="button" data-fetch-models>获取模型列表</button><button type="button" data-show-enrichment>补参数</button></div>
+                      <div class="profile-actions"><button type="button" data-fetch-models>获取模型列表</button><button
+                          type="button" data-show-enrichment>补参数</button></div>
                     </div>
                     <div class="model-identity-row">
-                      <div><label for="profile-custom-model">模型 ID</label><input id="profile-custom-model" name="customModelId" list="profile-model-options" required autocomplete="off" spellcheck="false" /><datalist id="profile-model-options"></datalist></div>
+                      <div><label for="profile-custom-model">模型 ID</label><input id="profile-custom-model"
+                          name="customModelId" list="profile-model-options" required autocomplete="off"
+                          spellcheck="false" /><datalist id="profile-model-options"></datalist></div>
                       <label class="model-checkbox"><input type="checkbox" name="vision" />图片输入</label>
                       <label class="model-checkbox"><input type="checkbox" name="reasoning" />思考强度</label>
                     </div>
                     <div class="model-limits-row">
-                      <div><label for="profile-context">上下文窗口（tokens）</label><input id="profile-context" name="contextWindow" type="number" min="1" step="1" required /></div>
-                      <div><label for="profile-max-tokens">最大输出（tokens）</label><input id="profile-max-tokens" name="maxTokens" type="number" min="1" step="1" required /></div>
+                      <div><label for="profile-context">上下文窗口（tokens）</label><input id="profile-context"
+                          name="contextWindow" type="number" min="1" step="1" required /></div>
+                      <div><label for="profile-max-tokens">最大输出（tokens）</label><input id="profile-max-tokens"
+                          name="maxTokens" type="number" min="1" step="1" required /></div>
                     </div>
                   </section>
                 </fieldset>
                 <div class="provider-url-field">
                   <label for="profile-base-url">baseUrl</label>
-                  <input id="profile-base-url" name="baseUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://api.example.com/v1" />
+                  <input id="profile-base-url" name="baseUrl" type="url" autocomplete="off" spellcheck="false"
+                    placeholder="https://api.example.com/v1" />
                 </div>
                 <div class="provider-auth-field">
                   <label for="profile-auth">凭据来源</label>
                   <select id="profile-auth" name="authMode">
-                    <option value="saved">输入并加密保存 API 密钥</option><option value="sdk">已有的 SDK API 密钥</option>
-                    <option value="provider">供应商激活密钥</option><option value="oauth">供应商 OAuth 登录</option>
+                    <option value="saved">输入并加密保存 API 密钥</option>
+                    <option value="sdk">已有的 SDK API 密钥</option>
+                    <option value="provider">供应商激活密钥</option>
+                    <option value="oauth">供应商 OAuth 登录</option>
                   </select>
                 </div>
                 <div data-key class="provider-key-field">
                   <label for="profile-key">API 密钥</label>
-                  <input id="profile-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="已保存时，留空不修改" required />
+                  <input id="profile-key" name="apiKey" type="password" autocomplete="new-password" spellcheck="false"
+                    placeholder="已保存时，留空不修改" required />
                 </div>
               </div>
               <details class="model-environment-tools">
@@ -320,21 +416,28 @@
         <fieldset data-saved-controls class="saved-profile-controls" disabled>
           <legend>已保存模型</legend>
           <div class="saved-model-heading">
-            <div><label for="saved-model-profiles">模型配置</label><select id="saved-model-profiles" data-profiles></select></div>
-            <div class="profile-actions"><button type="button" data-edit>编辑配置</button><button type="button" data-clone>复制配置</button><button type="button" data-hide>移除配置</button></div>
+            <div><label for="saved-model-profiles">模型配置</label><select id="saved-model-profiles" data-profiles></select>
+            </div>
+            <div class="profile-actions"><button type="button" data-edit>编辑配置</button><button type="button"
+                data-clone>复制配置</button><button type="button" data-hide>移除配置</button></div>
           </div>
           <div class="saved-model-list" data-model-cards aria-label="当前服务商的模型配置"></div>
           <p data-selected-info class="selected-profile-info"></p>
-          <div class="profile-actions"><button type="button" data-apply>用于当前对话</button><button type="button" data-default>设为新对话默认</button><button type="button" data-clear-default>恢复原有默认</button><button type="button" data-refresh-profile>刷新模型列表</button></div>
+          <div class="profile-actions"><button type="button" data-apply>用于当前对话</button><button type="button"
+              data-default>设为新对话默认</button><button type="button" data-clear-default>恢复原有默认</button><button type="button"
+              data-refresh-profile>刷新模型列表</button></div>
           <p data-profile-catalog hidden></p>
         </fieldset>
         <details data-enrichment class="model-management-section">
           <summary>模型参数补全</summary>
           <div class="model-section-body">
-            <label for="enrichment-ids">模型编号（每行一个，留空使用正在编辑的模型）</label><textarea id="enrichment-ids" rows="2" maxlength="30000"></textarea>
+            <label for="enrichment-ids">模型编号（每行一个，留空使用正在编辑的模型）</label><textarea id="enrichment-ids" rows="2"
+              maxlength="30000"></textarea>
             <label for="enrichment-hint">参考目录编号（可选，用于单个模型）</label><input id="enrichment-hint" autocomplete="off" />
-            <div class="profile-actions"><button type="button" data-enrich>从公开目录补全</button><button type="button" data-cancel-enrich hidden>取消补全</button></div>
-            <p data-enrich-status role="status"></p><div data-enrich-results></div>
+            <div class="profile-actions"><button type="button" data-enrich>从公开目录补全</button><button type="button"
+                data-cancel-enrich hidden>取消补全</button></div>
+            <p data-enrich-status role="status"></p>
+            <div data-enrich-results></div>
           </div>
         </details>
         <details data-catalog-tools class="model-management-section">
@@ -342,13 +445,23 @@
           <div class="model-section-body">
             <label for="catalog-provider">供应商</label><select id="catalog-provider" data-catalog-provider></select>
             <div class="profile-actions"><button type="button" data-refresh-builtin>刷新官方目录</button></div>
-            <details><summary>手动补充模型</summary>
+            <details>
+              <summary>手动补充模型</summary>
               <form data-append-model class="model-auxiliary-form">
-                <div><label for="catalog-model-id">模型编号</label><input id="catalog-model-id" name="modelId" required autocomplete="off" /></div>
-                <div><label for="catalog-api">接口协议</label><select id="catalog-api" name="api"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option><option value="google-generative-ai">Google Gemini</option></select></div>
-                <div><label for="catalog-context">上下文窗口</label><input id="catalog-context" name="contextWindow" type="number" min="1" step="1" required /></div>
-                <div><label for="catalog-max-tokens">最大输出 tokens</label><input id="catalog-max-tokens" name="maxTokens" type="number" min="1" step="1" required /></div>
-                <label class="model-checkbox"><input name="reasoning" type="checkbox" />支持思考强度</label><label class="model-checkbox"><input name="vision" type="checkbox" />支持图片输入</label>
+                <div><label for="catalog-model-id">模型编号</label><input id="catalog-model-id" name="modelId" required
+                    autocomplete="off" /></div>
+                <div><label for="catalog-api">接口协议</label><select id="catalog-api" name="api">
+                    <option value="openai-completions">OpenAI Chat Completions</option>
+                    <option value="openai-responses">OpenAI Responses</option>
+                    <option value="anthropic-messages">Anthropic Messages</option>
+                    <option value="google-generative-ai">Google Gemini</option>
+                  </select></div>
+                <div><label for="catalog-context">上下文窗口</label><input id="catalog-context" name="contextWindow"
+                    type="number" min="1" step="1" required /></div>
+                <div><label for="catalog-max-tokens">最大输出 tokens</label><input id="catalog-max-tokens" name="maxTokens"
+                    type="number" min="1" step="1" required /></div>
+                <label class="model-checkbox"><input name="reasoning" type="checkbox" />支持思考强度</label><label
+                  class="model-checkbox"><input name="vision" type="checkbox" />支持图片输入</label>
                 <button type="submit">补充到目录</button>
               </form>
             </details>
@@ -359,23 +472,32 @@
           <summary>供应商凭据与 OAuth</summary>
           <div class="model-section-body">
             <label for="auth-provider">供应商</label><select id="auth-provider" data-auth-provider></select>
-            <p data-auth-status role="status"></p><div data-provider-keys></div>
+            <p data-auth-status role="status"></p>
+            <div data-provider-keys></div>
             <form class="model-auxiliary-form">
-              <div><label for="provider-key-name">密钥名称</label><input id="provider-key-name" name="keyName" maxlength="80" required autocomplete="off" /></div>
-              <div><label for="provider-key-value">API 密钥</label><input id="provider-key-value" name="key" type="password" required autocomplete="new-password" /></div>
+              <div><label for="provider-key-name">密钥名称</label><input id="provider-key-name" name="keyName"
+                  maxlength="80" required autocomplete="off" /></div>
+              <div><label for="provider-key-value">API 密钥</label><input id="provider-key-value" name="key"
+                  type="password" required autocomplete="new-password" /></div>
               <button type="submit">添加命名密钥</button>
             </form>
-            <div class="profile-actions"><button type="button" data-login>OAuth 登录</button><button type="button" data-logout>退出 OAuth 登录</button><button type="button" data-refresh-auth>刷新认证状态</button></div>
+            <div class="profile-actions"><button type="button" data-login>OAuth 登录</button><button type="button"
+                data-logout>退出 OAuth 登录</button><button type="button" data-refresh-auth>刷新认证状态</button></div>
             <div data-oauth-flow aria-live="polite"></div>
           </div>
         </details>
         <section class="model-management-section model-thinking-section" data-thinking>
-          <div><h3>当前对话的思考强度</h3><p data-thinking-status role="status"></p></div>
-          <div><label for="model-thinking-level" class="sr-only">思考强度</label><select id="model-thinking-level" disabled></select></div>
+          <div>
+            <h3>当前对话的思考强度</h3>
+            <p data-thinking-status role="status"></p>
+          </div>
+          <div><label for="model-thinking-level" class="sr-only">思考强度</label><select id="model-thinking-level"
+              disabled></select></div>
         </section>
       </div>
     </div>
-    <section id="settings-theme-panel" class="theme-settings" data-theme-panel role="tabpanel" aria-labelledby="settings-theme-tab" hidden>
+    <section id="settings-theme-panel" class="theme-settings" data-theme-panel role="tabpanel"
+      aria-labelledby="settings-theme-tab" hidden>
       <div>
         <p id="theme-settings-intro">选择应用的外观，立即生效并记住你的选择。</p>
         <fieldset>
@@ -385,21 +507,45 @@
         <p data-theme-status role="status" aria-atomic="true"></p>
       </div>
     </section>
-    <section id="settings-archive-panel" class="archive-settings" role="tabpanel" aria-labelledby="settings-archive-tab" hidden>
+    <section id="settings-archive-panel" class="archive-settings" role="tabpanel" aria-labelledby="settings-archive-tab"
+      hidden>
       <p id="archive-settings-intro">查看已归档的聊天。恢复后可在主页面打开，当前对话和输入保持不变。</p>
       <label for="archive-session-search">搜索已归档的聊天</label>
-      <input id="archive-session-search" type="search" autocomplete="off" placeholder="搜索聊天" aria-controls="archive-session-list" />
+      <input id="archive-session-search" type="search" autocomplete="off" placeholder="搜索聊天"
+        aria-controls="archive-session-list" />
       <div id="archive-session-list" class="session-list" tabindex="-1" aria-label="已归档的聊天"></div>
       <details id="archive-history-preview">
         <summary>只读预览</summary>
         <label for="archive-preview-select">已归档的聊天</label>
-        <select id="archive-preview-select"><option value="">选择聊天后查看</option></select>
+        <select id="archive-preview-select">
+          <option value="">选择聊天后查看</option>
+        </select>
         <button type="button" disabled>查看内容</button>
         <p role="status" aria-atomic="true"></p>
         <div class="history-preview-content" aria-busy="false"></div>
       </details>
     </section>
-    <footer class="model-manager-feedback"><p data-model-status role="status" aria-atomic="true">尚未读取配置。</p><button type="button" data-retry hidden>重新读取</button></footer>
+    <section id="settings-prompt-panel" class="prompt-settings" role="tabpanel" aria-labelledby="settings-prompt-tab"
+      hidden>
+      <p id="prompt-settings-intro">保存后用于新对话；已有快照的对话继续使用原测试职责。无快照的旧对话首次打开时采用当时的默认值，并标注原版本未知。</p>
+      <label for="prompt-core">应用基础规则（只读）</label>
+      <textarea id="prompt-core" rows="6" readonly></textarea>
+      <label for="prompt-default">新对话的测试职责</label>
+      <textarea id="prompt-default" rows="12" maxlength="16000" spellcheck="false"
+        aria-describedby="prompt-settings-intro prompt-status" disabled></textarea>
+      <div class="prompt-settings-actions">
+        <button type="button" data-prompt-reload>重新读取（放弃未保存编辑）</button>
+        <button type="button" data-prompt-save disabled>保存为新对话默认</button>
+      </div>
+      <p id="prompt-status" role="status" aria-atomic="true"></p>
+      <label for="prompt-current">当前对话的测试职责（只读）</label>
+      <textarea id="prompt-current" rows="8" readonly></textarea>
+      <p data-prompt-current-info role="status" aria-atomic="true"></p>
+    </section>
+    <footer class="model-manager-feedback">
+      <p data-model-status role="status" aria-atomic="true">尚未读取配置。</p><button type="button" data-retry
+        hidden>重新读取</button>
+    </footer>
   </dialog>
   <dialog id="project-rename-dialog" class="project-rename-dialog" aria-labelledby="project-rename-title">
     <form novalidate>
@@ -428,4 +574,5 @@
   <script type="module" src="./renderer.js"></script>
   <script type="module" src="./components/page-shell.js"></script>
 </body>
+
 </html>

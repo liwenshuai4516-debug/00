@@ -1,7 +1,13 @@
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const {
-  readFile, realpath, stat, mkdir, writeFile, rename, rm,
+  readFile,
+  realpath,
+  stat,
+  mkdir,
+  writeFile,
+  rename,
+  rm,
 } = require("node:fs/promises");
 
 // 只保存项目元信息，不创建会话，也不修改工作目录中的文件。
@@ -26,11 +32,14 @@ function createProjectStore(storagePath) {
 
     for (const project of data.projects) {
       if (
-        typeof project?.id !== "string" || !project.id.trim() ||
-        typeof project.name !== "string" || !project.name.trim() ||
+        typeof project?.id !== "string" ||
+        !project.id.trim() ||
+        typeof project.name !== "string" ||
+        !project.name.trim() ||
         typeof project.workspaceDir !== "string" ||
         !path.isAbsolute(project.workspaceDir) ||
-        ids.has(project.id) || directories.has(project.workspaceDir)
+        ids.has(project.id) ||
+        directories.has(project.workspaceDir)
       ) {
         throw new Error("项目记录无效或重复。");
       }
@@ -42,9 +51,11 @@ function createProjectStore(storagePath) {
     return data.projects;
   }
 
-  // 添加与重命名共用原子写入，调用方通过 IPC 串行执行。
+  // 后续通过 IPC 的互斥入口调用，避免多个添加操作相互覆盖。
+    // 添加与重命名共用原子写入，调用方通过 IPC 串行执行。
   async function save(projects) {
     await mkdir(path.dirname(storagePath), { recursive: true });
+
     const temporaryPath = `${storagePath}.${randomUUID()}.tmp`;
 
     try {
@@ -58,10 +69,7 @@ function createProjectStore(storagePath) {
     } finally {
       await rm(temporaryPath, { force: true });
     }
-
   }
-
-  // 后续通过 IPC 的互斥入口调用，避免多个添加操作相互覆盖。
   async function add(workspaceDir) {
     if (typeof workspaceDir !== "string" || !path.isAbsolute(workspaceDir)) {
       throw new Error("项目目录必须是绝对路径。");
@@ -111,7 +119,6 @@ function createProjectStore(storagePath) {
     return project;
   }
 
-  return { list, add, rename: renameProject };
-}
+  return { list, add, rename: renameProject };}
 
 module.exports = { createProjectStore };

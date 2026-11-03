@@ -363,3 +363,42 @@ test("读取期间或同会话刷新前的程序赋值仍同步队列，不发�
   const ticket = await s.controller.prepareSend();
   assert.equal(ticket.text, "刷新前程序设置");
 });
+test("模板追加保留原输入，通过原队列保存，切换会话后互不覆盖", async (t) => {
+  const s = await setup(t);
+  await s.controller.switchTo("a");
+  const original = s.input.value;
+  s.controller.appendTemplate("测试模板正文");
+  const expected = `${original}\n\n测试模板正文`;
+  assert.equal(s.input.value, expected);
+  await s.controller.flush();
+  assert.equal(s.records.get("a").text, expected);
+
+  s.select("b");
+  await s.controller.switchTo("b");
+  assert.equal(s.input.value, "B 原文");
+  s.select("a");
+  await s.controller.switchTo("a");
+  assert.equal(s.input.value, expected);
+
+  s.edit("");
+  s.controller.appendTemplate("空输入模板");
+  assert.equal(s.input.value, "空输入模板");
+  await s.controller.flush();
+  assert.equal(s.records.get("a").text, "空输入模板");
+});
+
+test("输入未加载、待确认发送或只读时拒绝模板，保持原文", async (t) => {
+  const s = await setup(t);
+  assert.throws(() => s.controller.appendTemplate("不应写入"), /不可插入模板/);
+  await s.controller.switchTo("a");
+  const original = s.input.value;
+  s.input.readOnly = true;
+  assert.throws(() => s.controller.appendTemplate("不应写入"), /不可插入模板/);
+  s.input.readOnly = false;
+  s.records.get("b").pendingSend = { id: "pending", text: "待确认原文", draftRevision: 4 };
+  s.select("b");
+  await s.controller.switchTo("b");
+  assert.throws(() => s.controller.appendTemplate("不应写入"), /不可插入模板/);
+  assert.equal(s.input.value, "B 原文");
+  assert.equal(s.records.get("a").text, original);
+});

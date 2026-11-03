@@ -91,7 +91,9 @@ function refreshDraftToggle() {
   draftToggle.setAttribute("aria-label", draftSummary.textContent);
   draftToggle.title = draftSummary.textContent;
 }
-draftToggle.addEventListener("click", () => { drafts.open = !drafts.open; });
+draftToggle.addEventListener("click", () => {
+  drafts.open = !drafts.open;
+});
 drafts.addEventListener("toggle", refreshDraftToggle);
 new MutationObserver(refreshDraftToggle).observe(draftSummary, {
   childList: true,
@@ -122,7 +124,6 @@ document.addEventListener("keydown", (event) => {
     sidebarToggle.focus();
   }
 });
-
 // 只在业务确认恢复成功后收起窄窗口侧栏，失败时保留重试入口。
 document.addEventListener("unsent-session-opened", () => {
   if (narrowWindow.matches) setSidebar(false);

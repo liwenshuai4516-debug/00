@@ -1,6 +1,7 @@
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const fs = require("node:fs/promises");
+const { validatePromptSettings } = require("./prompt-settings-store.js");
 
 function createSessionStateStore(directory) {
   // 应用入口共用此实例；同一会话的读取、修改和写入依次执行。
@@ -49,6 +50,14 @@ function createSessionStateStore(directory) {
     // 旧记录没有来源证明，保持未登记；不能据此认定它是空会话。
     if (state.registration !== undefined) {
       validateRegistration(state.registration);
+    }
+
+     // 兼容没有快照的旧记录；一旦存在快照就必须完整有效。
+    if (state.promptSnapshot !== undefined) {
+      validatePromptSettings(state.promptSnapshot);
+      if (!["new", "legacy"].includes(state.promptSnapshot.origin)) {
+        throw new Error("会话提示词快照来源无效，请保留原文件并检查。");
+      }
     }
 
     // 旧记录可以没有此字段；非空快照必须对应已经消费的输入版本。
@@ -105,7 +114,9 @@ function createSessionStateStore(directory) {
       throw error;
     }
     const states = [];
-    for (const filename of filenames.filter(name => name.endsWith(".json")).sort()) {
+    for (const filename of filenames
+      .filter((name) => name.endsWith(".json"))
+      .sort()) {
       const state = await load(filename.slice(0, -5));
       if (state) states.push(state);
     }
@@ -119,52 +130,57 @@ function createSessionStateStore(directory) {
       throw new Error("工作目录必须是绝对路径。");
     }
 
-    const result = (pending.get(sessionId) ?? Promise.resolve()).then(async () => {
-      const current = await read(sessionId, filename);
-      const state = current ?? {
-        version: 1,
-        sessionId,
-        workspaceDir,
-        draft: { text: "", revision: 0 },
-        pinnedAt: null,
-        archivedAt: null,
-        pendingSend: null,
-      };
+    const result = (pending.get(sessionId) ?? Promise.resolve()).then(
+      async () => {
+        const current = await read(sessionId, filename);
+        const state = current ?? {
+          version: 1,
+          sessionId,
+          workspaceDir,
+          draft: { text: "", revision: 0 },
+          pinnedAt: null,
+          archivedAt: null,
+          pendingSend: null,
+        };
 
-      if (state.workspaceDir !== workspaceDir) {
-        throw new Error("会话工作目录不匹配。");
-      }
-
-      // 排队后读取最新状态，避免置顶、归档与输入保存互相覆盖。
-      const next = change(state);
-      validate(next, sessionId);
-      if (next.workspaceDir !== workspaceDir) {
-        throw new Error("会话工作目录不匹配。");
-      }
-
-      await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-      const temporaryPath = `${filename}.${randomUUID()}.tmp`;
-      const file = await fs.open(temporaryPath, "wx", 0o600);
-
-      try {
-        try {
-          await file.writeFile(JSON.stringify(next) + "\n", "utf8");
-          await file.sync();
-        } finally {
-          await file.close();
+        if (state.workspaceDir !== workspaceDir) {
+          throw new Error("会话工作目录不匹配。");
         }
 
-        // 完整写入并同步后替换，失败时保留旧状态。
-        await fs.rename(temporaryPath, filename);
-      } finally {
-        await fs.rm(temporaryPath, { force: true });
-      }
+        // 排队后读取最新状态，避免置顶、归档与输入保存互相覆盖。
+        const next = change(state);
+        validate(next, sessionId);
+        if (next.workspaceDir !== workspaceDir) {
+          throw new Error("会话工作目录不匹配。");
+        }
 
-      return next;
-    });
+        await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+        const temporaryPath = `${filename}.${randomUUID()}.tmp`;
+        const file = await fs.open(temporaryPath, "wx", 0o600);
+
+        try {
+          try {
+            await file.writeFile(JSON.stringify(next) + "\n", "utf8");
+            await file.sync();
+          } finally {
+            await file.close();
+          }
+
+          // 完整写入并同步后替换，失败时保留旧状态。
+          await fs.rename(temporaryPath, filename);
+        } finally {
+          await fs.rm(temporaryPath, { force: true });
+        }
+
+        return next;
+      },
+    );
 
     // 队尾总是结束，某次失败不会阻断后续更新。
-    const settled = result.then(() => {}, () => {});
+    const settled = result.then(
+      () => {},
+      () => {},
+    );
     pending.set(sessionId, settled);
     settled.then(() => {
       if (pending.get(sessionId) === settled) pending.delete(sessionId);
@@ -192,13 +208,20 @@ function createSessionStateStore(directory) {
   }
 
   async function saveDraft(
-    sessionId, workspaceDir, text, expectedRevision, readRegistration,
+    sessionId,
+    workspaceDir,
+    text,
+    expectedRevision,
+    readRegistration,
   ) {
     if (typeof text !== "string" || !isRevision(expectedRevision)) {
       throw new Error("输入草稿或版本无效。");
     }
 
-    if (readRegistration !== undefined && typeof readRegistration !== "function") {
+    if (
+      readRegistration !== undefined &&
+      typeof readRegistration !== "function"
+    ) {
       throw new Error("会话登记读取方法无效。");
     }
 
@@ -216,7 +239,10 @@ function createSessionStateStore(directory) {
           throw new Error("会话恢复登记的工作目录不匹配。");
         }
         nextRegistration = {
-          source: state.registration?.source === "history" ? "history" : registration.source,
+          source:
+            state.registration?.source === "history"
+              ? "history"
+              : registration.source,
           model: {
             provider: registration.model.provider,
             modelId: registration.model.modelId,
@@ -228,7 +254,9 @@ function createSessionStateStore(directory) {
         ...state,
         // 空字符串也是明确保存，不能删除版本，否则旧输入可能重新写回。
         draft: { text, revision: expectedRevision + 1 },
-        ...(nextRegistration === undefined ? {} : { registration: nextRegistration }),
+        ...(nextRegistration === undefined
+          ? {}
+          : { registration: nextRegistration }),
       };
     });
   }
@@ -281,7 +309,15 @@ function createSessionStateStore(directory) {
     });
   }
 
-  return { load, list, update, registerSession, saveDraft, consumeDraft, completeSend };
+  return {
+    load,
+    list,
+    update,
+    registerSession,
+    saveDraft,
+    consumeDraft,
+    completeSend,
+  };
 }
 
 module.exports = { createSessionStateStore };

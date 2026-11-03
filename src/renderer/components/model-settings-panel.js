@@ -3,7 +3,7 @@ import { createCatalogTools } from "./model/catalog-tools.js";
 import { createCatalogEnrichmentPanel } from "./model/catalog-enrichment.js";
 import { createProviderNavigation } from "./model/provider-navigation.js";
 
-export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, refreshProfiles) {
+export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, refreshProfiles, canClose = () => true) {
   const form = dialog.querySelector("form");
   const fields = form.querySelector("fieldset");
   const controls = dialog.querySelector("[data-saved-controls]");
@@ -114,7 +114,9 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
           : "读取启动时的供应商、模型和地址；密钥不回填。不会切换当前对话或改写 .env。";
     }
     retryButton.disabled = busy || loading || saving;
-    closeButton.disabled = saving;
+    closeButton.disabled = saving || !canClose();
+
+
     dialog.setAttribute("aria-busy", String(loading || saving));
   }
 
@@ -271,7 +273,7 @@ export function createModelSettingsPanel(dialog, openButton, api, setPageBusy, r
   }
 
   function close() {
-    if (saving) return;
+    if (saving || !canClose()) return;
     sequence += 1; loading = false; field("apiKey").value = "";
     providerAuth.close(); enrichment.close(); unsubscribe?.(); unsubscribe = undefined;
     dialog.close(); if (!openButton.disabled) openButton.focus();

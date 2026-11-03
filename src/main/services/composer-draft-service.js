@@ -74,11 +74,13 @@ function createComposerDraftService(sessionService, sessionStateStore) {
       sessionId,
       text: state?.draft.text ?? "",
       revision: state?.draft.revision ?? 0,
-      pendingSend: state?.pendingSend ? {
-        id: state.pendingSend.id,
-        text: state.pendingSend.text,
-        draftRevision: state.pendingSend.draftRevision,
-      } : null,
+      pendingSend: state?.pendingSend
+        ? {
+            id: state.pendingSend.id,
+            text: state.pendingSend.text,
+            draftRevision: state.pendingSend.draftRevision,
+          }
+        : null,
     };
   }
 
@@ -110,5 +112,4 @@ function createComposerDraftService(sessionService, sessionStateStore) {
 
   return { loadCurrentDraft, saveDraft, inspectSend, dismissSend };
 }
-
 module.exports = { createComposerDraftService };

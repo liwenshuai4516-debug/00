@@ -10,6 +10,8 @@ function registerAgentIpc(
   projectService,
   composerDraftService,
   modelSettingsService,
+    promptSettingsStore,
+
 ) {
   let operationPending = false;
 
@@ -31,11 +33,34 @@ function registerAgentIpc(
   const { registerModelIpc } = require("./model-ipc.js");
   registerModelIpc(ipcMain, modelSettingsService, sessionService, runIdleOperation);
 
+  ipcMain.handle("agent:read-prompt-settings", async () => {
+    const settings = await promptSettingsStore.read();
+    const { AGENT_SYSTEM_PROMPT } = await import("../prompts/agent-system-prompt.mjs");
+    return { ...settings, basePrompt: AGENT_SYSTEM_PROMPT };
+  });
+
+  ipcMain.handle("agent:save-prompt-settings", (_event, input, expectedRevision) =>
+    // 保存默认配置也走现有互斥入口，防止与新建或恢复会话交叉。
+    runIdleOperation(() => promptSettingsStore.save(input?.testAgentPrompt, expectedRevision)),
+  );
+
+  ipcMain.handle("agent:session-prompt-info", () => runIdleOperation(async () => {
+    const session = await sessionService.getSession(true);
+    const snapshot = session.desktopPromptSnapshot;
+    if (!snapshot) return null;
+    return {
+      sessionId: session.sessionId,
+      revision: snapshot.revision,
+      origin: snapshot.origin,
+      testAgentPrompt: snapshot.testAgentPrompt,
+    };
+  }));
+
+
   ipcMain.handle("agent:load-history", () => sessionService.loadHistory());
   ipcMain.handle("agent:current-session", () =>
     sessionService.currentSession(),
   );
-
   // 输入保存独立于生成与切换互斥；原会话归属和版本由服务校验。
   ipcMain.handle("agent:load-composer-draft", () =>
     composerDraftService.loadCurrentDraft(),
@@ -46,20 +71,19 @@ function registerAgentIpc(
       composerDraftService.saveDraft(sessionId, text, expectedRevision),
   );
 
+  // 当前会话由主进程决定，页面不需要传入会话编号。
+  ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
+
   // 异常后的状态核对必须等生成结束，读取期间阻止新的发送与会话操作。
   ipcMain.handle("agent:inspect-composer-send", (_event, sessionId) => {
     return runIdleOperation(() => composerDraftService.inspectSend(sessionId));
   });
 
-  // 当前会话由主进程决定，页面不需要传入会话编号。
-  ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
-
+  // 只读当前会话的模型目录，不接受页面指定供应商或会话。
   // 用户明确核对后解除限制；生成和其他会话操作期间不可执行。
   ipcMain.handle("agent:dismiss-composer-send", (_event, sessionId, sendId) => {
     return runIdleOperation(() => composerDraftService.dismissSend(sessionId, sendId));
   });
-
-  // 只读当前会话的模型目录，不接受页面指定供应商或会话。
   ipcMain.handle("agent:list-models", () => sessionService.listModels());
   // 切换模型与生成、整理、保存和会话切换共用互斥入口。
 
@@ -83,12 +107,14 @@ function registerAgentIpc(
       conversationExportService.exportConversation(event.sender),
     );
   });
-    // 从打开选择窗口到完成切换，全程占用同一个互斥入口。
+
+  // 从打开选择窗口到完成切换，全程占用同一个互斥入口。
   ipcMain.handle("agent:select-workspace", (event) => {
     return runIdleOperation(() =>
       workspaceSelectionService.selectWorkspace(event.sender),
     );
   });
+
   // 项目列表只读；添加项目从选择窗口到落盘全程互斥。
   ipcMain.handle("agent:list-projects", () => projectService.listProjects());
   ipcMain.handle("agent:add-project", (event) => {
@@ -164,10 +190,13 @@ function registerAgentIpc(
     }
 
     // 只接受会话编号和输入版本，不转发页面提供的目录等字段。
-    const draft = draftRequest === undefined ? undefined : {
-      sessionId: draftRequest?.sessionId,
-      revision: draftRequest?.revision,
-    };
+    const draft =
+      draftRequest === undefined
+        ? undefined
+        : {
+            sessionId: draftRequest?.sessionId,
+            revision: draftRequest?.revision,
+          };
 
     return chatService.send(
       message,

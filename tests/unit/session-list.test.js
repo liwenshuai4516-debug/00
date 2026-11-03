@@ -26,11 +26,21 @@ async function writeHistory(dir, id, cwd, updatedAt, name) {
   const entries = [
     { type: "session", version: 3, id, cwd, timestamp },
     {
-      type: "message", id: "u1", parentId: null, timestamp,
-      message: { role: "user", content: `问题-${id}`, timestamp: updatedAt - 1000 },
+      type: "message",
+      id: "u1",
+      parentId: null,
+      timestamp,
+      message: {
+        role: "user",
+        content: `问题-${id}`,
+        timestamp: updatedAt - 1000,
+      },
     },
     {
-      type: "message", id: "a1", parentId: "u1", timestamp,
+      type: "message",
+      id: "a1",
+      parentId: "u1",
+      timestamp,
       message: {
         role: "assistant",
         content: [{ type: "text", text: "不应返回列表的回复正文" }],
@@ -41,12 +51,17 @@ async function writeHistory(dir, id, cwd, updatedAt, name) {
 
   if (name) {
     entries.push({
-      type: "session_info", id: "n1", parentId: "a1", timestamp, name,
+      type: "session_info",
+      id: "n1",
+      parentId: "a1",
+      timestamp,
+      name,
     });
   }
 
   const file = path.join(dir, `${id}.jsonl`);
-  const content = entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+  const content =
+    entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
   await writeFile(file, content);
   return { file, content };
 }
@@ -58,15 +73,36 @@ test("跨目录列表返回归组元信息，保留标题与最近活动顺序",
   // 相同目录名也必须保留完整归属，不能仅按最后一级名称合并。
   const firstDir = path.join(dir, "team-a", "demo");
   const secondDir = path.join(dir, "team-b", "demo");
-  const first = await writeHistory(dir, "first", firstDir, firstTime, "重命名对话");
+  const first = await writeHistory(
+    dir,
+    "first",
+    firstDir,
+    firstTime,
+    "重命名对话",
+  );
   const second = await writeHistory(dir, "second", secondDir, secondTime);
 
   // 精确比较返回字段，避免泄露历史文件路径、完整正文或 SDK 对象。
   assert.deepEqual(await service.listSessions(), [
-    { id: "second", title: "问题-second", workspaceDir: secondDir, updatedAt: secondTime, pinnedAt: null, archivedAt: null },
-    { id: "first", title: "重命名对话", workspaceDir: firstDir, updatedAt: firstTime, pinnedAt: null, archivedAt: null },
+    {
+      id: "second",
+      title: "问题-second",
+      workspaceDir: secondDir,
+      updatedAt: secondTime,
+      pinnedAt: null,
+      archivedAt: null,
+    },
+    {
+      id: "first",
+      title: "重命名对话",
+      workspaceDir: firstDir,
+      updatedAt: firstTime,
+      pinnedAt: null,
+      archivedAt: null,
+    },
   ]);
   assert.equal(await readFile(first.file, "utf8"), first.content);
+
   assert.equal(await readFile(second.file, "utf8"), second.content);
 });
 

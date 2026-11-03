@@ -124,7 +124,6 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
       group.open = Boolean(query) || !collapsed.has(workspaceDir);
 
       const summary = document.createElement("summary");
-      summary.title = workspaceDir === null ? "无项目归属的对话" : workspaceDir || "未记录工作目录";
 
       const project = projectsByDirectory.get(workspaceDir);
       const name = document.createElement(project && !archivedView ? "button" : "span");
@@ -158,10 +157,8 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
       count.textContent = String(groupSessions.length);
       count.setAttribute("aria-label", `${groupSessions.length} 个对话`);
 
-      const location = document.createElement("span");
-      location.className = "session-group-path";
-      location.textContent = workspaceDir || "未记录工作目录";
-      summary.append(name, count, location);
+      // 分组标题只展示项目名称和对话数量。
+      summary.append(name, count);
       if (project && !archivedView && actions.onRenameProject) {
         summary.classList.add("session-group-with-actions");
         const rename = document.createElement("button");

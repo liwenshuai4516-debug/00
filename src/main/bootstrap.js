@@ -2,16 +2,32 @@
 const { createWorkspaceSettings } = require("./storage/workspace-settings.js");
 const { createProjectStore } = require("./storage/project-store.js");
 const { createProjectService } = require("./services/project-service.js");
-
 const { createSessionStateStore } = require("./storage/session-state-store.js");
+const {
+  createPromptSettingsStore,
+} = require("./storage/prompt-settings-store.js");
+
 const {
   createComposerDraftService,
 } = require("./services/composer-draft-service.js");
-const { app, BrowserWindow, ipcMain, dialog, safeStorage, shell } = require("electron");
-const { createModelSettingsStore } = require("./storage/model-settings-store.js");
-const { createModelSettingsService } = require("./services/model-settings-service.js");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  safeStorage,
+  shell,
+} = require("electron");
+const {
+  createModelSettingsStore,
+} = require("./storage/model-settings-store.js");
+const {
+  createModelSettingsService,
+} = require("./services/model-settings-service.js");
 const { createModelCatalogStore } = require("./storage/model-catalog-store.js");
-const { createModelCredentialsStore } = require("./storage/model-credentials-store.js");
+const {
+  createModelCredentialsStore,
+} = require("./storage/model-credentials-store.js");
 const path = require("node:path");
 const { loadEnvFile } = require("node:process");
 const { createSessionService } = require("./services/session-service.js");
@@ -52,9 +68,10 @@ try {
 const modelSettingsStore = createModelSettingsStore(
   path.join(app.getPath("userData"), "model-settings.json"),
   {
-    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() && (
-      process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"
-    ),
+    isEncryptionAvailable: () =>
+      safeStorage.isEncryptionAvailable() &&
+      (process.platform !== "linux" ||
+        safeStorage.getSelectedStorageBackend() !== "basic_text"),
     encryptString: (value) => safeStorage.encryptString(value),
     decryptString: (value) => safeStorage.decryptString(value),
   },
@@ -63,25 +80,43 @@ const modelCredentialsStore = createModelCredentialsStore(
   path.join(app.getPath("userData"), "model-credentials.json"),
   {
     isEncryptionAvailable: () => modelSettingsStore.canEncrypt(),
-    encryptString: value => safeStorage.encryptString(value),
-    decryptString: value => safeStorage.decryptString(value),
+    encryptString: (value) => safeStorage.encryptString(value),
+    decryptString: (value) => safeStorage.decryptString(value),
   },
 );
-const modelSettingsService = createModelSettingsService(modelSettingsStore, undefined, {
-  catalogStore: createModelCatalogStore(path.join(app.getPath("userData"), "model-catalogs")),
-  credentialsStore: modelCredentialsStore, openExternal: url => shell.openExternal(url),
+const modelSettingsService = createModelSettingsService(
+  modelSettingsStore,
+  undefined,
+  {
+    catalogStore: createModelCatalogStore(
+      path.join(app.getPath("userData"), "model-catalogs"),
+    ),
+    credentialsStore: modelCredentialsStore,
+    openExternal: (url) => shell.openExternal(url),
+  },
+);
+app.on("will-quit", () => {
+  modelSettingsService.oauth.dispose();
+  modelSettingsService.enrichment.dispose();
 });
-app.on("will-quit", () => { modelSettingsService.oauth.dispose(); modelSettingsService.enrichment.dispose(); });
 
 // 每次创建会话按自身记录解析配置；新会话才读取默认选择。
-async function createConfiguredAgent(sessionDir, resume, sessionPath, workspaceDir, recovery, resumeOptions) {
+async function createConfiguredAgent(
+  sessionDir,
+  resume,
+  sessionPath,
+  workspaceDir,
+  recovery,
+  resumeOptions,
+) {
   await app.whenReady();
+
   const { createPiAgent } = await import("./pi-agent.mjs");
   const { createDesktopPiOptions } = require("./resources/desktop-pi-options.js");
   return createPiAgent(
     sessionDir, resume, sessionPath, workspaceDir,
     modelSettingsService, recovery, resumeOptions,
-    undefined,
+    { promptSettingsStore, sessionStateStore },
     createDesktopPiOptions(dialog, () => app.quit()),
   );
 }
@@ -98,18 +133,28 @@ const sessionStateStore = createSessionStateStore(
   path.join(app.getPath("userData"), "session-state"),
 );
 
+const promptSettingsStore = createPromptSettingsStore(
+  path.join(app.getPath("userData"), "prompt-settings.json"),
+  // 主进程是 CommonJS，按需加载已有的 ES Module 默认提示词。
+  async () =>
+    (await import("./prompts/test-agent-prompt.mjs")).TEST_AGENT_PROMPT,
+);
+
 const sessionService = createSessionService(
   path.join(projectRoot, "sessions"),
   createConfiguredAgent,
   workspaceSettings.load,
   workspaceSettings.save,
   sessionStateStore,
-); // 文件草稿与 Pi 会话保存在当前项目的 sessions 目录内。
+);
+// 文件草稿与 Pi 会话保存在当前项目的 sessions 目录内。
 
 const composerDraftService = createComposerDraftService(
   sessionService,
   sessionStateStore,
 );
+
+// 草稿与会话都保存在当前项目的 sessions 目录内。
 const proposalStorage = createProposalStorage(
   path.join(projectRoot, "sessions", "proposals"),
 );
@@ -123,7 +168,6 @@ const chatService = createChatService(
   proposalStore,
   sessionStateStore,
 );
-
 // 文件操作以实际会话为准，不固定使用启动时的环境变量。
 async function getCurrentWorkspaceDir() {
   const session = await sessionService.getSession(true);
@@ -194,7 +238,6 @@ const projectService = createProjectService(
   sessionService,
 );
 
-
 registerAgentIpc(
   ipcMain,
   sessionService,
@@ -206,6 +249,7 @@ registerAgentIpc(
   projectService,
   composerDraftService,
   modelSettingsService,
+  promptSettingsStore,
 );
 
 const quitGuard = registerAppQuitGuard(app, BrowserWindow);
@@ -222,6 +266,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+
   registerWindowCloseGuard(window, ipcMain, quitGuard.cancelQuit, () =>
     sessionService.closeSession(),
   );

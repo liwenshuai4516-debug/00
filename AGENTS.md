@@ -42,6 +42,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 
 ## Pi SDK 与模型
 
+- **Pi 官方 SDK 规范是接入的首要约束**：以固定版本的官方文档、公开导出及类型声明为依据。原有工具、资源、提示词和草稿逻辑与其冲突时修改原有逻辑，不以旧宿主限制改写 Pi 语义。公开 SDK 允许的模型、会话和界面宿主适配可以保留；尚未适配的能力明确标注，不能宣称与完整 CLI/TUI 等价。
 - Pi SDK 固定为 `1.4.0`；npm 别名为 `"@mariozechner/pi-coding-agent": "npm:@earendil-works/pi-coding-agent@1.4.0"`，源码保留原导入路径。升级依赖同步修改 `package.json` 与 `package-lock.json`。
 - SDK 要求 Node.js 至少 `22.19.0`。初始化使用 `await ModelRuntime.create()`、`getModel()` 和 `createAgentSession({ modelRuntime, ... })`；不沿用旧版 `AuthStorage`、`authStorage` / `modelRegistry` 会话选项。
 - `SessionManager.list(cwd, sessionDir)` 按目录筛选；侧栏和只读历史预览使用 `listAll(sessionDir)`，自动恢复仍校验实际目录与应用绑定，不认领其他目录的会话。
@@ -93,7 +94,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - [ ] **资源列表与包管理界面**：通过有限 IPC 展示官方登记结果和诊断，提供技能/模板选择；采用官方包管理 API 支持 npm/Git/本地来源和官方资源过滤。当前仅验证配置中的本地包加载，尚未完成交互安装、更新、删除、远程包及安装失败回滚，不把 pi-package 关键词作为加载必要条件。
 - [ ] **真实桌面验收**：人工核对项目信任弹窗、自动技能选择的 read 证据、脚本执行、模板、原生文件修改、MCP 登录、切换/重载/关窗、停止及输入保存。离线检查未调用模型、未读取真实用户配置/会话，不代表供应商推理或系统窗口已验收。
 
-已有 `docs/pi-skills-packages-plan.md` 为旧草案；与当前约定冲突的限制和 API 推断不作为实现依据。旧 `read-skill-file.mjs` 和旧信任适配若仍在工作区，不代表它们仍处于运行链路；不删除其他窗口或使用者保留的文件。
+当前实现说明见 `docs/pi-native-integration.md`；`docs/pi-skills-packages-plan.md` 仅保留废止索引，旧方案可从 Git 历史查看。已移除无引用的技能专用 read 和旧信任适配，避免再次误接。旧草稿服务和历史适配器仍有兼容用途，不注册到原生 Agent 工具集。
 
 ## 当前状态与剩余工作（2026-11-02）
 

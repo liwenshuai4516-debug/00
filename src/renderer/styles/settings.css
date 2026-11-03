@@ -44,3 +44,12 @@
   .theme-settings, .archive-settings { padding: 16px; }
   .theme-choices { grid-template-columns: minmax(0, 1fr); }
 }
+/* 提示词内容独立滚动，沿用当前主题变量，避免影响聊天布局。 */
+.prompt-settings { min-height: 0; overflow: auto; padding: 24px 32px; }
+.prompt-settings > label { display: block; margin: 20px 0 8px; font-weight: 600; }
+.prompt-settings > p { color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.prompt-settings textarea { line-height: 1.6; }
+.prompt-settings-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+@media (max-width: 700px) {
+  .prompt-settings { padding: 16px; }
+}

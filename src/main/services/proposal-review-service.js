@@ -89,8 +89,7 @@ function createProposalReviewService(workspaceDir, chatService) {
           proposal.newText +
           source.slice(replacementEnd, end),
       },
-    };
-  }
+    };  }
 
   return { review };
 }

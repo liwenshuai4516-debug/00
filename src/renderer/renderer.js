@@ -5,6 +5,8 @@ import { createSessionInfoPanel } from "./components/session-info-panel.js";
 import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
+import { TASK_TEMPLATES } from "./components/task-templates.js";
+
 import {
   appendMessage,
   updateAssistantMessage,
@@ -21,6 +23,15 @@ const form = document.getElementById("message-form");
 const input = document.getElementById("message-input");
 const sendButton = document.getElementById("send-button");
 const stopButton = document.getElementById("stop-button");
+const templateSelect = document.getElementById("task-template-select");
+const templateInsert = document.getElementById("task-template-insert");
+for (const template of TASK_TEMPLATES) {
+  const option = document.createElement("option");
+  option.value = template.id;
+  option.textContent = template.name;
+  templateSelect.append(option);
+}
+
 // 页面忙碌与输入就绪分别管理，保存确认不能解除其他操作的忙碌状态。
 let pageBusy = true;
 let pageGenerating = false;
@@ -35,9 +46,12 @@ let focusBeforeClose = null;
 // 不在输入法组词尚未结束时确认保存；模态窗口会使输入框失焦。
 input.addEventListener("compositionstart", () => {
   composing = true;
+  renderComposerState();
 });
 input.addEventListener("compositionend", () => {
   composing = false;
+  renderComposerState();
+
   closeController?.notify();
 });
 closeDialog.addEventListener("cancel", (event) => event.preventDefault());
@@ -77,6 +91,11 @@ function renderComposerState() {
   composerRetry.disabled = busy;
   sendButton.disabled = busy || !composerState.canSend;
 
+  // 模板写入与发送共用就绪条件；输入法组词期间不能程序改写正文。
+  templateSelect.disabled =
+    busy || !composerState.canSend || composing || input.readOnly;
+  templateInsert.disabled = templateSelect.disabled || !templateSelect.value;
+
   // 生成中的临时快照等待请求结束后再展示，避免误报为异常。
   const pending = pageGenerating ? null : composerState.pendingSend;
   unconfirmedSend.hidden = !pending;
@@ -102,9 +121,38 @@ function renderComposerState() {
   );
 }
 
-const composerPersistence = createComposerPersistence(input, window.agent, (state) => {
-  composerState = state;
-  renderComposerState();
+const composerPersistence = createComposerPersistence(
+  input,
+  window.agent,
+  (state) => {
+    composerState = state;
+    renderComposerState();
+  },
+);
+
+templateSelect.addEventListener("change", renderComposerState);
+templateInsert.addEventListener("click", () => {
+  // 处理点击时再次检查，不能只依赖上一次渲染的按钮状态。
+  if (
+    pageBusy ||
+    closing ||
+    archiveSyncPending ||
+    composing ||
+    !composerState.canSend ||
+    input.readOnly
+  )
+    return;
+  const template = TASK_TEMPLATES.find(
+    (item) => item.id === templateSelect.value,
+  );
+  if (!template) return;
+  try {
+    composerPersistence.appendTemplate(template.text);
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  } catch (error) {
+    setRequestStatus(error.message);
+  }
 });
 
 // 主进程已切换成功时，输入读取失败只影响输入区，不误报为会话切换失败。
@@ -133,6 +181,7 @@ composerRetry.addEventListener("click", async () => {
     input.focus();
   }
 });
+
 // 第一次点击只展示影响说明，不调用后端；焦点先放到取消按钮。
 dismissSendButton.addEventListener("click", () => {
   if (dismissSendButton.disabled) return;
@@ -180,7 +229,9 @@ dismissAccept.addEventListener("click", async () => {
     input.focus();
   }
 });
-window.addEventListener("pagehide", () => composerPersistence.dispose(), { once: true });
+window.addEventListener("pagehide", () => composerPersistence.dispose(), {
+  once: true,
+});
 
 const newChatButton = document.getElementById("new-chat-button");
 const selectWorkspaceButton = document.getElementById(
@@ -203,7 +254,8 @@ const sessionList = createSessionList(
   selectSidebarSession,
   (project) => projectPanel.open(project),
   {
-    onSetPinned: setSessionPinned, onReload: reloadSessionList,
+    onSetPinned: setSessionPinned,
+    onReload: reloadSessionList,
     onSetArchived: setSessionArchived,
     onRenameProject: (project) => projectPanel.rename(project),
   },
@@ -220,14 +272,21 @@ const archiveList = createSessionList(
   },
 );
 const sessionLists = [sessionList, archiveList];
-window.addEventListener("pagehide", () => sessionLists.forEach(list => list.dispose()), { once: true });
-document.getElementById("archive-session-search").addEventListener("input", event => {
-  archiveList.setQuery(event.target.value);
-});
+window.addEventListener(
+  "pagehide",
+  () => sessionLists.forEach((list) => list.dispose()),
+  { once: true },
+);
+document
+  .getElementById("archive-session-search")
+  .addEventListener("input", (event) => {
+    archiveList.setQuery(event.target.value);
+  });
 
 function focusSessionActions(sessionId) {
-  const inArchive = document.getElementById("model-settings-dialog").open
-    && !document.getElementById("settings-archive-panel").hidden;
+  const inArchive =
+    document.getElementById("model-settings-dialog").open &&
+    !document.getElementById("settings-archive-panel").hidden;
   (inArchive ? archiveList : sessionList).focusActions(sessionId);
 }
 // 搜索只更新侧栏展示，不切换当前会话。
@@ -236,6 +295,7 @@ const sessionSearch = document.getElementById("session-search");
 sessionSearch.addEventListener("input", () => {
   sessionList.setQuery(sessionSearch.value);
 });
+
 let unsentReadVersion = 0;
 window.addEventListener(
   "pagehide",
@@ -256,7 +316,7 @@ async function refreshUnsentSessions() {
     const rows = await window.agent.listUnsentSessions();
     if (version !== unsentReadVersion || sessionId !== composerState.sessionId)
       return;
-    draftSessions = rows.map(row => ({ ...row, empty: true, updatedAt: 0 }));
+    draftSessions = rows.map((row) => ({ ...row, empty: true, updatedAt: 0 }));
     renderSessionLists();
   } catch (error) {
     if (
@@ -270,15 +330,23 @@ async function refreshUnsentSessions() {
 }
 
 function renderSessionLists() {
-  const ids = new Set(historySessions.map(session => session.id));
-  const drafts = draftSessionOwner === composerState.sessionId ? draftSessions.filter(session => !ids.has(session.id)) : [];
+  const ids = new Set(historySessions.map((session) => session.id));
+  const drafts =
+    draftSessionOwner === composerState.sessionId
+      ? draftSessions.filter((session) => !ids.has(session.id))
+      : [];
   sessionList.render([...historySessions, ...drafts], composerState.sessionId);
   archiveList.render(historySessions, composerState.sessionId);
 }
 
 function selectSidebarSession(sessionId) {
-  if (historySessions.some(session => session.id === sessionId)) void openHistorySession(sessionId);
-  else if (draftSessionOwner === composerState.sessionId && draftSessions.some(session => session.id === sessionId)) void openUnsentSession(sessionId);
+  if (historySessions.some((session) => session.id === sessionId))
+    void openHistorySession(sessionId);
+  else if (
+    draftSessionOwner === composerState.sessionId &&
+    draftSessions.some((session) => session.id === sessionId)
+  )
+    void openUnsentSession(sessionId);
 }
 
 async function openUnsentSession(sessionId) {
@@ -353,17 +421,30 @@ function setRequestStatus(text) {
   }
 }
 
-const contextUsage = createContextUsage(document.getElementById("context-usage"), {
-  onRefresh: () => sessionInfoPanel.refresh(),
-  onCompact: () => compactSessionButton.click(),
-});
+const contextUsage = createContextUsage(
+  document.getElementById("context-usage"),
+  {
+    onRefresh: () => sessionInfoPanel.refresh(),
+    onCompact: () => compactSessionButton.click(),
+  },
+);
 // 菜单信息与常驻用量共用一次读取，不另发模型请求。
 const sessionInfoPanel = createSessionInfoPanel(
   document.getElementById("session-info"),
   () => window.agent.getSessionInfo(),
-  { readSessionId: () => composerState.sessionId, onState: state => contextUsage.render(state) },
+  {
+    readSessionId: () => composerState.sessionId,
+    onState: (state) => contextUsage.render(state),
+  },
 );
-window.addEventListener("pagehide", () => { sessionInfoPanel.dispose(); contextUsage.dispose(); }, { once: true });
+window.addEventListener(
+  "pagehide",
+  () => {
+    sessionInfoPanel.dispose();
+    contextUsage.dispose();
+  },
+  { once: true },
+);
 
 // 模型选择器与设置页共用切换入口，在请求前使旧模型估算失效。
 const modelApi = {
@@ -382,7 +463,6 @@ const modelSelector = createModelSelector(
   () => sessionInfoPanel.refresh(),
 );
 
-
 //配置读取独立于当前会话；保存后不刷新或替换聊天内容。
 const settingsPanel = createSettingsPanel(
   document.getElementById("model-settings-dialog"),
@@ -397,7 +477,7 @@ const projectPanel = createProjectPanel(
   window.agent,
   setBusy,
   openProject,
-  (projects) => sessionLists.forEach(list => list.setProjects(projects)),
+  (projects) => sessionLists.forEach((list) => list.setProjects(projects)),
   document.getElementById("project-rename-dialog"),
 );
 
@@ -439,6 +519,7 @@ function addMessage(role, text) {
 }
 
 // 统一更新按钮、模型选择器和历史列表的可用状态。
+
 function setBusy(busy, generating = false) {
   pageBusy = busy;
   pageGenerating = generating;
@@ -453,7 +534,9 @@ function setBusy(busy, generating = false) {
   selectWorkspaceButton.disabled = blocked;
   compactSessionButton.disabled = blocked;
   exportConversationButton.disabled = blocked;
-  sessionLists.forEach(list => list.setBusy(blocked, archiveSyncPending && !busy && !closing));
+  sessionLists.forEach((list) =>
+    list.setBusy(blocked, archiveSyncPending && !busy && !closing),
+  );
   projectPanel.setBusy(blocked);
   stopButton.disabled = closing || !generating;
   renameButton.disabled = blocked;
@@ -504,12 +587,25 @@ async function setSessionPinned(sessionId, pinned) {
     const result = await window.agent.setSessionPinned(sessionId, pinned);
     saved = true;
     // 确认落盘后立即使用实际结果；列表刷新失败也不会显示成保存失败。
-    historySessions = historySessions.map(session => session.id === sessionId ? { ...session, pinnedAt: result.pinnedAt } : session);
-    sessionLists.forEach(list => list.updatePinned(sessionId, result.pinnedAt));
+    historySessions = historySessions.map((session) =>
+      session.id === sessionId
+        ? { ...session, pinnedAt: result.pinnedAt }
+        : session,
+    );
+    sessionLists.forEach((list) =>
+      list.updatePinned(sessionId, result.pinnedAt),
+    );
     await refreshSessions();
-    sessionLists.forEach(list => list.setStatus(pinned ? "已置顶该对话。" : "已取消置顶。"));
+    sessionLists.forEach((list) =>
+      list.setStatus(pinned ? "已置顶该对话。" : "已取消置顶。"),
+    );
   } catch (error) {
-    sessionLists.forEach(list => list.setStatus(`${saved ? "置顶状态已保存，列表刷新失败" : "置顶结果未确认，请刷新列表核对"}：${error.message}`, true));
+    sessionLists.forEach((list) =>
+      list.setStatus(
+        `${saved ? "置顶状态已保存，列表刷新失败" : "置顶结果未确认，请刷新列表核对"}：${error.message}`,
+        true,
+      ),
+    );
   } finally {
     setBusy(false);
     focusSessionActions(sessionId);
@@ -523,9 +619,12 @@ async function reloadSessionList() {
     await composerPersistence.flush();
     if (archiveSyncPending) await syncArchivedPage();
     await refreshSessions();
-    if (await refreshUnsentSessions() !== false) sessionLists.forEach(list => list.setStatus("对话列表已刷新。"));
+    if ((await refreshUnsentSessions()) !== false)
+      sessionLists.forEach((list) => list.setStatus("对话列表已刷新。"));
   } catch (error) {
-    sessionLists.forEach(list => list.setStatus(`列表刷新失败：${error.message}`, true));
+    sessionLists.forEach((list) =>
+      list.setStatus(`列表刷新失败：${error.message}`, true),
+    );
   } finally {
     if (!archiveSyncPending) input.readOnly = false;
     setBusy(false);
@@ -534,16 +633,24 @@ async function reloadSessionList() {
 }
 
 async function syncArchivedPage(result) {
-  const sessionId = result?.sessionId ?? await window.agent.currentSession();
+  const sessionId = result?.sessionId ?? (await window.agent.currentSession());
   if (sessionId !== composerState.sessionId) {
-    const history = result?.history ?? await window.agent.loadHistory();
+    const history = result?.history ?? (await window.agent.loadHistory());
     showHistory(history);
     sessionList.setActive(sessionId);
     proposalPanel.clear();
     sessionName.value = "";
     await bindComposer(sessionId);
-    for (const refresh of [restoreProposalPanel, () => sessionInfoPanel.refresh(), () => modelSelector.refresh()]) {
-      try { await refresh(); } catch (error) { addMessage("error", `归档状态已更新，刷新失败：${error.message}`); }
+    for (const refresh of [
+      restoreProposalPanel,
+      () => sessionInfoPanel.refresh(),
+      () => modelSelector.refresh(),
+    ]) {
+      try {
+        await refresh();
+      } catch (error) {
+        addMessage("error", `归档状态已更新，刷新失败：${error.message}`);
+      }
     }
   }
   archiveSyncPending = false;
@@ -557,22 +664,45 @@ async function setSessionArchived(sessionId, archived) {
   if (archived && sessionId === composerState.sessionId) input.readOnly = true;
   let saved = false;
   try {
-    if (archived && sessionId === composerState.sessionId) await composerPersistence.flush();
+    if (archived && sessionId === composerState.sessionId)
+      await composerPersistence.flush();
     archiveSyncPending = true;
-    if (archived && sessionId === composerState.sessionId) sessionInfoPanel.invalidate();
+    if (archived && sessionId === composerState.sessionId)
+      sessionInfoPanel.invalidate();
     const result = await window.agent.setSessionArchived(sessionId, archived);
     saved = true;
-    historySessions = historySessions.map(session => session.id === sessionId ? { ...session, archivedAt: result.archivedAt } : session);
-    sessionLists.forEach(list => list.updateArchived(sessionId, result.archivedAt));
+    historySessions = historySessions.map((session) =>
+      session.id === sessionId
+        ? { ...session, archivedAt: result.archivedAt }
+        : session,
+    );
+    sessionLists.forEach((list) =>
+      list.updateArchived(sessionId, result.archivedAt),
+    );
     await syncArchivedPage(result.changed ? result : undefined);
     await refreshSessions();
-    sessionLists.forEach(list => list.setStatus(archived ? "已归档，可撤销或在设置的已归档聊天中恢复。" : "已恢复对话，当前输入保持不变。"));
+    sessionLists.forEach((list) =>
+      list.setStatus(
+        archived
+          ? "已归档，可撤销或在设置的已归档聊天中恢复。"
+          : "已恢复对话，当前输入保持不变。",
+      ),
+    );
   } catch (error) {
     if (archiveSyncPending) {
       // 返回丢失也可能已完成归档与切换；先只读核对实际编号，不重复提交。
-      try { await syncArchivedPage(); } catch { /* 保持冻结，允许刷新入口再次核对。 */ }
+      try {
+        await syncArchivedPage();
+      } catch {
+        /* 保持冻结，允许刷新入口再次核对。 */
+      }
     }
-    sessionLists.forEach(list => list.setStatus(`${saved ? "归档状态已保存，页面更新未完成" : "归档操作未完成，请刷新核对"}：${error.message}`, true));
+    sessionLists.forEach((list) =>
+      list.setStatus(
+        `${saved ? "归档状态已保存，页面更新未完成" : "归档操作未完成，请刷新核对"}：${error.message}`,
+        true,
+      ),
+    );
   } finally {
     await refreshUnsentSessions();
     input.readOnly = archiveSyncPending || wasReadOnly;
@@ -605,10 +735,16 @@ async function loadHistory() {
 }
 
 // 先建立独立预览入口，再尝试恢复当前聊天。
-const archivePreview = mountHistoryPreview(document.getElementById("archive-history-preview"), {
-  listSessions: async () => (await window.agent.listSessions()).filter(session => session.archivedAt != null),
-  previewSession: id => window.agent.previewSession(id),
-});
+const archivePreview = mountHistoryPreview(
+  document.getElementById("archive-history-preview"),
+  {
+    listSessions: async () =>
+      (await window.agent.listSessions()).filter(
+        (session) => session.archivedAt != null,
+      ),
+    previewSession: (id) => window.agent.previewSession(id),
+  },
+);
 
 // 项目清单独立读取，不依赖当前模型会话初始化成功。
 projectPanel.refresh();
@@ -752,7 +888,9 @@ form.addEventListener("submit", async (event) => {
     inputSettled = true;
 
     if (result.outcome === "unconfirmed") {
-      setRequestStatus("请求结果尚未确认，发送原文已单独保留。可以查看后新建对话继续。");
+      setRequestStatus(
+        "请求结果尚未确认，发送原文已单独保留。可以查看后新建对话继续。",
+      );
       addMessage("error", result.error || "请求结果尚未确认。");
     } else {
       setRequestStatus(result.stopped ? "生成已停止。" : "本次回复已结束。");
@@ -773,7 +911,9 @@ form.addEventListener("submit", async (event) => {
             : "请求结果尚未确认，已核对输入状态；请先查看聊天记录。",
         );
       } catch (recoveryError) {
-        setRequestStatus("请求结果及输入状态尚未确认，请使用输入区的重试入口核对。");
+        setRequestStatus(
+          "请求结果及输入状态尚未确认，请使用输入区的重试入口核对。",
+        );
         addMessage("error", `输入状态核对失败：${recoveryError.message}`);
       }
       addMessage("error", error.message);
@@ -813,6 +953,7 @@ newChatButton.addEventListener("click", async () => {
     sessionInfoPanel.invalidate();
     const sessionId = await window.agent.newChat();
     await bindComposer(sessionId);
+
     setRequestStatus("就绪");
     await sessionInfoPanel.refresh();
 
@@ -827,7 +968,7 @@ newChatButton.addEventListener("click", async () => {
   } catch (error) {
     addMessage("error", error.message);
   } finally {
-     // 操作结束后读取实际会话的模型，再恢复交互。
+    // 操作结束后读取实际会话的模型，再恢复交互。
     await modelSelector.refresh();
     await refreshUnsentSessions();
     setBusy(false);
@@ -843,6 +984,7 @@ async function openProject(projectId) {
   // 等待期间的新输入也归入原会话，再恢复目标会话的输入。
   await bindComposer(result.sessionId);
   showHistory(result.history);
+
   sessionList.setActive(result.sessionId);
   sessionName.value = "";
   setRequestStatus("就绪");
@@ -1055,7 +1197,6 @@ selectWorkspaceButton.addEventListener("click", async () => {
     input.focus();
   }
 });
-
 // 所有组件与事件均已建立后再报告就绪；初始化未结束时也会等待。
 closeController = createWindowCloseController({
   api: window.agent,
@@ -1071,4 +1212,6 @@ closeController = createWindowCloseController({
     addMessage("error", `关闭前保存失败：${error.message}`);
   },
 });
-window.addEventListener("pagehide", () => closeController.dispose(), { once: true });
+window.addEventListener("pagehide", () => closeController.dispose(), {
+  once: true,
+});

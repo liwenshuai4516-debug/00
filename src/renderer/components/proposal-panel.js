@@ -76,7 +76,7 @@ export function createProposalPanel(
 
           contentPanel.append(contentLabel, content);
           comparison.append(contentPanel);
-        } else {
+                } else {
           scopeHint.textContent =
             "+ 新增，− 删除，= 不变；· 表示空格，→ 表示 Tab，原文不变。展示修改处的完整行及前后最多两行上下文。保存时会重新核对文件。";
 

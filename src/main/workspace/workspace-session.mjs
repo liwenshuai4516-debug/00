@@ -9,21 +9,20 @@ const BINDING_TYPE = "desktop-workspace-binding";
 
 // 返回不能继续使用的原因；空字符串表示绑定检查通过。
 // 先只读检查，再交给 SDK 打开，避免被拒绝的旧文件先被迁移。
-async function getSessionBindingError(sessionPath, workspaceRoot, expectedSessionId) {
+async function getSessionBindingError(
+  sessionPath,
+  workspaceRoot,
+  expectedSessionId,
+) {
   if (!(await stat(sessionPath)).isFile()) {
     return "会话路径不是普通文件。";
   }
 
-  const entries = parseSessionEntries(
-    await readFile(sessionPath, "utf8"),
-  );
+  const entries = parseSessionEntries(await readFile(sessionPath, "utf8"));
 
   const header = entries[0];
 
-  if (
-    header?.type !== "session" ||
-    typeof header.id !== "string"
-  ) {
+  if (header?.type !== "session" || typeof header.id !== "string") {
     return "会话文件头无效，无法继续。";
   }
 
@@ -32,19 +31,14 @@ async function getSessionBindingError(sessionPath, workspaceRoot, expectedSessio
   }
 
   const bindings = entries.filter(
-    (entry) =>
-      entry.type === "custom" &&
-      entry.customType === BINDING_TYPE,
+    (entry) => entry.type === "custom" && entry.customType === BINDING_TYPE,
   );
 
   if (bindings.length === 0) {
     return "旧会话缺少工作目录绑定，请点击“新建对话”后继续。旧记录仍保留。";
   }
 
-  if (
-    bindings.length !== 1 ||
-    bindings[0].data?.version !== 1
-  ) {
+  if (bindings.length !== 1 || bindings[0].data?.version !== 1) {
     return "会话工作目录绑定记录无效。";
   }
 
@@ -69,9 +63,7 @@ export async function createWorkspaceSession({
   archivedSessionIds = [],
 }) {
   if (!workspaceDir || !path.isAbsolute(workspaceDir)) {
-    throw new Error(
-      "请在 .env 中将 AGENT_WORKSPACE_DIR 配置为绝对路径。",
-    );
+    throw new Error("请在 .env 中将 AGENT_WORKSPACE_DIR 配置为绝对路径。");
   }
 
   // 符号链接别名统一转换为真实目录，再核对会话归属。
@@ -86,7 +78,11 @@ export async function createWorkspaceSession({
     if (resume || sessionPath) {
       throw new Error("登记恢复不能同时指定历史路径或自动恢复。");
     }
-    if (!recovery || typeof recovery.sessionId !== "string" || !recovery.sessionId) {
+    if (
+      !recovery ||
+      typeof recovery.sessionId !== "string" ||
+      !recovery.sessionId
+    ) {
       throw new Error("恢复登记缺少原会话编号。");
     }
     if (recovery.workspaceDir !== workspaceRoot) {
@@ -109,17 +105,23 @@ export async function createWorkspaceSession({
       if (recovery.pendingSend != null) {
         throw new Error("该会话仍有待确认发送，不能重建为空会话。");
       }
-      if (typeof recovery.draft?.text !== "string" || recovery.draft.text.length === 0) {
+      if (
+        typeof recovery.draft?.text !== "string" ||
+        recovery.draft.text.length === 0
+      ) {
         throw new Error("该空会话没有待恢复的输入。");
       }
       const model = recovery.registration.model;
-      if (typeof model?.provider !== "string" || !model.provider.trim() ||
-          typeof model.modelId !== "string" || !model.modelId.trim()) {
+      if (
+        typeof model?.provider !== "string" ||
+        !model.provider.trim() ||
+        typeof model.modelId !== "string" ||
+        !model.modelId.trim()
+      ) {
         throw new Error("恢复登记缺少原模型选择。");
       }
     }
   }
-
   if (selectedPath) {
     // 用户明确选择了会话，检查失败就报告原因。
     const error = await getSessionBindingError(
@@ -132,17 +134,11 @@ export async function createWorkspaceSession({
   } else if (resume) {
     // SDK 按当前工作目录列出会话；仍需核对应用自己的绑定记录。
     // 列表按最近活动排序，逐个寻找合法记录。
-    const sessions = await SessionManager.list(
-      workspaceRoot,
-      sessionDir,
-    );
+    const sessions = await SessionManager.list(workspaceRoot, sessionDir);
 
     for (const session of sessions) {
       if (archivedSessionIds.includes(session.id)) continue;
-      const error = await getSessionBindingError(
-        session.path,
-        workspaceRoot,
-      );
+      const error = await getSessionBindingError(session.path, workspaceRoot);
 
       if (!error) {
         selectedPath = session.path;
@@ -156,10 +152,7 @@ export async function createWorkspaceSession({
       workspaceRoot,
       // 来源由通过绑定检查后的实际分支确定，不靠文件缺失推断。
       source: "history",
-      sessionManager: SessionManager.open(
-        selectedPath,
-        sessionDir,
-      ),
+      sessionManager: SessionManager.open(selectedPath, sessionDir),
     };
   }
 
@@ -178,6 +171,7 @@ export async function createWorkspaceSession({
   return {
     workspaceRoot,
     source: "empty",
+
     sessionManager: manager,
   };
 }

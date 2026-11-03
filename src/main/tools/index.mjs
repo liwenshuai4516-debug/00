@@ -6,7 +6,7 @@ import { createProposeEditTool } from "./propose-edit.mjs";
 import { createProposeCreateTool } from "./propose-create.mjs";
 import { createReadLinesTool } from "./read-lines.mjs";
 
-// 集中声明应用向模型开放的工具。
+// 旧草稿工具的兼容入口，仅保留历史测试用途；当前 Pi 会话不注册此工具集。
 export function createAgentTools(workspaceDir) {
   return [
     currentTimeTool,

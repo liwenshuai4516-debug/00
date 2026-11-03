@@ -9,6 +9,7 @@ import { AGENT_SYSTEM_PROMPT } from "./prompts/agent-system-prompt.mjs";
 import messageAdapter from "./adapters/message-adapter.js";
 import modelConfig from "./config/model-config.js";
 import requestStatus from "./adapters/request-status.js";
+import { TEST_AGENT_PROMPT } from "./prompts/test-agent-prompt.mjs";
 
 const { formatToolResult } = messageAdapter;
 const { readModelConfig } = modelConfig;
@@ -31,31 +32,69 @@ export async function createPiAgent(
   const legacyConfig = managed ? null : (modelSettings ?? readModelConfig());
 
   // 目录检查、会话恢复和目录绑定统一交给新模块处理。
-  const { workspaceRoot, sessionManager, source } = await createWorkspaceSession({
-    sessionDir,
-    // 显式目录供后续选择入口使用；旧调用仍采用启动配置。
-    workspaceDir,
-    resume,
-    sessionPath,
-    recovery,
-    archivedSessionIds: resumeOptions?.archivedSessionIds,
-  });
+  const { workspaceRoot, sessionManager, source } =
+    await createWorkspaceSession({
+      sessionDir,
+      // 显式目录供后续选择入口使用；旧调用仍采用启动配置。
+      workspaceDir,
+      resume,
+      sessionPath,
+      recovery,
+      archivedSessionIds: resumeOptions?.archivedSessionIds,
+    });
+
+  let promptSnapshot = null;
+  if (promptOptions !== undefined) {
+    const { promptSettingsStore, sessionStateStore } = promptOptions;
+    const sessionId = sessionManager.getSessionId();
+    const savedState = await sessionStateStore.load(sessionId);
+    if (savedState && savedState.workspaceDir !== workspaceRoot) {
+      throw new Error("会话提示词状态不属于当前工作目录。");
+    }
+
+    promptSnapshot = savedState?.promptSnapshot;
+    if (!promptSnapshot) {
+      const defaults = await promptSettingsStore.read();
+      const candidate = {
+        ...defaults,
+        // 恢复旧历史或旧空会话时，不能冒充已知其原提示词。
+        origin:
+          source === "history" || recovery !== undefined ? "legacy" : "new",
+      };
+      const stored = await sessionStateStore.update(
+        sessionId,
+        workspaceRoot,
+        (state) => ({
+          ...state,
+          // 与输入、置顶和归档共用串行更新，不覆盖其他字段。
+          promptSnapshot: state.promptSnapshot ?? candidate,
+        }),
+      );
+      promptSnapshot = stored.promptSnapshot;
+    }
+  }
 
   const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
     await createPiResources({
       cwd: workspaceRoot,
-      appendSystemPrompt: [AGENT_SYSTEM_PROMPT],
+      appendSystemPrompt: [promptSnapshot?.testAgentPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT],
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
     });
 
   // 仅真正重建的空会话采用登记模型；找到历史时仍遵循原分支选择。
-  const savedSelection = source === "empty" && recovery !== undefined
-    ? recovery.registration.model
-    : sessionManager.getBranch().findLast((entry) => entry.type === "model_change") ??
-      sessionManager.buildSessionContext().model;
-  const runtime = managed && modelSettings.createRuntime
-    ? await modelSettings.createRuntime() : await ModelRuntime.create();
+  const savedSelection =
+    source === "empty" && recovery !== undefined
+      ? recovery.registration.model
+      : (sessionManager
+          .getBranch()
+          .findLast((entry) => entry.type === "model_change") ??
+        sessionManager.buildSessionContext().model);
+
+  const runtime =
+    managed && modelSettings.createRuntime
+      ? await modelSettings.createRuntime()
+      : await ModelRuntime.create();
   let model;
   if (managed) {
     const profile = await modelSettings.resolveSelection(savedSelection);
@@ -66,11 +105,14 @@ export async function createPiAgent(
     if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey);
     if (baseUrl) runtime.registerProvider(provider, { baseUrl });
     if (savedSelection && savedSelection.provider !== provider) {
-      throw new Error("会话模型属于其他供应商，请恢复对应供应商配置或新建对话。");
+      throw new Error(
+        "会话模型属于其他供应商，请恢复对应供应商配置或新建对话。",
+      );
     }
     const selectedModelId = savedSelection?.modelId ?? modelId;
     model = runtime.getModel(provider, selectedModelId);
-    if (!model) throw new Error(`Pi 未找到模型：${provider}/${selectedModelId}。`);
+    if (!model)
+      throw new Error(`Pi 未找到模型：${provider}/${selectedModelId}。`);
   }
 
   // 不传 tools/customTools：沿用 Pi 的默认工具及 defaultTools 配置。
@@ -115,6 +157,8 @@ export async function createPiAgent(
 
   // 仅记录创建时的可信来源；后续产生消息时仍需推进持久化登记。
   session.desktopSessionOrigin = source;
+  // 只在主进程保留本会话的实际快照，页面通过专用接口读取必要字段。
+  if (promptSnapshot) session.desktopPromptSnapshot = promptSnapshot;
 
   // 仅主进程持有配置服务；不把密钥或服务对象返回页面。
   if (managed) session.desktopModelSettings = modelSettings;

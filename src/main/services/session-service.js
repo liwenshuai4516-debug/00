@@ -2,11 +2,25 @@ const { closePiSession } = require("../resources/pi-session-lifecycle.js");
 const { existsSync } = require("node:fs");
 const { toHistory } = require("../adapters/message-adapter.js");
 const { readFile, realpath, stat } = require("node:fs/promises");
-
 // 正常运行时动态加载真实的 Pi 会话创建函数。
-async function createDefaultAgent(sessionDir, resume, sessionPath, workspaceDir, recovery, resumeOptions) {
+async function createDefaultAgent(
+  sessionDir,
+  resume,
+  sessionPath,
+  workspaceDir,
+  recovery,
+  resumeOptions,
+) {
   const { createPiAgent } = await import("../pi-agent.mjs");
-  return createPiAgent(sessionDir, resume, sessionPath, workspaceDir, undefined, recovery, resumeOptions);
+  return createPiAgent(
+    sessionDir,
+    resume,
+    sessionPath,
+    workspaceDir,
+    undefined,
+    recovery,
+    resumeOptions,
+  );
 }
 
 // 测试时可以传入模拟创建函数，正常启动无需额外参数。
@@ -29,10 +43,13 @@ function createSessionService(
     // 缺少可信来源时保持未知，兼容旧调用，但不提供空会话重建证明。
     if (origin !== "empty" && origin !== "history") return undefined;
 
-    const hasConversation = session.sessionManager.getEntries().some(
-      (entry) => entry.type === "message" &&
-        ["user", "assistant"].includes(entry.message?.role),
-    );
+    const hasConversation = session.sessionManager
+      .getEntries()
+      .some(
+        (entry) =>
+          entry.type === "message" &&
+          ["user", "assistant"].includes(entry.message?.role),
+      );
     return {
       workspaceDir: session.sessionManager.getCwd(),
       source: origin === "history" || hasConversation ? "history" : "empty",
@@ -42,7 +59,10 @@ function createSessionService(
 
   function observeSession(session) {
     if (observedSession && observedSession !== session) {
-      registrations.set(observedSession.sessionId, captureRegistration(observedSession));
+      registrations.set(
+        observedSession.sessionId,
+        captureRegistration(observedSession),
+      );
     }
     observedSession = session;
     return session;
@@ -50,12 +70,16 @@ function createSessionService(
 
   // 同步读取，不初始化、不切换；仅供主进程的状态更新回调使用。
   function readSessionRegistration(sessionId) {
-    const registration = observedSession?.sessionId === sessionId
-      ? captureRegistration(observedSession)
-      : registrations.get(sessionId);
-    return registration ? {
-      ...registration, model: { ...registration.model },
-    } : undefined;
+    const registration =
+      observedSession?.sessionId === sessionId
+        ? captureRegistration(observedSession)
+        : registrations.get(sessionId);
+    return registration
+      ? {
+          ...registration,
+          model: { ...registration.model },
+        }
+      : undefined;
   }
 
   async function syncSessionRegistration(sessionId) {
@@ -226,7 +250,8 @@ function createSessionService(
     const model = session.model;
     const usage = session.getContextUsage();
     const profileInfo = session.desktopModelSettings
-      ? await session.desktopModelSettings.describeCurrent(session) : null;
+      ? await session.desktopModelSettings.describeCurrent(session)
+      : null;
 
     return {
       sessionId: session.sessionId,
@@ -304,7 +329,8 @@ function createSessionService(
 
   async function listModelProfiles() {
     const session = await getSession(true);
-    if (!session.desktopModelSettings) throw new Error("当前会话未启用多配置。");
+    if (!session.desktopModelSettings)
+      throw new Error("当前会话未启用多配置。");
     return session.desktopModelSettings.listForSession(session);
   }
 
@@ -385,7 +411,7 @@ function createSessionService(
     return SessionManager.listAll(sessionDir);
   }
 
-   async function listSessions() {
+  async function listSessions() {
     const sessions = await readSessions();
 
     return Promise.all(
@@ -507,20 +533,27 @@ function createSessionService(
     if (!sessionStateStore) throw new Error("尚未配置会话状态存储。");
     const workspaceRoot = await readRecoveryWorkspace();
     const states = await sessionStateStore.list();
-    const historyIds = new Set((await readSessions()).map(session => session.id));
-    return states.filter(state =>
-      state.workspaceDir === workspaceRoot &&
-      state.archivedAt === null &&
-      state.registration?.source === "empty" &&
-      !historyIds.has(state.sessionId) &&
-      (state.draft.text.length > 0 || state.pendingSend != null),
-    ).map(state => ({
-      id: state.sessionId,
-      title: state.draft.text.trim().split(/\r?\n/, 1)[0].slice(0, 40) || "未发送对话",
-      workspaceDir: workspaceRoot,
-      // 待确认发送可被看见，但不得绕过底层保护直接重建。
-      blockedReason: state.pendingSend ? "仍有待确认发送，暂不能重建。" : "",
-    }));
+    const historyIds = new Set(
+      (await readSessions()).map((session) => session.id),
+    );
+    return states
+      .filter(
+        (state) =>
+          state.workspaceDir === workspaceRoot &&
+          state.archivedAt === null &&
+          state.registration?.source === "empty" &&
+          !historyIds.has(state.sessionId) &&
+          (state.draft.text.length > 0 || state.pendingSend != null),
+      )
+      .map((state) => ({
+        id: state.sessionId,
+        title:
+          state.draft.text.trim().split(/\r?\n/, 1)[0].slice(0, 40) ||
+          "未发送对话",
+        workspaceDir: workspaceRoot,
+        // 待确认发送可被看见，但不得绕过底层保护直接重建。
+        blockedReason: state.pendingSend ? "仍有待确认发送，暂不能重建。" : "",
+      }));
   }
 
   // 只由后续IPC互斥入口调用；页面只给编号，不给快照、目录或模型。
@@ -546,20 +579,33 @@ function createSessionService(
 
     // 第五参数是服务工厂的恢复快照；工厂负责转成Pi第六参数。
     const nextSession = await createAgent(
-      sessionDir, false, undefined, workspaceRoot, recovery,
+      sessionDir,
+      false,
+      undefined,
+      workspaceRoot,
+      recovery,
     );
     let result;
     try {
-      if (nextSession.sessionId !== sessionId ||
-          nextSession.sessionManager.getCwd() !== workspaceRoot) {
+      if (
+        nextSession.sessionId !== sessionId ||
+        nextSession.sessionManager.getCwd() !== workspaceRoot
+      ) {
         throw new Error("恢复结果与原会话编号或目录不一致。");
       }
-      result = { sessionId, workspaceDir: workspaceRoot, history: getHistory(nextSession) };
+      result = {
+        sessionId,
+        workspaceDir: workspaceRoot,
+        history: getHistory(nextSession),
+      };
       const registration = captureRegistration(nextSession);
       if (!registration) throw new Error("恢复会话缺少可信来源。");
       // 与最新输入合并；历史优先打开后也及时保留history来源证明。
       await sessionStateStore.registerSession(
-        sessionId, workspaceRoot, registration.source, registration.model,
+        sessionId,
+        workspaceRoot,
+        registration.source,
+        registration.model,
       );
     } catch (error) {
       await closePiSession(nextSession);
@@ -754,6 +800,7 @@ function createSessionService(
     closeSession,
     readSessionRegistration,
     syncSessionRegistration,
+
     loadHistory,
     currentSession,
     getSessionInfo,
@@ -769,6 +816,7 @@ function createSessionService(
     listSessions,
     setSessionPinned,
     setSessionArchived,
+
     listUnsentSessions,
     restoreUnsentSession,
     previewSession,
@@ -776,7 +824,6 @@ function createSessionService(
     newChat,
     switchWorkspace,
     openWorkspace,
-
     renameSession,
   };
 }

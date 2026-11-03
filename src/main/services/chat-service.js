@@ -158,7 +158,6 @@ function createChatService(
         ...(registrationWarning ? { warning: registrationWarning } : {}),
       };
       if (!consumed) return result;
-
       result.outcome = request.stopped ? "stopped" : "completed";
       result.draft = consumed;
       if (registrationWarning) return result;

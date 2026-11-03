@@ -20,6 +20,14 @@ contextBridge.exposeInMainWorld("agent", {
     }
     ipcRenderer.send("agent:close-result", { requestId, saved });
   },
+
+  readPromptSettings: () => ipcRenderer.invoke("agent:read-prompt-settings"),
+  savePromptSettings: (input, expectedRevision) =>
+    ipcRenderer.invoke("agent:save-prompt-settings", {
+      testAgentPrompt: input?.testAgentPrompt,
+    }, expectedRevision),
+  getSessionPromptInfo: () => ipcRenderer.invoke("agent:session-prompt-info"),
+
   readModelSettings: () => ipcRenderer.invoke("agent:read-model-settings"),
   listSettingsModels: (provider) =>
     ipcRenderer.invoke("agent:list-settings-models", provider),
@@ -110,6 +118,7 @@ contextBridge.exposeInMainWorld("agent", {
   listUnsentSessions: () => ipcRenderer.invoke("agent:list-unsent-sessions"),
   restoreUnsentSession: (sessionId) =>
     ipcRenderer.invoke("agent:restore-unsent-session", sessionId),
+
   // 页面只能传会话编号，不能指定主进程读取的文件路径。
   previewSession: (sessionId) =>
     ipcRenderer.invoke("agent:preview-session", sessionId),
@@ -117,19 +126,23 @@ contextBridge.exposeInMainWorld("agent", {
   // 获取当前会话的 ID，用于在列表中标记当前对话。
   currentSession: () => ipcRenderer.invoke("agent:current-session"),
 
-    // 读取主进程当前会话；保存只传编号、原文和版本，不传工作目录。
+  // 读取主进程当前会话；保存只传编号、原文和版本，不传工作目录。
   loadComposerDraft: () => ipcRenderer.invoke("agent:load-composer-draft"),
   saveComposerDraft: (sessionId, text, expectedRevision) =>
     ipcRenderer.invoke(
-      "agent:save-composer-draft", sessionId, text, expectedRevision,
+      "agent:save-composer-draft",
+      sessionId,
+      text,
+      expectedRevision,
     ),
+
+  // 读取实际会话的模型与真实工作目录。
+  getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
 
   // 只核对已登记的会话，不接收目录或页面提供的草稿状态。
   inspectComposerSend: (sessionId) =>
     ipcRenderer.invoke("agent:inspect-composer-send", sessionId),
 
-  // 读取实际会话的模型与真实工作目录。
-  getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
   // 仅提交明确确认的会话和发送编号，不接受目录、原文或状态对象。
   dismissComposerSend: (sessionId, sendId) =>
     ipcRenderer.invoke("agent:dismiss-composer-send", sessionId, sendId),
@@ -155,8 +168,11 @@ contextBridge.exposeInMainWorld("agent", {
   renameProject: (projectId, name) =>
     ipcRenderer.invoke("agent:rename-project", projectId, name),
   addProject: () => ipcRenderer.invoke("agent:add-project"),
+
   // 页面只提交编号，工作目录由主进程从项目记录读取。
-  openProject: (projectId) => ipcRenderer.invoke("agent:open-project", projectId),
+  openProject: (projectId) =>
+    ipcRenderer.invoke("agent:open-project", projectId),
+
   // 获取当前会话中已登记的草稿。
   getProposal: (id) => ipcRenderer.invoke("agent:get-proposal", id),
 
@@ -177,6 +193,7 @@ contextBridge.exposeInMainWorld("agent", {
       ipcRenderer.removeListener("agent:tool-event", listener);
     };
   },
+
   // 接收主进程确认的消费版本，不将 Electron 事件对象交给页面。
   onDraftConsumed: (callback) => {
     const listener = (_event, draft) => callback(draft);

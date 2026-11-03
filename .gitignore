@@ -3,3 +3,7 @@
 !.env.example
 sessions/
 node_modules/
+.workbuddy/
+/agent-save-example.txt
+/qa-create-demo.txt
+/qa-empty-demo.txt

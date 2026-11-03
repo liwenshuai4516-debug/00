@@ -295,14 +295,20 @@ export function createComposerPersistence(input, api, onState) {
     }
   }
 
- // 解除结果丢失时只读取快照，不采用读取到的草稿正文或版本覆盖本地编辑。
+  // 解除结果丢失时只读取快照，不采用读取到的草稿正文或版本覆盖本地编辑。
   async function refreshPending(entry) {
     try {
       const inspected = await api.inspectComposerSend(entry.sessionId);
       const pending = inspected?.pendingSend;
-      if (inspected?.sessionId !== entry.sessionId || !(pending === null || (
-        typeof pending?.id === "string" && pending.id && typeof pending.text === "string"
-      ))) {
+      if (
+        inspected?.sessionId !== entry.sessionId ||
+        !(
+          pending === null ||
+          (typeof pending?.id === "string" &&
+            pending.id &&
+            typeof pending.text === "string")
+        )
+      ) {
         throw new Error("快照核对结果无效，请重新读取。");
       }
       entry.pendingSend = pending ? { ...pending } : null;
@@ -317,7 +323,16 @@ export function createComposerPersistence(input, api, onState) {
 
   async function dismissPendingSend(sendId) {
     const entry = entries.get(currentId);
-    if (!entry?.loaded || entry.error || entry.preparing || entry.ticket || entry.dismissing || entry.pendingCheckError || !entry.pendingSend || entry.pendingSend.id !== sendId) {
+    if (
+      !entry?.loaded ||
+      entry.error ||
+      entry.preparing ||
+      entry.ticket ||
+      entry.dismissing ||
+      entry.pendingCheckError ||
+      !entry.pendingSend ||
+      entry.pendingSend.id !== sendId
+    ) {
       throw new Error("发送记录或输入状态已变化，请重新核对。");
     }
     entry.dismissing = true;
@@ -331,7 +346,7 @@ export function createComposerPersistence(input, api, onState) {
         entry.pendingSend = null;
       } catch (error) {
         // 可能已经写入但没有收到返回；核对前不能假定失败，也不能重复清理。
-        if (!await refreshPending(entry)) throw error;
+        if (!(await refreshPending(entry))) throw error;
       }
       entry.message = "发送限制已解除，当前输入已保留。";
     } finally {
@@ -362,11 +377,18 @@ export function createComposerPersistence(input, api, onState) {
 
     // 先检查全部记录，避免把发送协调中的空返回误当成保存完成。
     for (const entry of entries.values()) {
-      if (entry.loading || entry.preparing || entry.ticket || entry.dismissing) {
+      if (
+        entry.loading ||
+        entry.preparing ||
+        entry.ticket ||
+        entry.dismissing
+      ) {
         throw new Error("请等待输入读取、发送协调或解除操作结束后重试保存。");
       }
       if (!entry.loaded && entry.local) {
-        throw new Error("有尚未完成读取的本地输入，请回到对应会话重新读取后再保存。");
+        throw new Error(
+          "有尚未完成读取的本地输入，请回到对应会话重新读取后再保存。",
+        );
       }
     }
 
@@ -374,6 +396,30 @@ export function createComposerPersistence(input, api, onState) {
     for (const entry of entries.values()) {
       if (entry.loaded) await save(entry);
     }
+  }
+
+  function appendTemplate(text) {
+    const entry = entries.get(currentId);
+    if (
+      disposed ||
+      input.disabled ||
+      input.readOnly ||
+      !entry?.loaded ||
+      entry.error ||
+      entry.preparing ||
+      entry.ticket ||
+      entry.pendingSend ||
+      entry.dismissing ||
+      entry.pendingCheckError
+    ) {
+      throw new Error(
+        "当前输入尚不可插入模板，请等待操作完成或先核对输入状态。",
+      );
+    }
+    // 模板来源是应用内置数据；保留原输入的空白，不做 trim 或覆盖。
+    input.value = input.value ? `${input.value}\n\n${text}` : text;
+    // 直接沿用用户编辑的登记和保存队列，确保归属当前会话。
+    onInput();
   }
 
   function dispose() {
@@ -385,6 +431,8 @@ export function createComposerPersistence(input, api, onState) {
 
   return {
     switchTo,
+    appendTemplate,
+
     prepareSend,
     confirmConsumed,
     finishSend,
@@ -392,6 +440,7 @@ export function createComposerPersistence(input, api, onState) {
     retry,
     dismissPendingSend,
     flushAll,
+
     dispose,
     flush: () => {
       const entry = entries.get(currentId);

@@ -111,11 +111,8 @@ export function updateToolMessage(body, text) {
   const summary = body.parentElement.querySelector("summary");
   const separator = text.indexOf("\n");
 
-  summary.textContent =
-    separator === -1 ? text : text.slice(0, separator);
+  summary.textContent = separator === -1 ? text : text.slice(0, separator);
 
   body.textContent =
-    separator === -1
-      ? "暂无更多详情。"
-      : text.slice(separator + 1);
+    separator === -1 ? "暂无更多详情。" : text.slice(separator + 1);
 }
