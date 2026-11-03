@@ -18,6 +18,29 @@
   padding: 9px 12px;
 }
 
+.output-trace[data-running="true"] > summary::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: output-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes output-pulse {
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .output-trace[data-running="true"] > summary::after { animation: none; }
+}
+
+.output-trace .chat-message {
+  margin: 10px 0;
+}
+
 .output-trace summary:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;

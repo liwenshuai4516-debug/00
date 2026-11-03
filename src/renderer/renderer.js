@@ -1308,7 +1308,10 @@ form.addEventListener("submit", async (event) => {
   let inputSettled = false;
   let replyElement;
   let reply = "";
-  let outputTrace;
+  // 请求发起即展示等待状态，不等第一个模型事件才开始界面计时。
+  const outputTrace = window.agent.onOutputEvent
+    ? createOutputTrace(messages, { onUpdate: () => messageScroll.update() }) : undefined;
+  let nativeOutputReceived = false;
 
   // 每轮请求独立管理，使用调用编号关联，不能按工具名称匹配。
   const pendingTools = new Map();
@@ -1334,7 +1337,7 @@ form.addEventListener("submit", async (event) => {
   });
   const unsubscribeOutput = window.agent.onOutputEvent?.((output) => {
     if ((output.requestSessionId ?? output.sessionId) !== ticket.sessionId) return;
-    outputTrace ??= createOutputTrace(messages, { onUpdate: () => messageScroll.update() });
+    nativeOutputReceived = true;
     outputTrace.accept(output);
     if (!stopButton.disabled && output.type === "message_update" && output.assistantMessageEvent.type.startsWith("thinking_")) {
       setRequestStatus("模型正在思考……");
@@ -1343,7 +1346,7 @@ form.addEventListener("submit", async (event) => {
 
   const unsubscribe = window.agent.onTextDelta((delta) => {
     setRequestStatus("正在接收回复……");
-    if (outputTrace) return;
+    if (nativeOutputReceived) return;
 
     if (!replyElement) {
       replyElement = addMessage("assistant", "");
@@ -1360,7 +1363,7 @@ form.addEventListener("submit", async (event) => {
 
   const unsubscribeTool = window.agent.onToolEvent((event) => {
     if (event.type === "message") { addMessage("status", event.text); return; }
-    if (outputTrace) {
+    if (nativeOutputReceived) {
       if (event.type === "start") setRequestStatus(`正在调用工具：${event.name}`);
       if (event.type === "end") setRequestStatus("工具已返回，正在继续处理……");
       if (event.type === "end" && event.proposal) {
@@ -1415,6 +1418,7 @@ form.addEventListener("submit", async (event) => {
       sessionId: ticket.sessionId,
       revision: ticket.revision,
     });
+    outputTrace?.finish(result);
     // 已返回的请求与随后页面刷新分别处理，输入补保存失败不恢复已发送原文。
     requestReturned = true;
     await composerPersistence.finishSend(ticket, result);
@@ -1438,6 +1442,7 @@ form.addEventListener("submit", async (event) => {
     if (result.warning) addMessage("status", result.warning);
     await refreshSessions();
   } catch (error) {
+    outputTrace?.finish({ outcome: "unconfirmed" });
     if (requestReturned && inputSettled) {
       setRequestStatus("请求已返回，但历史列表刷新失败；输入保持当前状态。");
       addMessage("error", `历史列表刷新失败：${error.message}`);
