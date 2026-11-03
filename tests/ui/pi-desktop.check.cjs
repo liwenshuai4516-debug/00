@@ -72,6 +72,9 @@ async function main() {
     const click = selector => run(`document.querySelector(${JSON.stringify(selector)}).click()`);
     const check = async (label, expression) => { assert.ok(await run(expression), label); passed++; console.log(`PASS ${label}`); };
     await run(`(async()=>{
+      window.nativeEvents={starts:0,ends:0};
+      document.addEventListener('compositionstart',()=>window.nativeEvents.starts++,true);
+      document.addEventListener('compositionend',()=>window.nativeEvents.ends++,true);
       const {createExtensionUi}=await import('./components/extension-ui.js');
       window.canEdit=true;window.inputEvents=0;
       const input=document.querySelector('#message-input');input.addEventListener('input',()=>window.inputEvents++);
@@ -82,22 +85,32 @@ async function main() {
     await wait(`document.querySelector('.extension-dialog select')`);
     if (process.env.PI_UI_MANUAL_SELECT) {
       console.log("NATIVE_SELECT_READY：请选择乙并确认。");
-      await wait(`document.querySelector('.extension-dialog h2').textContent==='确认验收'`, 12000);
+      await wait(`document.querySelector('.extension-dialog h2').textContent==='确认验收'`, 60000);
     } else {
       await run(`document.querySelector('.extension-dialog select').value='乙'`);
       await click(".extension-dialog button[type=submit]");
     }
     await wait(`document.querySelector('.extension-dialog h2').textContent==='确认验收'`);
-    await click(".extension-dialog button[type=submit]");
-    await wait(`document.querySelector('.extension-dialog input')`);
-    await run(`(()=>{const input=document.querySelector('.extension-dialog input');input.value='中文组词';input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));document.querySelector('.extension-dialog form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));})()`);
-    await check("中文组词期间不会提前提交", `document.querySelector('.extension-dialog h2').textContent==='输入中文'`);
-    await run(`document.querySelector('.extension-dialog input').dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}))`);
-    await click(".extension-dialog button[type=submit]");
-    await wait(`document.querySelector('.extension-dialog textarea')`);
-    await check("多行编辑接收输入结果", `document.querySelector('.extension-dialog textarea').value==='中文组词'`);
-    await run(`window.canEdit=false;document.querySelector('.extension-dialog textarea').value=${JSON.stringify("中文第一行\n第二行")}`);
-    await click(".extension-dialog button[type=submit]");
+    if (process.env.PI_UI_MANUAL_SELECT) {
+      await wait(`document.querySelector('.extension-dialog input')`, 60000);
+      await wait(`document.querySelector('.extension-dialog textarea')`, 60000);
+      console.log("NATIVE_INPUT_EVENTS", await run(`JSON.stringify(window.nativeEvents)`));
+      await check("原生中文输入结果进入多行编辑", `document.querySelector('.extension-dialog textarea').value==='中文验收'`);
+      await run(`window.canEdit=false`);
+      await wait(`!document.querySelector('.extension-dialog').open`, 60000);
+      console.log("NATIVE_DIALOGS_COMPLETED");
+    } else {
+      await click(".extension-dialog button[type=submit]");
+      await wait(`document.querySelector('.extension-dialog input')`);
+      await run(`(()=>{const input=document.querySelector('.extension-dialog input');input.value='中文组词';input.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));document.querySelector('.extension-dialog form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));})()`);
+      await check("中文组词期间不会提前提交", `document.querySelector('.extension-dialog h2').textContent==='输入中文'`);
+      await run(`document.querySelector('.extension-dialog input').dispatchEvent(new CompositionEvent('compositionend',{bubbles:true}))`);
+      await click(".extension-dialog button[type=submit]");
+      await wait(`document.querySelector('.extension-dialog textarea')`);
+      await check("多行编辑接收输入结果", `document.querySelector('.extension-dialog textarea').value==='中文组词'`);
+      await run(`window.canEdit=false;document.querySelector('.extension-dialog textarea').value=${JSON.stringify("中文第一行\n第二行")}`);
+      await click(".extension-dialog button[type=submit]");
+    }
     await command;
     await check("输入未就绪时保留待应用正文", `document.querySelector('#message-input').value==='' && window.inputEvents===0`);
     await run(`window.canEdit=true;window.ui.refresh()`);
