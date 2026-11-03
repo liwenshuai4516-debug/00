@@ -70,6 +70,8 @@ async function main() {
     await click("#model-settings-button");
     await wait(`document.querySelector('[data-current-model]').textContent==='alpha/same'&&!document.querySelector('[data-open-models]').disabled`);
     await check("设置显示官方配置路径及模型，不提供密钥回填表单", `document.querySelector('[data-models-path]').textContent==='/temporary/pi/models.json'&&!document.querySelector('#settings-model-panel input')`);
+    await check("可用模型按供应商分组，名称来自目录且标出当前模型", `document.querySelectorAll('[data-model-catalog] .model-catalog-group').length===2&&document.querySelector('[data-current-model-name]').textContent==='同名模型'&&document.querySelector('[data-model-catalog] .model-catalog-item[aria-current="true"] .model-catalog-id').textContent==='same'&&!document.querySelector('[data-model-catalog] img')`);
+    await check("上下文未知时明确说明不可用而不是显示为零", `document.querySelector('[data-current-context]').textContent.includes('暂不可用')&&!/\\b0\\b/.test(document.querySelector('[data-current-context]').textContent)`);
     await click("[data-open-models]"); await wait("!window.busy");
     assert.equal(calls.pop(), "open");
     await check("配置文件打开后提示保存与重新读取", `document.querySelector('[data-provider-status]').textContent.includes('编辑保存后')`);

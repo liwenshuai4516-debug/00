@@ -303,9 +303,53 @@
     </header>
     <section id="settings-model-panel" class="model-providers settings-content" role="tabpanel" aria-labelledby="settings-model-tab">
       <p id="model-settings-intro">使用 Pi 官方的 models.json 配置兼容接口；特殊协议和认证通过 Provider 扩展接入。</p>
-      <section>
-        <h3>自定义供应商</h3>
-        <p>配置文件：<code data-models-path></code></p>
+      <div class="model-overview">
+        <section class="model-panel-card">
+          <div class="model-card-heading">
+            <h3>当前对话</h3>
+            <span class="model-badge" data-model-state>读取中</span>
+          </div>
+          <p class="model-current-name" data-current-model-name>正在读取模型……</p>
+          <p class="model-current-id"><code data-current-model></code></p>
+          <dl class="model-facts">
+            <div>
+              <dt>供应商</dt>
+              <dd data-current-provider>—</dd>
+            </div>
+            <div>
+              <dt>上下文</dt>
+              <dd data-current-context>正在读取……</dd>
+            </div>
+          </dl>
+          <div class="model-field">
+            <label for="model-thinking-level">思考强度</label>
+            <select id="model-thinking-level" disabled></select>
+            <small data-thinking-hint></small>
+          </div>
+          <div class="model-provider-actions">
+            <button type="button" data-default-model disabled>设为新对话默认</button>
+          </div>
+          <small class="model-note">默认值写入 Pi 的 settings.json；本页不读取已保存的默认值，结果以操作提示为准。</small>
+        </section>
+        <section class="model-panel-card">
+          <div class="model-card-heading">
+            <h3>可用模型</h3>
+            <span class="model-badge" data-model-count></span>
+          </div>
+          <p class="model-warning" data-models-warning hidden></p>
+          <div class="model-catalog" data-model-catalog></div>
+          <p class="model-empty" data-models-empty hidden></p>
+        </section>
+      </div>
+      <section class="model-panel-card">
+        <div class="model-card-heading">
+          <h3>配置文件</h3>
+          <span class="model-badge">Pi 官方目录</span>
+        </div>
+        <div class="model-config-path">
+          <code data-models-path>models.json</code>
+          <button type="button" data-copy-models-path disabled>复制路径</button>
+        </div>
         <p>在文本编辑器中保存配置，然后重新读取。认证沿用 Pi 的环境变量、auth.json 或 models.json，不在页面回填密钥。</p>
         <div class="model-provider-actions">
           <button type="button" data-open-models disabled>打开 models.json</button>
@@ -325,14 +369,6 @@
 }</pre>
           <p>将地址、模型编号和环境变量名替换为实际值。models.json 同样支持 headers、modelOverrides 等官方字段。Provider 扩展放入 Pi 资源目录，修改后在聊天中执行 /reload。</p>
         </details>
-      </section>
-      <section>
-        <h3>当前对话</h3>
-        <p data-current-model></p>
-        <p>通过聊天输入框右下角切换可用模型；不同供应商的模型会分组显示。</p>
-        <button type="button" data-default-model disabled>设为新对话默认</button>
-        <label for="model-thinking-level">思考强度</label>
-        <select id="model-thinking-level" disabled></select>
       </section>
       <p data-provider-status role="status" aria-atomic="true"></p>
     </section>
