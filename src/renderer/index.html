@@ -190,7 +190,8 @@
           <textarea id="message-input" rows="3" autocomplete="off" placeholder="向闪电31发送消息"
             aria-describedby="message-input-hint composer-draft-status"></textarea>
           <!-- 模板先进入输入框，由用户补充资料后自行发送。 -->
-          <div class="task-template-row">
+          <!-- 测试任务模板暂时用不到，隐藏入口；结构与逻辑保留，去掉 hidden 即可恢复。 -->
+          <div class="task-template-row" hidden>
             <label for="task-template-select" class="sr-only">测试任务模板</label>
             <select id="task-template-select" disabled>
               <option value="">选择测试任务模板</option>
