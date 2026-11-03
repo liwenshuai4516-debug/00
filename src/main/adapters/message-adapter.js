@@ -1,3 +1,5 @@
+const { outputMessage, skillForRead } = require("./output-event-adapter.js");
+
 // 只提取文本，不把模型思考、工具参数或图片当成聊天正文。
 function getText(content) {
   if (typeof content === "string") return content;
@@ -22,7 +24,8 @@ function formatToolResult(name, content, isError) {
   return `${name} ${status}\n${preview || "无文本结果"}`;
 }
 
-function toHistory(messages) {
+function toHistory(messages, { includeTrace = false, parseSkillBlock, skills = [], cwd } = {}) {
+  const calls = new Map();
   return messages
     .filter(
       (message) =>
@@ -57,15 +60,29 @@ function toHistory(messages) {
             message.content,
             message.isError,
           ),
+          ...(includeTrace ? { output: { ...outputMessage(message), skill: calls.get(message.toolCallId) } } : {}),
         };
       }
 
+      if (includeTrace && message.role === "assistant") {
+        for (const block of message.content) {
+          if (block.type === "toolCall") calls.set(block.id, skillForRead(block.name, block.arguments, skills, cwd));
+        }
+        return { role: "assistant", text: getText(message.content), output: outputMessage(message) };
+      }
+      if (includeTrace && message.role === "user") {
+        const expanded = parseSkillBlock?.(getText(message.content));
+        if (expanded) return {
+          role: "user", text: `/skill:${expanded.name}${expanded.userMessage ? ` ${expanded.userMessage}` : ""}`,
+          skill: { name: expanded.name, path: expanded.location, source: "history" },
+        };
+      }
       return {
         role: message.role,
         text: getText(message.content),
       };
     })
-    .filter((message) => message.text);
+    .filter((message) => message.text || message.output);
 }
 
 module.exports = { formatToolResult, toHistory };

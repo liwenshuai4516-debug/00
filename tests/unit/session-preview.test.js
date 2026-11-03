@@ -5,6 +5,8 @@ const os = require("node:os");
 const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
 const { createSessionService } = require("../../src/main/services/session-service.js");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
+const { outputMessage } = require("../../src/main/adapters/output-event-adapter.js");
+const oldAnswer = { role: "assistant", text: "旧回答", output: outputMessage({ role: "assistant", content: [{ type: "text", text: "旧回答" }] }) };
 
 async function fixture(t, version = 3) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "agent-preview-"));
@@ -35,7 +37,7 @@ test("无绑定旧会话可预览，内存迁移不改写文件且不创建模�
   const result = await service.previewSession("old-session");
   assert.deepEqual(result.history, [
     { role: "user", text: "旧问题" },
-    { role: "assistant", text: "旧回答" },
+    oldAnswer,
   ]);
   assert.equal(await readFile(file, "utf8"), before);
 });
@@ -73,7 +75,7 @@ test("预览遵循当前分支并展示文件保存记录", async (t) => {
   const service = createSessionService(dir);
   assert.deepEqual((await service.previewSession("old-session")).history, [
     { role: "user", text: "旧问题" },
-    { role: "assistant", text: "旧回答" },
+    oldAnswer,
     { role: "status", text: "文件已保存" },
   ]);
 });
@@ -123,10 +125,7 @@ test("压缩后的预览展示 SDK 摘要和保留消息，不改写历史文件
         role: "status",
         text: "上下文整理摘要\n用户询问了旧问题，后续继续处理。",
       },
-      {
-        role: "assistant",
-        text: "旧回答",
-      },
+      oldAnswer,
     ],
   );
 

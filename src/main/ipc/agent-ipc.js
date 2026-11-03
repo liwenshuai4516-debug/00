@@ -254,6 +254,9 @@ function registerAgentIpc(
           });
         }
       },
+      (output) => {
+        if (!event.sender.isDestroyed()) event.sender.send("agent:output-event", output);
+      },
     );
   });
 

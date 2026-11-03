@@ -3,18 +3,21 @@ import path from "node:path";
 import {
   createAgentSession,
   ModelRuntime,
+  parseSkillBlock,
 } from "@mariozechner/pi-coding-agent";
 import { createWorkspaceSession } from "./workspace/workspace-session.mjs";
 import { createPiResources } from "./resources/pi-resources.mjs";
 import sessionLifecycle from "./resources/pi-session-lifecycle.js";
 import { AGENT_SYSTEM_PROMPT } from "./prompts/agent-system-prompt.mjs";
 import messageAdapter from "./adapters/message-adapter.js";
+import outputAdapter from "./adapters/output-event-adapter.js";
 import modelConfig from "./config/model-config.js";
 import requestStatus from "./adapters/request-status.js";
 import { bindDesktopRuntime } from "./resources/desktop-session-runtime.mjs";
 import { TEST_AGENT_PROMPT } from "./prompts/test-agent-prompt.mjs";
 
 const { formatToolResult, toHistory } = messageAdapter;
+const { createOutputEventAdapter } = outputAdapter;
 const { readModelConfig } = modelConfig;
 const { getRequestStatus } = requestStatus;
 
@@ -154,6 +157,7 @@ export async function createPiAgent(
   };
   session.desktopReportDiagnostics = reportDiagnostics;
   session.desktopServices = { cwd: workspaceRoot, agentDir, settingsManager, modelRuntime: runtime, resourceLoader, diagnostics: [] };
+  session.desktopParseSkillBlock = parseSkillBlock;
   session.desktopOnExtensionError = (error) => {
     const diagnostic = { type: "error", path: error.extensionPath, message: `${error.event}: ${error.error}` };
     session.desktopResourceDiagnostics ??= [];
@@ -225,9 +229,15 @@ export async function sendMessage(
   onText,
   onToolEvent,
   onStatus = () => {},
+  onOutputEvent = () => {},
 ) {
   if (session.desktopRuntimeInvalidated) throw new Error("当前 Pi 会话已释放，请新建或重新打开对话。");
+  let observed = session;
+  const requestSessionId = session.sessionId;
+  const projectOutput = createOutputEventAdapter(() => observed, parseSkillBlock, text);
   const receive = (event) => {
+    const output = projectOutput(event);
+    if (output) onOutputEvent({ requestSessionId, sessionId: observed.sessionId, ...output });
     // 生命周期状态独立展示，不混入正文或工具结果。
     const status = getRequestStatus(event);
     if (status) onStatus(status);
@@ -281,6 +291,7 @@ export async function sendMessage(
   let unsubscribe = session.subscribe(receive);
   const rebind = (next) => {
     unsubscribe();
+    observed = next;
     unsubscribe = next.subscribe(receive);
   };
   session.desktopRuntimeListeners?.add(rebind);

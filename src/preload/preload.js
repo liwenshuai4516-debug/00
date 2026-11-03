@@ -187,7 +187,7 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 放弃尚未保存的草稿，只提交编号。
   discardProposal: (id) => ipcRenderer.invoke("agent:discard-proposal", id),
-  // 订阅工具状态，并返回取消订阅方法。
+  // 原生输出仅开放固定通道，取消订阅只移除本次监听。
   onOutputEvent: (callback) => {
     const listener = (_event, output) => callback(output);
     ipcRenderer.on("agent:output-event", listener);

@@ -1,3 +1,5 @@
+import { appendOutputHistory } from "./output-trace.js";
+
 // 独立预览区域：不替换聊天正文，不恢复草稿，不切换当前会话。
 export function mountHistoryPreview(panel, agent) {
   const select = panel.querySelector("select");
@@ -66,25 +68,7 @@ export function mountHistoryPreview(panel, agent) {
     try {
       const result = await agent.previewSession(sessionId);
 
-      const labels = {
-        user: "我",
-        assistant: "Agent",
-        tool: "工具",
-        status: "状态",
-      };
-
-      for (const message of result.history) {
-        const element = document.createElement("p");
-
-        element.style.whiteSpace = "pre-wrap";
-        element.style.overflowWrap = "anywhere";
-
-        // 历史内容作为普通文本展示，避免执行其中的 HTML。
-        element.textContent =
-          `${labels[message.role]}：${message.text}`;
-
-        content.appendChild(element);
-      }
+      appendOutputHistory(content, result.history);
 
       status.textContent = result.history.length
         ? `只读预览：${result.title}`

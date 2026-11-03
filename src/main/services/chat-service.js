@@ -25,6 +25,7 @@ function createChatService(
     onStatus = () => {},
     draftRequest,
     onDraftConsumed = () => {},
+    onOutputEvent = () => {},
   ) {
     if (typeof text !== "string" || !text.trim()) {
       throw new Error("请输入消息内容。");
@@ -140,6 +141,8 @@ function createChatService(
             (status) => {
               if (!request.stopped) onStatus(status);
             },
+            // 中止后的工具结束与 agent_settled 仍是有效收尾，不随文本一起丢弃。
+            onOutputEvent,
           );
           completionStatus = senderResult?.completionStatus;
         } catch (error) {

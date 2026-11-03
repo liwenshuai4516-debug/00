@@ -184,12 +184,12 @@ function createSessionService(
     return sessionPromise;
   }
 
-  // 恢复聊天正文和工具结果，保持 Pi 消息中的顺序。
+  // 从 Pi 消息恢复输出块；不把历史重建伪装成实时事件日志。
   function getHistory(session) {
     return toHistory(session.messages, {
       includeTrace: true, parseSkillBlock: session.desktopParseSkillBlock,
       skills: session.resourceLoader?.getSkills?.().skills ?? [],
-      cwd: session.sessionManager.getCwd(),
+      cwd: session.sessionManager?.getCwd?.(),
     });
   }
 

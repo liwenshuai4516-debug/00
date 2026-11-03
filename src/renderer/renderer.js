@@ -1,4 +1,5 @@
 import { createExtensionUi } from "./components/extension-ui.js";
+import { createOutputTrace, appendOutputHistory } from "./components/output-trace.js";
 import { createProposalPanel } from "./components/proposal-panel.js";
 import { createProjectPanel } from "./components/project-panel.js";
 import { mountHistoryPreview } from "./components/history-preview.js";
@@ -586,9 +587,8 @@ function showHistory(history) {
   // 切换会话后恢复跟随最新消息。
   messageScroll.followLatest();
 
-  for (const message of history) {
-    addMessage(message.role, message.text);
-  }
+  appendOutputHistory(messages, history, () => messageScroll.update());
+  messageScroll.update();
 }
 // 获取历史列表，并标记当前正在使用的会话。
 // 主进程保存草稿数据；切换会话后由页面重新建立操作入口。
@@ -1342,6 +1342,7 @@ form.addEventListener("submit", async (event) => {
   let inputSettled = false;
   let replyElement;
   let reply = "";
+  let outputTrace;
 
   // 每轮请求独立管理，使用调用编号关联，不能按工具名称匹配。
   const pendingTools = new Map();
@@ -1365,9 +1366,18 @@ form.addEventListener("submit", async (event) => {
   const unsubscribeConsumed = window.agent.onDraftConsumed((ack) => {
     composerPersistence.confirmConsumed(ticket, ack);
   });
+  const unsubscribeOutput = window.agent.onOutputEvent?.((output) => {
+    if ((output.requestSessionId ?? output.sessionId) !== ticket.sessionId) return;
+    outputTrace ??= createOutputTrace(messages, { onUpdate: () => messageScroll.update() });
+    outputTrace.accept(output);
+    if (!stopButton.disabled && output.type === "message_update" && output.assistantMessageEvent.type.startsWith("thinking_")) {
+      setRequestStatus("模型正在思考……");
+    }
+  });
 
   const unsubscribe = window.agent.onTextDelta((delta) => {
     setRequestStatus("正在接收回复……");
+    if (outputTrace) return;
 
     if (!replyElement) {
       replyElement = addMessage("assistant", "");
@@ -1384,6 +1394,15 @@ form.addEventListener("submit", async (event) => {
 
   const unsubscribeTool = window.agent.onToolEvent((event) => {
     if (event.type === "message") { addMessage("status", event.text); return; }
+    if (outputTrace) {
+      if (event.type === "start") setRequestStatus(`正在调用工具：${event.name}`);
+      if (event.type === "end") setRequestStatus("工具已返回，正在继续处理……");
+      if (event.type === "end" && event.proposal) {
+        proposalPanel.add(event.proposal.id);
+        proposalReviewPanel.open = true;
+      }
+      return;
+    }
     if (event.type === "start") {
       setRequestStatus(`正在调用工具：${event.name}`);
 
@@ -1478,6 +1497,8 @@ form.addEventListener("submit", async (event) => {
     unsubscribeTool();
     unsubscribeStatus();
     unsubscribeConsumed();
+    unsubscribeOutput?.();
+    outputTrace?.finish();
     // 正常结束、停止或失败时，立即展示尚未绘制的最后一段。
     if (replyFrame !== undefined) cancelAnimationFrame(replyFrame);
     flushReplies();
