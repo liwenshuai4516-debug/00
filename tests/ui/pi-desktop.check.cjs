@@ -154,6 +154,7 @@ async function main() {
     await click("[data-pi-reload]");
     await wait(`document.querySelector('[data-pi-resources]').textContent.includes('本地包技能')`);
     await click('[data-pi-kind="skills"]');
+    await check("真实 Pi 加载的包技能关联官方配置来源", `document.querySelector('[data-pi-items=skills] .pi-resource-package').textContent.includes('个人包')&&document.querySelector('[data-pi-items=skills] .pi-remove-button')!==null`);
     await run(`window.rejectInsert=true;document.querySelector('[data-pi-command="/skill:local-check"]').click()`);
     await check("输入受限时显示原因并保留设置窗口", `document.querySelector('#model-settings-dialog').open && document.querySelector('[data-pi-status]').textContent.includes('无法插入')`);
     await run(`window.rejectInsert=false;document.querySelector('[data-pi-command="/skill:local-check"]').click()`);
@@ -176,10 +177,15 @@ async function main() {
         await fs.writeFile(path.join(process.env.PI_UI_ARTIFACT_DIR, `pi-resources-${width}.png`), (await win.webContents.capturePage()).toPNG());
       }
     }
-    await run(`(()=>{const row=document.querySelector('.pi-package-row');[...row.querySelectorAll('button')].find(b=>b.textContent==='移除').click();})()`);
-    await check("移除需要明确确认", `document.querySelector('[data-confirm-remove]')!==null && document.querySelectorAll('.pi-package-row').length===1`);
+    await run(`(()=>{const row=document.querySelector('.pi-package-row');[...row.querySelectorAll('button')].find(b=>b.textContent==='卸载').click();})()`);
+    await check("卸载需要明确确认", `document.querySelector('[data-confirm-remove]')!==null && document.querySelectorAll('.pi-package-row').length===1`);
     await click("[data-confirm-remove]");
     await wait(`document.querySelectorAll('.pi-package-row').length===0 && !document.querySelector('[data-pi-refresh]').disabled`);
+    assert.equal(await fs.readFile(path.join(packageDir, "skills/local-check/SKILL.md"), "utf8"), "---\nname: local-check\ndescription: 本地包技能\n---\n临时测试");
+    await check("官方本地包卸载保留源文件并等待重载", `document.querySelector('[data-pi-status]').textContent.includes('资源包已卸载')&&!document.querySelector('[data-pi-reload-notice]').hidden`);
+    await click("[data-pi-reload]");
+    await wait(`document.querySelector('[data-pi-status]').textContent==='资源已重新加载。'`);
+    await check("卸载后重载不再加载已移除包", `!document.querySelector('[data-pi-resources]').textContent.includes('本地包技能')&&document.querySelector('[data-pi-reload-notice]').hidden`);
     assert.deepEqual(network, []);
     assert.deepEqual(errors, []);
     console.log(`Pi 桌面 ${passed} 项页面检查通过。`);

@@ -109,3 +109,106 @@ test("安装接受复制的 pi install 命令，只把包来源交给官方安�
   }
   assert.equal(calls.length, count, "无效命令不进入安装器");
 });
+
+test("资源只依据 Pi 来源关联所属包，卸载后保留待重载身份", async () => {
+  let configured = true;
+  const sourceInfo = { source: "npm:fixture", scope: "project", origin: "package" };
+  const session = {
+    desktopServices: {}, sessionId: "owners", sessionManager: { getCwd: () => "/temporary" },
+    settingsManager: { isProjectTrusted: () => true, getProjectSettings: () => ({ packages: ["npm:fixture"] }) },
+    resourceLoader: {
+      getSkills: () => ({ skills: [{ name: "packaged", sourceInfo }, { name: "independent", sourceInfo: { ...sourceInfo, origin: "top-level" } }] }),
+      getExtensions: () => ({ extensions: [{ path: "/package/index.js", sourceInfo }, { path: "builtin:mcp" }] }),
+    },
+    promptTemplates: [{ name: "template", sourceInfo }],
+  };
+  const service = createPiPackageService({ getSession: async () => session }, () => ({
+    listConfiguredPackages: () => configured ? [{ source: "npm:fixture", scope: "project" }] : [],
+  }));
+  let listed = await service.list();
+  for (const item of [listed.skills[0], listed.prompts[0], listed.extensions[0]]) {
+    assert.deepEqual(item.package, { source: "npm:fixture", scope: "project", configured: true });
+  }
+  assert.equal(listed.skills[1].package, undefined);
+  assert.equal(listed.extensions[1].package, undefined);
+  configured = false;
+  listed = await service.list();
+  assert.deepEqual(listed.skills[0].package, { source: "npm:fixture", scope: "project", configured: false });
+});
+
+test("卸载使用官方范围与返回值，不把失败或配置未变谎报为成功", async () => {
+  const calls = [];
+  let trusted = false, mode = "success";
+  const session = { desktopServices: {}, settingsManager: {
+    isProjectTrusted: () => trusted, flush: async () => calls.push("flush"),
+  } };
+  const service = createPiPackageService({ getSession: async () => session }, () => ({
+    setProgressCallback: value => calls.push(Boolean(value)),
+    listConfiguredPackages: () => [{ source: "npm:fixture", scope: "user" }, { source: "npm:fixture", scope: "project" }],
+    removeAndPersist: async (source, options) => {
+      calls.push({ source, options });
+      if (mode === "failure") throw Error("官方卸载失败");
+      return mode === "success";
+    },
+  }));
+  await assert.rejects(service.manage({ action: "remove", source: "npm:fixture", scope: "project" }), /先信任/);
+  assert.deepEqual(calls, []);
+  await assert.rejects(service.manage({ action: "remove", source: "npm:not-configured", scope: "user" }), /包配置已变化/);
+  trusted = true;
+  assert.deepEqual(await service.manage({ action: "remove", source: "npm:fixture", scope: "project" }), { changed: true, needsReload: true });
+  assert.ok(calls.some(call => call?.source === "npm:fixture" && call.options.local === true));
+  mode = "failure";
+  await assert.rejects(service.manage({ action: "remove", source: "npm:fixture", scope: "user" }), /官方卸载失败/);
+  assert.equal(calls.at(-1), false, "失败后解除进度订阅");
+  mode = "unchanged";
+  await assert.rejects(service.manage({ action: "remove", source: "npm:fixture", scope: "user" }), /未确认.*刷新/);
+});
+
+test("官方 npm 与 Git 卸载仅处理所选范围的安装和配置", async t => {
+  const { SettingsManager, DefaultPackageManager } = await import("@mariozechner/pi-coding-agent");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-uninstall-scopes-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const cwd = path.join(root, "workspace"), agentDir = path.join(root, "agent");
+  await fs.mkdir(cwd, { recursive: true });
+  const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
+  // 使用离线 npm 和临时已安装夹具，验证官方卸载，不访问注册表或个人安装。
+  settingsManager.setNpmCommand(["npm", "--offline", "--no-audit", "--no-fund"]);
+  const packageName = "pi-uninstall-fixture";
+  const sources = [`npm:${packageName}@1.0.0`, "git:github.com/example/pi-uninstall-fixture@v1"];
+  settingsManager.setPackages(sources);
+  settingsManager.setProjectPackages(sources);
+  const roots = [agentDir, path.join(cwd, ".pi")];
+  for (const directory of roots) {
+    const npmRoot = path.join(directory, "npm");
+    const installed = path.join(npmRoot, "node_modules", packageName);
+    await fs.mkdir(installed, { recursive: true });
+    await fs.writeFile(path.join(installed, "package.json"), JSON.stringify({ name: packageName, version: "1.0.0" }));
+    await fs.writeFile(path.join(npmRoot, "package.json"), JSON.stringify({ name: "temporary-installs", private: true, dependencies: { [packageName]: "1.0.0" } }));
+    const checkout = path.join(directory, "git/github.com/example/pi-uninstall-fixture");
+    await fs.mkdir(checkout, { recursive: true });
+    await fs.writeFile(path.join(checkout, "marker"), "temporary checkout");
+  }
+  const manager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
+  const session = { desktopServices: { cwd, agentDir, settingsManager }, settingsManager };
+  const service = createPiPackageService({ getSession: async () => session });
+  const installed = manager.listConfiguredPackages();
+  for (const source of sources) {
+    const projectPath = installed.find(item => item.source === source && item.scope === "project").installedPath;
+    const userPath = installed.find(item => item.source === source && item.scope === "user").installedPath;
+    assert.ok(projectPath && userPath);
+    await service.manage({ action: "remove", source, scope: "project" });
+    await assert.rejects(fs.access(projectPath), { code: "ENOENT" });
+    await fs.access(userPath);
+    assert.ok(settingsManager.getGlobalSettings().packages.includes(source));
+    assert.ok(!settingsManager.getProjectSettings().packages.includes(source));
+  }
+  const reopened = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
+  assert.deepEqual(reopened.getProjectSettings().packages, []);
+  assert.deepEqual(reopened.getGlobalSettings().packages, sources);
+  for (const source of sources) {
+    const userPath = installed.find(item => item.source === source && item.scope === "user").installedPath;
+    await service.manage({ action: "remove", source, scope: "user" });
+    await assert.rejects(fs.access(userPath), { code: "ENOENT" });
+  }
+  assert.deepEqual(settingsManager.getGlobalSettings().packages, []);
+});

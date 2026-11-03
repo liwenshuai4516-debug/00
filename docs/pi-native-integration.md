@@ -125,6 +125,10 @@ R4：服务器确认上传成功后显示“上传成功”和文件名；服务
 
 安装来源可直接填写 `npm:billion-context`，也可粘贴 `pi install npm:billion-context`。桌面仅从命令提取单个来源并交给官方安装器，不执行命令文本；含空格的本地路径在命令中需加引号，直接填写路径时无需引号。范围由页面选择；多个来源或额外命令参数会在安装前提示修正。
 
+卸载遵循 Pi 1.4.0 的 [`pi remove` / `pi uninstall`](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/cli.md#package-commands)：扩展包列表提供“卸载”，包内技能、模板和扩展根据官方 `sourceInfo` 的 `origin/source/scope` 展示“卸载所属包”，不按名称或文件路径猜测归属。确认前展示整包影响和个人/当前项目范围；后台先核对当前登记与项目信任，再调用公开 `DefaultPackageManager.removeAndPersist(source, { local })`，检查返回值并保存设置。npm 卸载交给官方配置的包管理器，Git 删除对应安装副本，本地来源只取消配置、保留源文件；其他范围登记保持不变，重载时可能重新出现同名资源。未安装但已登记的包也可卸载配置。未登记、临时来源、独立发现的技能和内置扩展不提供包卸载按钮；独立资源在原目录管理，内置扩展通过 Pi 配置启用或禁用，不删除系统或用户资源文件。
+
+卸载成功后保留“待重载”提示，当前会话已加载资源仍展示到显式重载；所属包已不在配置中的资源不再提供重复卸载入口。卸载失败保留错误与刷新/重试入口，不宣称事务回滚。专项验证入口为 `node --require ./tests/helpers/pi-test-isolation.cjs --test tests/unit/pi-package-service.test.js`、`node_modules/.bin/electron tests/ui/pi-resources-page.check.cjs` 和 `node_modules/.bin/electron tests/ui/pi-desktop.check.cjs`：分别覆盖卸载范围、官方离线 npm 与临时 Git 安装副本、来源关联、错误/信任/重复操作，以及本地包源文件保留和重载。使用临时配置与资源，不卸载使用者真实已安装的包，不将临时 Git 副本检查扩大为远程下载验收。
+
 安装/筛选/更新后显式重载才应用到当前会话，不自动激活新扩展。`update(source)` 的实际范围遵循官方 API，同一来源同时配置在个人与项目时可能一并更新；范围选择不是更新隔离。安装器可能执行代码；SDK 没有取消或事务回滚契约，失败会明确提示核对磁盘与登记，不承诺还原。
 
 ## 本轮验收（2026-11-03）

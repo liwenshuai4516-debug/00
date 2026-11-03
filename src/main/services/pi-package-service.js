@@ -14,19 +14,25 @@ function createPiPackageService(sessionService, createManager) {
     const { session, manager } = await context();
     const loader = session.resourceLoader;
     const skills = loader.getSkills().skills;
+    const packages = manager.listConfiguredPackages();
+    function owningPackage(sourceInfo) {
+      if (sourceInfo?.origin !== "package") return undefined;
+      const { source, scope } = sourceInfo;
+      return { source, scope, configured: packages.some(item => item.source === source && item.scope === scope) };
+    }
     return {
       sessionId: session.sessionId,
       cwd: session.sessionManager.getCwd(),
       projectTrusted: session.settingsManager.isProjectTrusted(),
-      packages: manager.listConfiguredPackages().map(({ source, scope, filtered, installedPath }) => {
+      packages: packages.map(({ source, scope, filtered, installedPath }) => {
         const entries = scope === "project" ? session.settingsManager.getProjectSettings().packages : session.settingsManager.getGlobalSettings().packages;
         const entry = (entries ?? []).find(item => (typeof item === "string" ? item : item.source) === source);
         const filters = {};
         for (const key of ["extensions", "skills", "prompts", "themes", "autoload"]) if (entry?.[key] !== undefined) filters[key] = entry[key];
         return { source, scope, filtered, installedPath, filters };
       }),
-      skills: skills.map(({ name, description }) => ({ name, description })),
-      prompts: session.promptTemplates.map(({ name, description }) => ({ name, description })),
+      skills: skills.map(({ name, description, sourceInfo }) => ({ name, description, package: owningPackage(sourceInfo) })),
+      prompts: session.promptTemplates.map(({ name, description, sourceInfo }) => ({ name, description, package: owningPackage(sourceInfo) })),
       extensions: loader.getExtensions().extensions.map(({ path: extensionPath, resolvedPath, sourceInfo }) => {
         const parts = (resolvedPath || extensionPath).split(/[\\/]/);
         let name = parts.pop().replace(/\.[cm]?[jt]s$/i, "");
@@ -38,7 +44,7 @@ function createPiPackageService(sessionService, createManager) {
         }
         if (packageName && ["pi-extension", "extension"].includes(name)) name = packageName;
         if (extensionPath.startsWith("builtin:")) name = extensionPath.slice("builtin:".length);
-        return { path: extensionPath, name };
+        return { path: extensionPath, name, package: owningPackage(sourceInfo) };
       }),
       diagnostics: session.desktopResourceDiagnostics ?? [],
     };
@@ -90,7 +96,10 @@ function createPiPackageService(sessionService, createManager) {
         else settings.setPackages(next);
       }
       if (action === "install") await manager.installAndPersist(source, { local });
-      if (action === "remove") await manager.removeAndPersist(source, { local });
+      if (action === "remove") {
+        const changed = await manager.removeAndPersist(source, { local });
+        if (!changed) throw new Error("未确认包配置已移除，请刷新列表核对；磁盘可能已发生变化。");
+      }
       if (action === "update") await manager.update(source);
       // 不发明事务或回滚语义：依官方结果保存，重载失败明确保留已发生的安装事实。
       await session.settingsManager.flush();

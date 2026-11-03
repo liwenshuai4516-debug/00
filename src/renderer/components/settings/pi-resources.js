@@ -48,6 +48,41 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
     state.append(node("strong", "", title), node("p", "", description));
     container.append(state);
   }
+  function uninstallButton(container, item, label = "卸载") {
+    const trigger = button(label, () => {
+      if (container.querySelector("[data-confirm-remove]")) return;
+      const confirm = node("div", "pi-remove-confirm");
+      const remove = button("确认卸载", () => void operate({ action: "remove", source: item.source, scope: item.scope }));
+      remove.dataset.confirmRemove = "";
+      if (item.scope === "project") remove.dataset.requiresTrust = "";
+      confirm.append(
+        node("p", "", `从${item.scope === "user" ? "个人" : "当前项目"}范围卸载整个包 ${item.source}？该包提供的技能、模板、扩展和主题会一并受影响。`),
+        node("p", "", "npm 包和 Git 安装副本由 Pi 官方卸载；本地来源只移除配置，保留源文件。其他范围的配置保留，重载后可能继续提供同名资源。卸载后请重载资源。"),
+        remove,
+        button("取消", () => { confirm.remove(); trigger.focus(); }),
+      );
+      container.append(confirm);
+      update();
+      remove.focus();
+    }, "pi-remove-button");
+    trigger.setAttribute("aria-label", `${label}：${item.source}（${item.scope === "user" ? "个人" : "项目"}）`);
+    if (item.scope === "project") trigger.dataset.requiresTrust = "";
+    return trigger;
+  }
+  function packageControls(container, item, kind) {
+    const owner = item.package;
+    if (owner) {
+      const controls = node("div", "pi-resource-package");
+      controls.append(node("small", "", `${owner.scope === "user" ? "个人" : "项目"}包：${owner.source}`));
+      if (owner.configured) controls.append(uninstallButton(container, owner, "卸载所属包"));
+      else controls.append(node("small", "", "所属包已不在配置中，重载资源后核对。"));
+      container.append(controls);
+    } else {
+      container.append(node("small", "pi-resource-origin", item.path?.startsWith("builtin:")
+        ? "Pi 内置扩展，通过 Pi 配置启用或禁用。"
+        : `独立${kind}，不属于已配置资源包；请在原目录管理。`));
+    }
+  }
   function renderCommands(kind, entries) {
     const container = panel.querySelector(`[data-pi-items="${kind}"]`);
     container.replaceChildren();
@@ -70,6 +105,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
       const footer = node("div", "pi-card-footer");
       footer.append(node("code", "", command), use);
       card.append(heading, node("p", "pi-card-description", translatePiDescription(item.description)), footer);
+      packageControls(card, item, isSkill ? "技能" : "模板");
       container.append(card);
     }
     if (!entries.length) empty(container, isSkill ? "还没有可用技能" : "还没有提示词模板", "添加资源或安装扩展包后，重载资源即可在这里查看。");
@@ -90,18 +126,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
           filterPanel.hidden = false;
           filterEditor.focus();
         }),
-        button("移除", () => {
-          if (row.querySelector("[data-confirm-remove]")) return;
-          const confirm = node("div", "pi-remove-confirm");
-          const remove = button("确认移除", () => void operate({ action: "remove", source: item.source, scope: item.scope }));
-          remove.dataset.confirmRemove = "";
-          confirm.append(node("p", "", `从${item.scope === "user" ? "个人" : "项目"}配置中移除此包？重载资源后应用。`), remove, button("取消", () => {
-            confirm.remove();
-            actions.querySelector(".pi-remove-button").focus();
-          }));
-          row.append(confirm);
-          remove.focus();
-        }, "pi-remove-button"),
+        uninstallButton(row, item),
       );
       if (item.scope === "project") for (const control of actions.querySelectorAll("button")) control.dataset.requiresTrust = "";
       row.append(node("h4", "pi-package-name", item.source), meta, actions);
@@ -121,6 +146,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
       info.append(node("h4", "", label.name));
       if (label.description) info.append(node("p", "pi-extension-description", label.description));
       info.append(location);
+      packageControls(info, item, "扩展");
       row.append(info, node("span", "pi-badge", "已加载"));
       container.append(row);
     }
@@ -181,7 +207,7 @@ export function createPiResourcesPanel(dialog, api, setPageBusy, insertText) {
       if (result.reloaded) needsReload = false;
       await refresh();
       if (request.action === "filter") { filterPanel.hidden = true; selectedFilter = undefined; }
-      report(result.needsReload ? "配置已保存；点击“重载资源”应用到当前会话。" :
+      report(request.action === "remove" ? "资源包已卸载；点击“重载资源”更新当前会话。" : result.needsReload ? "配置已保存；点击“重载资源”应用到当前会话。" :
         result.updates ? `检查完成，${result.updates.length} 个来源可更新。` : "资源已重新加载。");
     } catch (error) {
       report(result ? `操作已完成，刷新失败：${error.message}。请刷新列表核对。` : `操作未完成：${error.message}。安装器可能已改动磁盘，请刷新列表核对。`, "error");

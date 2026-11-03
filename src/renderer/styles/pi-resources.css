@@ -60,6 +60,10 @@
 .pi-package-actions .pi-remove-button { margin-left: auto; color: var(--muted); border-color: transparent; }
 .pi-remove-confirm { margin-top: 14px; padding: 12px; border: 1px solid var(--error-border); border-radius: 8px; }
 .pi-remove-confirm button { margin-right: 8px; }
+.pi-resource-package { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.pi-resource-package small { flex: 1 1 160px; overflow-wrap: anywhere; }
+.pi-resource-origin { display: block; margin-top: 12px; line-height: 1.6; }
+.model-settings-dialog .pi-resource-package button { min-height: 36px; padding: 6px 10px; font-size: 12px; }
 .pi-filter-editor { margin-top: 18px; padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .pi-filter-editor textarea { margin: 8px 0 16px; font: 12px/1.7 ui-monospace, monospace; resize: vertical; }
 .pi-diagnostics { margin-top: 28px; padding-top: 8px; border-top: 1px solid var(--border); }

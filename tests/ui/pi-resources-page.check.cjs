@@ -14,13 +14,13 @@ async function main() {
   const data = {
     sessionId: "fixture-a", cwd: "/workspace/需求与测试项目", projectTrusted: true,
     skills: [
-      { name: "qa-requirement-review", description: "梳理需求范围、识别歧义与缺失约束，形成可以直接讨论的评审清单。" },
+      { name: "qa-requirement-review", description: "梳理需求范围、识别歧义与缺失约束，形成可以直接讨论的评审清单。", package: { source: "npm:@example/pi-tools@1.0.0", scope: "user", configured: true } },
       { name: "qa-case-design", description: "从需求和验收标准出发，设计覆盖业务规则、边界条件与异常场景的测试用例。" },
       { name: "qa-api-test", description: "Makes coding agents faster and more accurate with fewer tokens when designing, implementing, mocking, testing, monitoring, documenting, or deploying an API." },
       { name: "qa-ui-test", description: "检查关键页面交互与用户流程，记录可复现的步骤和验证结果。" },
     ],
     prompts: [{ name: "review", description: "Review/fix loop until clean" }],
-    extensions: [{ name: "codemode", path: "builtin:codemode" }, { name: "pi-subagents", path: "/packages/pi-subagents/index.js" }],
+    extensions: [{ name: "codemode", path: "builtin:codemode" }, { name: "pi-subagents", path: "/packages/pi-subagents/index.js", package: { source: "git:github.com/example/qa-workflows@v1", scope: "project", configured: true } }],
     packages: [
       { source: "npm:@example/pi-tools@1.0.0", scope: "user", installedPath: "/temporary/npm/pi-tools", filtered: false, filters: {} },
       { source: "git:github.com/example/qa-workflows@v1", scope: "project", installedPath: "/temporary/git/qa-workflows", filtered: true, filters: { skills: [] } },
@@ -74,6 +74,7 @@ async function main() {
     await check("工作目录和项目信任独立显示，不占用操作状态", `document.querySelector('[data-pi-cwd]').textContent==='/workspace/需求与测试项目'&&document.querySelector('[data-pi-trust]').textContent==='项目资源已信任'&&document.querySelector('[data-pi-status]').textContent===''`);
     await check("英文技能和模板描述显示中文，执行命令保留原名", `document.querySelector('[data-pi-items=skills]').textContent.includes('帮助编程智能体')&&document.querySelector('[data-pi-items=prompts]').textContent.includes('反复审查和修复')&&document.querySelector('[data-pi-command="/skill:qa-api-test"]')!==null`);
     await check("扩展显示中文名称与用途，不以 index.js 作为标题", `document.querySelector('[data-pi-items=extensions]').textContent.includes('子智能体协作')&&document.querySelector('[data-pi-items=extensions]').textContent.includes('代码执行')&&[...document.querySelectorAll('.pi-extension-row h4')].every(title=>!title.textContent.includes('index.'))&&document.querySelectorAll('.pi-extension-description').length===2`);
+    await check("包内技能和扩展有卸载所属包入口，独立技能与内置扩展不冒充包", `document.querySelectorAll('[data-pi-items=skills] .pi-remove-button').length===1&&document.querySelectorAll('[data-pi-items=extensions] .pi-remove-button').length===1&&document.querySelector('[data-pi-items=extensions] .pi-resource-origin').textContent.includes('内置扩展')`);
     const artifacts = process.env.PI_UI_ARTIFACT_DIR || "/tmp/pi-resources-design";
     await fs.mkdir(artifacts, { recursive: true });
     for (const theme of ["dark", "sakura"]) {
@@ -117,12 +118,31 @@ async function main() {
     await run(`document.querySelector('[data-pi-filters]').value='{"skills":[]}'`);
     await click("[data-pi-save-filters]"); await wait("!window.busy");
     assert.deepEqual(calls.at(-1), { action: "filter", source: data.packages[0].source, scope: "user", filters: { skills: [] } });
-    await run(`document.querySelector('.pi-remove-button').click();document.querySelector('.pi-remove-confirm button:last-child').click()`);
+    await run(`document.querySelector('.pi-package-row .pi-remove-button').click();document.querySelector('.pi-package-row .pi-remove-confirm button:last-child').click()`);
     await check("取消移除关闭确认并恢复焦点，不执行移除操作", `!document.querySelector('[data-confirm-remove]')&&document.activeElement.classList.contains('pi-remove-button')`);
     assert.equal(calls.some(call => call.action === "remove"), false);
+    await click('[data-pi-kind="skills"]');
+    await click('[data-pi-items="skills"] .pi-remove-button');
+    await check("技能卸载确认明确影响整包、范围、本地源文件与重载", `document.querySelector('[data-pi-items=skills] .pi-remove-confirm').textContent.includes('卸载整个包')&&document.querySelector('[data-pi-items=skills] .pi-remove-confirm').textContent.includes('保留源文件')&&document.querySelector('[data-pi-items=skills] .pi-remove-confirm').textContent.includes('重载')`);
+    await fs.writeFile(path.join(artifacts, "uninstall-confirmation.png"), (await win.webContents.capturePage()).toPNG());
+    await click('[data-pi-items="skills"] .pi-remove-confirm button:last-child');
+    await click('[data-pi-kind="extensions"]');
+    await click('[data-pi-items="extensions"] .pi-remove-button');
+    gate = Promise.withResolvers();
+    await click('[data-pi-items="extensions"] [data-confirm-remove]'); await wait("window.busy");
+    await check("卸载期间阻止重复确认与关闭设置", `document.querySelector('[data-confirm-remove]').disabled&&document.querySelector('[data-close]').disabled`);
+    gate.resolve(); gate = undefined; await wait("!window.busy");
+    assert.deepEqual(calls.at(-1), { action: "remove", source: data.packages[1].source, scope: "project" });
+    await check("卸载成功明确提示重载而非宣称已停用", `document.querySelector('[data-pi-status]').textContent.includes('资源包已卸载')&&!document.querySelector('[data-pi-reload-notice]').hidden`);
+    await click('[data-pi-kind="packages"]');
     manageFailure = true;
     await click("[data-pi-install]"); await wait("!window.busy");
     await check("安装失败可重试，明确提示核对安装事实", `document.querySelector('[data-pi-status]').dataset.state==='error'&&document.querySelector('[data-pi-status]').textContent.includes('可能已改动磁盘')&&!document.querySelector('[data-pi-install]').disabled`);
+    manageFailure = true;
+    await click('.pi-package-row .pi-remove-button');
+    await click('[data-confirm-remove]'); await wait("!window.busy");
+    await check("卸载失败不移走包条目，保留重试并提示核对磁盘", `document.querySelectorAll('.pi-package-row').length===2&&document.querySelector('[data-pi-status]').dataset.state==='error'&&!document.querySelector('[data-confirm-remove]').disabled`);
+    await click('.pi-remove-confirm button:last-child');
     manageFailure = false;
     listFailure = true;
     await click("[data-pi-refresh]"); await wait(ready);
@@ -132,6 +152,10 @@ async function main() {
     data.diagnostics = [{ type: "error", path: "/fixture/<script>.ts", message: "<img src=x onerror=alert(1)>" }];
     await click("[data-pi-refresh]"); await wait(ready);
     await check("未信任项目不允许安装或修改项目包，个人包操作仍可用", `document.querySelector('[data-pi-scope] option[value=project]').disabled&&[...document.querySelectorAll('.pi-package-row')[1].querySelectorAll('button')].every(button=>button.disabled)&&!document.querySelector('.pi-package-row button').disabled`);
+    await check("未信任项目也禁用扩展卡片上的卸载入口", `document.querySelector('[data-pi-items=extensions] .pi-remove-button').disabled`);
+    data.skills[0].package.configured = false;
+    await click("[data-pi-refresh]"); await wait(ready);
+    await check("卸载未重载的资源保留显示但不能重复卸载", `!document.querySelector('[data-pi-items=skills] .pi-remove-button')&&document.querySelector('[data-pi-items=skills]').textContent.includes('重载资源后核对')`);
     await run(`document.querySelector('[data-pi-diagnostics]').open=true`);
     await check("诊断以安全文本展示，带数量、错误级别和来源路径", `document.querySelector('[data-pi-diagnostic-count]').textContent==='1 条'&&document.querySelector('.pi-diagnostic-row').textContent.includes('<img')&&!document.querySelector('.pi-diagnostic-row img')&&document.querySelector('.pi-diagnostic-row code').textContent.includes('<script>')`);
     for (const kind of ["skills", "prompts", "extensions", "packages"]) data[kind] = [];
