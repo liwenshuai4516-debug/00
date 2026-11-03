@@ -803,6 +803,138 @@ const hostCommands = Object.freeze([
   { name: "name", description: "重命名当前对话", argumentHint: "[名称]", source: "host" },
 ]);
 
+// 扩展和技能自带的名称、说明一般是英文，这里按命令名给出中文展示。
+// 只影响菜单文字：命令名本身仍是实际执行用的标识，未收录的条目继续显示原文。
+const slashLabels = {
+  // 子代理扩展
+  subagents: "子代理管理",
+  run: "运行子代理",
+  "subagent-cost": "子代理费用",
+  "subagents-doctor": "子代理诊断",
+  "subagents-inspect-rpc": "子代理巡检桥接",
+  "subagents-guide": "子代理指南",
+  "subagents-refine": "子代理细化",
+  "subagents-fleet": "子代理总览",
+  "subagents-detach": "转入后台",
+  "subagents-stop": "停止子代理",
+  "subagents-steer": "引导子代理",
+  "subagents-models": "子代理模型",
+  "subagents-profiles": "子代理档位",
+  "subagents-load-profile": "加载子代理档位",
+  "subagents-refresh-provider-models": "刷新模型目录",
+  "subagents-generate-profiles": "生成子代理档位",
+  "subagents-check-profile": "检查子代理档位",
+  "subagents-watchdog": "子代理看门狗",
+  "prompt-workflow": "提示词工作流",
+  "pi-subagents-bridge": "子代理内部桥接",
+  // 目标管理扩展
+  goal: "制定目标",
+  sisyphus: "制定 Sisyphus 目标",
+  "goal-cancel": "取消目标草稿",
+  "goal-direct": "直接创建目标",
+  "sisyphus-direct": "直接创建 Sisyphus 目标",
+  "goal-list": "目标列表",
+  "goal-status": "目标看板",
+  "goal-refresh": "刷新目标缓存",
+  "goal-recovery": "目标恢复报告",
+  "goal-focus": "聚焦目标",
+  "goal-unfocus": "取消目标聚焦",
+  "goal-settings": "目标设置",
+  "goal-tweak": "调整目标",
+  "goal-clear": "归档目标",
+  "goal-pause": "暂停目标",
+  "goal-resume": "恢复目标",
+  // 网页与浏览器扩展
+  websearch: "网页搜索",
+  curator: "搜索整理",
+  "google-account": "Google 账号",
+  search: "搜索结果",
+  chrome: "Chrome 浏览器",
+  // 技能
+  "skill:dingtalk-aicard": "钉钉 AI 卡片",
+  "skill:dingtalk-aisearch": "钉钉 AI 搜问",
+  "skill:dingtalk-aitable": "钉钉 AI 表格",
+  "skill:dingtalk-calendar": "钉钉日历",
+  "skill:dingtalk-chat": "钉钉群聊",
+  "skill:dingtalk-contact": "钉钉通讯录",
+  "skill:dingtalk-doc": "钉钉文档",
+  "skill:dingtalk-drive": "钉盘",
+  "skill:dingtalk-event": "钉钉事件",
+  "skill:dingtalk-mail": "钉钉邮箱",
+  "skill:dingtalk-minutes": "钉钉 AI 听记",
+  "skill:dingtalk-misc": "钉钉长尾产品",
+  "skill:dingtalk-shared": "共享执行契约",
+  "skill:dingtalk-tag": "数字员工",
+  "skill:dingtalk-todo": "钉钉待办",
+  "skill:dingtalk-wiki": "钉钉知识库",
+  "skill:qa-case-design": "测试用例设计",
+  "skill:qa-requirement-review": "需求评审",
+  "skill:qa-skill-smoke": "技能冒烟验证",
+  "skill:comprehensive-topology-analysis": "全面拓扑分析",
+  "skill:database-inspector": "数据库巡检",
+  "skill:docx": "Word 文档",
+  "skill:dws-cli": "钉钉命令行",
+  "skill:history": "历史查询",
+  "skill:notes": "会话笔记",
+  "skill:oa-operations": "OA 操作",
+  "skill:pdf": "PDF 文档",
+  "skill:water-safe-knowledge-base": "供水安全知识库",
+  "skill:water-safe-operate": "供水安全调度",
+  "skill:water-ui": "动态界面",
+  "skill:waterwork-knowledge-base": "水厂知识库",
+  "skill:waterwork-operate": "水厂运营",
+  "skill:web-search": "网页搜索",
+  "skill:xlsx": "电子表格",
+};
+
+// 只替换需要中文化的说明；技能与模板若自带中文说明则保留原文。
+const slashDescriptions = {
+  subagents: "管理子代理：查看元数据，调整模型、思考等级或提示词",
+  run: "通过工作流脚本运行单个子代理：/run 代理[output=file] [任务] [--bg] [--fork]",
+  "subagent-cost": "查看本会话父会话与子代理的用量费用",
+  "subagents-doctor": "显示子代理诊断信息",
+  "subagents-inspect-rpc": "宿主集成桥接：响应异步子代理巡检请求，不请求模型",
+  "subagents-guide": "查看内置的子代理指南主题",
+  "subagents-refine": "为单个子代理生成限定范围的项目级细化配置",
+  "subagents-fleet": "打开实时子代理集群巡检面板",
+  "subagents-detach": "把前台运行中的子代理转入后台，不终止运行",
+  "subagents-stop": "停止本会话的异步子代理，或用 run-id 与 child-id 指定子任务",
+  "subagents-steer": "向运行中的异步子代理发送引导消息，可用 --child 指定子任务",
+  "subagents-models": "查看已发现子代理的模型映射",
+  "subagents-profiles": "列出已保存的子代理配置档",
+  "subagents-load-profile": "把子代理配置档加载到 ~/.pi/agent/settings.json",
+  "subagents-refresh-provider-models": "刷新指定供应商的模型缓存目录",
+  "subagents-generate-profiles": "生成按供应商划分的配额与质量子代理档位",
+  "subagents-check-profile": "检查已保存的档位是否仍指向可用模型",
+  "subagents-watchdog": "查看或开关默认关闭的子代理看门狗",
+  "prompt-workflow": "通过原生子代理运行提示词模板：/prompt-workflow 模板名 [参数]",
+  "pi-subagents-bridge": "内部请求分发，供宿主集成使用",
+  goal: "通过澄清、任务规划与确认起草常规目标",
+  sisyphus: "通过澄清、任务规划与确认起草 Sisyphus 目标",
+  "goal-cancel": "取消进行中的引导式起草，不创建也不修改目标",
+  "goal-direct": "跳过起草，立即创建并启动常规目标",
+  "sisyphus-direct": "跳过起草，立即创建并启动 Sisyphus 目标",
+  "goal-list": "列出所有未完成目标与当前聚焦目标",
+  "goal-status": "显示统一的目标看板，只读",
+  "goal-refresh": "重新从磁盘读取目标池、账本与设置并报告变化，可识别外部对 .pi 文件的修改",
+  "goal-recovery": "只读的存储与恢复报告：损坏的目标文件、账本记录、过期锁和孤立快照",
+  "goal-focus": "选择本会话聚焦的未完成目标",
+  "goal-unfocus": "停止聚焦当前目标，仅本会话生效，目标仍保留",
+  "goal-settings": "打开 pi-goal 设置，含审核用的供应商、模型与思考等级",
+  "goal-tweak": "确认后修改当前目标或其令牌预算",
+  "goal-clear": "确认后归档当前目标，视为用户主动放弃",
+  "goal-pause": "暂停正在运行的目标，运行中按 Esc 也可以暂停",
+  "goal-resume": "立即继续，并重置自主运行额度",
+  websearch: "打开网页搜索整理面板",
+  curator: "开关或配置搜索整理流程",
+  "google-account": "查看 Gemini Web 当前使用的 Google 账号",
+  search: "浏览已保存的网页搜索结果",
+  chrome: "Chrome 浏览器配置桥接命令",
+  "skill:docx": "创建、读取、编辑 Word 文档与模板，可处理目录、批注、修订与图片",
+  "skill:pdf": "读取、合并、拆分 PDF，可加水印、填表、加密解密与文字识别",
+  "skill:xlsx": "创建、读取、编辑表格文件，可清理数据、计算公式与绘制图表",
+};
+
 let slashCommands = null;
 let slashCommandsOwner = "";
 let slashCommandsRequest = null;
@@ -907,9 +1039,17 @@ function applySlashCommand(command) {
   input.setSelectionRange(input.value.length, input.value.length);
 }
 
+// 中文名称也参与匹配：中文按包含，英文仍按前缀，避免无关结果。
+function matchesSlashToken(command, token) {
+  if (command.name.toLowerCase().startsWith(token)) return true;
+  const label = (slashLabels[command.name] ?? "").toLowerCase();
+  if (!label) return false;
+  return /[\u4e00-\u9fa5]/.test(token) ? label.includes(token) : label.startsWith(token);
+}
+
 function drawSlashMenu(token) {
   const matches = (slashCommands ?? hostCommands).filter((command) =>
-    command.name.toLowerCase().startsWith(token),
+    matchesSlashToken(command, token),
   );
 
   slashMenu.replaceChildren();
@@ -929,6 +1069,10 @@ function drawSlashMenu(token) {
     item.setAttribute("role", "option");
     item.setAttribute("aria-selected", "false");
 
+    // 命令名保持原文（它是实际输入内容），中文名称作为副行说明。
+    const nameCell = document.createElement("span");
+    nameCell.className = "slash-command-name-cell";
+
     const name = document.createElement("span");
     name.className = "slash-command-name";
     name.textContent = `/${command.name}`;
@@ -938,16 +1082,29 @@ function drawSlashMenu(token) {
       hint.textContent = ` ${command.argumentHint}`;
       name.append(hint);
     }
+    nameCell.append(name);
 
+    const label = slashLabels[command.name];
+    if (label) {
+      const labelText = document.createElement("span");
+      labelText.className = "slash-command-label";
+      labelText.textContent = label;
+      nameCell.append(labelText);
+    }
+
+    // 中文说明替换英文原文；悬停仍可核对原始说明。
+    const originalDescription = command.description ?? "";
+    const localizedDescription = slashDescriptions[command.name];
     const description = document.createElement("span");
     description.className = "slash-command-description";
-    description.textContent = command.description ?? "";
+    description.textContent = localizedDescription ?? originalDescription;
+    if (localizedDescription && originalDescription) description.title = originalDescription;
 
     const source = document.createElement("span");
     source.className = "slash-command-source";
     source.textContent = commandSources[command.source] ?? "命令";
 
-    item.append(name, description, source);
+    item.append(nameCell, description, source);
     // 索引交给菜单级委托读取，避免每项各挂一个监听。
     item.dataset.index = String(index);
     // 点击不抢走焦点，保证键盘选择与输入状态一致。

@@ -466,7 +466,7 @@ select option {
 .slash-command-item {
   display: grid;
   grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   width: 100%;
   min-height: 36px;
@@ -487,6 +487,18 @@ select option {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+/* 命令名与中文名同列：命令名用于输入，中文名只作说明。 */
+.slash-command-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.slash-command-label {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
 }
 .slash-command-argument {
   color: var(--muted);
