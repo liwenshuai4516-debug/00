@@ -184,6 +184,40 @@ export async function createPiAgent(
   return session;
 }
 
+// 列出当前会话可用的资源命令，来源与 Pi 官方命令菜单一致。
+// 桌面内置命令由渲染层补充，避免重复登记。
+export function listSlashCommands(session) {
+  const commands = [];
+
+  for (const command of session.extensionRunner?.getRegisteredCommands?.() ?? []) {
+    commands.push({
+      name: command.invocationName,
+      description: command.description ?? "",
+      source: "extension",
+    });
+  }
+
+  for (const template of session.promptTemplates ?? []) {
+    commands.push({
+      name: template.name,
+      description: template.description ?? "",
+      ...(template.argumentHint ? { argumentHint: template.argumentHint } : {}),
+      source: "prompt",
+    });
+  }
+
+  // 技能命令由 SDK 在发送时展开，这里只提供名称和说明。
+  for (const skill of session.resourceLoader?.getSkills?.().skills ?? []) {
+    commands.push({
+      name: `skill:${skill.name}`,
+      description: skill.description ?? "",
+      source: "skill",
+    });
+  }
+
+  return commands;
+}
+
 // 发送消息，并把收到的文本增量交给调用方。
 export async function sendMessage(
   session,

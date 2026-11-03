@@ -101,8 +101,18 @@ function registerAgentIpc(
   });
 
   // 整理只针对主进程当前会话，不接收页面指定的会话编号。
-  ipcMain.handle("agent:compact-session", () => {
-    return runIdleOperation(() => sessionService.compactSession());
+  ipcMain.handle("agent:compact-session", (_event, customInstructions) => {
+    return runIdleOperation(() => sessionService.compactSession(customInstructions));
+  });
+
+  // 命令菜单只读取资源命令，不占用会话操作互斥。
+  ipcMain.handle("agent:list-slash-commands", () => {
+    return sessionService.listSlashCommands();
+  });
+
+  // 与发送、整理共用互斥，避免重载期间同时改写会话。
+  ipcMain.handle("agent:reload-resources", () => {
+    return runIdleOperation(() => sessionService.reloadResources());
   });
 
   // 取消不能经过互斥入口，否则会被正在整理的操作阻止。

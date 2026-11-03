@@ -195,7 +195,11 @@ function createSessionService(
 
   // 由 IPC 的互斥入口调用，整理期间不能发送、切换或保存。
   // 整理状态独立保存，初始化期间也能接收取消请求。
-  async function compactSession() {
+  async function compactSession(customInstructions) {
+    if (customInstructions !== undefined && typeof customInstructions !== "string") {
+      throw new Error("整理说明格式无效。");
+    }
+
     if (activeCompaction) {
       throw new Error("已有上下文整理正在进行。");
     }
@@ -228,7 +232,9 @@ function createSessionService(
       });
 
       try {
-        await session.compact();
+        // 说明为空时沿用 SDK 默认摘要要求。
+        const instructions = customInstructions?.trim();
+        await session.compact(instructions || undefined);
 
         return {
           stopped: false,
@@ -364,6 +370,23 @@ function createSessionService(
     if (!session.getAvailableThinkingLevels?.().includes(level)) throw new Error("当前模型不支持所选思考强度。");
     session.setThinkingLevel(level, { persist: false });
     return { thinkingLevel: session.thinkingLevel, thinkingLevels: session.getAvailableThinkingLevels() };
+  }
+
+  // 只读取当前会话的扩展、模板和技能命令，不请求模型。
+  async function listSlashCommands() {
+    const session = await getSession(true);
+    const { listSlashCommands: readCommands } = await import("../pi-agent.mjs");
+    return { commands: readCommands(session) };
+  }
+
+  // 与内置 /reload 共用同一份资源重载逻辑。
+  async function reloadResources() {
+    const session = await getSession(true);
+    if (typeof session.desktopReloadResources !== "function") {
+      throw new Error("当前会话暂不支持重新加载资源。");
+    }
+    await session.desktopReloadResources();
+    return { sessionId: session.sessionId, diagnostics: session.desktopResourceDiagnostics ?? [] };
   }
 
   // 记录用户确认保存的事实，不主动请求模型回复。
@@ -870,6 +893,8 @@ function createSessionService(
     reloadModels,
     setDefaultModel,
     setThinkingLevel,
+    listSlashCommands,
+    reloadResources,
     compactSession,
     cancelCompaction,
     recordWorkspaceEdit,

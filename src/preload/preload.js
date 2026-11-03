@@ -119,9 +119,17 @@ contextBridge.exposeInMainWorld("agent", {
   // 只提交供应商和模型编号，地址与实际模型由主进程解析。
   switchModel: (modelId, provider) => ipcRenderer.invoke("agent:switch-model", modelId, provider),
   // 整理当前会话，以及取消正在进行的整理。
-  compactSession: () => ipcRenderer.invoke("agent:compact-session"),
+  // 说明为可选文本，由主进程校验后交给 SDK。
+  compactSession: (customInstructions) =>
+    ipcRenderer.invoke("agent:compact-session", customInstructions),
 
   cancelCompaction: () => ipcRenderer.invoke("agent:cancel-compaction"),
+
+  // 命令菜单只读取名称、说明和来源，不返回技能正文或扩展实现。
+  listSlashCommands: () => ipcRenderer.invoke("agent:list-slash-commands"),
+
+  // 重新加载扩展、技能、模板和上下文，不请求模型。
+  reloadResources: () => ipcRenderer.invoke("agent:reload-resources"),
 
   // 保存位置由系统窗口选择，页面不传路径或导出内容。
   exportConversation: () => ipcRenderer.invoke("agent:export-conversation"),

@@ -55,6 +55,7 @@ const session = {
   newChat: async () => { current=`new-${++serial}`; return current; },
   renameSession: async () => {},
   compactSession: async () => ({ history:history(current) }),
+  reloadResources: async () => ({ sessionId:current, diagnostics:[] }),
   cancelCompaction: async () => {},
   previewSession: async id => ({ history:history(id) }),
 };

@@ -187,3 +187,77 @@ test("会话归属不匹配时拒绝写入保存记录", async () => {
   );
   assert.equal(calls, 0);
 });
+
+test("命令列表按扩展、模板和技能汇总，不读取正文", async () => {
+  const session = {
+    sessionId: "commands",
+    extensionRunner: {
+      getRegisteredCommands: () => [
+        { invocationName: "deploy", description: "发布到测试环境" },
+      ],
+    },
+    promptTemplates: [
+      { name: "review", description: "评审需求", argumentHint: "<文件>" },
+    ],
+    resourceLoader: {
+      getSkills: () => ({ skills: [{ name: "qa", description: "用例设计" }] }),
+    },
+  };
+  const service = createSessionService(sessionDir, async () => session);
+
+  assert.deepEqual(await service.listSlashCommands(), {
+    commands: [
+      { name: "deploy", description: "发布到测试环境", source: "extension" },
+      {
+        name: "review",
+        description: "评审需求",
+        argumentHint: "<文件>",
+        source: "prompt",
+      },
+      { name: "skill:qa", description: "用例设计", source: "skill" },
+    ],
+  });
+});
+
+test("整理说明透传给 SDK，空说明沿用默认要求", async () => {
+  const received = [];
+  const session = {
+    sessionId: "compact",
+    messages: [],
+    subscribe: () => () => {},
+    async compact(customInstructions) {
+      received.push(customInstructions);
+    },
+  };
+  const service = createSessionService(sessionDir, async () => session);
+
+  await service.compactSession("保留结论与待办");
+  await service.compactSession("   ");
+  await service.compactSession();
+
+  assert.deepEqual(received, ["保留结论与待办", undefined, undefined]);
+  await assert.rejects(service.compactSession(42), /整理说明格式无效/);
+});
+
+test("重新加载资源复用会话重载并返回诊断", async () => {
+  let calls = 0;
+  const session = {
+    sessionId: "reload",
+    async desktopReloadResources() {
+      calls += 1;
+      this.desktopResourceDiagnostics = [{ type: "warning" }];
+    },
+  };
+  const service = createSessionService(sessionDir, async () => session);
+
+  assert.deepEqual(await service.reloadResources(), {
+    sessionId: "reload",
+    diagnostics: [{ type: "warning" }],
+  });
+  assert.equal(calls, 1);
+
+  const unsupported = createSessionService(sessionDir, async () => ({
+    sessionId: "plain",
+  }));
+  await assert.rejects(unsupported.reloadResources(), /暂不支持重新加载资源/);
+});

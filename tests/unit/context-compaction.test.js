@@ -78,10 +78,10 @@ test("SDK 整理失败时透传错误，保留当前会话", async () => {
   assert.equal(await service.getSession(), session);
 });
 
-test("生成期间拒绝整理，空闲后不向服务转发页面参数", async () => {
+test("生成期间拒绝整理，空闲后只向服务转发整理说明", async () => {
   const handlers = new Map();
   let busy = true;
-  let calls = 0;
+  const received = [];
 
   registerAgentIpc(
     {
@@ -89,9 +89,8 @@ test("生成期间拒绝整理，空闲后不向服务转发页面参数", async
     },
     {
       async compactSession(...args) {
-        // 页面不能指定其他会话或注入摘要指令。
-        assert.deepEqual(args, []);
-        calls += 1;
+        // 页面只能提供说明文本，不能指定其他会话。
+        received.push(args);
         return [];
       },
     },
@@ -103,14 +102,14 @@ test("生成期间拒绝整理，空闲后不向服务转发页面参数", async
   const compact = handlers.get("agent:compact-session");
 
   assert.throws(() => compact({}, "other-session"), /请等待当前回复结束/);
-  assert.equal(calls, 0);
+  assert.deepEqual(received, []);
 
   busy = false;
-  assert.deepEqual(await compact({}, "other-session"), []);
+  assert.deepEqual(await compact({}, "保留结论"), []);
 
-  // 成功后必须释放互斥状态，允许再次进入。
+  // 成功后必须释放互斥状态，允许再次进入；未提供说明时不传默认值。
   assert.deepEqual(await compact({}), []);
-  assert.equal(calls, 2);
+  assert.deepEqual(received, [["保留结论"], [undefined]]);
 });
 
 test("整理期间拒绝冲突操作，失败后释放互斥状态", async () => {

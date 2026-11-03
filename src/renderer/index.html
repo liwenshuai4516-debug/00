@@ -187,8 +187,12 @@
         <p id="request-status" role="status" aria-atomic="true">就绪</p>
         <form id="message-form" class="composer">
           <label for="message-input" class="sr-only">输入消息</label>
-          <textarea id="message-input" rows="3" autocomplete="off" placeholder="向闪电31发送消息"
+          <textarea id="message-input" rows="3" autocomplete="off"
+            placeholder="向闪电31发送消息，输入 / 查看可用命令" aria-controls="slash-command-menu"
+            aria-expanded="false" aria-autocomplete="list"
             aria-describedby="message-input-hint composer-draft-status"></textarea>
+          <!-- 命令菜单只列出名称、说明和来源；选中后填入输入框，由用户确认后发送。 -->
+          <div id="slash-command-menu" class="slash-command-menu" role="listbox" aria-label="可用命令" hidden></div>
           <!-- 模板先进入输入框，由用户补充资料后自行发送。 -->
           <!-- 测试任务模板暂时用不到，隐藏入口；结构与逻辑保留，去掉 hidden 即可恢复。 -->
           <div class="task-template-row" hidden>

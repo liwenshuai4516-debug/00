@@ -2,7 +2,7 @@ import { createExtensionUi } from "./components/extension-ui.js";
 import { createProposalPanel } from "./components/proposal-panel.js";
 import { createProjectPanel } from "./components/project-panel.js";
 import { mountHistoryPreview } from "./components/history-preview.js";
-import { createSessionInfoPanel } from "./components/session-info-panel.js";
+import { createSessionInfoPanel, formatContextUsage } from "./components/session-info-panel.js";
 import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSessionList } from "./components/session-list.js";
@@ -784,8 +784,335 @@ projectPanel.refresh();
 
 extensionUiPanel.ready.then(loadHistory).catch(error => addMessage("error", `扩展交互连接失败：${error.message}`));
 
+// 斜杠命令：Pi 资源命令由主进程读取，桌面内置命令直接复用现有操作。
+const slashMenu = document.getElementById("slash-command-menu");
+const commandSources = {
+  host: "内置",
+  extension: "扩展",
+  prompt: "模板",
+  skill: "技能",
+};
+const hostCommands = Object.freeze([
+  { name: "new", description: "新建对话", source: "host" },
+  { name: "compact", description: "整理当前上下文，可附带整理说明", argumentHint: "[说明]", source: "host" },
+  { name: "export", description: "导出当前对话", source: "host" },
+  { name: "reload", description: "重新加载扩展、技能、模板和上下文", source: "host" },
+  { name: "session", description: "查看当前会话信息", source: "host" },
+  { name: "model", description: "切换模型", argumentHint: "[供应商/模型]", source: "host" },
+  { name: "thinking", description: "设置或查看思考等级", argumentHint: "[等级]", source: "host" },
+  { name: "name", description: "重命名当前对话", argumentHint: "[名称]", source: "host" },
+]);
+
+let slashCommands = null;
+let slashCommandsOwner = "";
+let slashCommandsRequest = null;
+let slashCommandsError = "";
+let slashMatches = [];
+let slashActive = -1;
+
+// 首次打开菜单或会话变化时读取；读取失败仍保留内置命令。
+async function loadSlashCommands(force = false) {
+  if (slashCommands && !force) return slashCommands;
+  if (slashCommandsRequest) return slashCommandsRequest;
+
+  slashCommandsRequest = window.agent
+    .listSlashCommands()
+    .then((result) => {
+      const seen = new Set(hostCommands.map((command) => command.name));
+      const merged = [...hostCommands];
+
+      for (const command of result?.commands ?? []) {
+        // 名称冲突时保留桌面内置命令，避免同一名称执行两种语义。
+        if (typeof command?.name !== "string" || !command.name || seen.has(command.name)) {
+          continue;
+        }
+        seen.add(command.name);
+        merged.push({ ...command });
+      }
+
+      slashCommands = merged;
+      slashCommandsOwner = composerState.sessionId;
+      slashCommandsError = "";
+      return merged;
+    })
+    .catch((error) => {
+      slashCommands = [...hostCommands];
+      slashCommandsOwner = composerState.sessionId;
+      slashCommandsError = error.message;
+      return slashCommands;
+    })
+    .finally(() => {
+      slashCommandsRequest = null;
+
+      // 读取期间输入框可能仍停在命令前缀上。
+      if (/^\/[^\s]*$/.test(input.value)) updateSlashMenu();
+    });
+
+  return slashCommandsRequest;
+}
+
+function closeSlashMenu() {
+  slashMenu.hidden = true;
+  slashMenu.replaceChildren();
+  slashMatches = [];
+  slashActive = -1;
+  input.setAttribute("aria-expanded", "false");
+  input.removeAttribute("aria-activedescendant");
+}
+
+function setSlashActive(index) {
+  if (!slashMatches.length) return;
+
+  // 方向键在首尾循环，避免长列表需要反复按键。
+  slashActive = (index + slashMatches.length) % slashMatches.length;
+  const items = slashMenu.querySelectorAll(".slash-command-item");
+  items.forEach((item, itemIndex) => {
+    item.setAttribute("aria-selected", String(itemIndex === slashActive));
+  });
+  const active = items[slashActive];
+  if (active) {
+    input.setAttribute("aria-activedescendant", active.id);
+    active.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// 选中命令只填入名称，参数和发送仍由用户确认。
+function applySlashCommand(command) {
+  if (!command) return;
+
+  input.value = `/${command.name}${command.argumentHint ? " " : ""}`;
+  input.dispatchEvent(new Event("input"));
+  closeSlashMenu();
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function drawSlashMenu(token) {
+  const matches = (slashCommands ?? hostCommands).filter((command) =>
+    command.name.toLowerCase().startsWith(token),
+  );
+
+  slashMenu.replaceChildren();
+  slashMatches = matches;
+  slashActive = -1;
+
+  if (!matches.length) {
+    closeSlashMenu();
+    return;
+  }
+
+  for (const [index, command] of matches.entries()) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "slash-command-item";
+    item.id = `slash-command-option-${index}`;
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-selected", "false");
+
+    const name = document.createElement("span");
+    name.className = "slash-command-name";
+    name.textContent = `/${command.name}`;
+    if (command.argumentHint) {
+      const hint = document.createElement("span");
+      hint.className = "slash-command-argument";
+      hint.textContent = ` ${command.argumentHint}`;
+      name.append(hint);
+    }
+
+    const description = document.createElement("span");
+    description.className = "slash-command-description";
+    description.textContent = command.description ?? "";
+
+    const source = document.createElement("span");
+    source.className = "slash-command-source";
+    source.textContent = commandSources[command.source] ?? "命令";
+
+    item.append(name, description, source);
+    // 点击不抢走焦点，保证键盘选择与输入状态一致。
+    item.addEventListener("mousedown", (event) => event.preventDefault());
+    item.addEventListener("click", () => applySlashCommand(slashMatches[index]));
+    item.addEventListener("mousemove", () => setSlashActive(index));
+    slashMenu.append(item);
+  }
+
+  if (slashCommandsError) {
+    const note = document.createElement("p");
+    note.className = "slash-command-note";
+    note.setAttribute("role", "presentation");
+    note.textContent = "扩展、模板和技能命令读取失败，仅显示内置命令。";
+    slashMenu.append(note);
+  }
+
+  slashMenu.hidden = false;
+  input.setAttribute("aria-expanded", "true");
+  setSlashActive(0);
+}
+
+function updateSlashMenu(event) {
+  // 输入法组词期间不展示命令列表，避免候选词被当成命令名。
+  if (event?.isComposing) {
+    closeSlashMenu();
+    return;
+  }
+
+  // 只在输入第一个词时提示命令，带空格的参数不拦截。
+  const match = /^\/([^\s]*)$/.exec(input.value);
+  if (!match || input.disabled || input.readOnly) {
+    closeSlashMenu();
+    return;
+  }
+
+  if (!slashCommands || slashCommandsOwner !== composerState.sessionId) {
+    closeSlashMenu();
+    void loadSlashCommands(true);
+    return;
+  }
+
+  drawSlashMenu(match[1].toLowerCase());
+}
+
+input.addEventListener("input", updateSlashMenu);
+// 焦点离开输入框时收起菜单，避免浮层遮挡其他控件。
+input.addEventListener("blur", () => closeSlashMenu());
+
+// 解析内置命令；资源命令仍需交给 Pi 展开。
+function parseHostCommand(text) {
+  const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
+  if (!match) return null;
+
+  const name = match[1];
+  if (!hostCommands.some((command) => command.name === name)) return null;
+  return { name, args: (match[2] ?? "").trim() };
+}
+
+async function runHostCommand({ name, args }) {
+  // 命令本身不进入对话记录，先清空并保存输入，再执行桌面操作。
+  input.value = "";
+  input.dispatchEvent(new Event("input"));
+  closeSlashMenu();
+
+  if (name === "new") return startNewChat();
+  if (name === "compact") return compactContext(args);
+  if (name === "export") return exportCurrentConversation();
+
+  setBusy(true);
+  try {
+    if (name === "reload") {
+      const result = await window.agent.reloadResources();
+      // 资源可能已变化，下次打开菜单重新读取。
+      slashCommands = null;
+      slashCommandsError = "";
+      setRequestStatus(
+        result.diagnostics?.length
+          ? "资源已重新加载，存在需要检查的诊断信息。"
+          : "Pi 资源已重新加载。",
+      );
+    } else if (name === "session") {
+      const info = await window.agent.getSessionInfo();
+      addMessage("status", [
+        `会话编号：${info.sessionId}`,
+        `工作目录：${info.workspaceDir ?? "未绑定"}`,
+        `模型：${info.provider}/${info.modelId}`,
+        `思考等级：${info.thinkingLevel}`,
+        formatContextUsage(info.contextUsage),
+      ].join(" · "));
+      setRequestStatus("已读取当前会话信息。");
+    } else if (name === "model") {
+      await switchModelFromCommand(args);
+    } else if (name === "thinking") {
+      await setThinkingFromCommand(args);
+    } else if (name === "name") {
+      await renameFromCommand(args);
+    }
+  } catch (error) {
+    setRequestStatus("命令未完成。");
+    addMessage("error", error.message);
+  } finally {
+    setBusy(false);
+    input.focus();
+  }
+}
+
+async function switchModelFromCommand(args) {
+  if (!args) {
+    setRequestStatus("请在输入框下方的模型选择器中选择模型，或使用 /model 供应商/模型编号。");
+    document.getElementById("model-select").focus();
+    return;
+  }
+
+  const result = await window.agent.listModels();
+  const wanted = args.toLowerCase();
+  const model = result.models.find((item) =>
+    [`${item.provider}/${item.id}`, item.id, item.name]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase() === wanted),
+  );
+
+  if (!model) throw new Error(`未找到模型：${args}。可用格式为 供应商/模型编号。`);
+
+  setRequestStatus(`正在切换到 ${model.name ?? model.id}……`);
+  await window.agent.switchModel(model.id, model.provider);
+  await modelSelector.refresh();
+  await sessionInfoPanel.refresh();
+  setRequestStatus(`已切换模型：${model.name ?? model.id}。`);
+}
+
+async function setThinkingFromCommand(args) {
+  if (!args) {
+    const info = await window.agent.getSessionInfo();
+    setRequestStatus(
+      `当前思考等级：${info.thinkingLevel}；可选：${info.thinkingLevels.join("、")}。`,
+    );
+    return;
+  }
+
+  const level = args.toLowerCase();
+  await window.agent.setThinkingLevel(level);
+  await sessionInfoPanel.refresh();
+  setRequestStatus(`思考等级已设置为 ${level}。`);
+}
+
+async function renameFromCommand(args) {
+  if (!args) {
+    setRequestStatus("请在标题栏输入名称后保存，或使用 /name 名称。");
+    sessionName.focus();
+    return;
+  }
+
+  await window.agent.renameSession(args);
+  await refreshSessions();
+  sessionName.value = "";
+  setRequestStatus(`对话已重命名为“${args}”。`);
+}
+
 // Enter 发送；Shift+Enter 保留 textarea 的默认换行行为。
 input.addEventListener("keydown", (event) => {
+  // 命令菜单打开时优先处理方向键、补全和关闭。
+  if (!event.isComposing && !slashMenu.hidden) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setSlashActive(slashActive + (event.key === "ArrowDown" ? 1 : -1));
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSlashMenu();
+      return;
+    }
+    const active = slashMatches[slashActive];
+    if (active && (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey))) {
+      const typed = /^\/([^\s]*)$/.exec(input.value)?.[1];
+      // 已完整输入同一命令时，Enter 直接交给发送流程，避免重复补全。
+      if (event.key === "Enter" && active.name === typed) {
+        closeSlashMenu();
+      } else {
+        event.preventDefault();
+        applySlashCommand(active);
+        return;
+      }
+    }
+  }
+
   // 中文输入法选词时的 Enter 不应触发发送。
   if (event.isComposing || event.key !== "Enter" || event.shiftKey) {
     return;
@@ -805,6 +1132,13 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!input.value.trim() || sendButton.disabled) return;
+
+  // 内置命令由页面执行，不进入模型对话；资源命令仍走发送链路。
+  const hostCommand = parseHostCommand(input.value);
+  if (hostCommand) {
+    await runHostCommand(hostCommand);
+    return;
+  }
 
   setBusy(true);
   let ticket;
@@ -986,7 +1320,8 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-newChatButton.addEventListener("click", async () => {
+// 新建对话也供内置命令复用，不另建一套清空与刷新逻辑。
+async function startNewChat() {
   setBusy(true);
 
   try {
@@ -1014,7 +1349,9 @@ newChatButton.addEventListener("click", async () => {
     setBusy(false);
     input.focus();
   }
-});
+}
+
+newChatButton.addEventListener("click", startNewChat);
 
 // 项目面板负责忙碌状态；这里在主进程确认成功后更新聊天页面。
 async function openProject(projectId) {
@@ -1113,7 +1450,8 @@ renameButton.addEventListener("click", async () => {
     input.focus();
   }
 });
-compactSessionButton.addEventListener("click", async () => {
+// 整理入口同时服务于按钮和 /compact 命令，说明为可选文本。
+async function compactContext(instructions = "") {
   if (compactSessionButton.disabled) return;
 
   setBusy(true);
@@ -1122,7 +1460,7 @@ compactSessionButton.addEventListener("click", async () => {
   setRequestStatus("正在整理上下文，请稍候……");
 
   try {
-    const result = await window.agent.compactSession();
+    const result = await window.agent.compactSession(instructions);
 
     // 只更新消息区，保留输入草稿和待保存的文件修改。
     // 不调用会清空草稿面板的 showHistory()。
@@ -1148,7 +1486,9 @@ compactSessionButton.addEventListener("click", async () => {
     setBusy(false);
     input.focus();
   }
-});
+}
+
+compactSessionButton.addEventListener("click", () => compactContext());
 
 cancelCompactionButton.addEventListener("click", async () => {
   if (cancelCompactionButton.hidden || cancelCompactionButton.disabled) {
@@ -1172,7 +1512,8 @@ cancelCompactionButton.addEventListener("click", async () => {
     addMessage("error", error.message);
   }
 });
-exportConversationButton.addEventListener("click", async () => {
+// 导出入口同时服务于按钮和 /export 命令。
+async function exportCurrentConversation() {
   if (exportConversationButton.disabled) return;
 
   setBusy(true);
@@ -1190,7 +1531,9 @@ exportConversationButton.addEventListener("click", async () => {
     setBusy(false);
     input.focus();
   }
-});
+}
+
+exportConversationButton.addEventListener("click", () => exportCurrentConversation());
 selectWorkspaceButton.addEventListener("click", async () => {
   if (selectWorkspaceButton.disabled) return;
 

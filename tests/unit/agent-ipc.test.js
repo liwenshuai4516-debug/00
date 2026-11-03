@@ -243,3 +243,43 @@ test("草稿列表在忙碌时拒绝读取，空闲后从当前会话服务取�
   assert.deepEqual(await handler({}), expected);
   assert.equal(calls, 1);
 });
+
+test("内置命令转发整理说明、资源命令与重新加载", async () => {
+  const handlers = new Map();
+  const calls = [];
+  let busy = false;
+
+  registerAgentIpc(
+    { handle: (channel, handler) => handlers.set(channel, handler) },
+    {
+      compactSession(instructions) {
+        calls.push(["compact", instructions]);
+        return { history: [] };
+      },
+      listSlashCommands() {
+        calls.push(["list"]);
+        return { commands: [] };
+      },
+      reloadResources() {
+        calls.push(["reload"]);
+        return { diagnostics: [] };
+      },
+    },
+    { isBusy: () => busy },
+  );
+
+  await handlers.get("agent:compact-session")({}, "保留结论");
+  assert.deepEqual(await handlers.get("agent:list-slash-commands")({}), {
+    commands: [],
+  });
+  await handlers.get("agent:reload-resources")({});
+
+  assert.deepEqual(calls, [["compact", "保留结论"], ["list"], ["reload"]]);
+
+  // 重新加载会改写会话资源，生成期间必须拒绝。
+  busy = true;
+  assert.throws(
+    () => handlers.get("agent:reload-resources")({}),
+    /请等待当前回复结束/,
+  );
+});
