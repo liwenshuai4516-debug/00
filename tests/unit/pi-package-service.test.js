@@ -83,3 +83,29 @@ test("扩展列表返回可识别名称，不把入口文件作为名称", async
   assert.deepEqual(listed.map(item => item.name), ["codemode", "pi-subagents", "chrome-profile-bridge", "@example/session-tools", "session-tools", "my-extension", "@postman/postman-plugin"]);
   assert.deepEqual(listed.map(item => item.path), extensions.map(item => item.path));
 });
+
+test("安装接受复制的 pi install 命令，只把包来源交给官方安装器", async () => {
+  const calls = [];
+  const manager = {
+    setProgressCallback() {},
+    installAndPersist: async (source, options) => calls.push({ source, options }),
+  };
+  const session = { desktopServices: {}, settingsManager: { isProjectTrusted: () => true, flush: async () => {} } };
+  const service = createPiPackageService({ getSession: async () => session }, () => manager);
+  for (const [input, source] of [
+    ["pi install npm:billion-context", "npm:billion-context"],
+    ["  pi install npm:@example/tools@1.0.0  ", "npm:@example/tools@1.0.0"],
+    ['pi install "/temporary/work space/package"', "/temporary/work space/package"],
+    ["pi install 'git:github.com/example/repo@main'", "git:github.com/example/repo@main"],
+    ["/temporary/work space/package", "/temporary/work space/package"],
+    ["npm:billion-context", "npm:billion-context"],
+  ]) {
+    await service.manage({ action: "install", source: input, scope: "user" });
+    assert.deepEqual(calls.at(-1), { source, options: { local: false } });
+  }
+  const count = calls.length;
+  for (const source of ["pi install", "pi install npm:a npm:b", "pi install --local npm:a", "pi install npm:a && echo x", 'pi install "unterminated', 'pi install ""', "pi install --help"]) {
+    await assert.rejects(service.manage({ action: "install", source, scope: "user" }), /包来源|只粘贴/);
+  }
+  assert.equal(calls.length, count, "无效命令不进入安装器");
+});

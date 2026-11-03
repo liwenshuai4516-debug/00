@@ -45,8 +45,19 @@ function createPiPackageService(sessionService, createManager) {
   }
 
   async function manage(input, onProgress = () => {}) {
-    const { action, source, scope } = input ?? {};
+    const { action, scope } = input ?? {};
+    let { source } = input ?? {};
     if (!["install", "update", "remove", "filter", "reload", "check"].includes(action)) throw new Error("包操作无效。");
+    if (action === "install" && typeof source === "string") {
+      source = source.trim();
+      const command = source.match(/^pi\s+install(?:\s+([\s\S]*))?$/);
+      if (command) {
+        // 仅提取一项来源，不执行粘贴的命令；安装范围仍由页面选择。
+        const argument = (command[1] ?? "").match(/^(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s"'`]+))$/);
+        if (!argument) throw new Error("请只粘贴一个包来源，例如 npm:billion-context；配置范围请在页面选择。");
+        source = argument[1] ?? argument[2] ?? argument[3];
+      }
+    }
     if (action !== "reload" && action !== "check" && (typeof source !== "string" || !source.trim() || source.startsWith("-") || source.includes("\0"))) {
       throw new Error("请输入 Pi 支持的包来源。");
     }

@@ -450,7 +450,8 @@
             <div class="pi-install-fields">
               <div>
                 <label for="pi-package-source">包来源</label>
-                <input id="pi-package-source" data-pi-source placeholder="npm:包名@版本、git:地址@分支或版本号、本地路径" autocomplete="off" />
+                <input id="pi-package-source" data-pi-source placeholder="npm:包名@版本、git:地址@分支或版本号、本地路径" autocomplete="off" aria-describedby="pi-package-source-hint" />
+                <small id="pi-package-source-hint">例如 npm:billion-context，也可直接粘贴 pi install npm:billion-context。安装范围在“配置范围”中选择。</small>
               </div>
               <div>
                 <label for="pi-package-scope">配置范围</label>

@@ -13,7 +13,7 @@ app.on("window-all-closed", () => {});
 
 async function main() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "pi-desktop-ui-")));
-  const cwd = path.join(root, "workspace"), agentDir = path.join(root, "agent"), packageDir = path.join(root, "package");
+  const cwd = path.join(root, "workspace"), agentDir = path.join(root, "agent"), packageDir = path.join(root, "package with spaces");
   await fs.mkdir(cwd);
   await fs.mkdir(path.join(agentDir, "extensions"), { recursive: true });
   await fs.mkdir(path.join(root, "user-data"));
@@ -144,13 +144,13 @@ async function main() {
     await run(`(()=>{
       document.querySelector('[data-pi-kind="packages"]').click();
       document.querySelector('.pi-install-section').open=true;
-      document.querySelector('[data-pi-source]').value=${JSON.stringify(packageDir)};
+      document.querySelector('[data-pi-source]').value=${JSON.stringify(`pi install "${packageDir}"`)};
       document.querySelector('[data-pi-source]').dispatchEvent(new Event('input'));
     })()`);
     await check("扩展包安装表单可见且可操作", `document.querySelector('#pi-packages-view').checkVisibility() && document.querySelector('[data-pi-install]').checkVisibility() && !document.querySelector('[data-pi-install]').disabled`);
     await click("[data-pi-install]");
     await wait(`document.querySelector('[data-pi-status]').textContent.includes('配置已保存')`);
-    await check("界面安装后保留显式重载步骤", `document.querySelectorAll('.pi-package-row').length===1 && !document.querySelector('[data-pi-resources]').textContent.includes('本地包技能')`);
+    await check("粘贴安装命令可安装含空格路径的包，并保留显式重载步骤", `document.querySelectorAll('.pi-package-row').length===1 && !document.querySelector('[data-pi-resources]').textContent.includes('本地包技能')`);
     await click("[data-pi-reload]");
     await wait(`document.querySelector('[data-pi-resources]').textContent.includes('本地包技能')`);
     await click('[data-pi-kind="skills"]');
