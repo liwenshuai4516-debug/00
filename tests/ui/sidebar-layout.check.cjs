@@ -380,6 +380,13 @@ async function main() {
       await run(`new Promise(r=>setTimeout(r,400))`);
       await writeFile(process.env.RIGHT_SIDEBAR_BROWSER_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
+    // 切换视图保活：离开再回来复用同一个 webview，地址不丢。
+    await run(`document.querySelector('webview').dataset.keepAlive='x'`);
+    await click('.right-panel__nav .right-sidebar__icon-button');
+    await wait(`document.querySelector('.right-panel__hero')!==null`);
+    await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('浏览器')).click()`);
+    await wait(`document.querySelector('.browser-bar__address')!==null`);
+    await check("浏览器切换视图后保活并保留地址", `document.querySelector('webview')?.dataset.keepAlive==='x'&&document.querySelector('.browser-bar__address').value.includes('127.0.0.1:${port}')`);
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelector('.right-panel__hero')!==null`);
 

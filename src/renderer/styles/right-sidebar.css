@@ -187,3 +187,13 @@
     transition: none;
   }
 }
+
+/* 浏览器层常驻在侧栏内容中，切换视图只切换可见性。 */
+.right-panel__content,
+.right-panel__browser-layer {
+  display: contents;
+}
+
+.right-panel__browser-layer[hidden] {
+  display: none;
+}

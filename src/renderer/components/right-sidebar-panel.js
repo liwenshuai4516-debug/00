@@ -92,6 +92,11 @@ function icon(name) {
 }
 
 export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
+  // 视图内容与浏览器层分开：切换视图只替换内容，webview 保持挂载以保留历史。
+  const content = element("div", { class: "right-panel__content" });
+  const browserLayer = element("div", { class: "right-panel__browser-layer", hidden: "" });
+  body.append(content, browserLayer);
+
   let environments = [];
   let selectedId = null;
   let view = "home";
@@ -108,6 +113,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let browserTitle = "";
   let browserLoading = false;
   let browserView = null;
+  let browserBuilt = false;
+  let browserSurface = null;
+  let browserStart = null;
+  let browserAddress = null;
   const treeChildren = new Map();
   const treeExpanded = new Set();
   let treeRootEntries = null;
@@ -162,9 +171,9 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function render() {
     tabs.replaceChildren();
-    body.replaceChildren();
-    // 离开浏览器视图时丢弃 webview；回到该视图会按最后地址重新加载。
-    if (view !== "browser") browserView = null;
+    content.replaceChildren();
+    // 浏览器层保持挂载，只切换可见性，避免重建 webview 丢失历史。
+    browserLayer.hidden = view !== "browser";
     body.setAttribute("aria-busy", String(busy));
 
     if (view === "environments") renderEnvironments();
@@ -280,7 +289,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     );
 
     panel.append(hero, cards, statusLine());
-    body.append(panel);
+    content.append(panel);
   }
 
   function featureCard({ iconName, title, description, meta, onClick }) {
@@ -331,7 +340,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
 
     panel.append(statusLine());
-    body.append(panel);
+    content.append(panel);
   }
 
   function environmentRow(environment) {
@@ -412,7 +421,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
 
     if (!environment) {
-      body.append(element("div", { class: "right-panel" },
+      content.append(element("div", { class: "right-panel" },
         element("p", { class: "right-panel__empty", text: "未找到项目环境，请返回列表重新读取。" }),
         statusLine(),
       ));
@@ -502,7 +511,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
 
     panel.append(form, statusLine());
-    body.append(panel);
+    content.append(panel);
   }
 
   function field(label, control) {
@@ -589,7 +598,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         text: "还没有项目环境。先添加项目，才能读取它的 qa/data。",
       }));
       panel.append(statusLine());
-      body.append(panel);
+      content.append(panel);
       return;
     }
 
@@ -662,7 +671,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
 
     panel.append(statusLine());
-    body.append(panel);
+    content.append(panel);
   }
 
   function renderCaseCatalog(catalog) {
@@ -957,12 +966,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   function syncAddress() {
-    const input = body.querySelector(".browser-bar__address");
+    const input = browserLayer.querySelector(".browser-bar__address");
     if (input && document.activeElement !== input) input.value = browserUrl;
   }
 
   function setStatusText(text, error = false) {
-    const node = body.querySelector(".right-panel__status");
+    const node = content.querySelector(".right-panel__status")
+      ?? browserLayer.querySelector(".right-panel__status");
     if (!node) return;
     node.textContent = text;
     if (error) node.dataset.error = "";
@@ -980,13 +990,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   function updateBrowserChrome() {
-    const reload = body.querySelector(".browser-bar__reload");
+    const reload = browserLayer.querySelector(".browser-bar__reload");
     if (reload) reload.replaceChildren(icon(browserLoading ? "stop" : "refresh"));
-    const back = body.querySelector(".browser-bar__back");
+    const back = browserLayer.querySelector(".browser-bar__back");
     if (back) back.disabled = !canGo("back");
-    const forward = body.querySelector(".browser-bar__forward");
+    const forward = browserLayer.querySelector(".browser-bar__forward");
     if (forward) forward.disabled = !canGo("forward");
-    const external = body.querySelector(".browser-bar__external");
+    const external = browserLayer.querySelector(".browser-bar__external");
     if (external) external.disabled = browserUrl === "";
   }
 
@@ -1030,9 +1040,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     return view;
   }
 
-  function renderBrowser() {
-    setNav(browserTitle || "浏览器", () => go("home"));
-
+  function buildBrowserPanel() {
     // 与 DSH 一致：工具栏 + 页面贴边铺满，不使用内层卡片边框。
     const panel = element("div", { class: "right-panel right-panel--browser" });
 
@@ -1154,20 +1162,36 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     bar.append(back, forward, reload, addressBox, devtools, external);
     panel.append(bar);
 
-    const surface = element("div", { class: "right-panel__browser" });
-    if (browserUrl === "") {
-      surface.append(element("p", {
-        class: "right-panel__browser-start",
-        text: "输入网址开始浏览。页面在独立会话中加载，不继承应用权限。",
-      }));
-    } else {
-      browserView = createBrowserView();
-      surface.append(browserView);
-    }
-    panel.append(surface, statusLine());
-    body.append(panel);
+    browserSurface = element("div", { class: "right-panel__browser" });
+    browserStart = element("p", {
+      class: "right-panel__browser-start",
+      text: "输入网址开始浏览。页面在独立会话中加载，不继承应用权限。",
+    });
+    browserSurface.append(browserStart);
+    panel.append(browserSurface, statusLine());
+    browserLayer.append(panel);
+    browserAddress = address;
+  }
 
-    if (browserUrl === "") address.focus();
+  function renderBrowser() {
+    setNav(browserTitle || "浏览器", () => go("home"));
+    if (!browserBuilt) {
+      buildBrowserPanel();
+      browserBuilt = true;
+    }
+    browserLayer.hidden = false;
+
+    if (browserUrl === "") {
+      browserStart.hidden = false;
+      if (document.activeElement !== browserAddress) browserAddress.focus();
+    } else {
+      browserStart.hidden = true;
+      if (!browserView) {
+        browserView = createBrowserView();
+        browserSurface.append(browserView);
+      }
+    }
+    syncAddress();
     updateBrowserChrome();
   }
 
@@ -1275,7 +1299,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       tree.append(...treeItems(treeRootEntries));
       panel.append(tree);
     }
-    body.append(panel);
+    content.append(panel);
   }
 
   // Markdown 里的本地路径链接经页面事件进入这里；路径解析与边界在主进程完成。
@@ -1342,7 +1366,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         }));
       }
     }
-    body.append(panel);
+    content.append(panel);
   }
 
   // 切换会话后旧路径不再属于当前工作目录，文件与文件树都回到工作台。
