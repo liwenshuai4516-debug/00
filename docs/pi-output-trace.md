@@ -4,6 +4,14 @@
 
 停止、异常或未收到收尾事件时也停止计时、收起过程并显示实际状态，不制造最终回复。最后一条含工具调用的说明保留在过程区，没有独立结果时不改写为成功答复。工具支持同名并行及按 `parentToolCallId` 嵌套展示，均按调用编号关联。历史恢复采用相同的折叠布局。
 
+## 当前呈现
+
+以下截图来自 `tests/ui/output-trace.check.cjs` 的模拟事件与临时数据，不是真实模型回复，也不代表供应商侧耗时。
+
+![生成中的处理过程](images/output-trace-live.png)
+
+![展开的思考与工具详情](images/output-trace-expanded.png)
+
 ## 官方依据
 
 已阅读 [Pi 最新文档](https://pi.dev/docs/latest)，并核对本项目固定的 Pi 1.4.0 安装包文档、公开导出和类型：
