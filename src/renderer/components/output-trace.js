@@ -232,23 +232,37 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
   const root = element("section", "output-run");
   container.append(root);
   const trace = disclosure(root, "output-trace");
-  const turns = [], responses = [], calls = new Map(), dirty = new Set();
+  const responses = [], calls = new Map(), dirty = new Set();
   const startedAt = performance.now();
   let endedAt, timer;
-  let turn, message, frame, messageSerial = 0, finished = false, settled = false, disposed = false;
+  let message, frame, messageSerial = 0, finished = false, settled = false, disposed = false;
   let state = historical ? "历史恢复" : "处理中";
   let phase = "正在准备请求";
   trace.node.open = !historical;
   trace.summary.title = "本次用时、实时响应和思考阶段为界面观察计时；结束后的响应与工具耗时优先使用 Pi SDK durationMs。";
+
+  // 一次请求内的所有 turn 共用同一个过程区，不再为每个助手响应生成独立标题。
+  const processBody = element("div", "trace-process");
+  const responsesDetail = element("details", "trace-responses");
+  const responsesSummary = element("summary");
+  const responsesBody = element("div", "trace-responses-body");
+  responsesDetail.append(responsesSummary, responsesBody);
+  responsesDetail.hidden = true;
+  trace.body.append(processBody, responsesDetail);
 
   function renderSummary() {
     const running = !historical && endedAt === undefined;
     trace.node.dataset.running = String(running);
     const activeCalls = [...new Set(calls.values())].filter(call => call.startedAt !== undefined && !call.done);
     const activity = activeCalls.length ? `正在调用 ${[...new Set(activeCalls.map(call => call.name))].join("、")}` : phase;
+    const toolCount = new Set([...calls.values()]).size;
+    const counts = toolCount > 0 ? ` · ${toolCount} 次工具调用` : "";
     trace.summary.textContent = historical
-      ? `处理过程 · ${turns.length} 条响应记录 · 历史恢复`
-      : `处理过程 · ${running ? activity : state} · 用时 ${duration((endedAt ?? performance.now()) - startedAt)} · ${turns.length} turn`;
+      ? `处理过程 · 历史恢复${counts}`
+      : `处理过程 · ${running ? activity : state} · 用时 ${duration((endedAt ?? performance.now()) - startedAt)}${counts}`;
+    // 单体响应不需要单独列出模型耗时；多段响应收进折叠区，避免逐轮铺开。
+    responsesDetail.hidden = responses.length < 2;
+    responsesSummary.textContent = `响应明细（${responses.length} 次）`;
   }
 
   function flush() {
@@ -282,27 +296,12 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     trace.body.append(events.node);
   }
 
-  function startTurn() {
-    archiveResponse();
-    const view = disclosure(trace.body, "trace-turn");
-    view.node.open = !historical;
-    turn = { ...view, index: turns.length + 1, state: historical ? "历史记录" : "进行中" };
-    const current = turn;
-    current.render = () => {
-      current.summary.textContent = `${historical ? "响应记录" : "Turn"} ${current.index} · ${current.state}`;
-    };
-    turns.push(turn);
-    message = undefined;
-    schedule(current.render);
-  }
-
   function ensureMessage() {
-    if (!turn) startTurn();
     if (message) return message;
-    const current = { blocks: [], thinking: new Map(), turn, body: null, serial: ++messageSerial,
+    const current = { blocks: [], thinking: new Map(), body: null, serial: ++messageSerial,
       startedAt: historical ? undefined : performance.now(), endedAt: undefined, completed: false };
     const meta = element("p", "trace-meta");
-    turn.body.append(meta);
+    responsesBody.append(meta);
     current.renderTiming = () => {
       const info = current.info ?? {};
       const responseDuration = current.completed && info.durationMs !== undefined
@@ -368,7 +367,7 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     current.inProcess = true;
     if (current.footer) current.footer.hidden = true;
     const next = current.firstTool?.node;
-    current.turn.body.insertBefore(current.body.parentElement, next?.parentElement === current.turn.body ? next : null);
+    processBody.insertBefore(current.body.parentElement, next?.parentElement === processBody ? next : null);
   }
 
   function archiveResponse() {
@@ -400,10 +399,9 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     return ` · Skill ${skill.name} · ${skill.source === "read" ? "读取技能文件" : skill.source === "history" ? "技能展开记录" : "显式展开"}`;
   }
 
-  function tool(id, name, owner = turn) {
+  function tool(id, name) {
     if (calls.has(id)) return calls.get(id);
-    if (!owner) { startTurn(); owner = turn; }
-    const view = disclosure(owner.body, "trace-tool");
+    const view = disclosure(processBody, "trace-tool");
     view.node.dataset.toolCallId = id;
     const args = element("pre", "trace-args");
     const result = element("pre", "trace-result");
@@ -482,7 +480,7 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
   function syncBlocks(current) {
     current.blocks.forEach((block, index) => {
       if (block.type === "thinking" && !current.thinking.has(index)) {
-        const view = disclosure(current.turn.body, "trace-thinking");
+        const view = disclosure(processBody, "trace-thinking");
         view.node.open = !historical && !block.redacted;
         // 思考正文与回复一样经过 Markdown 清理链路，不使用 pre 展示原始标记。
         view.text = element("div", "trace-thinking-body");
@@ -491,7 +489,7 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
         current.thinking.set(index, view);
       }
       if (block.type === "toolCall") {
-        const call = tool(block.id, block.name, current.turn);
+        const call = tool(block.id, block.name);
         current.firstTool ??= call;
         call.args = block.arguments;
         if (block.argumentsError && !call.done) call.result = block.argumentsError;
@@ -542,7 +540,7 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
   function accept(event) {
     if (finished || disposed) return;
     if (event.type === "agent_start") { phase = "等待模型响应"; lifecycle(event.type, "开始运行"); }
-    if (event.type === "turn_start") { phase = "等待模型响应"; startTurn(); }
+    if (event.type === "turn_start") { phase = "等待模型响应"; archiveResponse(); }
     if (event.type === "message_start" && event.message.role === "assistant") {
       archiveResponse();
       message = undefined;
@@ -593,10 +591,7 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
       }
     }
     if (event.type.startsWith("tool_execution_")) execution(event);
-    if (event.type === "turn_end") {
-      if (event.message) finalMessage(event.message);
-      if (turn) { turn.state = "已结束 · turn_end"; schedule(turn.render); }
-    }
+    if (event.type === "turn_end" && event.message) finalMessage(event.message);
     if (event.type === "agent_end") {
       phase = event.willRetry ? "等待自动重试" : "正在收尾";
       lifecycle(event.type, event.willRetry ? "本次运行结束，等待自动重试" : "本次运行结束，等待收尾");
@@ -617,7 +612,12 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
   }
 
   function restore(output) {
-    if (output.role === "assistant") { startTurn(); finalMessage(output); }
+    if (output.role === "assistant") {
+      // 历史按消息逐条恢复；先收束上一条，不能把多次响应当成同一条消息覆盖。
+      archiveResponse();
+      message = undefined;
+      finalMessage(output);
+    }
     if (output.role === "toolResult") {
       execution({ type: "tool_execution_end", toolCallId: output.toolCallId, toolName: output.toolName,
         result: { content: output.content, exitCode: output.exitCode, diff: output.diff, fullOutputPath: output.fullOutputPath },
@@ -644,9 +644,6 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     collapseProcess();
     for (const call of new Set(calls.values())) {
       if (!call.done) { call.state = "结果未确认"; dirty.add(call.render); }
-    }
-    for (const current of turns) {
-      if (!historical && current.state === "进行中") { current.state = "未收到 turn_end"; dirty.add(current.render); }
     }
     if (frame !== undefined) cancelAnimationFrame(frame);
     flush();

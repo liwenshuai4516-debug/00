@@ -51,7 +51,6 @@
   padding: 0 12px 8px;
 }
 
-.output-trace .trace-turn,
 .output-trace .trace-tool,
 .output-trace .trace-thinking {
   margin-top: 6px;
@@ -76,20 +75,23 @@
   line-height: 1.6;
 }
 
-/* 运行事件收进折叠区，展开后仍是旁注样式。 */
-.output-trace .trace-events {
+/* 运行事件与响应明细收进折叠区，展开后仍是旁注样式。 */
+.output-trace .trace-events,
+.output-trace .trace-responses {
   margin-top: 8px;
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
 
-.output-trace .trace-events > summary {
+.output-trace .trace-events > summary,
+.output-trace .trace-responses > summary {
   padding: 4px 0;
   color: var(--muted);
   font-size: 11px;
 }
 
-.output-trace .trace-events-body {
+.output-trace .trace-events-body,
+.output-trace .trace-responses-body {
   padding-bottom: 4px;
 }
 

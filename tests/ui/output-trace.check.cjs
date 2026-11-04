@@ -125,7 +125,9 @@ async function main() {
     await win.loadFile(path.join(root, "src/renderer/index.html")); await idle(); await send();
     assert.equal(await js(`document.querySelectorAll('.output-trace').length`), 1);
     assert.equal(await js(`document.querySelector('.output-trace').open`), true);
-    assert.equal(await js(`document.querySelector('.trace-turn').open&&document.querySelector('.trace-thinking').open`), true);
+    assert.equal(await js(`document.querySelector('.output-trace').open&&document.querySelector('.trace-thinking').open`), true);
+    assert.equal(await js(`document.querySelectorAll('.trace-turn').length`), 0);
+    assert.doesNotMatch(await js(`document.querySelector('.trace-process').textContent`), /Turn \d|turn_end/);
     assert.match(await js(`document.querySelector('.output-trace>summary').textContent`), /正在调用 read、bash · 用时/);
     assert.equal(await js(`document.querySelectorAll('.trace-tool').length`), 3);
     // 运行事件默认折叠，内容仍保留在页面里。
@@ -149,7 +151,7 @@ async function main() {
     assert.doesNotMatch(await js(`document.querySelector('.output-trace>summary').textContent`), /处理已结束/);
     assert.equal(await js(`document.querySelector('.output-trace').open`), true);
     gate.resolve(); await idle();
-    assert.match(await js(`document.querySelector('.output-trace>summary').textContent`), /处理已结束 · 用时 .* · 2 turn/);
+    assert.match(await js(`document.querySelector('.output-trace>summary').textContent`), /处理已结束 · 用时 .* · 3 次工具调用/);
     assert.equal(await js(`document.querySelector('.output-trace').open`), false);
     assert.equal(await js(`document.querySelectorAll('.output-trace details[open]').length`), 0);
     assert.match(await js(`document.querySelector('.trace-events-body').textContent`), /auto_retry_start/);
@@ -233,7 +235,11 @@ async function main() {
     await fs.writeFile(path.join(temporary, "trace-narrow.png"), (await win.webContents.capturePage()).toPNG());
     console.log("通过：完整页面实时展开、收尾折叠仅保留最终正文，原生流、并行/嵌套工具、重试、复制与窄窗");
     win.reload(); await until(`document.querySelector('.output-trace>summary')?.textContent.includes('历史恢复')`); await idle();
-    assert.match(await bodyText(), /2 条响应记录 · 历史恢复/);
+    assert.match(await js(`document.querySelector('.output-trace>summary').textContent`), /^处理过程 · 历史恢复 · \d+ 次工具调用$/);
+    assert.equal(await js(`document.querySelectorAll('.trace-turn').length`), 0);
+    assert.match(await js(`document.querySelector('.trace-responses>summary').textContent`), /^响应明细（2 次）$/);
+    assert.equal(await js(`document.querySelector('.trace-responses').hidden`), false);
+    assert.doesNotMatch(await js(`document.querySelector('.trace-process').textContent`), /Turn \d|turn_end/);
     assert.equal(await js(`document.querySelectorAll('.output-run .message-usage:not([hidden])').length`), 0);
     // 历史里的 todo_write 结果重建任务栏，默认折叠。
     assert.equal(await js(`document.getElementById('todo-dock').hidden`), false);
@@ -329,7 +335,7 @@ async function main() {
         now = 4100; feed({type:'tool_execution_start',toolCallId:'t',toolName:'read'});
         now = 5500; for (const tick of intervals.values()) tick(); await paint();
         check(host.querySelector('.trace-tool summary').textContent.includes('1.4 s（界面计时）'), '执行中的工具计时');
-        check(host.querySelector('.trace-meta').textContent.includes('响应耗时 42 ms（SDK）'), '响应采用官方耗时');
+        check(host.querySelector('.trace-responses .trace-meta').textContent.includes('响应耗时 42 ms（SDK）'), '响应采用官方耗时');
         check(host.querySelector('.trace-thinking summary').textContent.includes('3.0 s（界面计时）'), '思考结束后停止计时');
         now = 5700; feed({type:'tool_execution_end',toolCallId:'t',toolName:'read',isError:false,durationMs:88,result:{content:[]}});
         feed({type:'agent_end',willRetry:true}); await paint();
