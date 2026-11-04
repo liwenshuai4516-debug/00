@@ -13,13 +13,15 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/login.cjs` | 独立可见 Chromium、登录判断/自动登录/人工接管、私有 storageState 导出 |
 | `resources/testing/ui/run.cjs` | 批次执行、取消、清理、摘要与清单 |
 | `resources/testing/ui/playwright.config.cjs` | 单 worker、零重试、报告和证据策略 |
-| `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 七步流程、项目/登录/回放/报告的操作约定 |
+| `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步流程、项目/登录/回放/报告的操作约定 |
 | `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
 | `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
 
 通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui`；发布读取 `process.resourcesPath/testing/ui`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
 
 ## 当前七步流程（2026-11-04）
+
+先判断用户意图，不因调用 `/skill:qa-ui-basic` 就默认跑满七步：只录制走步骤 1–5，只执行走 1–3 + 6–7，只有录制并回放/完整测试才走 1–7；待办清单同步裁剪。
 
 在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理细则由同目录注册的 `/skill:qa-ui-record` 提供。这两个 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
 
