@@ -773,6 +773,12 @@
   opacity: 0.45;
 }
 
+.browser-bar__tool--text {
+  width: auto;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
 .browser-bar__tool .icon {
   width: 15px;
   height: 15px;

@@ -68,6 +68,7 @@ async function main() {
       if (projectIndex >= 0) projects.splice(projectIndex, 1);
       return { id: removed.id, name: removed.name };
     }
+    if (name === "openBrowserDevTools") return undefined;
     if (name === "openExternalUrl") {
       if (!/^https?:\/\//i.test(args[0])) throw Error("只支持 http(s) 地址。");
       return undefined;
@@ -328,6 +329,15 @@ async function main() {
     await wait(`document.querySelector('.right-panel__nav-title').textContent==='本地页面'`);
     await check("浏览器加载本地页面并同步地址", `document.querySelector('.browser-bar__address').value.includes('127.0.0.1:${port}')&&document.querySelector('webview').getAttribute('partition')==='persist:browser-panel'`);
     await check("浏览器面板无内层卡片边框且工具栏 38px", `getComputedStyle(document.querySelector('.right-panel--browser')).padding==='0px'&&getComputedStyle(document.querySelector('.right-panel__browser')).borderTopWidth==='0px'&&Math.round(document.querySelector('.browser-bar').getBoundingClientRect().height)===38`);
+    await run(`document.querySelector('.browser-bar__devtools').click()`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(
+      calls.some(([name]) => name === "openBrowserDevTools"),
+      "工具栏“调试”应请求打开页面开发者工具",
+    );
+    passed++;
+    console.log("PASS 浏览器工具栏提供开发者工具入口");
+
     await run(`document.querySelector('.browser-bar__external').click()`);
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.ok(

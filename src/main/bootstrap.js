@@ -33,6 +33,7 @@ const {
 } = require("./services/workspace-selection-service.js");
 const { registerAgentIpc } = require("./ipc/agent-ipc.js");
 const { registerWindowLifecycle } = require("./lifecycle/window-lifecycle.js");
+const { installGuestBrowserPolicy, isBrowserUrl } = require("./services/guest-browser-policy.js");
 
 const {
   registerWindowCloseGuard,
@@ -269,23 +270,7 @@ function createWindow() {
   window.loadFile(path.join(projectRoot, "src/renderer/index.html"));
 }
 
-// 右侧栏浏览器只允许 http(s) 主文档；webview 不允许弹窗或跳转到本地协议。
-function isBrowserUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-app.on("web-contents-created", (_event, contents) => {
-  if (contents.getType() !== "webview") return;
-  contents.setWindowOpenHandler(() => ({ action: "deny" }));
-  contents.on("will-navigate", (event, url) => {
-    if (!isBrowserUrl(url)) event.preventDefault();
-  });
-});
+installGuestBrowserPolicy(app);
 
 app.whenReady().then(() => {
   createWindow();

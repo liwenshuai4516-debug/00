@@ -931,6 +931,24 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
     addressBox.append(address, goButton);
 
+    const devtools = element("button", {
+      type: "button",
+      class: "browser-bar__tool browser-bar__tool--text browser-bar__devtools",
+      "aria-label": "开发者工具",
+      title: "开发者工具",
+      text: "调试",
+    });
+    devtools.addEventListener("click", () => {
+      const open = window.agent?.openBrowserDevTools;
+      if (typeof open !== "function") {
+        setStatusText("页面接口尚未就绪，请稍后重试。", true);
+        return;
+      }
+      Promise.resolve(open()).catch((error) => {
+        setStatusText(error?.message ? String(error.message) : "无法打开开发者工具。", true);
+      });
+    });
+
     const external = element("button", {
       type: "button",
       class: "browser-bar__tool browser-bar__external",
@@ -948,7 +966,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       Promise.resolve(open(browserUrl)).catch(() => setStatusText("无法打开系统浏览器。", true));
     });
 
-    bar.append(back, forward, reload, addressBox, external);
+    bar.append(back, forward, reload, addressBox, devtools, external);
     panel.append(bar);
 
     const surface = element("div", { class: "right-panel__browser" });

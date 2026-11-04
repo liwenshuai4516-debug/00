@@ -97,6 +97,10 @@ function registerAgentIpc(
   );
   ipcMain.handle("agent:list-workspace-directory", (_event, dirPath) => listWorkspaceDirectory(dirPath));
 
+  // webview 是独立 webContents，页面里的 DevTools 入口由主进程按宿主窗口定位。
+  const { openBrowserDevToolsForHost } = require("../services/guest-browser-policy.js");
+  ipcMain.handle("agent:open-browser-devtools", (event) => openBrowserDevToolsForHost(event.sender));
+
   // 浏览器面板的“在系统浏览器中打开”：只接受 http(s)，由主进程调用系统默认浏览器。
   ipcMain.handle("agent:open-external-url", (_event, url) => {
     if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {

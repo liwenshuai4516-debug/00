@@ -124,6 +124,8 @@ contextBridge.exposeInMainWorld("agent", {
     }
     return ipcRenderer.invoke("agent:read-preview-file", filePath);
   },
+  // 侧栏浏览器的开发者工具窗口由主进程打开。
+  openBrowserDevTools: () => ipcRenderer.invoke("agent:open-browser-devtools"),
   // 只允许 http(s)；实际打开动作与校验在主进程完成。
   openExternalUrl: (url) => {
     if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
