@@ -113,6 +113,12 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let browserTitle = "";
   let browserLoading = false;
   let browserView = null;
+  const MAX_BROWSER_TABS = 8;
+  let browserTabs = [];
+  let activeTabId = null;
+  let browserTabSerial = 0;
+  let browserTabsList = null;
+  let browserPages = null;
   let browserBuilt = false;
   let browserSurface = null;
   let browserStart = null;
@@ -135,6 +141,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function setStatus(text, error = false) {
     status = { text, error };
+    // 同步已渲染的状态行，避免旧错误在成功操作后残留。
+    const node = content.querySelector(".right-panel__status")
+      ?? browserLayer.querySelector(".right-panel__status");
+    if (!node) return;
+    node.textContent = text;
+    if (error) node.dataset.error = "";
+    else delete node.dataset.error;
   }
 
   function statusLine() {
@@ -941,28 +954,134 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   // 侧栏浏览器：<webview> 在独立分区加载 http(s) 页面，不继承应用 preload。
+  function activeBrowserTab() {
+    return browserTabs.find((tab) => tab.id === activeTabId) ?? null;
+  }
+
   function openBrowser() {
     view = "browser";
     setStatus("");
     render();
   }
 
+  function renderBrowserTabs() {
+    if (!browserTabsList) return;
+    browserTabsList.replaceChildren(...browserTabs.map((tab) => {
+      const wrapper = element("div", { class: "browser-tab" });
+      if (tab.id === activeTabId) wrapper.dataset.active = "true";
+      const title = tab.title || (tab.url === "" ? "新标签页" : tab.url);
+      const label = element("button", {
+        type: "button",
+        class: "browser-tab__label",
+        title,
+        text: title,
+      });
+      label.addEventListener("click", () => setActiveTab(tab.id));
+      const close = element("button", {
+        type: "button",
+        class: "browser-tab__close",
+        "aria-label": `关闭标签页：${title}`,
+        title: "关闭标签页",
+        text: "×",
+      });
+      close.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeBrowserTab(tab.id);
+      });
+      wrapper.append(label, close);
+      return wrapper;
+    }));
+  }
+
+  function setActiveTab(id) {
+    const tab = browserTabs.find((item) => item.id === id);
+    if (!tab) return;
+    activeTabId = id;
+    browserView = tab.view;
+    browserUrl = tab.url;
+    browserLoading = tab.loading;
+    browserTitle = tab.title;
+    for (const item of browserTabs) item.page.hidden = item.id !== id;
+    if (browserStart) browserStart.hidden = tab.url !== "";
+    renderBrowserTabs();
+    setNav(tab.title || "浏览器", () => go("home"));
+    syncAddress();
+    updateBrowserChrome();
+    if (tab.url === "" && browserAddress && document.activeElement !== browserAddress) {
+      browserAddress.focus();
+    }
+  }
+
+  function addBrowserTab() {
+    if (browserTabs.length >= MAX_BROWSER_TABS) {
+      setStatusText(`最多打开 ${MAX_BROWSER_TABS} 个标签页。`, true);
+      return null;
+    }
+    const tab = {
+      id: `tab-${++browserTabSerial}`,
+      url: "",
+      title: "",
+      loading: false,
+      view: null,
+      page: element("div", { class: "browser-page", hidden: "" }),
+    };
+    browserPages.append(tab.page);
+    browserTabs.push(tab);
+    setActiveTab(tab.id);
+    return tab;
+  }
+
+  function closeBrowserTab(id) {
+    const index = browserTabs.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    const [tab] = browserTabs.splice(index, 1);
+    tab.view?.remove();
+    tab.page.remove();
+    if (browserTabs.length === 0) {
+      addBrowserTab();
+      return;
+    }
+    if (activeTabId === id) {
+      setActiveTab(browserTabs[Math.min(index, browserTabs.length - 1)].id);
+      return;
+    }
+    renderBrowserTabs();
+  }
+
+  function ensureBrowserTab() {
+    if (browserTabs.length === 0) addBrowserTab();
+    return activeBrowserTab() ?? browserTabs[0] ?? null;
+  }
+
   function navigateBrowser(url) {
-    const attached = browserView?.isConnected === true;
+    const tab = ensureBrowserTab();
+    if (!tab) return;
+    tab.url = url;
+    tab.loading = true;
     browserUrl = url;
     browserLoading = true;
     setStatus("");
-    if (attached) {
+    if (browserStart) browserStart.hidden = true;
+
+    if (tab.view && tab.view.isConnected) {
       try {
-        browserView.loadURL(url);
+        tab.view.loadURL(url);
         syncAddress();
         updateBrowserChrome();
+        renderBrowserTabs();
         return;
       } catch {
         // 尚未 dom-ready 时改为重建 webview，由 src 触发加载。
       }
     }
-    render();
+    tab.view?.remove();
+    tab.view = createBrowserView(tab);
+    tab.page.append(tab.view);
+    tab.page.hidden = false;
+    browserView = tab.view;
+    syncAddress();
+    updateBrowserChrome();
+    renderBrowserTabs();
   }
 
   function syncAddress() {
@@ -1000,39 +1119,59 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (external) external.disabled = browserUrl === "";
   }
 
-  function createBrowserView() {
+  function createBrowserView(tab) {
     const view = document.createElement("webview");
     view.className = "right-panel__browser-view";
     view.setAttribute("partition", "persist:browser-panel");
     view.setAttribute("webpreferences", "contextIsolation=yes,sandbox=yes,nodeIntegration=no");
-    view.setAttribute("src", browserUrl);
+    view.setAttribute("src", tab.url);
 
     view.addEventListener("did-start-loading", () => {
-      browserLoading = true;
-      updateBrowserChrome();
+      tab.loading = true;
+      if (tab.id === activeTabId) {
+        browserLoading = true;
+        updateBrowserChrome();
+      }
     });
     view.addEventListener("did-stop-loading", () => {
-      browserLoading = false;
-      updateBrowserChrome();
+      tab.loading = false;
+      if (tab.id === activeTabId) {
+        browserLoading = false;
+        updateBrowserChrome();
+      }
     });
     view.addEventListener("did-navigate", (event) => {
-      browserUrl = event.url;
-      syncAddress();
-      updateBrowserChrome();
+      tab.url = event.url;
+      if (tab.id === activeTabId) {
+        browserUrl = event.url;
+        syncAddress();
+        updateBrowserChrome();
+      }
+      renderBrowserTabs();
     });
     view.addEventListener("did-navigate-in-page", (event) => {
-      browserUrl = event.url;
-      syncAddress();
-      updateBrowserChrome();
+      tab.url = event.url;
+      if (tab.id === activeTabId) {
+        browserUrl = event.url;
+        syncAddress();
+        updateBrowserChrome();
+      }
+      renderBrowserTabs();
     });
     view.addEventListener("page-title-updated", (event) => {
-      browserTitle = event.title;
-      const title = document.querySelector(".right-panel__nav-title");
-      if (title) title.textContent = browserTitle || "浏览器";
+      tab.title = event.title;
+      if (tab.id === activeTabId) {
+        browserTitle = event.title;
+        const title = document.querySelector(".right-panel__nav-title");
+        if (title) title.textContent = browserTitle || "浏览器";
+      }
+      renderBrowserTabs();
     });
     view.addEventListener("did-fail-load", (event) => {
       // -3 是主动取消（例如停止或新导航），不属于加载失败。
       if (event.errorCode === -3) return;
+      tab.loading = false;
+      if (tab.id !== activeTabId) return;
       browserLoading = false;
       setStatusText(`页面加载失败：${event.errorDescription || event.errorCode}`, true);
       updateBrowserChrome();
@@ -1043,6 +1182,22 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   function buildBrowserPanel() {
     // 与 DSH 一致：工具栏 + 页面贴边铺满，不使用内层卡片边框。
     const panel = element("div", { class: "right-panel right-panel--browser" });
+
+    const tabsBar = element("div", { class: "browser-tabs" });
+    browserTabsList = element("div", {
+      class: "browser-tabs__list",
+      role: "tablist",
+      "aria-label": "浏览器标签页",
+    });
+    const newTab = element("button", {
+      type: "button",
+      class: "browser-tabs__new",
+      "aria-label": "新建标签页",
+      title: "新建标签页",
+      text: "+",
+    });
+    newTab.addEventListener("click", () => { addBrowserTab(); });
+    tabsBar.append(browserTabsList, newTab);
 
     const bar = element("div", { class: "browser-bar" });
     const back = element("button", {
@@ -1167,30 +1322,31 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       class: "right-panel__browser-start",
       text: "输入网址开始浏览。页面在独立会话中加载，不继承应用权限。",
     });
-    browserSurface.append(browserStart);
-    panel.append(browserSurface, statusLine());
+    browserPages = element("div", { class: "browser-pages" });
+    browserSurface.append(browserStart, browserPages);
+    panel.append(tabsBar, bar, browserSurface, statusLine());
     browserLayer.append(panel);
     browserAddress = address;
   }
 
   function renderBrowser() {
-    setNav(browserTitle || "浏览器", () => go("home"));
     if (!browserBuilt) {
       buildBrowserPanel();
       browserBuilt = true;
     }
     browserLayer.hidden = false;
+    const tab = ensureBrowserTab();
+    if (!tab) return;
 
-    if (browserUrl === "") {
-      browserStart.hidden = false;
-      if (document.activeElement !== browserAddress) browserAddress.focus();
-    } else {
-      browserStart.hidden = true;
-      if (!browserView) {
-        browserView = createBrowserView();
-        browserSurface.append(browserView);
-      }
-    }
+    for (const item of browserTabs) item.page.hidden = item.id !== activeTabId;
+    if (browserStart) browserStart.hidden = tab.url !== "";
+    browserView = tab.view;
+    browserUrl = tab.url;
+    browserLoading = tab.loading;
+    browserTitle = tab.title;
+    setNav(tab.title || "浏览器", () => go("home"));
+    renderBrowserTabs();
+    if (tab.url === "" && document.activeElement !== browserAddress) browserAddress.focus();
     syncAddress();
     updateBrowserChrome();
   }

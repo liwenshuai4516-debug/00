@@ -1186,11 +1186,115 @@
 }
 
 .right-panel__browser {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
   background: transparent;
+}
+
+.browser-tabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.browser-tabs__list {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.browser-tabs__new {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.browser-tabs__new:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.browser-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  max-width: 12rem;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+}
+
+.browser-tab[data-active="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.browser-tab__label {
+  min-width: 0;
+  max-width: 9.5rem;
+  overflow: hidden;
+  padding: 5px 2px 5px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.browser-tab__close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.browser-tab__close:hover {
+  background: var(--border);
+  color: var(--text);
+  opacity: 1;
+}
+
+.browser-pages {
+  position: absolute;
+  inset: 0;
+}
+
+.browser-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.browser-page[hidden] {
+  display: none;
 }
 
 .right-panel__browser-view {
@@ -1203,12 +1307,15 @@
 }
 
 .right-panel__browser-start {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
   display: flex;
-  flex: 1;
   align-items: center;
   justify-content: center;
   margin: 0;
   padding: 24px;
+  background: var(--surface);
   color: var(--muted);
   font-size: 12px;
   text-align: center;

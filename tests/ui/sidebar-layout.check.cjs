@@ -387,6 +387,26 @@ async function main() {
     await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('浏览器')).click()`);
     await wait(`document.querySelector('.browser-bar__address')!==null`);
     await check("浏览器切换视图后保活并保留地址", `document.querySelector('webview')?.dataset.keepAlive==='x'&&document.querySelector('.browser-bar__address').value.includes('127.0.0.1:${port}')`);
+
+    // 多标签：新建、各自保留页面、切换与关闭。
+    await run(`document.querySelector('.browser-tabs__new').click()`);
+    await wait(`document.querySelectorAll('.browser-tab').length===2`);
+    await check("新建标签页显示空状态且保留原页面", `document.querySelectorAll('webview').length===1&&document.querySelector('.right-panel__browser-start')!==null&&document.querySelector('.browser-bar__address').value===''`);
+    await run(`document.querySelector('.browser-bar__address').value='http://127.0.0.1:${port}/';document.querySelector('.browser-bar__go').click()`);
+    await wait(`document.querySelectorAll('webview').length===2`);
+    await check("标签页各自保留自己的页面", `document.querySelectorAll('.browser-tab').length===2&&document.querySelectorAll('.browser-page:not([hidden])').length===1`);
+    await run(`document.querySelectorAll('.browser-tab__label')[0].click()`);
+    await wait(`document.querySelectorAll('.browser-tab')[0].dataset.active==='true'`);
+    await check("切回第一个标签页保留地址", `document.querySelector('.browser-bar__address').value.includes('127.0.0.1:${port}')&&document.querySelectorAll('webview')[0].closest('.browser-page').hidden===false`);
+    await run(`document.querySelectorAll('.browser-tab__close')[1].click()`);
+    await wait(`document.querySelectorAll('.browser-tab').length===1`);
+    await check("关闭标签页销毁对应页面", `document.querySelectorAll('webview').length===1`);
+
+    if (process.env.RIGHT_SIDEBAR_TABS_SCREENSHOT_PATH) {
+      await run(`new Promise(r=>setTimeout(r,300))`);
+      await writeFile(process.env.RIGHT_SIDEBAR_TABS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelector('.right-panel__hero')!==null`);
 
