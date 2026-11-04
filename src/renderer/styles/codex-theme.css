@@ -12,7 +12,8 @@
   --radius: 12px;
   --space: 12px;
   --sidebar-width: 280px;
-  --content-width: 760px;
+  /* 聊天列按窗口宽度伸展，宽屏最多 1440px；不再固定 760px 留出大块空白。 */
+  --content-width: min(1440px, 90vw);
   --removed-background: #352627;
   --added-background: #23332b;
   --primary: var(--text);

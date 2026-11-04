@@ -208,6 +208,23 @@ async function main() {
   const search = value => run(`document.getElementById('session-search').value=${JSON.stringify(value)};document.getElementById('session-search').dispatchEvent(new Event('input',{bubbles:true}))`);
   try {
     await idle();
+    win.setSize(1523, 900);
+    await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+    await check("宽窗口聊天输入区使用更多横向空间", `(()=>{const r=document.querySelector('.composer').getBoundingClientRect();return r.width>=1100&&r.width<=1440&&r.left>=0&&r.right<=innerWidth;})()`);
+    if (process.env.CHAT_WIDE_SCREENSHOT_PATH) {
+      await writeFile(process.env.CHAT_WIDE_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+    await click("#sidebar-toggle");
+    await run(`new Promise(r=>setTimeout(r,400))`);
+    await check("宽窗口收起侧栏后聊天列接近窗口宽度", `(()=>{const r=document.querySelector('.composer').getBoundingClientRect();return r.width>=1300&&r.width<=1440&&r.left<200&&innerWidth-r.right<100;})()`);
+    if (process.env.CHAT_WIDE_COLLAPSED_SCREENSHOT_PATH) {
+      await writeFile(process.env.CHAT_WIDE_COLLAPSED_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+    await click(".sidebar__rail [data-sidebar-expand]");
+    await run(`new Promise(r=>setTimeout(r,400))`);
+    win.setSize(1120, 820);
+    await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+    await idle();
     await check("设置入口位于侧栏底部", `document.getElementById('model-settings-button').closest('.sidebar-footer')!==null&&document.getElementById('model-settings-button').textContent.trim()==='设置'`);
     await click(".recent-sessions > summary");
     await check("最近只收起无项目对话，项目保持展示", `!document.querySelector('.recent-sessions').open&&document.querySelectorAll('.recent-sessions .session-open').length===1&&document.querySelectorAll('.session-group:not(.recent-sessions) .session-open').length===2&&document.querySelector('.session-project-open').checkVisibility()`);
