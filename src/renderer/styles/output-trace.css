@@ -58,7 +58,8 @@
   border-left: 2px solid var(--border);
 }
 
-.output-trace pre {
+.output-trace .trace-args,
+.output-trace .trace-result {
   max-height: 300px;
   overflow: auto;
   white-space: pre-wrap;
@@ -75,6 +76,125 @@
   line-height: 1.6;
 }
 
+/* 生命周期事件是旁注，视觉上弱于思考与工具行。 */
+.output-trace .trace-event {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
 .output-trace .trace-caption {
-  margin-bottom: 4px;
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* 展开的工具详情收成一张卡片，参数与结果仍按纯文本展示。 */
+.output-trace .trace-tool > .trace-body {
+  margin: 4px 0 8px;
+  padding: 4px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+/* 思考行：折叠时一行预览，展开后按 Markdown 排版。 */
+.output-trace .trace-thinking > summary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.output-trace .trace-thinking[data-running="true"] > summary {
+  color: var(--text);
+}
+
+.output-trace .trace-thinking[data-running="true"] > summary::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: output-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .output-trace .trace-thinking[data-running="true"] > summary::after { animation: none; }
+}
+
+.output-trace .trace-thinking-body {
+  max-height: 320px;
+  overflow: auto;
+  padding: 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.75;
+  user-select: text;
+}
+
+.output-trace .trace-thinking-body > :first-child { margin-top: 0; }
+.output-trace .trace-thinking-body > :last-child { margin-bottom: 0; }
+.output-trace .trace-thinking-body:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 工具行：名称、目标、状态分开排版，目标过长时省略。 */
+.output-trace .trace-tool-name {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.output-trace .trace-tool-detail {
+  display: inline-block;
+  max-width: 42ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  color: var(--muted);
+}
+
+.output-trace .trace-tool-state {
+  color: var(--text);
+}
+
+.output-trace .trace-tool-timing,
+.output-trace .trace-tool-skill {
+  color: var(--muted);
+}
+
+.output-trace .trace-diff-added {
+  color: light-dark(#1a7f37, #63c27f);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.output-trace .trace-diff-removed {
+  color: light-dark(#b42318, #e07b74);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* 流式回复在最后一段末尾显示光标，结束后移除标记。 */
+.chat-message[data-streaming="true"] .markdown-body::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: currentColor;
+  opacity: 0.5;
+  animation: output-caret 1s steps(1) infinite;
+}
+
+@keyframes output-caret {
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-message[data-streaming="true"] .markdown-body::after { animation: none; }
 }

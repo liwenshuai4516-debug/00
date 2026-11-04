@@ -21,7 +21,7 @@ const draft = () => drafts.get(current) ?? { sessionId: current, text: "", revis
 const assistant = (content, stopReason = "stop") => ({ role: "assistant", content, provider: "mock", model: "offline", stopReason,
   usage: { input: 20, output: 10, totalTokens: 30 }, durationMs: 42 });
 const call = (id, file) => ({ type: "toolCall", id, name: "read", arguments: { path: file } });
-const first = assistant([{ type: "thinking", thinking: "先核对 <img src=x onerror=alert(1)> 技能指令。" },
+const first = assistant([{ type: "thinking", thinking: "先核对 **技能指令** 与 <img src=x onerror=alert(1)> 的安全性。\n\n第二段：确认加载结果。" },
   { type: "text", text: "先读取技能与参考资料。" }, call("c1", skill.path), call("c2", "missing.txt")], "toolUse");
 const final = assistant([{ type: "text", text: "**检查完成**\n\n```js\nconst ok = true;\n```" }]);
 const toolResult = (id, isError, text) => ({ role: "toolResult", toolCallId: id, toolName: "read", isError,
@@ -128,6 +128,12 @@ async function main() {
     assert.doesNotMatch(await bodyText(), /临时正文|结束块正文|临时思考/);
     assert.match(await bodyText(), /读取技能文件|显式展开/);
     assert.equal(await js(`document.querySelectorAll('.output-run img').length`), 0);
+    // 思考行折叠为一行预览，展开后沿用 Markdown 清理链路。
+    const thinkingSummary = await js(`document.querySelector('.trace-thinking>summary').textContent`);
+    assert.match(thinkingSummary, /^思考 · 先核对 技能指令/);
+    assert.doesNotMatch(thinkingSummary, /\*\*/);
+    assert.equal(await js(`document.querySelector('.trace-thinking strong')?.textContent`), "技能指令");
+    assert.match(await js(`document.querySelector('.trace-thinking-body').textContent`), /第二段：确认加载结果/);
     await fs.writeFile(path.join(temporary, "process-live.png"), (await win.webContents.capturePage()).toPNG());
     gate.resolve();
     for (let i = 0; i < 100 && phase !== "retry"; i++) await js(`new Promise(r=>setTimeout(r,10))`);
@@ -142,14 +148,24 @@ async function main() {
     assert.equal(await js(`document.querySelectorAll('.output-run>[data-role="assistant"]').length`), 1);
     assert.match(await js(`document.querySelector('.output-run>[data-role="assistant"]').textContent`), /检查完成/);
     assert.match(await js(`document.querySelector('.output-trace').textContent`), /先读取技能与参考资料/);
+    assert.equal(await js(`document.querySelectorAll('.chat-message[data-streaming="true"]').length`), 0);
+    // 工具行展示目标路径，代码块带语言标签与复制入口。
+    assert.match(await js(`document.querySelector('.trace-tool[data-tool-call-id="c1"] summary').textContent`), /read · \/demo\/\.pi\/skills\/demo\/SKILL\.md · 执行完成/);
+    assert.equal(await js(`document.querySelectorAll('.output-run .code-block').length`), 1);
+    assert.equal(await js(`document.querySelector('.code-block-language').textContent`), "js");
     assert.equal(await js(`document.querySelectorAll('.output-run [data-role="assistant"]').length`), 2);
     assert.doesNotMatch(await bodyText(), /旧通道重复结果/);
     assert.match(await bodyText(), /auto_retry_start/);
     await js(`document.querySelector('.output-run').scrollIntoView({block:'start'})`);
     await fs.writeFile(path.join(temporary, "result-collapsed.png"), (await win.webContents.capturePage()).toPNG());
-    await js(`window.copied='';Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.copied=value},configurable:true});document.querySelectorAll('.output-run .message-actions button')[1].click()`);
+    await js(`window.copied='';Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>window.copied=value},configurable:true});document.querySelector('.code-block-copy').click()`);
+    await until(`window.copied.includes('const ok = true;')`);
+    await js(`document.querySelectorAll('.output-run .message-actions button')[1].click()`);
     await until(`window.copied.includes('**检查完成**')`);
     await js(`document.querySelectorAll('.output-trace details,.output-trace').forEach(node=>node.open=true);document.querySelector('.output-trace').scrollIntoView({block:'start'})`);
+    assert.equal(await js(`document.querySelector('.output-trace').open`), true);
+    // 展开后等一帧再截图，避免捕获到展开前的旧帧。
+    await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     await fs.writeFile(path.join(temporary, "trace-wide.png"), (await win.webContents.capturePage()).toPNG());
     win.setSize(680, 780); await js(`new Promise(r=>requestAnimationFrame(r))`);
     assert.equal(await js(`document.documentElement.scrollWidth<=innerWidth`), true);
@@ -210,7 +226,7 @@ async function main() {
         check(host.querySelector('.trace-tool summary').textContent.includes('88 ms（SDK）'), '最终工具耗时采用官方值');
         feed({type:'turn_start'}); feed({type:'message_start',message:msg([])});
         feed({type:'message_end',message:msg([{type:'text',text:'最终正文'}],1200)});
-        host.querySelector('.trace-thinking pre').focus();
+        host.querySelector('.trace-thinking .trace-thinking-body').focus();
         now = 8000; feed({type:'agent_settled',aborted:false}); await paint();
         check(intervals.size===0, 'settled 清理计时器');
         check(!host.querySelector('.output-trace').open, 'settled 自动收起');
@@ -228,6 +244,31 @@ async function main() {
         missing.finish();
         check(!missing.root.querySelector('.trace-thinking'), '不伪造 thinking');
         check(!missing.root.textContent.includes('（SDK）'), '不伪造 SDK 耗时');
+        const streaming = createOutputTrace(host);
+        streaming.accept({type:'message_start',message:msg([])});
+        streaming.accept({type:'message_update',assistantMessageEvent:{type:'text_delta',contentIndex:0,delta:'流式正文'}});
+        await paint();
+        check(host.querySelector('.chat-message[data-streaming="true"]')!==null, '流式正文保留光标标记');
+        streaming.accept({type:'message_end',message:msg([{type:'text',text:'流式正文'}])});
+        await paint();
+        check(host.querySelector('.chat-message[data-streaming="true"]')===null, '完成后移除光标标记');
+        streaming.dispose();
+        const writeTrace = createOutputTrace(host);
+        writeTrace.accept({type:'message_start',message:msg([])});
+        const nl = String.fromCharCode(10);
+        writeTrace.accept({type:'message_end',message:msg([{type:'toolCall',id:'w',name:'write',arguments:{path:'/a.txt',content:['a','b','c'].join(nl)}}])});
+        writeTrace.accept({type:'tool_execution_start',toolCallId:'w',toolName:'write',args:{path:'/a.txt',content:['a','b','c'].join(nl)}});
+        await paint();
+        check(host.querySelector('.trace-tool[data-tool-call-id="w"] .trace-diff-added')?.textContent==='+3', 'write 展示新增行数');
+        writeTrace.dispose();
+        const editTrace = createOutputTrace(host);
+        editTrace.accept({type:'message_start',message:msg([])});
+        editTrace.accept({type:'message_end',message:msg([{type:'toolCall',id:'e',name:'edit',arguments:{path:'/b.txt',edits:[{oldText:['a','b'].join(nl),newText:['a','c','d'].join(nl)}]}}])});
+        editTrace.accept({type:'tool_execution_start',toolCallId:'e',toolName:'edit',args:{path:'/b.txt',edits:[{oldText:['a','b'].join(nl),newText:['a','c','d'].join(nl)}]}});
+        await paint();
+        check(host.querySelector('.trace-tool[data-tool-call-id="e"] .trace-diff-added')?.textContent==='+2', 'edit 统计新增行');
+        check(host.querySelector('.trace-tool[data-tool-call-id="e"] .trace-diff-removed')?.textContent==='-1', 'edit 统计删除行');
+        editTrace.dispose();
         const historical = createOutputTrace(host,{historical:true});
         historical.restore(msg([{type:'text',text:'历史正文'}])); historical.finish();
         check(intervals.size===0, '历史不启动计时');

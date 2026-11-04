@@ -69,6 +69,50 @@
   line-height: 1.7;
 }
 
+/* 代码块头栏固定语言与复制入口；代码本体仍沿用 pre 的横向滚动规则。 */
+.markdown-body .code-block {
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.markdown-body .code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.markdown-body .code-block-language {
+  letter-spacing: 0.04em;
+}
+
+.markdown-body .code-block-copy {
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+}
+
+.markdown-body .code-block-copy:hover:not(:disabled) {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.markdown-body .code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
 .markdown-body table {
   display: block;
   max-width: 100%;

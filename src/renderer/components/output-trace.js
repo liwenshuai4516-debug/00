@@ -22,6 +22,95 @@ const json = value => value === undefined ? "未记录" : JSON.stringify(value, 
 const preview = value => value.length > 12000 ? `${value.slice(0, 12000)}\n……显示已截断` : value;
 const duration = milliseconds => milliseconds < 1000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1000).toFixed(1)} s`;
 
+function summarySpan(className, text) {
+  const node = document.createElement("span");
+  node.className = className;
+  node.textContent = text;
+  return node;
+}
+
+// 摘要只取一行纯文本；参数来自模型，不当作 HTML 或 Markdown 解释。
+function oneLine(text, limit = 72) {
+  if (typeof text !== "string") return "";
+  const line = text.split("\n").find(value => value.trim() !== "")?.trim() ?? "";
+  return line.length > limit ? `${line.slice(0, limit - 1)}…` : line;
+}
+
+function firstLine(text) {
+  const newline = text.indexOf("\n");
+  return newline === -1 ? text : text.slice(0, newline);
+}
+
+// 运行中预览最近完成段落的首行，避免停在半句话中间；结束后取首行。
+function latestParagraphLine(text) {
+  let summary = "";
+  let start = 0;
+  const separator = /\r?\n(?:[\t ]*\r?\n)+/g;
+  while (true) {
+    const next = separator.exec(text);
+    const end = next === null ? text.length : next.index;
+    const newline = text.indexOf("\n", start);
+    if (newline !== -1 && newline <= end) {
+      const candidate = text.slice(start, newline).trim();
+      if (candidate !== "") summary = candidate;
+    }
+    if (next === null) return summary === "" ? firstLine(text) : summary;
+    start = next.index + next[0].length;
+  }
+}
+
+// 折叠预览不保留 Markdown 强调标记，并截断过长首行。
+const thinkingPreview = (text, running) => {
+  const line = (running ? latestParagraphLine(text) : firstLine(text)).replaceAll("**", "").trim();
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line;
+};
+
+// 工具行优先展示命令或文件路径，其后才是状态与耗时。
+function toolDetail(name, args) {
+  if (!args || typeof args !== "object") return "";
+  if (name === "bash" || name === "pwsh") return oneLine(args.command);
+  const path = typeof args.path === "string" ? args.path : typeof args.file_path === "string" ? args.file_path : "";
+  if (path) return oneLine(path);
+  return oneLine(args.description || args.pattern || args.query || "");
+}
+
+const lineCount = text => typeof text === "string" && text !== "" ? text.split("\n").length : 0;
+
+// 先裁掉公共前后缀再统计，避免把 edit 的上下文行算进变更数。
+function lineDelta(before, after) {
+  const oldLines = (typeof before === "string" ? before : "").split("\n");
+  const newLines = (typeof after === "string" ? after : "").split("\n");
+  let start = 0;
+  while (start < oldLines.length && start < newLines.length && oldLines[start] === newLines[start]) start++;
+  let oldEnd = oldLines.length;
+  let newEnd = newLines.length;
+  while (oldEnd > start && newEnd > start && oldLines[oldEnd - 1] === newLines[newEnd - 1]) {
+    oldEnd--;
+    newEnd--;
+  }
+  return { removed: oldEnd - start, added: newEnd - start };
+}
+
+// write 是整文件替换；edit 按 edits[] 汇总。两者都只用于展示。
+function changeStat(name, args) {
+  if (!args || typeof args !== "object") return null;
+  if (name === "write") {
+    const added = lineCount(args.content);
+    return added > 0 ? { added, removed: 0 } : null;
+  }
+  if (name !== "edit") return null;
+  const edits = Array.isArray(args.edits)
+    ? args.edits
+    : typeof args.oldText === "string" || typeof args.newText === "string"
+      ? [{ oldText: args.oldText, newText: args.newText }]
+      : [];
+  const total = edits.reduce((stat, edit) => {
+    const delta = lineDelta(edit?.oldText, edit?.newText);
+    return { added: stat.added + delta.added, removed: stat.removed + delta.removed };
+  }, { added: 0, removed: 0 });
+  return total.added || total.removed ? total : null;
+}
+
 export function createOutputTrace(container, { historical = false, onUpdate = () => {} } = {}) {
   const root = element("section", "output-run");
   container.append(root);
@@ -89,14 +178,20 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
       const responseDuration = current.completed && info.durationMs !== undefined
         ? `响应耗时 ${duration(info.durationMs)}（SDK）`
         : current.startedAt !== undefined ? `响应${current.endedAt !== undefined ? "用时" : "中"} ${duration((current.endedAt ?? performance.now()) - current.startedAt)}（界面计时）` : "响应耗时未记录";
-      meta.textContent = [info.provider && `${info.provider}/${info.model}`, current.completed && info.stopReason && `stopReason: ${info.stopReason}`,
+      meta.textContent = [info.provider && `${info.provider}/${info.model}`, current.completed && info.stopReason && `结束原因 ${info.stopReason}`,
         responseDuration,
-        info.usage && `tokens: ${info.usage.totalTokens ?? "未知"}（输入 ${info.usage.input ?? "未知"} / 输出 ${info.usage.output ?? "未知"}）`,
+        info.usage && `${info.usage.totalTokens ?? "未知"} tokens（输入 ${info.usage.input ?? "未知"} / 输出 ${info.usage.output ?? "未知"}）`,
         info.errorMessage].filter(Boolean).join(" · ");
       for (const [index, view] of current.thinking) {
         const block = current.blocks[index];
+        const running = view.endedAt === undefined && !historical;
         const timing = view.startedAt === undefined ? "" : ` · ${duration((view.endedAt ?? performance.now()) - view.startedAt)}（界面计时）`;
-        view.summary.textContent = `${block?.redacted ? "Thinking · 供应商未公开内容" : "Thinking · 模型返回的思考"}${timing}`;
+        const label = block?.redacted
+          ? "思考 · 供应商未公开内容"
+          : ["思考", thinkingPreview(block?.thinking ?? "", running)].filter(Boolean).join(" · ");
+        view.summary.textContent = `${label}${timing}`;
+        // 运行中的思考行保留状态标记，供样式区分正在生成与已结束。
+        view.node.dataset.running = String(running);
       }
     };
     current.render = () => {
@@ -104,6 +199,8 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
       if (text && !current.body) current.body = appendMessage(root, "assistant", "");
       if (current.body) {
         current.body.parentElement.hidden = !text;
+        // 未完成的消息保留流式标记，样式据此显示光标。
+        current.body.parentElement.dataset.streaming = String(!current.completed && !historical);
         updateAssistantMessage(current.body, text);
         if (current !== message || current.hasToolCalls) placeInProcess(current);
       }
@@ -111,8 +208,13 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
       for (const [index, view] of current.thinking) {
         const block = current.blocks[index];
         view.node.hidden = block?.type !== "thinking";
+        const text = block?.redacted ? "内容已隐藏。" : (block?.thinking ?? "");
+        // 只有内容变化才重新排版，计时刷新不重复解析 Markdown。
+        if (view.source !== text) {
+          view.source = text;
+          updateAssistantMessage(view.text, text);
+        }
         const following = view.text.scrollHeight - view.text.clientHeight - view.text.scrollTop < 24;
-        view.text.textContent = block?.redacted ? "内容已隐藏。" : (block?.thinking ?? "");
         if (following) view.text.scrollTop = view.text.scrollHeight;
       }
     };
@@ -168,14 +270,34 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     view.body.append(meta, element("p", "trace-caption", "参数"), args, element("p", "trace-caption", "结果 / 最近一次进度"), result);
     const call = { ...view, id, name, state: "等待执行", args: undefined, result: "", done: false };
     call.renderTiming = () => {
-      const timing = call.durationMs !== undefined ? ` · ${duration(call.durationMs)}（SDK）`
-        : call.startedAt === undefined ? "" : ` · ${duration((call.endedAt ?? performance.now()) - call.startedAt)}（界面计时）`;
-      view.summary.textContent = `${call.name || "工具"} · ${call.state}${timing}${skillLabel(call.skill)}`;
+      const summary = view.summary;
+      // 名称、目标、状态与耗时分开排版，目标过长时由 CSS 省略，不挤掉状态。
+      summary.replaceChildren(summarySpan("trace-tool-name", call.name || "工具"));
+      const detail = toolDetail(call.name, call.args);
+      if (detail) {
+        summary.append(document.createTextNode(" · "), summarySpan("trace-tool-detail", detail));
+      }
+      summary.append(document.createTextNode(" · "), summarySpan("trace-tool-state", call.state));
+      const timing = call.durationMs !== undefined ? `${duration(call.durationMs)}（SDK）`
+        : call.startedAt === undefined ? "" : `${duration((call.endedAt ?? performance.now()) - call.startedAt)}（界面计时）`;
+      if (timing) summary.append(document.createTextNode(" · "), summarySpan("trace-tool-timing", timing));
+      const stat = changeStat(call.name, call.args);
+      // 失败和停止的行不展示差异统计，避免把未生效的修改读成结果。
+      if (stat && call.state !== "执行失败") {
+        summary.append(document.createTextNode(" "));
+        if (stat.added) summary.append(summarySpan("trace-diff-added", `+${stat.added}`));
+        if (stat.removed) summary.append(document.createTextNode(" "), summarySpan("trace-diff-removed", `-${stat.removed}`));
+      }
+      const skill = skillLabel(call.skill);
+      if (skill) summary.append(summarySpan("trace-tool-skill", skill));
       view.node.dataset.state = call.state;
     };
     call.render = () => {
       call.renderTiming();
-      meta.textContent = [`toolCallId: ${call.id}`, call.parent && `parentToolCallId: ${call.parent}`, call.skill?.path].filter(Boolean).join("\n");
+      // 调用编号保留在节点属性和悬停提示里，正文只展示对阅读有用的信息。
+      meta.textContent = [call.skill?.path, call.parent && `嵌套调用 ${call.parent}`].filter(Boolean).join("\n");
+      meta.hidden = meta.textContent === "";
+      meta.title = `toolCallId: ${call.id}${call.parent ? ` · parentToolCallId: ${call.parent}` : ""}`;
       args.textContent = preview(call.rawArgs ?? json(call.args));
       result.textContent = preview(call.result || (call.done ? "无文本结果" : "尚未返回结果"));
     };
@@ -189,7 +311,8 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
       if (block.type === "thinking" && !current.thinking.has(index)) {
         const view = disclosure(current.turn.body, "trace-thinking");
         view.node.open = !historical && !block.redacted;
-        view.text = element("pre", "");
+        // 思考正文与回复一样经过 Markdown 清理链路，不使用 pre 展示原始标记。
+        view.text = element("div", "trace-thinking-body");
         view.text.tabIndex = 0;
         view.body.append(view.text);
         current.thinking.set(index, view);

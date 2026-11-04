@@ -57,5 +57,48 @@ export function renderMarkdown(element, text) {
     }
   }
 
+  decorateCodeBlocks(fragment);
   element.replaceChildren(fragment);
+}
+
+// 代码块增加语言标签和复制按钮；按钮只读取已清理的纯文本，不参与 Markdown 解析。
+function decorateCodeBlocks(fragment) {
+  for (const pre of fragment.querySelectorAll("pre")) {
+    const code = pre.querySelector("code");
+    if (!code) continue;
+
+    const language = code.className.match(/(?:^|\s)language-(\S+)/)?.[1] ?? "";
+    const figure = document.createElement("figure");
+    figure.className = "code-block";
+
+    const header = document.createElement("figcaption");
+    header.className = "code-block-header";
+
+    const label = document.createElement("span");
+    label.className = "code-block-language";
+    label.textContent = language || "text";
+
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "code-block-copy";
+    copy.textContent = "复制";
+    copy.setAttribute("aria-label", "复制这段代码");
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(code.textContent);
+        copy.textContent = "已复制";
+      } catch {
+        copy.textContent = "复制失败";
+      }
+      // 提示短暂保留后恢复，不改变代码块内容。
+      setTimeout(() => {
+        copy.textContent = "复制";
+      }, 1200);
+    });
+
+    header.append(label, copy);
+    // 先用 figure 占住 pre 的位置，再把 pre 移入，避免把节点替换进它自己。
+    pre.replaceWith(figure);
+    figure.append(header, pre);
+  }
 }
