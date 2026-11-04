@@ -17,6 +17,14 @@ async function setup(t) {
   return { base, workspace, store, project, service };
 }
 
+async function writeCase(workspace, id, modulePath) {
+  const directory = path.join(workspace, "qa", "data", "ui", "cases");
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, `${id}.asset.json`), JSON.stringify({
+    caseMeta: { schema: "qa-ui-case/v1", caseId: id, modulePath },
+  }));
+}
+
 async function writeSummary(workspace, kind, id, summary) {
   const directory = path.join(workspace, "qa", kind, "runs", id);
   await mkdir(directory, { recursive: true });
@@ -25,6 +33,8 @@ async function writeSummary(workspace, kind, id, summary) {
 
 test("聚合 UI 与接口报告并按结束时间排序", async (t) => {
   const { workspace, project, service } = await setup(t);
+  await writeCase(workspace, "case-a", ["合同管理", "经营合同"]);
+  await writeCase(workspace, "api-case", ["合同管理", "采购合同"]);
   await writeSummary(workspace, "ui", "ui-run", {
     schema: "qa-report/v1",
     kind: "ui",
@@ -87,6 +97,9 @@ test("聚合 UI 与接口报告并按结束时间排序", async (t) => {
   assert.equal(result.reports[1].testCount, 2);
   assert.deepEqual(result.reports[1].counts, { passed: 1, failed: 1 });
   assert.equal(result.reports[1].summaryPath, "qa/ui/runs/ui-run/summary.json");
+  assert.equal(result.reports[0].moduleName, "采购合同");
+  assert.equal(result.reports[1].moduleName, "经营合同");
+  assert.deepEqual(result.reports[1].modulePath, ["合同管理", "经营合同"]);
   assert.equal(result.reports[1].problemsCount, 1);
   assert.equal(result.reports[1].durationMs, 60000);
   assert.deepEqual(result.totals, {
@@ -102,12 +115,14 @@ test("聚合 UI 与接口报告并按结束时间排序", async (t) => {
 
 test("读取单份报告详情并规范化失败信息", async (t) => {
   const { workspace, project, service } = await setup(t);
+  await writeCase(workspace, "case-a", ["合同管理", "经营合同"]);
   await writeSummary(workspace, "ui", "ui-detail", {
     runId: "ui-detail",
     status: "failed",
     startedAt: "2026-11-04T06:00:00.000Z",
     finishedAt: "2026-11-04T06:01:00.000Z",
     project: { id: "pms", name: "项目管理系统" },
+    caseIds: ["case-a"],
     counts: { failed: 1 },
     tests: [{
       title: "失败用例",
@@ -125,6 +140,7 @@ test("读取单份报告详情并规范化失败信息", async (t) => {
 
   const detail = await service.get(project.id, "ui", "ui-detail");
   assert.equal(detail.status, "failed");
+  assert.equal(detail.moduleName, "经营合同");
   assert.equal(detail.testCount, 1);
   assert.equal(detail.tests[0].title, "失败用例");
   assert.equal(detail.tests[0].error, "expect(received).toBe(expected)");

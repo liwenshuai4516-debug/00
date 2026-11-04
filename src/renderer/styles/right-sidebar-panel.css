@@ -425,6 +425,11 @@
   font-size: 12px;
 }
 
+.right-panel__select--compact {
+  flex: 0 1 160px;
+  max-width: 60%;
+}
+
 .right-panel__root-label {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -1227,6 +1232,50 @@
   border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
+.report-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  border-radius: 8px;
+  background: var(--page);
+}
+
+.report-verdict__label {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.report-verdict__status {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.report-verdict[data-status="passed"] .report-verdict__status {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  color: var(--focus);
+}
+
+.report-verdict[data-status="failed"] .report-verdict__status,
+.report-verdict[data-status="incomplete"] .report-verdict__status {
+  border-color: color-mix(in srgb, var(--error-border) 55%, var(--border));
+  color: var(--error-border);
+}
+
+.report-verdict__text {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .report-detail__facts {
   display: flex;
   flex-wrap: wrap;
@@ -1367,6 +1416,27 @@
 
 .report-problems li {
   overflow-wrap: anywhere;
+}
+
+.report-tests--failures {
+  margin-top: 4px;
+}
+
+.report-cases {
+  margin-top: 10px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.report-cases > summary {
+  padding: 4px 0;
+  color: var(--focus);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.report-cases[open] > summary {
+  margin-bottom: 5px;
 }
 
 /* ---------- 删除确认 ---------- */

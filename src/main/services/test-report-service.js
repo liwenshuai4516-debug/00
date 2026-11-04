@@ -67,6 +67,68 @@ function normalizeCaseIds(value) {
     .slice(0, 100);
 }
 
+function normalizeModulePath(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((segment) => text(segment, 60))
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function moduleSummary(paths) {
+  const unique = new Map();
+  for (const modulePath of paths) {
+    if (!modulePath.length) continue;
+    unique.set(modulePath.join("\u001f"), modulePath);
+  }
+  if (unique.size === 0) return { name: "", path: [] };
+  if (unique.size === 1) {
+    const [modulePath] = unique.values();
+    return { name: modulePath[modulePath.length - 1], path: modulePath };
+  }
+  const [first] = unique.values();
+  return {
+    name: `${first[first.length - 1]} 等 ${unique.size} 个模块`,
+    path: [],
+  };
+}
+
+async function readCaseModule(workspace, caseId) {
+  if (!/^[\p{L}\p{N}_-]{1,180}$/u.test(caseId)) return [];
+  const file = path.join(workspace, "qa", "data", "ui", "cases", `${caseId}.asset.json`);
+  let info;
+  try {
+    info = await lstat(file);
+  } catch {
+    return [];
+  }
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 512 * 1024) return [];
+  try {
+    const asset = JSON.parse(await readFile(file, "utf8"));
+    return normalizeModulePath(asset?.caseMeta?.modulePath);
+  } catch {
+    return [];
+  }
+}
+
+// 报告名称优先使用摘要声明的模块；旧批次回看 case 资产的 modulePath。
+async function resolveModule(summary, workspace, cache) {
+  const direct = normalizeModulePath(summary?.modulePath);
+  if (direct.length > 0) return moduleSummary([direct]);
+  const declared = text(summary?.module, 200);
+  if (declared) return { name: declared, path: [] };
+  const paths = [];
+  for (const caseId of normalizeCaseIds(summary?.caseIds).slice(0, 5)) {
+    let modulePath = cache.get(caseId);
+    if (modulePath === undefined) {
+      modulePath = await readCaseModule(workspace, caseId);
+      cache.set(caseId, modulePath);
+    }
+    if (modulePath.length > 0) paths.push(modulePath);
+  }
+  return moduleSummary(paths);
+}
+
 function normalizeCounts(value, tests) {
   const counts = {};
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -235,6 +297,7 @@ function createTestReportService(projectStore) {
     const project = await resolveProject(projectId);
     const workspaceReal = await realpath(project.workspaceDir);
     const reports = [];
+    const moduleCache = new Map();
     let invalid = 0;
     let available = false;
     let truncated = false;
@@ -262,13 +325,18 @@ function createTestReportService(projectStore) {
           invalid += 1;
           continue;
         }
-        reports.push(normalizeReport(
-          parsed.summary,
-          source.kind,
-          entry.name,
-          parsed.relative,
-          parsed.modifiedAt,
-        ));
+        const module = await resolveModule(parsed.summary, workspaceReal, moduleCache);
+        reports.push({
+          ...normalizeReport(
+            parsed.summary,
+            source.kind,
+            entry.name,
+            parsed.relative,
+            parsed.modifiedAt,
+          ),
+          moduleName: module.name,
+          modulePath: module.path,
+        });
       }
     }
 
@@ -308,8 +376,11 @@ function createTestReportService(projectStore) {
     if (!parsed) throw new Error("测试报告不存在、格式无效或超过大小限制。");
     const summary = parsed.summary;
     const tests = (Array.isArray(summary.tests) ? summary.tests : []).slice(0, MAX_TESTS);
+    const module = await resolveModule(summary, workspaceReal, new Map());
     return {
       ...normalizeReport(summary, kind, id, parsed.relative, parsed.modifiedAt),
+      moduleName: module.name,
+      modulePath: module.path,
       tests: tests.map(normalizeTest),
       testsTruncated: Array.isArray(summary.tests) && summary.tests.length > MAX_TESTS,
       problems: normalizeProblems(summary.problems),

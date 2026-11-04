@@ -79,6 +79,24 @@ function formatDuration(value) {
   return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)} s`;
 }
 
+function formatDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function reportTitle(report) {
+  const moduleName = report.moduleName
+    || (Array.isArray(report.modulePath) && report.modulePath.length > 0
+      ? report.modulePath[report.modulePath.length - 1]
+      : "");
+  const date = formatDate(report.finishedAt || report.startedAt || report.modifiedAt);
+  if (moduleName) return [moduleName, date].filter(Boolean).join(" ");
+  return report.runId || report.id;
+}
+
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -1311,7 +1329,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
 
     const select = element("select", {
-      class: "right-panel__select",
+      class: "right-panel__select right-panel__select--compact",
       "aria-label": "选择项目环境",
       disabled: busy,
     });
@@ -1464,7 +1482,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       }),
       element("span", {
         class: "report-card__title",
-        text: report.runId || report.id,
+        text: reportTitle(report),
       }),
       element("span", {
         class: "case-run",
@@ -1531,8 +1549,32 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (selectedId === projectId) paintReportBody(body, key);
   }
 
+  function reportVerdictText(detail) {
+    const counts = detail.counts ?? {};
+    const total = detail.testCount == null
+      ? Object.values(counts).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0)
+      : detail.testCount;
+    const passed = Number.isFinite(counts.passed) ? counts.passed : 0;
+    const rate = total > 0 ? Math.round((passed / total) * 100) : null;
+    return [
+      `共 ${total} 个用例`,
+      reportCountsText(counts),
+      rate === null ? "" : `通过率 ${rate}%`,
+    ].filter(Boolean).join(" · ");
+  }
+
   function renderReportDetail(detail) {
     const box = element("div", { class: "report-detail" });
+    const statusLabel = RUN_STATUS_LABELS[detail.status] ?? detail.status;
+    box.append(element("div", {
+      class: "report-verdict",
+      dataset: { status: detail.status },
+    },
+    element("span", { class: "report-verdict__label", text: "结论" }),
+    element("span", { class: "report-verdict__status", text: statusLabel }),
+    element("span", { class: "report-verdict__text", text: reportVerdictText(detail) }),
+    ));
+
     const facts = element("div", { class: "report-detail__facts" });
     const fact = (label, value) => element("span", { class: "report-fact" },
       element("span", { class: "report-fact__label", text: label }),
@@ -1541,8 +1583,12 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         text: value === "" || value === null || value === undefined ? "—" : String(value),
       }),
     );
+    const moduleText = Array.isArray(detail.modulePath) && detail.modulePath.length > 0
+      ? detail.modulePath.join(" / ")
+      : detail.moduleName;
     facts.append(
-      fact("用例", detail.testCount == null ? "未知" : `${detail.testCount} 例`),
+      fact("模块", moduleText || "未标注"),
+      fact("完成", formatTime(detail.finishedAt)),
       fact("耗时", formatDuration(detail.durationMs)),
       fact("清理", CLEANUP_LABELS[detail.cleanup] ?? detail.cleanup),
       fact("Trace", TRACE_POLICY_LABELS[detail.tracePolicy] ?? detail.tracePolicy),
@@ -1557,37 +1603,41 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
     const caseIds = detail.caseIds ?? [];
     if (caseIds.length > 0) {
-      const shown = caseIds.slice(0, 3).join("、");
       box.append(element("p", {
         class: "report-detail__meta",
-        text: `范围：${shown}${caseIds.length > 3 ? ` 等 ${caseIds.length} 个` : ""}`,
+        text: `范围：${caseIds.length} 个用例`,
       }));
-    }
-    const counts = reportCountsText(detail.counts);
-    if (counts) {
-      box.append(element("p", { class: "report-detail__meta", text: `统计：${counts}` }));
     }
 
     const tests = detail.tests ?? [];
-    if (tests.length === 0) {
-      box.append(element("p", { class: "report-detail__empty", text: "没有逐例结果。" }));
+    const failures = tests.filter((test) => !["passed", "skipped"].includes(test.status));
+    box.append(element("p", {
+      class: "report-detail__section-title",
+      text: `失败与异常（${failures.length}）`,
+    }));
+    if (failures.length === 0) {
+      box.append(element("p", { class: "report-detail__empty", text: "本次没有失败或异常用例。" }));
     } else {
-      const list = element("ol", { class: "report-tests" });
-      for (const test of tests) list.append(renderReportTest(test));
+      const list = element("ol", { class: "report-tests report-tests--failures" });
+      for (const test of failures.slice(0, 5)) list.append(renderReportTest(test));
       box.append(list);
-      if (detail.testsTruncated) {
-        box.append(element("p", { class: "right-panel__note", text: "仅展示前 100 条逐例结果。" }));
+      if (failures.length > 5) {
+        box.append(element("p", {
+          class: "right-panel__note",
+          text: `另有 ${failures.length - 5} 条失败或异常，见下方逐例明细。`,
+        }));
       }
     }
 
     const problems = detail.problems ?? [];
     if (problems.length > 0) {
-      box.append(element("p", { class: "report-detail__section-title", text: "摘要问题" }));
+      box.append(element("p", { class: "report-detail__section-title", text: "报告问题" }));
       const list = element("ul", { class: "report-problems" });
       for (const problem of problems) list.append(element("li", { text: problem }));
       box.append(list);
     }
 
+    box.append(element("p", { class: "report-detail__section-title", text: "执行与证据" }));
     const versions = detail.versions ?? {};
     const versionParts = [
       versions.node ? `Node ${versions.node}` : "",
@@ -1608,6 +1658,22 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         class: "report-detail__path",
         text: `报告文件：${detail.summaryPath}`,
       }));
+    }
+
+    if (tests.length > 0) {
+      const details = element("details", { class: "report-cases" });
+      details.append(element("summary", {
+        text: `查看全部逐例结果（${tests.length}）`,
+      }));
+      const list = element("ol", { class: "report-tests" });
+      for (const test of tests) list.append(renderReportTest(test));
+      details.append(list);
+      if (detail.testsTruncated) {
+        details.append(element("p", { class: "right-panel__note", text: "仅展示前 100 条逐例结果。" }));
+      }
+      box.append(details);
+    } else {
+      box.append(element("p", { class: "report-detail__empty", text: "没有逐例结果。" }));
     }
     return box;
   }

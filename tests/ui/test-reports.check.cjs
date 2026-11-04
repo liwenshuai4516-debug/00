@@ -88,6 +88,7 @@ async function main() {
     await check("报告视图显示项目与统一目录", `document.querySelector('.right-panel__nav-title').textContent==='测试报告 · 演示项目'&&document.querySelector('.right-panel__select').selectedOptions[0].textContent==='演示项目'&&document.querySelector('.right-panel__root-label').textContent==='qa/*/runs'`);
     await check("顶部显示报告状态统计", `[...document.querySelectorAll('.report-summary__stat')].map((node)=>node.textContent.replace(/\\s+/g,'')).join(',')==='2份报告,1通过,1失败'`);
     await check("类型筛选显示 UI 与接口数量", `[...document.querySelectorAll('.report-filter__button')].map((node)=>node.textContent.replace(/\\s+/g,'')).join(',')==='全部2,UI1,接口1'`);
+    await check("报告名称使用模块和日期", `document.querySelector('.report-card[data-kind="api"] .report-card__title').textContent==='采购合同 2026-11-04'&&document.querySelector('.report-card[data-kind="ui"] .report-card__title').textContent==='经营合同 2026-11-04'`);
     await check("报告卡片显示类型、状态、时间与统计", `(()=>{const api=document.querySelector('.report-card[data-kind="api"]');const ui=document.querySelector('.report-card[data-kind="ui"]');return api.querySelector('.report-kind').textContent==='接口'&&api.querySelector('.case-run').textContent==='通过'&&api.querySelector('.report-card__meta').textContent.includes('2 例')&&api.querySelector('.report-card__meta').textContent.includes('通过 2')&&ui.querySelector('.case-run').textContent==='失败'&&ui.querySelector('.report-card__meta').textContent.includes('失败 1');})()`);
 
     await run(`[...document.querySelectorAll('.report-filter__button')].find((button)=>button.textContent.includes('接口')).click()`);
@@ -97,14 +98,16 @@ async function main() {
 
     await run(`(()=>{const head=document.querySelector('.report-card[data-kind="ui"] .report-card__head');head.focus();head.click();})()`);
     await wait(`document.querySelector('.report-card[data-kind="ui"] .report-card__body').textContent.includes('T2 合同列表加载')`);
-    await check("展开报告读取逐例结果、问题与证据", `(()=>{const card=document.querySelector('.report-card[data-kind="ui"]');const body=card.querySelector('.report-card__body');return card.querySelector('.report-card__head').getAttribute('aria-expanded')==='true'&&!body.hidden&&body.textContent.includes('T1 登录成功')&&body.textContent.includes('T2 合同列表加载')&&body.textContent.includes('expect(received).toBe(expected)')&&body.textContent.includes('failure.png')&&body.textContent.includes('摘要问题')&&body.textContent.includes('附件缺失：failure.png')&&body.textContent.includes('Node 22.19.0')&&body.textContent.includes('已关闭（私有登录态）')&&body.textContent.includes('报告文件：qa/ui/runs/ui-run/summary.json');})()`);
-    await check("报告卡片展开后显示详情事实", `document.querySelector('.report-card[data-kind="ui"] .report-detail__facts').textContent.includes('用例')&&document.querySelector('.report-card[data-kind="ui"] .report-detail__facts').textContent.includes('已删除')`);
+    await check("展开报告显示摘要、失败与证据", `(()=>{const card=document.querySelector('.report-card[data-kind="ui"]');const body=card.querySelector('.report-card__body');const details=body.querySelector('.report-cases');return card.querySelector('.report-card__head').getAttribute('aria-expanded')==='true'&&!body.hidden&&body.textContent.includes('结论')&&body.textContent.includes('失败与异常（1）')&&body.textContent.includes('通过率 50%')&&body.textContent.includes('T2 合同列表加载')&&body.textContent.includes('expect(received).toBe(expected)')&&body.textContent.includes('failure.png')&&body.textContent.includes('报告问题')&&body.textContent.includes('附件缺失：failure.png')&&body.textContent.includes('Node 22.19.0')&&body.textContent.includes('已关闭（私有登录态）')&&body.textContent.includes('报告文件：qa/ui/runs/ui-run/summary.json')&&details.open===false&&details.querySelector('summary').textContent.includes('查看全部逐例结果（2）');})()`);
+    await check("报告摘要显示模块、完成时间与清理事实", `document.querySelector('.report-card[data-kind="ui"] .report-detail__facts').textContent.includes('合同管理 / 经营合同')&&document.querySelector('.report-card[data-kind="ui"] .report-detail__facts').textContent.includes('已删除')`);
     await check("展开详情后焦点保留在报告标题", `document.activeElement===document.querySelector('.report-card[data-kind="ui"] .report-card__head')`);
     await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
     if (process.env.TEST_REPORTS_SCREENSHOT_PATH) {
       await writeFile(process.env.TEST_REPORTS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
 
+    await run(`document.querySelector('.report-card[data-kind="ui"] .report-cases > summary').click()`);
+    await check("按需展开全部逐例结果", `document.querySelector('.report-card[data-kind="ui"] .report-cases').open===true&&document.querySelector('.report-card[data-kind="ui"] .report-cases').textContent.includes('T1 登录成功')`);
     await run(`document.querySelector('.report-card[data-kind="ui"] .report-card__head').click()`);
     await check("再次点击折叠报告", `document.querySelector('.report-card[data-kind="ui"] .report-card__body').hidden===true&&document.querySelector('.report-card[data-kind="ui"] .report-card__head').getAttribute('aria-expanded')==='false'`);
 

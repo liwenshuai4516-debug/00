@@ -23,6 +23,7 @@ UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应
   "finishedAt": "2026-11-04T06:01:00.000Z",
   "targetUrl": "https://example.test/path",
   "project": { "id": "pms", "name": "项目管理系统" },
+  "modulePath": ["合同管理", "经营合同"],
   "caseIds": ["case-a"],
   "testCount": 2,
   "counts": { "passed": 1, "failed": 1 },
@@ -45,7 +46,7 @@ UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应
 }
 ```
 
-必填字段为 `schema`、`kind`、`runId`、`status`、`startedAt`、`finishedAt`、`testCount`、`counts`、`tests`。其余字段按实际填写；接口测试可用 `tests[]` 表达接口场景，`file` 写脚本或场景相对路径。
+必填字段为 `schema`、`kind`、`runId`、`status`、`startedAt`、`finishedAt`、`testCount`、`counts`、`tests`。`modulePath`（或字符串 `module`）可选，报告名称优先使用它；UI 旧批次由服务从 case 资产的 `modulePath` 回看，仍无法确定时回退到 runId。接口测试可用 `tests[]` 表达接口场景，`file` 写脚本或场景相对路径。
 
 ## 状态与通过条件
 
@@ -59,9 +60,10 @@ UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应
 
 工作台第三张卡片「测试报告」进入：
 
-- 读取当前项目 `qa/ui/runs` 与 `qa/api/runs`，按完成时间倒序聚合；顶部显示报告总数、通过/失败/其他批次数量。
+- 读取当前项目 `qa/ui/runs` 与 `qa/api/runs`，按完成时间倒序聚合；顶部项目筛选使用紧凑宽度，报告区显示总数、通过/失败/其他批次数量。
+- 报告名称暂为「模块名称 + 完成日期」（如 `经营合同 2026-11-04`），同一天多次运行由卡片时间区分。
 - 支持「全部 / UI / 接口」筛选；每张卡片显示类型、状态、完成时间、用例数和逐例统计。
-- 展开后才读取详情；显示目标、范围、耗时、清理、trace 策略、逐例状态/错误/证据名、摘要问题、版本和报告文件路径。
+- 展开后才读取详情；默认显示结论、通过率、模块/完成/耗时、失败与异常清单、报告问题、运行环境、清理/trace 和报告路径；全部逐例结果默认折叠在「查看全部逐例结果」中，长报告不直接铺开每条 case。
 - 主进程只接受项目编号、报告类型和批次目录名；限制 50 份报告、单份摘要 2 MiB、详情 100 条，跳过隐藏目录、符号链接和损坏文件。
 - 报告只读：不删除批次、不重跑、不修改原始摘要。报告正文仍可能含业务数据，按测试数据管理。
 
