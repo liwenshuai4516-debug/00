@@ -16,7 +16,10 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步流程、项目/登录/回放/报告的操作约定 |
 | `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
 | `resources/testing/ui/skills/qa-ui-execute/SKILL.md` | 按 caseId 单项/批量/定时执行，不录制、不改脚本 |
+| `resources/testing/reporting/SKILL.md` | `qa-test-report`：UI 与接口共用的报告状态、通过条件和交付规则 |
 | `resources/testing/ui/execute.cjs` | 独立执行 CLI：读配置、无头登录、校验资产、生成批次并调用 `run.cjs` |
+| `src/main/services/test-report-service.js` | 聚合 `qa/ui/runs` 与 `qa/api/runs` 的 `qa-report/v1` 摘要，校验路径与大小 |
+| `src/renderer/components/right-sidebar-panel.js` | 右侧栏「测试报告」列表、类型筛选和按需详情 |
 | `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
 
 ## 录制工具与 MCP 模式
@@ -31,7 +34,7 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 
 已有 `*.seed.spec.cjs` 的 caseId 不能再次用于 record（prepare 会以“同名 case 已存在”拒绝）；中断后请用新的 caseId 重新 prepare，旧种子和空录制目录仅作中间产物保留，不能据此 finalize。
 
-通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui`；发布读取 `process.resourcesPath/testing/ui`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
+通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui` 与 `resources/testing/reporting`；发布分别读取 `process.resourcesPath/testing/ui`、`testing/reporting`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
 
 ## 独立执行 skill（2026-11-04）
 
@@ -51,7 +54,7 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 
 先判断用户意图，不因调用 `/skill:qa-ui-basic` 就默认跑满七步：只录制走步骤 1–5，只执行走 1–3 + 6–7，只有录制并回放/完整测试才走 1–7；待办清单同步裁剪。用户确认目标为测试环境时，全部页面写操作已授权；业务预期默认采用页面规则并标注来源。
 
-在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理细则由同目录注册的 `/skill:qa-ui-record` 提供。这两个 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
+在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理细则由同目录注册的 `/skill:qa-ui-record` 提供，执行和报告分别由 `qa-ui-execute`、`qa-test-report` 提供。这些 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
 
 | 步骤 | 实际行为与完成条件 |
 | --- | --- |
@@ -61,7 +64,7 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 | 4. 真实录制 | 先按 qa-ui-record 盘点查询项、工具栏按钮、行操作与展开收起控件并形成覆盖矩阵；qa_ui_prepare(mode=record, projectRef, targetUrl) 继承该项目登录态；现场快照、操作、逐步骤断言、生成日志及写脚本，结束关闭页面 |
 | 5. 整理与持久化 | Agent 按 qa-ui-record 的断言来源、定位器、数据隔离和等待方式整理独立 test，生成含断言的用例列表、覆盖范围与 qa-ui-case 元数据稿；qa_ui_finalize 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
 | 6. 独立回放 | qa_ui_prepare(mode=run, projectRef, targetUrl, caseId) 验证资产登记哈希，执行返回命令；在新浏览器上下文回放，并清理私有登录态 |
-| 7. 输出结果 | 原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
+| 7. 输出结果 | 按 `qa-test-report` 的 `qa-report/v1` 规则交付；UI 批次读取原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
 
 项目配置仍使用客户端源码根目录的 `config/projects.local.json`，不复制到被测工作区。配置位置与手工编辑约定见 [项目前置数据](project-data.md)。账号密码由后端及独立登录进程使用，不返回模型，不写脚本或报告；不要让 Agent 用原生 read/bash 读取真实配置。目录/地址就绪不表示业务前置数据已正确，返回的 businessDataStatus=not-validated 明示这个边界。
 
@@ -104,11 +107,23 @@ qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业�
 
 旧的根级 npm 脚本入口指向不存在的执行器，已移除；旧 `config/` 测试配置同步删除。当前唯一准备入口是内置工具及返回的批次命令。POSIX shell 已验证，Windows 命令适配尚未验证。
 
+## 测试报告（UI 与接口共用）
+
+`run.cjs` 现在在 `summary.json` 写入 `schema: "qa-report/v1"` 和 `kind: "ui"`；接口测试执行器后续使用同一结构写入 `qa/api/runs/<runId>/summary.json`，`kind` 为 `api`。公共字段、状态和通过条件见 [测试报告](test-reports.md)，Agent 交付规则由 `qa-test-report` 技能负责。
+
+右侧栏「测试报告」由主进程 `test-report-service.js` 聚合两个运行目录：
+
+- 只读取项目工作区下的固定目录和 `summary.json`，跳过隐藏目录、符号链接、损坏或超过 2 MiB 的摘要；最多返回最近 50 份。
+- 列表返回类型、状态、时间、用例数、统计、清理和摘要路径；展开时才读取逐例结果，详情最多 100 条，附件只返回名称和类型，不返回绝对路径。
+- 读取旧批次时缺少 `schema`/`kind` 的摘要按所在目录推断 UI/API；缺失摘要的批次单独计数，不纳入报告。
+- 面板只读，不删除、不重跑、不改写原始报告；报告正文仍可能包含业务数据，按测试数据管理。
+
 ## 验证（2026-11-04）
 
-命令：`node --test tests/unit/ui-project-context.test.js tests/unit/ui-testing-runtime.test.js`。浏览器项依赖已准备的内置环境，缺失时明确跳过。全部在临时目录和本地 HTTP 页面进行，不请求模型、不访问真实业务站点、不读取用户认证。
+命令：`node --test tests/unit/ui-project-context.test.js tests/unit/ui-testing-runtime.test.js tests/unit/test-report-service.test.js`，以及 `./node_modules/.bin/electron tests/ui/test-reports.check.cjs`。浏览器项依赖已准备的内置环境，缺失时明确跳过。全部在临时目录和本地 HTTP 页面进行，不请求模型、不访问真实业务站点、不读取用户认证。
 
-- 真实 Pi SDK 下无运行环境、启用、官方禁用的工具/技能登记。
+- 真实 Pi SDK 下无运行环境、启用、官方禁用的工具/技能登记；`qa-test-report` 与 UI 技能按同一开关出现或消失。
+- 测试报告服务聚合 UI/API 摘要、按时间排序、推断旧批次类型，拒绝无效类型、路径穿越、缺失文件和符号链接；面板检查覆盖类型筛选、详情、逐例错误和无效批次提示。
 - 真实 Pi SDK 中项目匹配、后端使用模拟账号自动登录（无 UI 确认接管）、可见官方 MCP 页面准备/点击/生成日志/写脚本、语法和资产登记、独立回放、私有状态删除，原生报告通过且不再次提交登录。
 - 不同主机/协议/端口、最长路径、同范围歧义、工作区内写入、目录越界链接与同名文件、配置更新和中文长文件名。
 - 公开页面无需账号、验证码不提交、失败只提交一次、清理及工作区切换阻断；缺少资产登记不能回放。
@@ -116,6 +131,6 @@ qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业�
 - 独立可见登录窗口；临时页面模拟已登录状态，核对私有权限、cookie/localStorage 在新上下文中生效；拒绝保存、显式取消、会话关闭均删除，回收浏览器临时资料。
 - 两文件四测试准确汇总 2 通过、1 失败、1 跳过；清单逐项哈希复核且无模拟认证值、无登录 trace；重复执行拒绝、所选空脚本不判通过；脚本准备后变更记 incomplete；执行中 SIGTERM 取消仍生成摘要、删除私有状态。
 
-本轮项目识别、UI 运行时及原有项目数据检查共 17 项通过。验证包含无人工确认的自动登录→官方录制→登记→回放，但没有读取真实 projects.local.json、没有登录用户提供的业务地址。
+本轮项目识别、UI 运行时、报告服务及原有项目数据检查均通过。验证包含无人工确认的自动登录→官方录制→登记→回放，但没有读取真实 projects.local.json、没有登录用户提供的业务地址。
 
 这些是自动集成检查。临时站点验证模拟账号密码，不替代真实项目账号有效性、用户输入验证码、SSO、外部站点真实角色、Electron 自然语言技能选择或打包后的人工验收。2026-11-03 的历史业务回放仍为 5 通过、1 失败，不因能力补足改写结论。

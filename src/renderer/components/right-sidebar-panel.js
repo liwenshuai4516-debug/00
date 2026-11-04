@@ -1,4 +1,4 @@
-// 右侧栏内容：工作台卡片、项目环境 CRUD、qa/data 测试数据清理与文件预览。
+// 右侧栏内容：工作台卡片、项目环境 CRUD、测试数据、UI/接口测试报告与文件预览。
 // 内容只通过受限 IPC 读写；密码不会从主进程回填到页面。
 import { renderMarkdown } from "./markdown-renderer.js";
 import { normalizeBrowserUrl } from "./browser-url.js";
@@ -33,7 +33,20 @@ const CASE_STATUS_LABELS = {
   "expected-failure": "预期失败",
   cancelled: "取消",
   "not-run": "未运行",
+  "timedOut": "超时",
+  interrupted: "已中断",
   unknown: "未知",
+};
+const REPORT_KIND_LABELS = { ui: "UI", api: "接口" };
+const CLEANUP_LABELS = {
+  deleted: "已删除",
+  "not-needed": "无需登录态",
+  failed: "清理失败",
+  pending: "待清理",
+};
+const TRACE_POLICY_LABELS = {
+  "disabled-for-private-auth": "已关闭（私有登录态）",
+  "steps-without-dom-network-sources": "保留步骤，无 DOM/网络快照",
 };
 
 const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -57,6 +70,13 @@ function formatSize(bytes) {
 function formatTime(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "—" : dateFormatter.format(date);
+}
+
+function formatDuration(value) {
+  if (!Number.isFinite(value) || value < 0) return "—";
+  if (value < 1000) return `${Math.round(value)} ms`;
+  const seconds = value / 1000;
+  return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)} s`;
 }
 
 function errorMessage(error) {
@@ -106,6 +126,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   const expandedCases = new Set();
   let editingAssertions = null;
   const collapsedModules = new Set();
+  let reportsData = null;
+  let reportKindFilter = "all";
+  const expandedReports = new Set();
+  const reportDetails = new Map();
   let status = { text: "", error: false };
   let busy = false;
   let currentFile = null;
@@ -129,9 +153,11 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   const treeExpanded = new Set();
   let treeRootEntries = null;
 
-  // 回放批次在窗口外完成后，回到应用时自动刷新当前测试数据视图。
+  // 回放批次在窗口外完成后，回到应用时自动刷新当前测试数据或报告视图。
   window.addEventListener("focus", () => {
-    if (view === "data" && !busy && selectedId) void refreshData();
+    if (busy || !selectedId) return;
+    if (view === "data") void refreshData();
+    else if (view === "reports") void refreshReports();
   });
 
   function api() {
@@ -194,6 +220,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (view === "environments") renderEnvironments();
     else if (view === "form") renderEnvironmentForm();
     else if (view === "data") renderTestData();
+    else if (view === "reports") renderReports();
     else if (view === "file") renderFile();
     else if (view === "files") renderFiles();
     else if (view === "browser") renderBrowser();
@@ -261,7 +288,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       element("h2", { class: "right-panel__title", text: "测试工作台" }),
       element("p", {
         class: "right-panel__subtitle",
-        text: "管理项目环境，查看和清理各项目 qa/data 中的测试数据。",
+        text: "管理项目环境，查看测试数据与 UI、接口测试报告。",
       }),
     );
 
@@ -286,6 +313,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
           // 每次打开都重新读取，回放结束后直接看到最新结果。
           void refreshData();
         },
+      }),
+      featureCard({
+        iconName: "history",
+        title: "测试报告",
+        description: "查看 UI 与接口测试批次的统一结果",
+        meta: "UI / 接口",
+        onClick: () => openReports(),
       }),
       featureCard({
         iconName: "folder",
@@ -1187,6 +1221,435 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
   }
 
+  function reportKey(report) {
+    return `${report.kind}:${report.id}`;
+  }
+
+  function reportCountsText(counts) {
+    return Object.entries(counts ?? {})
+      .filter(([, value]) => Number.isFinite(value) && value > 0)
+      .map(([status, value]) => `${CASE_STATUS_LABELS[status] ?? status} ${value}`)
+      .join(" · ");
+  }
+
+  function reportTotals(reports) {
+    const totals = {
+      total: reports.length,
+      ui: 0,
+      api: 0,
+      passed: 0,
+      failed: 0,
+      incomplete: 0,
+      cancelled: 0,
+    };
+    for (const report of reports) {
+      if (report.kind === "ui") totals.ui += 1;
+      if (report.kind === "api") totals.api += 1;
+      if (Object.hasOwn(totals, report.status)) totals[report.status] += 1;
+    }
+    return totals;
+  }
+
+  function openReports() {
+    view = "reports";
+    reportsData = null;
+    reportKindFilter = "all";
+    expandedReports.clear();
+    reportDetails.clear();
+    setStatus("");
+    render();
+    void refreshReports();
+  }
+
+  async function refreshReports() {
+    if (!selectedId) {
+      reportsData = null;
+      render();
+      return;
+    }
+    const projectId = selectedId;
+    busy = true;
+    render();
+    try {
+      const result = await api().listTestReports(projectId);
+      if (selectedId === projectId) {
+        reportsData = { projectId, ...result };
+      }
+    } catch (error) {
+      if (selectedId === projectId) {
+        reportsData = {
+          projectId,
+          available: false,
+          reports: [],
+          truncated: false,
+          invalid: 0,
+          totals: reportTotals([]),
+          error: errorMessage(error),
+        };
+      }
+    } finally {
+      busy = false;
+      if (selectedId === projectId) render();
+    }
+  }
+
+  function renderReports() {
+    const environment = environments.find((item) => item.id === selectedId);
+    setNav(environment ? `测试报告 · ${environment.name}` : "测试报告", () => go("home"), [
+      iconButton("刷新测试报告", "refresh", () => void refreshReports(), busy),
+    ]);
+
+    const panel = element("div", { class: "right-panel" });
+    if (environments.length === 0) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: "还没有项目环境。先添加项目，才能读取测试报告。",
+      }));
+      panel.append(statusLine());
+      content.append(panel);
+      return;
+    }
+
+    const select = element("select", {
+      class: "right-panel__select",
+      "aria-label": "选择项目环境",
+      disabled: busy,
+    });
+    for (const item of environments) {
+      select.append(element("option", {
+        value: item.id,
+        text: item.name,
+        selected: item.id === selectedId,
+      }));
+    }
+    select.value = selectedId ?? "";
+    select.addEventListener("change", () => {
+      selectedId = select.value;
+      data = null;
+      caseQuery = "";
+      expandedCases.clear();
+      editingAssertions = null;
+      collapsedModules.clear();
+      reportsData = null;
+      reportKindFilter = "all";
+      expandedReports.clear();
+      reportDetails.clear();
+      void refreshReports();
+    });
+
+    panel.append(element("div", { class: "right-panel__toolbar" },
+      select,
+      element("span", { class: "right-panel__root-label", text: "qa/*/runs" }),
+    ));
+
+    if (!reportsData || reportsData.projectId !== selectedId) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: busy ? "正在读取测试报告…" : "选择环境后读取测试报告。",
+      }));
+    } else if (reportsData.error) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: `读取失败：${reportsData.error}`,
+      }));
+    } else {
+      const reports = Array.isArray(reportsData.reports) ? reportsData.reports : [];
+      if (reports.length === 0) {
+        panel.append(element("p", {
+          class: "right-panel__empty",
+          text: reportsData.available
+            ? "当前项目还没有测试报告。执行 UI 或接口测试后，这里会显示批次结果。"
+            : "当前项目还没有测试运行目录（qa/ui/runs、qa/api/runs）。",
+        }));
+      } else {
+        const totals = reportsData.totals?.total === undefined
+          ? reportTotals(reports)
+          : reportsData.totals;
+        panel.append(renderReportSummary(totals), renderReportFilters(totals));
+        const filtered = reportKindFilter === "all"
+          ? reports
+          : reports.filter((report) => report.kind === reportKindFilter);
+        if (filtered.length === 0) {
+          panel.append(element("p", {
+            class: "right-panel__empty",
+            text: "没有该类型的测试报告。",
+          }));
+        } else {
+          const list = element("div", { class: "report-list" });
+          for (const report of filtered) list.append(renderReportCard(report));
+          panel.append(list);
+        }
+        if (reportsData.truncated) {
+          panel.append(element("p", {
+            class: "right-panel__note",
+            text: "测试报告超过 50 份，仅展示最近 50 份。",
+          }));
+        }
+      }
+      if (reportsData.invalid > 0) {
+        panel.append(element("p", {
+          class: "right-panel__note",
+          text: `${reportsData.invalid} 个批次缺少有效的 summary.json 或格式无效，未纳入报告。`,
+        }));
+      }
+    }
+
+    panel.append(statusLine());
+    content.append(panel);
+  }
+
+  function renderReportSummary(totals) {
+    const summary = element("div", { class: "report-summary" });
+    const stat = (value, label) => element("span", { class: "report-summary__stat" },
+      element("strong", { text: String(value) }),
+      label,
+    );
+    summary.append(
+      stat(totals.total, "份报告"),
+      stat(totals.passed, "通过"),
+      stat(totals.failed, "失败"),
+    );
+    const other = (totals.incomplete ?? 0) + (totals.cancelled ?? 0);
+    if (other > 0) summary.append(stat(other, "其他"));
+    return summary;
+  }
+
+  function renderReportFilters(totals) {
+    const filters = element("div", {
+      class: "report-filter",
+      role: "group",
+      "aria-label": "筛选测试报告类型",
+    });
+    const options = [
+      ["all", "全部", totals.total],
+      ["ui", "UI", totals.ui ?? 0],
+      ["api", "接口", totals.api ?? 0],
+    ];
+    for (const [value, label, count] of options) {
+      const button = element("button", {
+        type: "button",
+        class: "report-filter__button",
+        "aria-pressed": String(reportKindFilter === value),
+        onclick: () => {
+          if (reportKindFilter === value) return;
+          reportKindFilter = value;
+          render();
+        },
+      },
+      element("span", { text: label }),
+      element("span", { class: "report-filter__count", text: String(count) }),
+      );
+      filters.append(button);
+    }
+    return filters;
+  }
+
+  function renderReportCard(report) {
+    const key = reportKey(report);
+    const expanded = expandedReports.has(key);
+    const article = element("article", {
+      class: "report-card",
+      dataset: { kind: report.kind, status: report.status },
+    });
+    const head = element("button", {
+      type: "button",
+      class: "report-card__head",
+      "aria-expanded": String(expanded),
+    });
+    const line = element("span", { class: "report-card__line" },
+      element("span", {
+        class: "report-kind",
+        dataset: { kind: report.kind },
+        text: REPORT_KIND_LABELS[report.kind] ?? report.kind,
+      }),
+      element("span", {
+        class: "report-card__title",
+        text: report.runId || report.id,
+      }),
+      element("span", {
+        class: "case-run",
+        dataset: { status: report.status },
+        text: RUN_STATUS_LABELS[report.status] ?? report.status,
+      }),
+      element("span", { class: "report-card__chevron", "aria-hidden": "true", text: "›" }),
+    );
+    const meta = [
+      formatTime(report.finishedAt),
+      report.testCount == null ? "用例数未知" : `${report.testCount} 例`,
+      reportCountsText(report.counts),
+    ].filter(Boolean).join(" · ");
+    head.append(line, element("span", { class: "report-card__meta", text: meta }));
+
+    const body = element("div", { class: "report-card__body" });
+    body.hidden = !expanded;
+    if (expanded) paintReportBody(body, key);
+    head.addEventListener("click", () => {
+      if (expandedReports.has(key)) {
+        expandedReports.delete(key);
+        body.hidden = true;
+        head.setAttribute("aria-expanded", "false");
+        return;
+      }
+      expandedReports.add(key);
+      body.hidden = false;
+      head.setAttribute("aria-expanded", "true");
+      if (reportDetails.get(key)?.error) reportDetails.delete(key);
+      void loadReportDetail(report, body);
+    });
+    article.append(head, body);
+    return article;
+  }
+
+  function paintReportBody(body, key) {
+    const cached = reportDetails.get(key);
+    body.replaceChildren();
+    if (!cached || cached.loading) {
+      body.append(element("p", { class: "right-panel__empty", text: "正在读取报告详情…" }));
+    } else if (cached.error) {
+      body.append(element("p", { class: "right-panel__empty", text: `读取失败：${cached.error}` }));
+    } else if (cached.detail) {
+      body.append(renderReportDetail(cached.detail));
+    }
+  }
+
+  async function loadReportDetail(report, body) {
+    const key = reportKey(report);
+    if (reportDetails.has(key)) {
+      paintReportBody(body, key);
+      return;
+    }
+    const projectId = selectedId;
+    reportDetails.set(key, { loading: true });
+    paintReportBody(body, key);
+    try {
+      const detail = await api().getTestReport(projectId, report.kind, report.id);
+      if (!detail || typeof detail !== "object") throw new Error("测试报告内容不可用。");
+      if (selectedId === projectId) reportDetails.set(key, { detail });
+    } catch (error) {
+      if (selectedId === projectId) reportDetails.set(key, { error: errorMessage(error) });
+    }
+    if (selectedId === projectId) paintReportBody(body, key);
+  }
+
+  function renderReportDetail(detail) {
+    const box = element("div", { class: "report-detail" });
+    const facts = element("div", { class: "report-detail__facts" });
+    const fact = (label, value) => element("span", { class: "report-fact" },
+      element("span", { class: "report-fact__label", text: label }),
+      element("span", {
+        class: "report-fact__value",
+        text: value === "" || value === null || value === undefined ? "—" : String(value),
+      }),
+    );
+    facts.append(
+      fact("用例", detail.testCount == null ? "未知" : `${detail.testCount} 例`),
+      fact("耗时", formatDuration(detail.durationMs)),
+      fact("清理", CLEANUP_LABELS[detail.cleanup] ?? detail.cleanup),
+      fact("Trace", TRACE_POLICY_LABELS[detail.tracePolicy] ?? detail.tracePolicy),
+    );
+    box.append(facts);
+
+    if (detail.targetUrl) {
+      box.append(element("p", {
+        class: "report-detail__target",
+        text: `目标：${detail.targetUrl}`,
+      }));
+    }
+    const caseIds = detail.caseIds ?? [];
+    if (caseIds.length > 0) {
+      const shown = caseIds.slice(0, 3).join("、");
+      box.append(element("p", {
+        class: "report-detail__meta",
+        text: `范围：${shown}${caseIds.length > 3 ? ` 等 ${caseIds.length} 个` : ""}`,
+      }));
+    }
+    const counts = reportCountsText(detail.counts);
+    if (counts) {
+      box.append(element("p", { class: "report-detail__meta", text: `统计：${counts}` }));
+    }
+
+    const tests = detail.tests ?? [];
+    if (tests.length === 0) {
+      box.append(element("p", { class: "report-detail__empty", text: "没有逐例结果。" }));
+    } else {
+      const list = element("ol", { class: "report-tests" });
+      for (const test of tests) list.append(renderReportTest(test));
+      box.append(list);
+      if (detail.testsTruncated) {
+        box.append(element("p", { class: "right-panel__note", text: "仅展示前 100 条逐例结果。" }));
+      }
+    }
+
+    const problems = detail.problems ?? [];
+    if (problems.length > 0) {
+      box.append(element("p", { class: "report-detail__section-title", text: "摘要问题" }));
+      const list = element("ul", { class: "report-problems" });
+      for (const problem of problems) list.append(element("li", { text: problem }));
+      box.append(list);
+    }
+
+    const versions = detail.versions ?? {};
+    const versionParts = [
+      versions.node ? `Node ${versions.node}` : "",
+      versions.playwright ? `Playwright ${versions.playwright}` : "",
+      versions.files ? `版本文件 ${versions.files}` : "",
+    ].filter(Boolean);
+    if (versionParts.length > 0) {
+      box.append(element("p", {
+        class: "report-detail__meta",
+        text: `运行环境：${versionParts.join(" · ")}`,
+      }));
+    }
+    if (detail.limits) {
+      box.append(element("p", { class: "report-detail__limits", text: detail.limits }));
+    }
+    if (detail.summaryPath) {
+      box.append(element("p", {
+        class: "report-detail__path",
+        text: `报告文件：${detail.summaryPath}`,
+      }));
+    }
+    return box;
+  }
+
+  function renderReportTest(test) {
+    const item = element("li", {
+      class: "report-test",
+      dataset: { status: test.status },
+    });
+    item.append(
+      element("div", { class: "report-test__head" },
+        element("span", {
+          class: "report-test__status",
+          dataset: { status: test.status },
+          text: CASE_STATUS_LABELS[test.status] ?? test.status,
+        }),
+        element("span", { class: "report-test__name", text: test.title }),
+        element("span", {
+          class: "report-test__time",
+          text: test.durationMs === null ? "" : formatDuration(test.durationMs),
+        }),
+      ),
+    );
+    const where = test.file
+      ? `${test.file}${test.line === null ? "" : `:${test.line}`}`
+      : "";
+    const evidence = (test.attachments ?? []).map((attachment) => attachment.name);
+    const meta = [
+      where,
+      evidence.length > 0
+        ? `证据：${evidence.slice(0, 3).join("、")}${evidence.length > 3 ? ` 等 ${evidence.length} 项` : ""}`
+        : "",
+    ].filter(Boolean);
+    if (meta.length > 0) {
+      item.append(element("p", { class: "report-test__meta", text: meta.join(" · ") }));
+    }
+    if (test.error) {
+      item.append(element("p", { class: "report-test__error", text: test.error }));
+    }
+    return item;
+  }
+
   function confirmAction({ title, message, confirmLabel }) {
     if (!confirmDialog) return Promise.resolve(window.confirm(message));
     const titleNode = confirmDialog.querySelector("#right-panel-confirm-title");
@@ -1817,5 +2280,5 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (view === "file" || view === "files") go("home");
   }
 
-  return { open, refresh: open, openFile, openFiles: openTree, resetWorkspaceView };
+  return { open, refresh: open, openFile, openFiles: openTree, openReports, resetWorkspaceView };
 }

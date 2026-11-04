@@ -80,7 +80,7 @@ async function main() {
   try {
     await wait(`window.__ready===true || window.__error!==undefined`);
     assert.equal(await run(`window.__error ?? null`), null);
-    await check("打开侧栏显示工作台卡片", `document.querySelectorAll('.right-panel__card').length===4`);
+    await check("打开侧栏显示工作台卡片", `document.querySelectorAll('.right-panel__card').length===5`);
 
     await run(`[...document.querySelectorAll('.right-panel__card')].find((button)=>button.textContent.includes('测试数据')).click()`);
     await wait(`document.querySelector('.case-catalog')!==null`);

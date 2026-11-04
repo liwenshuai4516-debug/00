@@ -56,7 +56,7 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目
    {"status":"passed","summaryFile":".../summary.json","testCount":3,"counts":{"passed":3},"exitCode":0,"cleanup":"deleted","problems":[]}
    ```
 3. 默认只读 `summaryFile` 的 `status`、`testCount`、`counts`、`problems`、`tests`；不要展开 `stdout.log`、`results.json` 或源码，除非需要定位失败。
-4. 报告：批次状态、用例数、通过/失败/跳过、失败用例与摘要问题、runId/summary 路径。退出码非 0 或 `status` 非 `passed` 时不得说通过。
+4. 报告：加载 `qa-test-report`，按统一 `qa-report/v1` 状态、通过条件和证据顺序交付；UI 批次额外说明 runId、summary 路径和 tracePolicy。退出码非 0 或 `status` 非 `passed` 时不得说通过。
 5. 不做自动重跑；需要新批次时重新执行命令。用例脚本已变更时 CLI 会拒绝，先回到录制/ finalize 流程。
 
 ## 定时执行

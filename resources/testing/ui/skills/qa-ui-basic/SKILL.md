@@ -93,11 +93,10 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 
 ## 7. 输出测试结果（仅执行回放后进入）
 
-读取 summaryFile、summaryDocument、manifestFile 及原生 resultsFile/HTML；交付项目和工作区、范围/角色、脚本与文档、执行版本、runId、逐例统计、失败步骤/附件、清理状态及未覆盖项。
-只有至少一条测试、所选脚本均有结果、全部实际 passed、退出码 0、无原生错误/证据缺失/版本变化/清理问题才通过。
-保留 failed、flaky、skipped、expected-failure、cancelled、not-run、unknown；缺失报告为 incomplete，数量未知，不能记为零失败即通过。断言失败不足以直接推定产品缺陷，根因不明写未知。
-带私有登录态时关闭 trace，避免 context-options 归档认证内容，保留原生报告和失败截图并披露 tracePolicy。报告和截图仍可能有业务数据。
-版本清单覆盖所选脚本、用例说明、资产索引、配置和执行器，不等于完整导入依赖闭包或被测部署版本已验证。
+加载 `qa-test-report`（UI 与接口测试共用的报告规程），按 `qa-report/v1` 的统一状态、通过条件、证据和输出顺序交付；本流程只补充 UI 专属来源：
+- 读取 summaryFile、summaryDocument、manifestFile 及原生 resultsFile/HTML；UI 批次摘要位于 `qa/ui/runs/<runId>/summary.json`，`kind` 为 `ui`。
+- 带私有登录态时 `tracePolicy` 为 `disabled-for-private-auth`；失败截图仍可能有业务数据，按测试数据管理。
+- 右侧栏「测试报告」直接读取 `qa/ui/runs` 与 `qa/api/runs`，不需要另写一份报告；不要把批量结果或凭据写入日志。
 
 ## 异常与兜底（七步之外，按表处理）
 

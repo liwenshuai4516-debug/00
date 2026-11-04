@@ -155,6 +155,8 @@ async function run(taskFile) {
   for (const test of tests) counts[test.status] = (counts[test.status] ?? 0) + 1;
   const passed = exitCode === 0 && !cancelled && problems.length === 0 && tests.length > 0 && tests.every((test) => test.status === "passed");
   const summary = {
+    schema: "qa-report/v1",
+    kind: "ui",
     runId: task.runId, status: cancelled ? "cancelled" : passed ? "passed" : report && problems.length === 0 ? "failed" : "incomplete",
     startedAt, finishedAt: new Date().toISOString(), targetUrl: task.targetUrl,
     project: task.project ?? null, workspace: task.workspace, dataDir: task.dataDir ?? null,

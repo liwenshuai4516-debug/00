@@ -1083,6 +1083,292 @@
   color: var(--muted);
 }
 
+/* ---------- 测试报告：UI 与接口测试共用的批次结果 ---------- */
+
+.report-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.report-summary__stat strong {
+  margin-right: 2px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.report-filter {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--page);
+}
+
+.report-filter__button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.report-filter__button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.report-filter__count {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.report-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.report-card__head:hover {
+  background: var(--hover);
+}
+
+.report-card__head:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.report-card__line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.report-kind {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--focus) 45%, var(--border));
+  border-radius: 4px;
+  color: var(--focus);
+  font-size: 9px;
+}
+
+.report-kind[data-kind="api"] {
+  border-color: color-mix(in srgb, var(--muted) 45%, var(--border));
+  color: var(--muted);
+}
+
+.report-card__title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-card .case-run {
+  flex: none;
+}
+
+.report-card__chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.report-card__head[aria-expanded="true"] .report-card__chevron {
+  transform: rotate(90deg);
+}
+
+.report-card__meta {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.report-card__body {
+  padding: 0 12px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.report-detail__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 9px 0 4px;
+}
+
+.report-fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 6px;
+  background: var(--page);
+  font-size: 10px;
+}
+
+.report-fact__label {
+  color: var(--muted);
+}
+
+.report-fact__value {
+  overflow-wrap: anywhere;
+}
+
+.report-detail__target,
+.report-detail__meta,
+.report-detail__limits,
+.report-detail__path,
+.report-detail__section-title {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.report-detail__target {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.report-detail__section-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.report-detail__empty {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.report-detail__path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.report-tests {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-test {
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+  border-radius: 8px;
+  background: var(--page);
+}
+
+.report-test__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+}
+
+.report-test__status {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.report-test__status[data-status="passed"] {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  color: var(--focus);
+}
+
+.report-test__status[data-status="failed"],
+.report-test__status[data-status="timedOut"] {
+  border-color: color-mix(in srgb, var(--error-border) 55%, var(--border));
+  color: var(--error-border);
+}
+
+.report-test__name {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.report-test__time {
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.report-test__meta {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.report-test__error {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--error-border);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.report-problems {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--error-border);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.report-problems li {
+  overflow-wrap: anywhere;
+}
+
 /* ---------- 删除确认 ---------- */
 
 .right-panel-confirm {

@@ -10,9 +10,10 @@ node_modules/
 /agent-save-example.txt
 /qa-create-demo.txt
 /qa-empty-demo.txt
-# UI 测试运行证据与浏览器临时输出
+# UI/接口测试运行证据与浏览器临时输出
 /qa/ui/recordings/
 /qa/ui/runs/
+/qa/api/runs/
 /.playwright-cli/
 /test-results/
 /playwright-report/

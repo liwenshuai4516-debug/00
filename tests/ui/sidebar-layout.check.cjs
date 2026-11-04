@@ -383,9 +383,9 @@ async function main() {
     await click("#right-sidebar-toggle");
     await wait(`Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424`);
     await check("右侧边栏按 45% 与中栏 400 约束打开", `document.getElementById('app-right-sidebar').hasAttribute('data-open')&&document.getElementById('app-right-sidebar').getAttribute('aria-hidden')===null&&document.getElementById('right-sidebar-toggle').hidden&&document.activeElement.id==='right-sidebar-close'&&Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424&&document.documentElement.scrollWidth<=innerWidth`);
-    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='1 条用例'`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===5&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='1 条用例'`);
     if (process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    await check("右侧栏工作台显示 logo 与四张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据,文件浏览,浏览器'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='1 条用例'`);
+    await check("右侧栏工作台显示 logo 与五张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据,测试报告,文件浏览,浏览器'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='1 条用例'&&document.querySelectorAll('.right-panel__card-meta')[2].textContent==='UI / 接口'`);
 
     // 浏览器：空状态、拒绝非 http(s)、加载本地页面并同步标题与地址。
     await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('浏览器')).click()`);
@@ -479,7 +479,7 @@ async function main() {
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelector('.right-panel__hero')!==null`);
     // 卡片在工作台加载完成后才可点击，避免时序波动导致点击落空。
-    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card')[0].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===5&&document.querySelectorAll('.right-panel__card')[0].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
     await click('.right-panel__card');
     await wait(`document.querySelectorAll('.right-panel__env').length===2`);
     await check("项目环境列出地址、账号和密码状态", `document.querySelector('.right-panel__env-url').textContent==='https://demo.invalid'&&document.querySelector('.right-panel__env-badge').textContent==='密码已配置'&&document.querySelector('.right-panel__env-meta').textContent==='账号：demo'`);
@@ -494,7 +494,7 @@ async function main() {
     await check("编辑项目环境保存后与后端配置同步", `document.querySelector('.right-panel__env-url').textContent==='https://edited.invalid'&&document.querySelector('.right-panel__status').textContent.includes('已保存')`);
     assert.equal(environments[0].address, "https://edited.invalid");
     await click('.right-panel__nav .right-sidebar__icon-button');
-    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card')[1].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===5&&document.querySelectorAll('.right-panel__card')[1].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
     await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
     await wait(`document.querySelectorAll('.case-card').length===1`);
     await check("测试数据按模块和用例展示最近结果", `document.querySelectorAll('.case-module').length===1&&document.querySelector('.case-module__name').textContent==='演示模块'&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-run').textContent==='通过'&&document.querySelector('.case-card__status').textContent==='通过'`);
@@ -503,7 +503,7 @@ async function main() {
     await run(`document.querySelector('.case-card__head').click()`);
     await check("展开用例显示断言与来源", `!document.querySelector('.case-card__body').hidden&&document.querySelector('.case-card__body').textContent.includes('演示基线')`);
     await click('.right-panel__nav .right-sidebar__icon-button');
-    await wait(`document.querySelectorAll('.right-panel__card').length===4`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===5`);
     await click('.right-panel__card');
     await wait(`document.querySelectorAll('.right-panel__env').length===2`);
     await run(`document.querySelectorAll('.right-panel__env')[1].querySelector('.right-panel__action--danger').click()`);

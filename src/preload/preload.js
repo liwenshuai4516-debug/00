@@ -249,6 +249,12 @@ contextBridge.exposeInMainWorld("agent", {
   updateTestCaseAssertions: (projectId, assetPath, caseName, assertions) =>
     ipcRenderer.invoke("agent:update-test-case-assertions", projectId, assetPath, caseName, assertions),
 
+  // 测试报告只读；页面只提交项目编号、类型和批次目录名。
+  listTestReports: (projectId) =>
+    ipcRenderer.invoke("agent:list-test-reports", projectId),
+  getTestReport: (projectId, kind, id) =>
+    ipcRenderer.invoke("agent:get-test-report", projectId, kind, id),
+
   // 页面只提交编号，工作目录由主进程从项目记录读取。
   openProject: (projectId) =>
     ipcRenderer.invoke("agent:open-project", projectId),

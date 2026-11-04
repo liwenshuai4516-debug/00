@@ -1,8 +1,10 @@
 const { createTestDataService } = require("./test-data-service.js");
+const { createTestReportService } = require("./test-report-service.js");
 
 // 系统窗口与会话服务由启动入口注入；页面只提交项目编号。
 function createProjectService(projectStore, chooseDirectory, sessionService) {
   const testData = createTestDataService(projectStore);
+  const testReports = createTestReportService(projectStore);
 
   function listProjects() {
     return projectStore.list();
@@ -74,6 +76,14 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return testData.updateAssertions(projectId, assetPath, caseName, assertions);
   }
 
+  function listTestReports(projectId) {
+    return testReports.list(projectId);
+  }
+
+  function getTestReport(projectId, kind, id) {
+    return testReports.get(projectId, kind, id);
+  }
+
   return {
     listProjects,
     addProject,
@@ -86,6 +96,8 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     listTestData,
     deleteTestData,
     updateTestCaseAssertions,
+    listTestReports,
+    getTestReport,
   };
 }
 

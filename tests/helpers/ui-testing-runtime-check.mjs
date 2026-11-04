@@ -41,6 +41,7 @@ if (scenario === "resources") {
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-basic").length, expected);
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-record").length, expected);
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-execute").length, expected);
+      assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-test-report").length, expected);
       assert.deepEqual(diagnostics, []);
     } finally {
       await lifecycle.closePiSession(session);
@@ -204,6 +205,8 @@ test("button", async ({ page }) => {
     assert.equal(result.stats.unexpected, 0);
     assert.deepEqual(result.errors, []);
     const summary = JSON.parse(await fs.readFile(replay.summaryFile, "utf8"));
+    assert.equal(summary.schema, "qa-report/v1");
+    assert.equal(summary.kind, "ui");
     assert.equal(summary.status, "passed");
     assert.equal(summary.cleanup, "deleted");
     assert.equal(summary.tracePolicy, "disabled-for-private-auth");
@@ -377,6 +380,8 @@ if (scenario === "login-batch") {
     await assert.rejects(runFile("/bin/bash", ["-c", batch.replayCommand], { cwd: workspace, timeout: 90_000 }), (error) => error.code === 1);
     assert.deepEqual(await authDirs(), []);
     const summary = JSON.parse(await fs.readFile(batch.summaryFile, "utf8"));
+    assert.equal(summary.schema, "qa-report/v1");
+    assert.equal(summary.kind, "ui");
     assert.equal(summary.status, "failed");
     assert.deepEqual(summary.counts, { passed: 2, failed: 1, skipped: 1 });
     assert.equal(summary.testCount, 4);
@@ -484,8 +489,9 @@ if (scenario === "auto-login") {
     const captcha = await call("qa_ui_login", { action: "auto", projectRef: captchaProject.projectRef });
     assert.equal(captcha.details.status, "manual-required");
     assert.match(captcha.details.reason, /验证码/);
+    assert.equal(captcha.details.loginId, undefined, "无头模式不保留需要接管的手动登录窗口");
     assert.equal(submissions, 0);
-    await call("qa_ui_login", { action: "cancel", loginId: captcha.details.loginId });
+    assert.deepEqual(await fs.readdir(base).then((names) => names.filter((name) => name.startsWith("qa-ui-auth-"))), []);
     const invalidProject = (await call("qa_ui_project", { targetUrl: origin + "/invalid" })).details;
     const invalid = await call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef });
     assert.equal(invalid.details.status, "manual-required");
@@ -493,7 +499,7 @@ if (scenario === "auto-login") {
     await assert.rejects(call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef }), /不能重复提交/);
     assert.equal(submissions, 1);
     assert.ok(!JSON.stringify(invalid).includes("fixture-private-password"));
-    await call("qa_ui_login", { action: "cancel", loginId: invalid.details.loginId });
+    assert.deepEqual(await fs.readdir(base).then((names) => names.filter((name) => name.startsWith("qa-ui-auth-"))), []);
     const another = path.join(base, "切换后的工作区");
     await fs.mkdir(another);
     await assert.rejects(call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef }, another), /工作区已切换/);
