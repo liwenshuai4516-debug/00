@@ -42,6 +42,7 @@ for (const template of TASK_TEMPLATES) {
 // 页面忙碌与输入就绪分别管理，保存确认不能解除其他操作的忙碌状态。
 let extensionUiPanel;
 let sendQueueView = null;
+let submitMode = "queue";
 let pageBusy = true;
 let pageGenerating = false;
 
@@ -225,6 +226,23 @@ sendQueueView = createSendQueue(document.getElementById("send-queue"), {
   },
   onSendNext: () => drainSendQueue(),
 });
+
+async function submitSteer(text) {
+  input.value = "";
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  try {
+    const result = await window.agent.steerMessage(text);
+    if (result?.queued) {
+      sendQueueView.add(text, { mode: "steer" });
+      setRequestStatus("插话已排队，将在当前轮结束后投递。");
+      return;
+    }
+  } catch {
+    // 生成已结束时回退到待发送队列，原文不丢。
+  }
+  sendQueueView.add(text);
+  setRequestStatus("插话未生效，已加入待发送队列。");
+}
 
 function drainSendQueue() {
   if (pageBusy || closing || archiveSyncPending) return;
@@ -1498,6 +1516,9 @@ input.addEventListener("keydown", (event) => {
   // 生成中允许提交到待发送队列；其他禁用原因仍然拦截。
   if (sendButton.disabled && !pageBusy) return;
 
+  // 生成中 ⌘/Ctrl+Enter 交给 Pi 的 steer；其余情况仍是普通发送或排队。
+  submitMode = pageBusy && pageGenerating && (event.metaKey || event.ctrlKey) ? "steer" : "queue";
+
   // 键盘与发送按钮共用 submit，统一处理校验和请求状态。
   form.requestSubmit(sendButton);
 });
@@ -1516,8 +1537,15 @@ form.addEventListener("submit", async (event) => {
     }
     // 生成中 pendingSend 指向当前请求，不能据此拒绝排队；只要求输入已加载且无错误。
     if (!composerState.loaded || composerState.error || archiveSyncPending) {
+      submitMode = "queue";
       return;
     }
+    if (submitMode === "steer" && pageGenerating) {
+      submitMode = "queue";
+      void submitSteer(submitted);
+      return;
+    }
+    submitMode = "queue";
     // 排队项在真正发送时由正常链路记录历史，避免把未发送的内容算进去。
     sendQueueView.add(submitted);
     input.value = "";
@@ -1589,6 +1617,14 @@ form.addEventListener("submit", async (event) => {
   });
   const unsubscribeOutput = window.agent.onOutputEvent?.((output) => {
     if ((output.requestSessionId ?? output.sessionId) !== ticket.sessionId) return;
+    if (output.type === "queue_update") return;
+    if (output.type === "steer_delivered") {
+      // 插话由 Pi 投递到当前轮，页面在此时补真实位置上的用户消息。
+      sendQueueView?.deliverSteer(output.text);
+      if (outputTrace) outputTrace.insertUserMessage(output.text);
+      else addMessage("user", output.text);
+      return;
+    }
     nativeOutputReceived = true;
     outputTrace.accept(output);
     todoDock.accept(output);
@@ -1744,6 +1780,8 @@ form.addEventListener("submit", async (event) => {
     await refreshUnsentSessions();
     setBusy(false);
     input.focus();
+    // 本轮结束仍未投递的插话转回待发送队列，由现有规则决定是否续发。
+    for (const text of sendQueueView?.flushSteers() ?? []) sendQueueView.add(text);
     if (drainAfter) window.setTimeout(drainSendQueue, 0);
   }
 });

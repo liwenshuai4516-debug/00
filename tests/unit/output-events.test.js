@@ -102,3 +102,44 @@ test("输出只发送来源窗口，预加载固定通道不暴露 Electron 事�
   assert.deepEqual(events, [[{ type: "turn_start" }]]);
   assert.deepEqual(ipcRenderer.listeners("agent:output-event"), [unrelated]);
 });
+
+test("插话投递：队列移除后再出现用户消息时补发投递事件", () => {
+  const project = createOutputEventAdapter(() => session, () => null, "测试");
+  assert.deepEqual(project({ type: "queue_update", steering: ["插话一"] }), { type: "queue_update", steering: ["插话一"] });
+  // 正常发送的用户消息由页面本地回显，不重复补发。
+  assert.equal(project({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "正常发送" }] } }), null);
+  // Pi 在投递前先发 queue_update 移除条目，随后才是用户消息。
+  assert.deepEqual(project({ type: "queue_update", steering: [] }), { type: "queue_update", steering: [] });
+  assert.deepEqual(
+    project({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "插话一" }] } }),
+    { type: "steer_delivered", text: "插话一" },
+  );
+  // 只补一次，后续同样文本的用户消息不再触发。
+  assert.equal(project({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "插话一" }] } }), null);
+});
+
+test("生成中插话只使用活动请求的会话，未生成时拒绝", async () => {
+  const calls = [];
+  let finish;
+  const gate = new Promise((resolve) => { finish = resolve; });
+  const session = { sessionId: "s1", abort: () => finish() };
+  const service = createChatService(
+    { getSession: async () => session },
+    async () => async () => { await gate; },
+    undefined,
+    undefined,
+    async () => async (target, text) => {
+      calls.push([target, text]);
+      return { disposition: "queued" };
+    },
+  );
+
+  await assert.rejects(() => service.steer("太早"), /当前没有正在生成的回复/);
+  const pending = service.send("开始", () => {}, () => {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(await service.steer("插话"), { queued: true });
+  assert.deepEqual(calls, [[session, "插话"]]);
+  await service.stop();
+  await pending;
+  await assert.rejects(() => service.steer("结束后"), /当前没有正在生成的回复/);
+});

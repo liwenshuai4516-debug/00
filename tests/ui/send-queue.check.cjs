@@ -18,6 +18,7 @@ const sent = [];
 let busy = false;
 let gate;
 let stopCalls = 0;
+const steers = [];
 const draft = () => drafts.get(sessionId) ?? { sessionId, text: "", revision: 0 };
 const assistant = (content) => ({
   role: "assistant", content, provider: "mock", model: "offline", stopReason: "stop",
@@ -65,6 +66,9 @@ const chat = {
       // 模拟真实流式延迟：事件先于 invoke 回复到达页面。
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
+    if (sent.length === 3 && steers.length > 0) {
+      emit({ type: "steer_delivered", text: steers.shift() });
+    }
     emit({ type: "message_end", message });
     emit({ type: "turn_end", message });
     emit({ type: "agent_end", willRetry: false });
@@ -75,6 +79,10 @@ const chat = {
   stop: async () => {
     stopCalls += 1;
     gate?.resolve();
+  },
+  steer: async (text) => {
+    steers.push(text);
+    return { queued: true };
   },
 };
 registerAgentIpc(ipcMain, session, chat, {}, {}, {}, {}, { listProjects: async () => [] }, composer, {});
@@ -143,6 +151,14 @@ async function main() {
     await until("!document.getElementById('send-button').disabled");
     await submit();
     await until("!document.getElementById('stop-button').disabled");
+
+    // 生成中 ⌘+Enter 插话：交给 Pi 排队，投递后补到消息区。
+    await type("插话内容");
+    await js("document.getElementById('message-input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true,metaKey:true}))");
+    await until("document.querySelector('.send-queue__badge')?.textContent==='插话'");
+    assert.equal(await js("document.getElementById('message-input').value"), "");
+    assert.equal(sent.length, 3, "插话不应新建请求");
+
     await js("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
     await new Promise((resolve) => setTimeout(resolve, 700));
     assert.equal(stopCalls, 0, "单次 Esc 不应停止");
@@ -152,7 +168,16 @@ async function main() {
     for (let i = 0; i < 200 && stopCalls === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(stopCalls, 1, "连续两次 Esc 应调用一次停止");
     await idle();
+    await until("document.querySelectorAll('.send-queue__badge').length===0");
+    assert.match(await js("document.getElementById('messages').textContent"), /插话内容/);
+    // 插话消息追加在运行容器内、当前过程之后，后续回复会排在它后面。
+    assert.equal(await js(`(() => {
+      const user = document.querySelector('.output-run .chat-message[data-role="user"]');
+      const trace = user?.parentElement.querySelector('.output-trace');
+      return Boolean(user) && Boolean(trace) && Boolean(trace.compareDocumentPosition(user) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })()`), true);
     console.log("通过：连按两次 Esc 停止生成，单次与组词中的 Esc 不触发");
+    console.log("通过：生成中 ⌘+Enter 作为插话排队，投递后落到消息区");
 
     // 输入历史：空输入框 ↑ 调出已发送原文，↓ 回到空白；有文字时不接管。
     await js("document.getElementById('message-input').focus()");

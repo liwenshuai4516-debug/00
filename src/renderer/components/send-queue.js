@@ -35,6 +35,16 @@ export function createSendQueue(root, { onEdit, onSendNext } = {}) {
     const list = element("ol", "send-queue__list");
     for (const item of items) {
       const row = element("li", "send-queue__item");
+      if (item.mode === "steer") {
+        // 插话已经交给 Pi 排队：只展示待投递状态，不提供本地编辑或移除。
+        row.dataset.mode = "steer";
+        const badge = element("span", "send-queue__badge", "插话");
+        const text = element("p", "send-queue__text", item.text);
+        row.append(badge, text);
+        list.append(row);
+        continue;
+      }
+
       row.append(element("p", "send-queue__text", item.text));
 
       const actions = element("div", "send-queue__actions");
@@ -57,7 +67,7 @@ export function createSendQueue(root, { onEdit, onSendNext } = {}) {
     }
 
     const footer = element("div", "send-queue__footer");
-    if (!busy && typeof onSendNext === "function") {
+    if (!busy && typeof onSendNext === "function" && items.some((item) => item.mode !== "steer")) {
       const send = element("button", "send-queue__send", "发送下一条");
       send.type = "button";
       send.addEventListener("click", () => onSendNext());
@@ -70,13 +80,36 @@ export function createSendQueue(root, { onEdit, onSendNext } = {}) {
   render();
 
   return {
-    add(text) {
+    add(text, options = {}) {
       const value = typeof text === "string" ? text.trim() : "";
       if (value === "") return null;
-      const item = { id: `queue-${++serial}`, text: value };
+      const item = {
+        id: `queue-${++serial}`,
+        text: value,
+        mode: options.mode === "steer" ? "steer" : "queue",
+      };
       items.push(item);
       render();
       return item;
+    },
+    // 插话项由 Pi 排队，投递后由事件移除。
+    deliverSteer(text) {
+      const value = typeof text === "string" ? text.trim() : "";
+      const index = items.findIndex((item) => item.mode === "steer" && item.text === value);
+      if (index < 0) return false;
+      items.splice(index, 1);
+      render();
+      return true;
+    },
+    // 请求结束仍未投递的插话移出面板，由调用方转回待发送队列。
+    flushSteers() {
+      const steers = items.filter((item) => item.mode === "steer").map((item) => item.text);
+      if (steers.length === 0) return steers;
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        if (items[index].mode === "steer") items.splice(index, 1);
+      }
+      render();
+      return steers;
     },
     remove(id) {
       const removed = remove(id);

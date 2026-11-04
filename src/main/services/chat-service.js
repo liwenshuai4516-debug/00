@@ -6,11 +6,17 @@ async function loadDefaultSender() {
   return sendMessage;
 }
 
+async function loadDefaultSteer() {
+  const { steerMessage } = await import("../pi-agent.mjs");
+  return steerMessage;
+}
+
 function createChatService(
   sessionService,
   loadSender = loadDefaultSender,
   proposalStore = createProposalStore(),
   sessionStateStore,
+  loadSteer = loadDefaultSteer,
 ) {
   let activeRequest;
 
@@ -203,6 +209,16 @@ function createChatService(
     }
   }
 
+  // 生成中插话：只对当前活动请求的会话生效，不新建请求或输出订阅。
+  async function steer(text) {
+    const request = activeRequest;
+    if (!request || !request.session) throw new Error("当前没有正在生成的回复。");
+    if (typeof text !== "string" || text.trim() === "") throw new Error("请输入插话内容。");
+    const steerMessage = await loadSteer();
+    const result = await steerMessage(request.session, text);
+    return { queued: result?.disposition === "queued" };
+  }
+
   async function stop() {
     const request = activeRequest;
     if (!request) return;
@@ -242,6 +258,7 @@ function createChatService(
   }
   return {
     send,
+    steer,
     stop,
     isBusy,
     getProposal,

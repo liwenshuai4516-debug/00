@@ -330,6 +330,9 @@ function registerAgentIpc(
     sessionService.cancelExtensionUi?.();
     return chatService.stop();
   });
+
+  // 生成中插话：只提交文本，是否接受由 Pi 的 steer 语义决定。
+  ipcMain.handle("agent:steer-message", (_event, text) => chatService.steer(text));
 }
 
 module.exports = { registerAgentIpc };

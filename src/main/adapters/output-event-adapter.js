@@ -74,6 +74,9 @@ function skillForRead(toolName, args, skills = [], cwd = process.cwd()) {
 function createOutputEventAdapter(getSession, parseSkillBlock, input) {
   const requestedSkill = input.match(/^\/skill:([^\s]+)(?:\s|$)/)?.[1];
   const calls = new Map();
+  // 追踪生成中插话的排队与投递：Pi 在投递前先发 queue_update 移除条目。
+  const steering = new Set();
+  const delivered = new Set();
   return event => {
     const session = getSession();
     const skills = session.resourceLoader?.getSkills?.().skills ?? [];
@@ -85,6 +88,21 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
       type: event.type, message: outputMessage(event.message),
       toolResults: (event.toolResults ?? []).map(outputMessage),
     };
+    if (event.type === "queue_update") {
+      const next = new Set((event.steering ?? []).map(String));
+      for (const text of steering) if (!next.has(text)) delivered.add(text);
+      steering.clear();
+      for (const text of next) steering.add(text);
+      return { type: "queue_update", steering: [...next] };
+    }
+    if (event.type === "message_start" && event.message?.role === "user") {
+      const text = typeof event.message.content === "string"
+        ? event.message.content
+        : (event.message.content ?? []).filter(block => block.type === "text").map(block => block.text).join("");
+      // 普通用户消息由页面本地回显，只有投递的插话需要补一条消息。
+      if (text !== "" && delivered.delete(text)) return { type: "steer_delivered", text };
+      return null;
+    }
     if (["message_start", "message_end"].includes(event.type)) {
       if (event.message.role === "user" && event.type === "message_end" && requestedSkill) {
         const text = typeof event.message.content === "string" ? event.message.content

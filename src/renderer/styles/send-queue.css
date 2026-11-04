@@ -91,3 +91,22 @@
   border-radius: 6px;
   font-size: 11px;
 }
+
+/* 插话项：已交给 Pi 排队，只展示待投递状态。 */
+.send-queue__badge {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.send-queue__item[data-mode="steer"] {
+  border-color: var(--border);
+}
+
+.send-queue__item[data-mode="steer"] .send-queue__text {
+  -webkit-line-clamp: 1;
+}

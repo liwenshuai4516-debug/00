@@ -667,7 +667,12 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
   // 页面销毁也清理计时；正常完成后不保留页面生命周期监听。
   if (!historical) window.addEventListener("pagehide", dispose, { once: true });
   schedule();
-  return { accept, restore, finish, dispose, root };
+  // 插话由 Pi 在当前轮中途投递：追加到运行容器末尾，后续回复自然排在它之后。
+  function insertUserMessage(text) {
+    appendMessage(root, "user", text);
+  }
+
+  return { accept, restore, finish, dispose, insertUserMessage, root };
 }
 
 export function appendOutputHistory(container, history, onUpdate = () => {}) {

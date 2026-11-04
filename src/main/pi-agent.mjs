@@ -240,6 +240,19 @@ export function listSlashCommands(session) {
 }
 
 // 发送消息，并把收到的文本增量交给调用方。
+// 生成中的插话：使用 Pi 的 steer 语义，在当前轮工具结束后、下一次请求前投递。
+export async function steerMessage(session, text) {
+  if (session?.desktopRuntimeInvalidated) throw new Error("当前 Pi 会话已释放，请新建或重新打开对话。");
+  if (typeof text !== "string" || text.trim() === "") throw new Error("请输入插话内容。");
+  if (!session?.isStreaming) throw new Error("当前没有正在生成的回复。");
+  let disposition;
+  await session.prompt(text.trim(), {
+    streamingBehavior: "steer",
+    preflightResult: (result) => { disposition = result; },
+  });
+  return { disposition };
+}
+
 export async function sendMessage(
   session,
   text,

@@ -96,6 +96,11 @@ contextBridge.exposeInMainWorld("agent", {
   loadHistory: () => ipcRenderer.invoke("agent:load-history"),
   // 请求主进程停止当前生成。
   stop: () => ipcRenderer.invoke("agent:stop"),
+  // 生成中插话：只提交文本，投递时机由 Pi 的 steer 语义决定。
+  steerMessage: (text) => {
+    if (typeof text !== "string" || !text.trim()) throw new Error("请输入插话内容。");
+    return ipcRenderer.invoke("agent:steer-message", text);
+  },
   // 接收流式文本，并返回一个用于移除监听器的函数。
   // 重命名当前对话。
   renameSession: (name) => ipcRenderer.invoke("agent:rename-session", name),
