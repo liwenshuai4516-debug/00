@@ -141,10 +141,43 @@ test("button", async ({ page }) => {
     });
     await call("browser_close", { intent: "录制完成，关闭页面" });
     await assert.rejects(prepareTool.execute("not-finalized", { caseId: prepared.caseId, targetUrl, mode: "run", projectRef: project.projectRef }), /qa_ui_finalize/);
+    const finalizeTool = session.agent.state.tools.find((tool) => tool.name === "qa_ui_finalize");
     await fs.writeFile(prepared.caseDocument, "# 开始按钮\n用户预期：点击后显示已完成。来源：本次临时夹具要求。\n");
-    const finalized = (await session.agent.state.tools.find((tool) => tool.name === "qa_ui_finalize")
-      .execute("finalize", { projectRef: project.projectRef, caseId: prepared.caseId })).details;
+    await assert.rejects(finalizeTool.execute("finalize-without-meta", {
+      projectRef: project.projectRef, caseId: prepared.caseId,
+    }), /标准元数据块/);
+    const caseMetadata = {
+      schema: "qa-ui-case/v1",
+      caseId: prepared.caseId,
+      project: { id: "fixture-project", name: "项目管理系统" },
+      page: "/",
+      role: "操作员",
+      dataPolicy: "no-write",
+      tags: ["fixture"],
+      cases: [{
+        name: "button",
+        type: "functional",
+        priority: "P1",
+        assertions: [{ id: "A1", kind: "business", text: "按钮文字变为已完成", source: "本次临时夹具要求" }],
+      }],
+    };
+    await fs.writeFile(prepared.caseDocument, [
+      "# 开始按钮",
+      "",
+      "```json qa-ui-case",
+      JSON.stringify(caseMetadata, null, 2),
+      "```",
+      "",
+      "## 用例与断言",
+      "| 用例 | 类型 | 优先级 | 断言 |",
+      "| --- | --- | --- | --- |",
+      "| button | functional | P1 | A1 按钮文字变为已完成（本次临时夹具要求） |",
+      "",
+    ].join("\n"));
+    const finalized = (await finalizeTool.execute("finalize", { projectRef: project.projectRef, caseId: prepared.caseId })).details;
     assert.equal(finalized.status, "recorded-and-syntax-checked");
+    assert.equal(finalized.caseMeta.caseCount, 1);
+    assert.equal(finalized.caseMeta.assertionCount, 1);
     const originalSource = await fs.readFile(prepared.caseFile, "utf8");
     await fs.appendFile(prepared.caseFile, "\n// edited after finalize");
     await assert.rejects(prepareTool.execute("edited-asset", { caseId: prepared.caseId, targetUrl, mode: "run", projectRef: project.projectRef }), /qa_ui_finalize/);

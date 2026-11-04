@@ -29,7 +29,7 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | 2. 项目和前置数据检查 | qa_ui_project 将 URL、可选 projectId/projectName 与本机配置比对，只返回脱敏项目上下文；Agent 核验相关业务输入、初态、角色和预期来源 |
 | 3. 判断登录 | qa_ui_login(action=auto, projectRef) 检查表单，按需使用配置凭据登录一次；公开页面返回 not-required，认证成功返回 saved，异常返回 manual-required |
 | 4. 真实录制 | qa_ui_prepare(mode=record, projectRef, targetUrl) 继承该项目登录态；按 qa-ui-record 现场快照、操作、逐步骤断言、生成日志及写脚本，结束关闭页面 |
-| 5. 整理与持久化 | Agent 按 qa-ui-record 的断言来源、定位器、数据隔离和等待方式整理独立 test，保存用例说明；qa_ui_finalize 检查语法、真实日志、说明及密码误写，并保存 .asset.json |
+| 5. 整理与持久化 | Agent 按 qa-ui-record 的断言来源、定位器、数据隔离和等待方式整理独立 test，生成含断言的用例列表与 qa-ui-case 元数据稿；qa_ui_finalize 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
 | 6. 独立回放 | qa_ui_prepare(mode=run, projectRef, targetUrl, caseId) 验证资产登记哈希，执行返回命令；在新浏览器上下文回放，并清理私有登录态 |
 | 7. 输出结果 | 原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
 
@@ -39,7 +39,7 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 
 项目目录和测试存储目录分别处理：目标项目可登记其他工作目录，本次产物仍写当前会话工作区。新脚本使用 `qa/data/ui/cases/项目名称__页面路径__短摘要.spec.cjs`，同名重复录制自动增加版本；路由 hash 纳入路径命名，查询参数保留在任务 URL、不作为目录名。中文及文件长度做路径处理，旧资产不会被覆盖。
 
-qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
+qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。用例说明还必须包含 `qa-ui-case/v1` 元数据块（schema、caseId、project.id、page、role、dataPolicy、cases[].assertions），工具校验后把 caseMeta、caseCount、assertionCount 写入 .asset.json；缺失或字段不合规拒绝登记。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
 
 自动登录默认识别唯一的账号、密码及登录按钮，可用 selectors.account/password/submit/authenticated 提供实际页面定位器；应优先提供明确的登录后角色或页面标识。默认检查目标路由可达且登录表单消失，不足以证明角色权限，录制前仍需通过页面核验。自动登录同 origin 内执行一次，验证码/MFA、跨域认证、无法确定的表单或失败会保留可见窗口并返回具体受阻原因，不重复提交。用户解决后 complete 即可交接；本次已授权的自动流程不再次询问私有状态保存。纯手动 start/complete 保留原确认方式。
 
@@ -54,6 +54,7 @@ qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业�
 ## 批次产物与判断
 
 新项目资产在 `qa/data/ui/cases/`，旧资产仍在 `qa/ui/cases/`，录制日志在 `qa/ui/recordings/<id>/`；每次回放写独立的 `qa/ui/runs/<id>/`，独占标记禁止同一任务重复执行。
+每个新资产由 `<caseId>.spec.cjs`、`<caseId>.md` 和 `<caseId>.asset.json` 组成；`.asset.json` 的 caseMeta（用例类型、优先级、标签、断言来源）用于后续分类管理，脚本 SHA-256 用于回放前校验。
 
 | 产物 | 内容 |
 | --- | --- |

@@ -13,6 +13,64 @@ function quote(value) {
   return "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
 }
 
+const caseDocumentSchema = "qa-ui-case/v1";
+const caseTypes = new Set(["functional", "permission", "boundary", "exception", "regression"]);
+const casePriorities = new Set(["P0", "P1", "P2", "P3"]);
+const caseDataPolicies = new Set(["read-only", "write-unique", "write-disposable", "no-write"]);
+const assertionKinds = new Set(["business", "guard"]);
+const hasText = (value) => typeof value === "string" && value.trim().length > 0;
+
+// 用例说明同时是人读文档和后续分类的索引来源，登记前固定字段与取值，避免只有自然语言。
+function parseCaseMetadata(document, project, caseId) {
+  const block = document.match(/```json qa-ui-case[ \t]*\r?\n([\s\S]*?)\r?\n```/);
+  if (!block) throw new Error("用例说明缺少标准元数据块（```json qa-ui-case ... ```），模板见 qa-ui-record。");
+  let meta;
+  try {
+    meta = JSON.parse(block[1]);
+  } catch {
+    throw new Error("用例说明的 qa-ui-case 元数据不是有效 JSON。");
+  }
+  if (meta?.schema !== caseDocumentSchema) throw new Error(`用例说明 schema 必须是 ${caseDocumentSchema}。`);
+  if (meta.caseId !== caseId) throw new Error("用例说明 caseId 与本次录制不一致。");
+  if (meta?.project?.id !== project.projectId) throw new Error("用例说明 project.id 与项目检查结果不一致。");
+  if (!hasText(meta.page) || !hasText(meta.role)) throw new Error("用例说明 page 和 role 不能为空。");
+  if (!caseDataPolicies.has(meta.dataPolicy)) throw new Error("用例说明 dataPolicy 必须是 read-only、write-unique、write-disposable 或 no-write。");
+  if (meta.tags !== undefined && (!Array.isArray(meta.tags) || meta.tags.some((tag) => !hasText(tag)))) {
+    throw new Error("用例说明 tags 必须是非空字符串数组。");
+  }
+  if (!Array.isArray(meta.cases) || !meta.cases.length) throw new Error("用例说明必须包含至少一个 case。");
+  const names = new Set();
+  for (const [caseIndex, item] of meta.cases.entries()) {
+    const label = `cases[${caseIndex}]`;
+    if (!hasText(item?.name)) throw new Error(`${label}.name 不能为空。`);
+    if (names.has(item.name)) throw new Error(`用例名称重复：${item.name}。`);
+    names.add(item.name);
+    if (!caseTypes.has(item.type)) throw new Error(`${label}.type 必须是 functional、permission、boundary、exception 或 regression。`);
+    if (!casePriorities.has(item.priority)) throw new Error(`${label}.priority 必须是 P0、P1、P2 或 P3。`);
+    if (!Array.isArray(item.assertions) || !item.assertions.length) throw new Error(`${label} 至少包含一条断言。`);
+    for (const [assertionIndex, assertion] of item.assertions.entries()) {
+      const assertionLabel = `${label}.assertions[${assertionIndex}]`;
+      if (!hasText(assertion?.text)) throw new Error(`${assertionLabel}.text 不能为空。`);
+      if (!hasText(assertion?.source)) throw new Error(`${assertionLabel}.source 不能为空。`);
+      if (assertion.kind !== undefined && !assertionKinds.has(assertion.kind)) {
+        throw new Error(`${assertionLabel}.kind 必须是 business 或 guard。`);
+      }
+    }
+  }
+  return {
+    schema: meta.schema,
+    caseId,
+    project: { id: project.projectId, name: hasText(meta.project.name) ? meta.project.name : project.projectName },
+    page: meta.page,
+    role: meta.role,
+    dataPolicy: meta.dataPolicy,
+    tags: meta.tags ?? [],
+    cases: meta.cases,
+    caseCount: meta.cases.length,
+    assertionCount: meta.cases.reduce((total, item) => total + item.assertions.length, 0),
+  };
+}
+
 export function createUiTestingExtension(runtime) {
   return (pi) => {
     let activeRecordingDir = null;
@@ -153,7 +211,7 @@ export function createUiTestingExtension(runtime) {
     pi.registerTool({
       name: "qa_ui_finalize",
       label: "登记格式整理后的 UI 脚本",
-      description: "录制后由 Agent 根据真实日志整理脚本及断言，保存文档，再由此工具检查语法和证据并登记资产版本。此工具不推断业务正确性。",
+      description: "录制后由 Agent 根据真实日志整理脚本及断言，保存文档，再由此工具检查语法、证据和标准用例元数据并登记资产版本。此工具不推断业务正确性。",
       executionMode: "sequential",
       parameters: Type.Object({ projectRef: Type.String(), caseId: Type.String() }),
       async execute(_id, params, signal, _update, ctx) {
@@ -169,9 +227,14 @@ export function createUiTestingExtension(runtime) {
         const source = await readFile(recorded.caseFile);
         const document = await readFile(recorded.caseDocument, "utf8");
         if (!source.length || !document.trim()) throw new Error("脚本和用例说明不能为空。");
+        const caseMeta = parseCaseMetadata(document, project, params.caseId);
         const credentials = await readCredentials(runtime, project);
-        if (credentials.password && (source.includes(Buffer.from(credentials.password)) || source.includes(Buffer.from(JSON.stringify(credentials.password))))) {
-          throw new Error("脚本包含配置中的密码，请移除凭据后重新整理。");
+        if (credentials.password && (
+          source.includes(Buffer.from(credentials.password))
+          || source.includes(Buffer.from(JSON.stringify(credentials.password)))
+          || document.includes(credentials.password)
+        )) {
+          throw new Error("脚本或用例说明包含配置中的密码，请移除凭据后重新整理。");
         }
         const checked = await pi.exec(runtime.node, ["--check", recorded.caseFile], { cwd: project.workspace, signal, timeout: 30_000 });
         if (checked.killed || checked.code !== 0) throw new Error("脚本语法检查未通过，请检查脚本；不会自动回放。");
@@ -182,6 +245,7 @@ export function createUiTestingExtension(runtime) {
           recordedAt: new Date().toISOString(),
           recordingLogs: logs.map((name) => path.join(recorded.recordingDir, name)),
           caseDocument: recorded.caseDocument,
+          caseMeta,
           status: "recorded-and-syntax-checked",
         };
         const assetFile = path.join(project.caseDir, `${params.caseId}.asset.json`);

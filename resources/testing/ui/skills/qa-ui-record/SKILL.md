@@ -1,6 +1,6 @@
 ---
 name: qa-ui-record
-description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用官方 Playwright Test MCP 现场操作与断言，按断言来源、定位器、数据隔离、等待方式整理成可独立回放的 spec，再经 qa_ui_finalize 登记。当 qa-ui-basic 第 4-5 步，或用户要求录制、整理、修改 UI 脚本时使用。
+description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用官方 Playwright Test MCP 现场操作与断言，按断言来源、定位器、数据隔离、等待方式整理成可独立回放的 spec，并生成含断言的标准化用例列表与 qa-ui-case/v1 元数据稿，再经 qa_ui_finalize 校验登记。当 qa-ui-basic 第 4-5 步，或用户要求录制、整理、修改 UI 脚本时使用。
 ---
 
 # UI 用例录制与脚本整理
@@ -63,17 +63,86 @@ nth 只用于同角色重复控件，先用容器或业务文本缩小范围；�
 必须显式等待时用 expect(...).toBeVisible({ timeout }) 并说明业务原因，不全局拉长超时。
 不用 try/catch 吞超时后继续断言，不在条件分支里跳过断言。
 
-## 4. 脚本结构与说明
+## 4. 脚本结构与标准化输出
+
+### 4.1 脚本
 
 CommonJS + 两空格；文件内可有多个独立 test；共享前置用 beforeEach，登录不重复。
 test 名称写「业务动作 + 预期结果」；步骤注释用录制 intent，不写实现细节。
 不保留临时 ref、录制窗口依赖或上一个 test 的状态。
-caseDocument 写：项目、页面、角色、前置条件、测试输入与来源、真实步骤、日志路径、每项断言来源和清理动作。
+
+### 4.2 用例说明：元数据稿 + 含断言的 case 列表
+
+caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校验并写入 .asset.json，缺失或字段不合规会拒绝登记。
+元数据块就是后续管理/分类用的元数据稿；正文用例表是从它展开的人读版本，两者必须一致。
+
+````markdown
+# 用例说明
+
+```json qa-ui-case
+{
+  "schema": "qa-ui-case/v1",
+  "caseId": "<qa_ui_prepare 返回的 caseId>",
+  "project": { "id": "<qa_ui_project 返回的 projectId>", "name": "<项目名称>" },
+  "page": "/pms/OperationContract",
+  "role": "管理员",
+  "dataPolicy": "write-unique",
+  "tags": ["合同", "新建"],
+  "cases": [
+    {
+      "name": "新建合同后列表显示该合同",
+      "type": "functional",
+      "priority": "P1",
+      "assertions": [
+        { "id": "A1", "kind": "business", "text": "新合同行可见", "source": "用户要求：新建后列表出现" },
+        { "id": "A2", "kind": "business", "text": "行内包含合同编号", "source": "用户要求：列表展示编号" }
+      ]
+    }
+  ]
+}
+```
+
+## 用例与断言
+
+| 用例 | 类型 | 优先级 | 断言 |
+| --- | --- | --- | --- |
+| 新建合同后列表显示该合同 | functional | P1 | A1 新合同行可见（用户要求）；A2 行内包含合同编号（用户要求） |
+
+## 证据与清理
+
+- 日志：<recordingDir 下的官方日志>
+- 录制目录：<recordingDir>
+- 数据与清理：<唯一值规则、清理动作或不可清理原因>
+````
+
+字段规则见下表，未列字段不写；不要另造同义字段。
+
+| 字段 | 必填 | 规则 |
+| --- | --- | --- |
+| schema | 是 | 固定 `qa-ui-case/v1` |
+| caseId | 是 | 与 qa_ui_prepare 返回一致 |
+| project.id | 是 | 与 qa_ui_project 返回的 projectId 一致 |
+| project.name | 否 | 默认用项目检查返回的名称 |
+| page | 是 | 目标页面路径，含路由 hash |
+| role | 是 | 本批用例使用的角色 |
+| dataPolicy | 是 | `read-only`、`write-unique`、`write-disposable`、`no-write` 之一 |
+| tags | 否 | 非空字符串数组，建议 2-4 个模块/业务对象/场景标签 |
+| cases[].name | 是 | 与 spec 中 test 标题逐字一致；同文件不重复 |
+| cases[].type | 是 | `functional`、`permission`、`boundary`、`exception`、`regression` |
+| cases[].priority | 是 | `P0`-`P3` |
+| cases[].assertions[] | 是 | 至少一条；每条都要 text 和 source |
+| assertions[].kind | 否 | `business` 或 `guard`，默认 business |
+| assertions[].id | 否 | 短编号（A1/A2），便于正文引用 |
+
+一个 case 至少一条 business 断言；guard 只用于导航或前置校验，不能替代业务结果。
 
 ## 5. finalize 前自检
 
 逐项确认，未通过先改再 finalize：
 - 每个 expect 有来源，caseDocument 已登记；
+- 元数据块 schema、caseId、project.id 与工具返回一致；
+- cases[].name 与 spec 的 test 标题一致，每条断言都有 text 和 source；
+- 正文用例表与元数据块一致；
 - 断言使用完整业务值，不是日志里的截断前缀；
 - 无 ref、自动 id、样式类（例外已注明）；
 - 写入数据唯一并登记清理；
