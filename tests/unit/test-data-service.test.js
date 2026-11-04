@@ -55,7 +55,7 @@ test("列出 qa/data 下的相对路径并跳过隐藏文件和符号链接", as
 });
 
 test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
-  const { service, project, dataRoot } = await setup(t);
+  const { service, project, dataRoot, workspace } = await setup(t);
   const cases = path.join(dataRoot, "ui", "cases");
   await writeFile(path.join(cases, "权限.asset.json"), JSON.stringify({
     caseId: "权限",
@@ -86,6 +86,18 @@ test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
     },
   }));
   await writeFile(path.join(cases, "legacy.asset.json"), JSON.stringify({ caseId: "legacy" }));
+  const runDir = path.join(workspace, "qa", "ui", "runs", "run-1");
+  await mkdir(runDir, { recursive: true });
+  await writeFile(path.join(runDir, "summary.json"), JSON.stringify({
+    runId: "run-1",
+    status: "failed",
+    startedAt: "2026-11-04T06:50:00.000Z",
+    finishedAt: "2026-11-04T06:51:00.000Z",
+    tests: [
+      { file: "权限.spec.cjs", title: "权限.spec.cjs > 合同 > T2 权限拒绝", status: "failed", durationMs: 12 },
+      { file: "权限.spec.cjs", title: "权限.spec.cjs > 合同 > T1 列表可见", status: "passed", durationMs: 8 },
+    ],
+  }));
 
   const result = await service.list(project.id);
   assert.equal(result.catalog.totals.modules, 1);
@@ -106,6 +118,14 @@ test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
   assert.equal(module.cases[0].specPath, "ui/cases/权限.spec.cjs");
   assert.equal(module.cases[0].documentPath, "ui/cases/权限.md");
   assert.equal(module.cases[0].assetPath, "ui/cases/权限.asset.json");
+  assert.equal(module.cases[0].lastResult.status, "failed");
+  assert.equal(module.cases[0].lastResult.durationMs, 12);
+  assert.equal(module.cases[1].lastResult.status, "passed");
+  assert.equal(result.catalog.lastRun.runId, "run-1");
+  assert.equal(result.catalog.lastRun.status, "failed");
+  assert.equal(result.catalog.lastRun.total, 2);
+  assert.equal(result.catalog.lastRun.passed, 1);
+  assert.equal(result.catalog.lastRun.failed, 1);
 });
 
 test("删除单个文件并保留其他测试数据", async (t) => {
@@ -153,6 +173,7 @@ test("没有 qa/data、未知项目或无效编号明确返回/报错", async (t
       legacy: [],
       truncated: false,
       totals: { modules: 0, cases: 0, assertions: 0, legacy: 0 },
+      lastRun: null,
     },
   });
 

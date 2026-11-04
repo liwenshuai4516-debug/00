@@ -5,6 +5,8 @@ const DATA_SEGMENTS = ["qa", "data"];
 const MAX_FILES = 500;
 const MAX_CASE_ASSETS = 200;
 const MAX_ASSET_BYTES = 512 * 1024;
+const MAX_RUNS = 50;
+const MAX_SUMMARY_BYTES = 1024 * 1024;
 const CASE_TYPES = new Set(["functional", "permission", "boundary", "exception", "regression"]);
 const PRIORITIES = new Set(["P0", "P1", "P2", "P3"]);
 const DATA_POLICIES = new Set(["read-only", "write-unique", "write-disposable", "no-write"]);
@@ -16,6 +18,7 @@ function emptyCatalog() {
     legacy: [],
     truncated: false,
     totals: { modules: 0, cases: 0, assertions: 0, legacy: 0 },
+    lastRun: null,
   };
 }
 
@@ -45,6 +48,82 @@ function isOutside(relative) {
   );
 }
 
+function summaryCaseId(file) {
+  const base = String(file).split(/[\\/]/).pop() ?? "";
+  return base.replace(/\.spec\.cjs$/i, "");
+}
+
+// 回放结果按脚本 + 用例名匹配；同一用例取最近一次批次的结果。
+async function readRunResults(workspace) {
+  const directory = path.join(workspace, "qa/ui/runs");
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return { latest: null, byCase: new Map() };
+    throw error;
+  }
+
+  const summaries = [];
+  for (const entry of entries.slice(0, 200)) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    const file = path.join(directory, entry.name, "summary.json");
+    let info;
+    try {
+      info = await stat(file);
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
+    }
+    if (!info.isFile() || info.size > MAX_SUMMARY_BYTES) continue;
+    let summary;
+    try {
+      summary = JSON.parse(await readFile(file, "utf8"));
+    } catch {
+      continue;
+    }
+    if (!summary || typeof summary.runId !== "string" || !Array.isArray(summary.tests)) continue;
+    summaries.push({ ...summary, modifiedAt: info.mtimeMs });
+  }
+
+  summaries.sort((first, second) => {
+    const firstTime = Date.parse(first.finishedAt ?? "") || first.modifiedAt || 0;
+    const secondTime = Date.parse(second.finishedAt ?? "") || second.modifiedAt || 0;
+    return secondTime - firstTime;
+  });
+  if (summaries.length > MAX_RUNS) summaries.length = MAX_RUNS;
+
+  const byCase = new Map();
+  for (const summary of summaries) {
+    for (const test of summary.tests) {
+      if (!test || typeof test.file !== "string" || typeof test.title !== "string") continue;
+      const key = `${summaryCaseId(test.file)}::${test.title.split(" > ").pop()}`;
+      if (byCase.has(key)) continue;
+      byCase.set(key, {
+        status: typeof test.status === "string" ? test.status : "unknown",
+        durationMs: Number.isFinite(test.durationMs) ? test.durationMs : null,
+        finishedAt: typeof summary.finishedAt === "string" ? summary.finishedAt : null,
+        runId: summary.runId,
+      });
+    }
+  }
+
+  const latest = summaries[0]
+    ? {
+      runId: summaries[0].runId,
+      status: typeof summaries[0].status === "string" ? summaries[0].status : "unknown",
+      startedAt: typeof summaries[0].startedAt === "string" ? summaries[0].startedAt : null,
+      finishedAt: typeof summaries[0].finishedAt === "string" ? summaries[0].finishedAt : null,
+      total: summaries[0].tests.length,
+      passed: summaries[0].tests.filter((test) => test?.status === "passed").length,
+      failed: summaries[0].tests.filter((test) => ["failed", "timedOut"].includes(test?.status)).length,
+      skipped: summaries[0].tests.filter((test) => test?.status === "skipped").length,
+      cancelled: summaries[0].tests.filter((test) => test?.status === "cancelled").length,
+    }
+    : null;
+  return { latest, byCase };
+}
+
 // 测试数据只落在项目工作目录的 qa/data；页面只提交相对路径与项目编号。
 function createTestDataService(projectStore) {
   async function resolveRoot(projectId) {
@@ -70,14 +149,15 @@ function createTestDataService(projectStore) {
     if (!info.isDirectory()) {
       throw new Error("测试数据目录无效。");
     }
-    return resolved;
+    return { root: resolved, workspace: project.workspaceDir };
   }
 
   async function list(projectId) {
-    const root = await resolveRoot(projectId);
-    if (root === null) {
+    const resolved = await resolveRoot(projectId);
+    if (resolved === null) {
       return { available: false, truncated: false, items: [], catalog: emptyCatalog() };
     }
+    const { root, workspace } = resolved;
 
     const items = [];
     const assets = [];
@@ -128,12 +208,23 @@ function createTestDataService(projectStore) {
     );
 
     const catalog = await buildCatalog(root, assets);
+    await applyRunResults(catalog, workspace);
     return {
       available: true,
       truncated: items.length >= MAX_FILES,
       items,
       catalog,
     };
+  }
+
+  async function applyRunResults(catalog, workspace) {
+    const { latest, byCase } = await readRunResults(workspace);
+    for (const module of catalog.modules) {
+      for (const item of module.cases) {
+        item.lastResult = byCase.get(`${item.caseId}::${item.name}`) ?? null;
+      }
+    }
+    catalog.lastRun = latest;
   }
 
   // qa-ui-case 元数据是分类索引：按页面归为模块，模块内列出用例与断言；旧资产单独计数。
@@ -257,10 +348,11 @@ function createTestDataService(projectStore) {
       throw new Error("测试数据路径无效。");
     }
 
-    const root = await resolveRoot(projectId);
-    if (root === null) {
+    const resolvedRoot = await resolveRoot(projectId);
+    if (resolvedRoot === null) {
       throw new Error("测试数据目录不存在。");
     }
+    const { root } = resolvedRoot;
     const target = path.join(root, ...segments);
     const relative = path.relative(root, target);
     if (!relative || isOutside(relative)) {

@@ -23,6 +23,7 @@ const catalog = {
           specPath: "ui/cases/合同.spec.cjs",
           documentPath: "ui/cases/合同.md",
           recordedAt: "2026-11-04T06:48:43.222Z",
+          lastResult: { status: "failed", durationMs: 12, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
         },
         {
           name: "T1 列表加载与结构完整",
@@ -36,6 +37,7 @@ const catalog = {
           specPath: "ui/cases/合同.spec.cjs",
           documentPath: "ui/cases/合同.md",
           recordedAt: "2026-11-04T06:48:43.222Z",
+          lastResult: { status: "passed", durationMs: 8, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
         },
       ],
     },
@@ -60,6 +62,7 @@ const catalog = {
           specPath: "ui/cases/合同查询.spec.cjs",
           documentPath: "ui/cases/合同查询.md",
           recordedAt: "2026-11-04T06:48:43.222Z",
+          lastResult: { status: "passed", durationMs: 9, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
         },
       ],
     },
@@ -67,6 +70,17 @@ const catalog = {
   legacy: [{ path: "ui/cases/旧资产.asset.json", name: "旧资产.asset.json", size: 64, modifiedAt: 1762300000000 }],
   truncated: false,
   totals: { modules: 2, cases: 3, assertions: 5, legacy: 1 },
+  lastRun: {
+    runId: "run-1",
+    status: "failed",
+    startedAt: "2026-11-04T06:50:00.000Z",
+    finishedAt: "2026-11-04T06:51:00.000Z",
+    total: 3,
+    passed: 2,
+    failed: 1,
+    skipped: 0,
+    cancelled: 0,
+  },
 };
 
 const items = [

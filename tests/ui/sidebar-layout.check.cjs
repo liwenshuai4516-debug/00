@@ -92,9 +92,38 @@ async function main() {
       return { path: args[0], size: 48, content: "# 需求文档\n\n- **本地预览**\n" };
     }
     if (name === "listTestData") {
-      return args[0] === "a"
-        ? { available: true, truncated: false, items: testData.map((item) => ({ ...item })) }
-        : { available: false, truncated: false, items: [] };
+      if (args[0] !== "a") return { available: false, truncated: false, items: [], catalog: null };
+      return {
+        available: true,
+        truncated: false,
+        items: testData.map((item) => ({ ...item })),
+        catalog: {
+          modules: [{
+            key: "/demo",
+            page: "/demo",
+            title: "演示模块",
+            role: "管理员",
+            dataPolicy: "read-only",
+            tags: ["演示"],
+            cases: [{
+              name: "T1 演示用例",
+              type: "functional",
+              priority: "P1",
+              assertions: [{ id: "A1", kind: "business", text: "演示断言", source: "演示基线" }],
+              caseId: "demo",
+              assetPath: "ui/cases/demo.asset.json",
+              specPath: "ui/cases/demo.spec.cjs",
+              documentPath: "ui/cases/demo.md",
+              recordedAt: "2026-11-04T06:48:43.222Z",
+              lastResult: { status: "passed", durationMs: 8, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
+            }],
+          }],
+          legacy: [],
+          truncated: false,
+          totals: { modules: 1, cases: 1, assertions: 1, legacy: 0 },
+          lastRun: { runId: "run-1", status: "passed", startedAt: "2026-11-04T06:50:00.000Z", finishedAt: "2026-11-04T06:51:00.000Z", total: 1, passed: 1, failed: 0, skipped: 0, cancelled: 0 },
+        },
+      };
     }
     if (name === "deleteTestData") {
       const index = testData.findIndex((item) => item.path === args[1]);
@@ -314,9 +343,9 @@ async function main() {
     await click("#right-sidebar-toggle");
     await wait(`Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424`);
     await check("右侧边栏按 45% 与中栏 400 约束打开", `document.getElementById('app-right-sidebar').hasAttribute('data-open')&&document.getElementById('app-right-sidebar').getAttribute('aria-hidden')===null&&document.getElementById('right-sidebar-toggle').hidden&&document.activeElement.id==='right-sidebar-close'&&Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424&&document.documentElement.scrollWidth<=innerWidth`);
-    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='2 个文件'`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='1 条用例'`);
     if (process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    await check("右侧栏工作台显示 logo 与四张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据,文件浏览,浏览器'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'`);
+    await check("右侧栏工作台显示 logo 与四张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据,文件浏览,浏览器'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='1 条用例'`);
 
     // 浏览器：空状态、拒绝非 http(s)、加载本地页面并同步标题与地址。
     await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('浏览器')).click()`);
@@ -398,16 +427,12 @@ async function main() {
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelectorAll('.right-panel__card').length===4`);
     await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
-    await wait(`document.querySelectorAll('.right-panel__file').length===2`);
-    await check("测试数据按 ui 分类列出文件", `document.querySelectorAll('.right-panel__group').length===1&&document.querySelector('.right-panel__group-title').textContent.includes('ui')&&document.querySelectorAll('.right-panel__file').length===2`);
+    await wait(`document.querySelectorAll('.case-card').length===1`);
+    await check("测试数据按模块和用例展示最近结果", `document.querySelectorAll('.case-module').length===1&&document.querySelector('.case-module__name').textContent==='演示模块'&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-run').textContent==='通过'&&document.querySelector('.case-card__status').textContent==='通过'`);
     await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     if (process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    await click('.right-panel__file-delete');
-    await wait(`document.getElementById('right-sidebar-confirm-dialog').open`);
-    await click('#right-sidebar-confirm-dialog [data-confirm]');
-    await wait(`document.querySelectorAll('.right-panel__file').length===1`);
-    await check("删除测试数据文件后刷新列表", `document.querySelectorAll('.right-panel__file').length===1&&document.querySelector('.right-panel__status').textContent.includes('已删除')`);
-    assert.equal(testData.length, 1);
+    await run(`document.querySelector('.case-card__head').click()`);
+    await check("展开用例显示断言与来源", `!document.querySelector('.case-card__body').hidden&&document.querySelector('.case-card__body').textContent.includes('演示基线')`);
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelectorAll('.right-panel__card').length===4`);
     await click('.right-panel__card');

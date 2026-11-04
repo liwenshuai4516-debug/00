@@ -18,6 +18,23 @@ const DATA_POLICY_LABELS = {
   "no-write": "不写数据",
 };
 const ASSERTION_KIND_LABELS = { business: "业务", guard: "前置" };
+const RUN_STATUS_LABELS = {
+  passed: "通过",
+  failed: "失败",
+  incomplete: "不完整",
+  cancelled: "已取消",
+  unknown: "未知",
+};
+const CASE_STATUS_LABELS = {
+  passed: "通过",
+  failed: "失败",
+  skipped: "跳过",
+  flaky: "波动",
+  "expected-failure": "预期失败",
+  cancelled: "取消",
+  "not-run": "未运行",
+  unknown: "未知",
+};
 
 const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
   month: "2-digit",
@@ -94,6 +111,11 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   const treeChildren = new Map();
   const treeExpanded = new Set();
   let treeRootEntries = null;
+
+  // 回放批次在窗口外完成后，回到应用时自动刷新当前测试数据视图。
+  window.addEventListener("focus", () => {
+    if (view === "data" && !busy && selectedId) void refreshData();
+  });
 
   function api() {
     if (!window.agent?.listProjectEnvironments) {
@@ -203,6 +225,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (!data || data.projectId !== selectedId) return busy ? "读取中…" : "—";
     if (data.error) return "读取失败";
     if (!data.available) return "无 qa/data";
+    if (data.catalog) return `${data.catalog.totals.cases} 条用例`;
     return `${data.items.length} 个文件`;
   }
 
@@ -236,7 +259,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
           view = "data";
           setStatus("");
           render();
-          if (!data || data.projectId !== selectedId) void refreshData();
+          // 每次打开都重新读取，回放结束后直接看到最新结果。
+          void refreshData();
         },
       }),
       featureCard({
@@ -607,7 +631,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         class: "right-panel__empty",
         text: "当前项目的 qa/data 目录不存在。",
       }));
-    } else if (data.items.length === 0) {
+    } else if (data.items.length === 0 && !data.catalog?.modules?.length) {
       panel.append(element("p", {
         class: "right-panel__empty",
         text: "qa/data 下暂无测试数据。",
@@ -616,12 +640,6 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       const catalog = data.catalog;
       if (catalog?.modules?.length) {
         panel.append(renderCaseCatalog(catalog));
-        if (catalog.legacy?.length) {
-          panel.append(element("p", {
-            class: "right-panel__note",
-            text: `${catalog.legacy.length} 个资产未包含 qa-ui-case 元数据，按原文件列在下方。`,
-          }));
-        }
         if (catalog.truncated) {
           panel.append(element("p", {
             class: "right-panel__note",
@@ -629,36 +647,22 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
           }));
         }
       } else {
+        if (catalog?.lastRun) panel.append(renderRunLine(catalog.lastRun));
         panel.append(element("p", {
           class: "right-panel__empty",
           text: "暂无标准化用例。使用 qa-ui-record 录制后，会按项目 / 模块 / 用例展示。",
         }));
       }
-      panel.append(renderFileSection(data.items));
-      if (data.truncated) {
+      if (catalog?.legacy?.length) {
         panel.append(element("p", {
           class: "right-panel__note",
-          text: "仅显示前 500 个文件。",
+          text: `${catalog.legacy.length} 个资产未包含 qa-ui-case 元数据，未纳入目录。`,
         }));
       }
     }
 
-    panel.append(element("p", {
-      class: "right-panel__note",
-      text: "删除只移除 qa/data 下的单个文件；项目环境、工作目录和会话不会受影响。",
-    }));
     panel.append(statusLine());
     body.append(panel);
-  }
-
-  function renderFileSection(items) {
-    const section = element("section", { class: "right-panel__files" });
-    section.append(element("div", { class: "right-panel__files-title" },
-      element("span", { text: "qa/data 文件" }),
-      element("span", { text: `${items.length} 个` }),
-    ));
-    section.append(renderDataGroups(items));
-    return section;
   }
 
   function renderCaseCatalog(catalog) {
@@ -698,8 +702,31 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
     paint();
 
-    container.append(summary, search, list);
+    container.append(summary, renderRunLine(catalog.lastRun), search, list);
     return container;
+  }
+
+  function renderRunLine(run) {
+    const line = element("div", { class: "case-catalog__run" });
+    if (!run) {
+      line.append(element("span", {
+        class: "case-catalog__run-text",
+        text: "尚无运行结果",
+      }));
+      return line;
+    }
+    line.append(
+      element("span", {
+        class: "case-run",
+        dataset: { status: run.status },
+        text: RUN_STATUS_LABELS[run.status] ?? run.status,
+      }),
+      element("span", {
+        class: "case-catalog__run-text",
+        text: `最近运行 ${formatTime(run.finishedAt)} · ${run.passed}/${run.total} 通过`,
+      }),
+    );
+    return line;
   }
 
   function renderCaseModules(catalog, query) {
@@ -769,6 +796,11 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         class: "case-card__meta",
         text: `${CASE_TYPE_LABELS[item.type] ?? item.type} · ${item.assertions.length} 断言`,
       }),
+      element("span", {
+        class: "case-card__status",
+        dataset: { status: item.lastResult?.status ?? "not-run" },
+        text: CASE_STATUS_LABELS[item.lastResult?.status] ?? "未运行",
+      }),
       element("span", { class: "case-card__chevron", "aria-hidden": "true", text: "›" }),
     );
 
@@ -777,6 +809,12 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     detail.append(element("p", {
       class: "case-card__context",
       text: `模块 ${module.title} · 页面 ${module.page}${module.role ? ` · 角色 ${module.role}` : ""}`,
+    }));
+    detail.append(element("p", {
+      class: "case-card__result",
+      text: item.lastResult
+        ? `最近运行 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}${item.lastResult.durationMs === null ? "" : ` · ${item.lastResult.durationMs} ms`}`
+        : "最近运行：未运行",
     }));
     if (item.assertions.length > 0) {
       const assertions = element("ol", { class: "case-assertions" });
@@ -828,48 +866,6 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     return article;
   }
 
-  function renderDataGroups(items) {
-    const groups = new Map();
-    for (const item of items) {
-      const category = item.category || "根目录";
-      if (!groups.has(category)) groups.set(category, []);
-      groups.get(category).push(item);
-    }
-
-    const container = element("div");
-    for (const [category, groupItems] of groups) {
-      const group = element("section", { class: "right-panel__group" });
-      group.append(element("div", { class: "right-panel__group-title" },
-        element("span", { text: category }),
-        element("span", { text: `${groupItems.length} 个文件` }),
-      ));
-      for (const item of groupItems) group.append(fileRow(item));
-      container.append(group);
-    }
-    return container;
-  }
-
-  function fileRow(item) {
-    const row = element("div", { class: "right-panel__file" });
-    row.append(
-      element("span", { class: "right-panel__file-icon" }, icon("files")),
-      element("div", { class: "right-panel__file-main" },
-        element("span", { class: "right-panel__file-name", text: item.name, title: item.name }),
-        element("span", { class: "right-panel__file-path", text: item.path, title: item.path }),
-      ),
-      element("span", { class: "right-panel__file-meta", text: `${formatSize(item.size)} · ${formatTime(item.modifiedAt)}` }),
-      element("button", {
-        type: "button",
-        class: "right-panel__file-delete",
-        "aria-label": `删除 ${item.path}`,
-        title: "删除文件",
-        disabled: busy,
-        onclick: () => void deleteTestData(item),
-      }, icon("trash")),
-    );
-    return row;
-  }
-
   async function refreshData() {
     if (!selectedId) {
       render();
@@ -879,34 +875,6 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     render();
     try {
       await loadData();
-    } finally {
-      busy = false;
-      render();
-    }
-  }
-
-  async function deleteTestData(item) {
-    const confirmed = await confirmAction({
-      title: "删除测试数据",
-      message: `将删除「${item.path}」。只删除这个文件，不会删除项目环境或其他测试数据。`,
-      confirmLabel: "删除文件",
-    });
-    if (!confirmed) {
-      setStatus("已取消删除。");
-      render();
-      return;
-    }
-
-    const projectId = selectedId;
-    busy = true;
-    setStatus("正在删除测试数据…");
-    render();
-    try {
-      await api().deleteTestData(projectId, item.path);
-      if (selectedId === projectId) await loadData();
-      setStatus(`已删除 ${item.path}。`);
-    } catch (error) {
-      setStatus(errorMessage(error), true);
     } finally {
       busy = false;
       render();

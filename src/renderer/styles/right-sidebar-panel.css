@@ -672,7 +672,7 @@
 
 .case-card__head {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -725,6 +725,66 @@
   color: var(--muted);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.case-catalog__run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.case-run {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.case-run[data-status="passed"] {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  color: var(--focus);
+}
+
+.case-run[data-status="failed"],
+.case-run[data-status="incomplete"] {
+  border-color: color-mix(in srgb, var(--error-border) 55%, var(--border));
+  color: var(--error-border);
+}
+
+.case-catalog__run-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-card__status {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.case-card__status[data-status="passed"] {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  color: var(--focus);
+}
+
+.case-card__status[data-status="failed"] {
+  border-color: color-mix(in srgb, var(--error-border) 55%, var(--border));
+  color: var(--error-border);
+}
+
+.case-card__result {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .case-card__chevron {
@@ -826,22 +886,6 @@
 
 .case-assertion__kind[data-kind="guard"] {
   color: var(--muted);
-}
-
-.right-panel__files {
-  margin-top: 14px;
-}
-
-.right-panel__files-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 2px 6px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
 }
 
 /* ---------- 删除确认 ---------- */
