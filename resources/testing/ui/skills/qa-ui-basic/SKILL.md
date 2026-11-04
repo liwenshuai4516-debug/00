@@ -57,10 +57,10 @@ businessDataStatus=not-validated 表示宿主只检查了目录及项目配置�
 
 默认调用 qa_ui_login，action=auto、projectRef；不在工具参数中填写账号密码，不要求用户频繁接管。
 可提供从真实页面已知的 selectors：account/password/submit/authenticated（CSS 定位器）。authenticated 应是登录后角色或页面的明确标识，不能用 body 等无鉴别力元素。不要猜测定位器。
-自动工具打开独立可见窗口，检查目标页面和登录表单；需要时用配置凭据尝试一次登录并验证。不需要登录返回 not-required，成功保存私有状态返回 saved；这两种状态才继续。
+auto 默认在后台无头浏览器中检查目标页面和登录表单，需要时用配置凭据尝试一次登录并验证，不打开前端窗口。不需要登录返回 not-required，成功保存私有状态返回 saved；这两种状态才继续。
 默认验证目标路径可达且登录表单消失；该检查不能代替真实角色和权限断言。录制开始前通过页面内容确认用户要求的角色、目标模块及前置数据。
 
-manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登录失败才让用户处理现有可见窗口，不重复自动提交。成功后使用返回 loginId 调用 complete；自动与手动流程都默认保存私有临时状态，不再逐次询问。
+manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登录失败时，默认静默返回、不自动开可见窗口；只有用户明确要求现场接管时才传 `headed=true`（或调用 action=start 手动窗口），成功后用返回 loginId 调用 complete。不重复自动提交；自动与手动流程都默认保存私有临时状态，不再逐次询问。
 项目配置缺失时明确指出缺少的字段，用户在本机配置中补齐，不要求在聊天中发送密码。终止时 action=cancel、loginId。
 保留 start/complete 的纯手动方式；complete 默认保存私有临时登录态，回放结束或会话关闭时清理。
 
@@ -105,7 +105,7 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 | --- | --- | --- |
 | 无可信 cwd，或工作区不可写 | 🔴 暂停，请用户选择工作区 | 本次结束；不在安装目录、技能目录或聊天提到的其他目录创建文件 |
 | qa_ui_project 报错、多候选等价或名称冲突 | 按返回原因补 projectId/projectName 后重查 | 🔴 仍冲突则请用户确认项目；不猜账号，不按目录名选取 |
-| qa_ui_login 返回 manual-required | 🔴 用户在现有可见窗口完成验证码/MFA，成功后 complete(loginId) | 用户放弃或仍失败：cancel(loginId) 并停止本次录制，不重复 auto |
+| qa_ui_login 返回 manual-required | 默认静默返回；用户明确要求现场接管时传 headed=true 打开可见窗口，完成后 complete(loginId) | 用户放弃或仍失败：cancel(loginId) 并停止本次录制，不重复 auto |
 | 内置运行环境缺失，或 qa_ui_* / 官方录制工具未登记 | 先确认当前会话使用内置 MCP（不是 proxy-only 适配器）且已新开会话；报告缺失路径或 verify 原始报错 | 停止；不自行安装依赖、不改用其他工具、不声称已录制 |
 | qa_ui_prepare 拒绝（未登录、地址不一致、同名资产、登录态失效） | 按错误重查项目或登录，或换 caseId | 不覆盖或迁移旧资产，不跳过检查强行录制 |
 | qa_ui_finalize 拒绝（缺日志、语法、密码、说明为空） | 修正脚本或说明后重新 finalize | 未 recorded-and-syntax-checked 不得进入回放 |

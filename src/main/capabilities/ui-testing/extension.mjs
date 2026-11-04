@@ -153,13 +153,14 @@ export function createUiTestingExtension(runtime) {
         })),
         targetUrl: Type.Optional(Type.String()),
         loginId: Type.Optional(Type.String()),
+        headed: Type.Optional(Type.Boolean()),
       }),
       async execute(_id, params, signal, _update, ctx) {
         if (params.action === "auto") {
           const project = await boundProject(params.projectRef, ctx);
           if (project.autoLoginAttempted) throw new Error("本次项目已尝试自动登录，请处理现有窗口或重新检查项目，不能重复提交。");
           const credentials = await readCredentials(runtime, project);
-          const entry = await openLogin(runtime, project.targetUrl, signal);
+          const entry = await openLogin(runtime, project.targetUrl, signal, { headed: params.headed === true });
           entry.projectRef = params.projectRef;
           project.autoLoginAttempted = true;
           const loginId = randomUUID();
@@ -182,6 +183,15 @@ export function createUiTestingExtension(runtime) {
             project.loginChecked = true;
             project.loginId = loginId;
           }
+          if (outcome.status === "manual-required" && params.headed !== true) {
+            await entry.cleanup();
+            logins.delete(loginId);
+            return result({
+              status: "manual-required",
+              reason: `${outcome.reason} 默认静默登录不打开可见窗口；需要人工接管时传 headed=true，或使用 --storage-state。`,
+              verification: outcome.verification,
+            });
+          }
           return result({ loginId, status: outcome.status, reason: outcome.reason, verification: outcome.verification });
         }
         if (params.action === "start") {
@@ -189,7 +199,7 @@ export function createUiTestingExtension(runtime) {
           target(params.targetUrl);
           const project = params.projectRef ? await boundProject(params.projectRef, ctx) : null;
           if (project && target(params.targetUrl).href !== project.targetUrl) throw new Error("登录地址与项目检查结果不一致。");
-          const entry = await openLogin(runtime, params.targetUrl, signal);
+          const entry = await openLogin(runtime, params.targetUrl, signal, { headed: true });
           entry.projectRef = params.projectRef;
           const loginId = randomUUID();
           logins.set(loginId, entry);

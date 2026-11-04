@@ -46,9 +46,16 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 - 盘点决定 plan 和 case 列表；覆盖矩阵同时写进 caseDocument 的「## 覆盖范围」，finalize 前核对。
 - 本次涉及审批流（提交后需要多角色审批或验证审批终态）时，单独加载 `qa-approval-workflow` 技能，审批人解析、账号切换和逐节点操作以该技能为准；本技能不展开审批步骤，普通录制不要加载它。
 
+## 后台静默
+
+- 登录、录制、回放默认使用无头浏览器，不打开前端浏览器或可见窗口。
+- `qa_ui_prepare` 的 `headed` 默认不传；只有用户明确要求“看着执行/调试页面”时才传 `headed=true`。
+- `qa_ui_login(auto)` 默认静默；需要人工验证码/MFA 时，先返回 manual-required，再按用户要求决定是否开可见窗口，不主动弹窗。
+- 录制和回放的证据仍写入日志/报告，不以“没看到窗口”为由跳过断言。
+
 ## 1. 准备录制
 
-调用 qa_ui_prepare：mode=record、projectRef、targetUrl；需要可见窗口传 headed=true。
+调用 qa_ui_prepare：mode=record、projectRef、targetUrl；默认无头，不要传 headed=true（仅用户明确要求观察页面时例外）。
 使用返回的 caseId、seedFile、caseFileName、caseDocument、caseFile 和 recordingDir；默认不手填 caseId，不覆盖同名资产。
 仅用当前会话实际登记的官方 desktop-playwright-test 工具；未出现时停止并报告，不自建脚本或改用其他工具。
 

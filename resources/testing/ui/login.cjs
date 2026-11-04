@@ -4,7 +4,7 @@ const { writeFile, chmod } = require("node:fs/promises");
 let browser;
 (async () => {
   const target = new URL(process.argv[2]);
-  browser = await chromium.launch({ headless: false });
+  browser = await chromium.launch({ headless: process.env.QA_UI_LOGIN_HEADED !== "1" });
   const context = await browser.newContext();
   const page = await context.newPage();
   browser.on("disconnected", () => process.exit(0));

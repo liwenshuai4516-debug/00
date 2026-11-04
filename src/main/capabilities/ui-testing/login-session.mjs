@@ -29,13 +29,18 @@ function receive(child, expected, signal, timeout = 30_000) {
   });
 }
 
-export async function openLogin(runtime, targetUrl, signal) {
+export async function openLogin(runtime, targetUrl, signal, options = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "qa-ui-auth-"));
   await chmod(directory, 0o700);
   const child = fork(runtime.login, [targetUrl], {
     execPath: runtime.node,
     execArgv: [],
-    env: { ...process.env, NODE_PATH: runtime.modules, PLAYWRIGHT_BROWSERS_PATH: runtime.browsers },
+    env: {
+      ...process.env,
+      NODE_PATH: runtime.modules,
+      PLAYWRIGHT_BROWSERS_PATH: runtime.browsers,
+      QA_UI_LOGIN_HEADED: options.headed === true ? "1" : "0",
+    },
     stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
   const entry = {
