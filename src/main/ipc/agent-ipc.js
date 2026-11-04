@@ -104,6 +104,13 @@ function registerAgentIpc(
   );
   ipcMain.handle("agent:search-workspace-files", (_event, query) => searchWorkspaceFiles(query));
 
+  // 拖入文件只转换为可引用的路径文本；目录、缺失与越界内容不插入。
+  const { createDroppedPathResolver } = require("../services/dropped-path-service.js");
+  const describeDroppedFiles = createDroppedPathResolver(
+    async () => (await sessionService.getSessionInfo()).workspaceDir,
+  );
+  ipcMain.handle("agent:describe-dropped-files", (_event, paths) => describeDroppedFiles(paths));
+
   // webview 是独立 webContents，页面里的 DevTools 入口由主进程按宿主窗口定位。
   const { openBrowserDevToolsForHost } = require("../services/guest-browser-policy.js");
   ipcMain.handle("agent:open-browser-devtools", (event) => openBrowserDevToolsForHost(event.sender));

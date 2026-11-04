@@ -258,3 +258,8 @@ summary {
     margin: 0 12px;
   }
 }
+/* 拖入文件时高亮输入框，松开后插入 @ 路径文本。 */
+.composer.is-dragover {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 25%, transparent);
+}

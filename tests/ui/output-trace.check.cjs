@@ -243,6 +243,16 @@ async function main() {
       check(dockHost.querySelectorAll('.todo-dock-item').length===2, '历史重建任务项');
       dock.clear();
       check(dockHost.hidden, '清空隐藏任务栏');
+      // 展开状态按会话记忆：切走再回来保持展开，新会话保持折叠。
+      dock.setSession("s1");
+      dock.accept({type:'tool_execution_end',result:{todos:[{content:'记忆任务',status:'in_progress'}]}});
+      check(dockHost.querySelector('.todo-dock-list').hidden===true, '新会话默认折叠');
+      dockHost.querySelector('.todo-dock-header').click();
+      check(dockHost.querySelector('.todo-dock-list').hidden===false, '点击展开任务栏');
+      dock.setSession("s2");
+      check(dockHost.querySelector('.todo-dock-list').hidden===true, '切换会话恢复折叠');
+      dock.setSession("s1");
+      check(dockHost.querySelector('.todo-dock-list').hidden===false, '回到原会话恢复展开');
       dockHost.remove();
       const linkTrace = createOutputTrace(host);
       linkTrace.accept({type:'message_start',message:msg([])});

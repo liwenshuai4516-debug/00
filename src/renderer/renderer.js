@@ -130,12 +130,16 @@ function renderComposerState() {
   );
 }
 
+// 任务栏先于输入区状态创建：状态回调里会按会话恢复展开状态。
+const todoDock = createTodoDock(document.getElementById("todo-dock"));
+
 const composerPersistence = createComposerPersistence(
   input,
   window.agent,
   (state) => {
     composerState = state;
     renderComposerState();
+    todoDock.setSession(state.sessionId);
     extensionUiPanel?.setSession(state.sessionId);
   },
 );
@@ -538,8 +542,7 @@ const messageScroll = createMessageScroll(
   messages,
   document.getElementById("latest-message-button"),
 );
-// 任务清单来自 todo_write 的工具结果，切换会话时随历史重建。
-const todoDock = createTodoDock(document.getElementById("todo-dock"));
+
 
 // Markdown 里的本地路径链接不跳转页面，交给右侧栏预览。
 messages.addEventListener("click", (event) => {
@@ -1248,6 +1251,70 @@ function updateSlashMenu(event) {
   }
 
   drawSlashMenu(match[1].toLowerCase());
+}
+
+// 拖入文件只把路径插入输入框，不读取内容；工作目录内用相对路径。
+form.addEventListener("dragover", (event) => {
+  if (!event.dataTransfer?.types?.includes("Files")) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+  form.classList.add("is-dragover");
+});
+
+form.addEventListener("dragleave", (event) => {
+  if (form.contains(event.relatedTarget)) return;
+  form.classList.remove("is-dragover");
+});
+
+form.addEventListener("drop", (event) => {
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  event.preventDefault();
+  form.classList.remove("is-dragover");
+  void insertDroppedFiles(files);
+});
+
+async function insertDroppedFiles(files) {
+  if (input.readOnly) return;
+  const paths = [];
+  for (const file of files) {
+    let path = "";
+    try {
+      path = window.agent?.getPathForFile?.(file) ?? "";
+    } catch {
+      path = "";
+    }
+    if (typeof path === "string" && path !== "") paths.push(path);
+  }
+  if (paths.length === 0) {
+    setRequestStatus("无法读取拖入文件的路径，请改用 @ 引用。");
+    return;
+  }
+
+  let items;
+  try {
+    items = await window.agent.describeDroppedFiles(paths);
+  } catch (error) {
+    setRequestStatus(error.message);
+    return;
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    setRequestStatus("拖入的内容不是可引用的普通文件。");
+    return;
+  }
+
+  const tokens = `${items.map((item) => `@${item.path}`).join(" ")} `;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(end);
+  input.value = `${before}${tokens}${after}`;
+  const position = before.length + tokens.length;
+  input.setSelectionRange(position, position);
+  // 走原有 input 事件，草稿保存与发送校验沿用同一链路。
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+  setRequestStatus(`已插入 ${items.length} 个文件引用。`);
 }
 
 input.addEventListener("input", updateSlashMenu);

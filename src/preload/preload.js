@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("agent", {
   extensionUiReady: () => ipcRenderer.invoke("agent:extension-ui-ready"),
@@ -123,6 +123,12 @@ contextBridge.exposeInMainWorld("agent", {
       throw new Error("文件路径无效。");
     }
     return ipcRenderer.invoke("agent:read-preview-file", filePath);
+  },
+  // 拖入文件：先取系统路径，再由主进程判定相对/绝对与是否可引用。
+  getPathForFile: (file) => webUtils.getPathForFile(file),
+  describeDroppedFiles: (paths) => {
+    if (!Array.isArray(paths)) throw new Error("拖入内容无效。");
+    return ipcRenderer.invoke("agent:describe-dropped-files", paths);
   },
   // 输入框 @ 文件引用：只提交搜索词，路径解析与边界在主进程完成。
   searchWorkspaceFiles: (query) => {

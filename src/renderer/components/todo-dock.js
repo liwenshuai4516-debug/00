@@ -26,6 +26,9 @@ function element(tag, className, text) {
 export function createTodoDock(root) {
   let todos = [];
   let collapsed = true;
+  let sessionId = "";
+  // 展开状态按会话记忆：切走再回来保持原样，不同会话互不影响。
+  const expandedBySession = new Map();
 
   const header = element("button", "todo-dock-header");
   header.type = "button";
@@ -47,6 +50,7 @@ export function createTodoDock(root) {
 
   header.addEventListener("click", () => {
     collapsed = !collapsed;
+    if (sessionId !== "") expandedBySession.set(sessionId, !collapsed);
     syncOpen();
   });
 
@@ -94,6 +98,14 @@ export function createTodoDock(root) {
   render();
 
   return {
+    // 切换会话时恢复该会话上次的展开状态，未记录过则保持折叠。
+    setSession(next) {
+      const id = typeof next === "string" ? next : "";
+      if (id === sessionId) return;
+      sessionId = id;
+      collapsed = !(expandedBySession.get(id) ?? false);
+      syncOpen();
+    },
     setTodos,
     clear: () => setTodos([]),
     showHistory: (history) => setTodos(todosFromHistory(history)),

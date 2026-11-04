@@ -177,6 +177,25 @@ async function main() {
     assert.equal(await value(), "abc", "有文字时不接管方向键");
     console.log("通过：空输入框↑调出历史、↓恢复草稿，有文字时不接管");
 
+    // 拖入合成文件没有系统路径：只高亮与提示，不写入输入框。
+    const dragResult = await js(`(() => {
+      const form = document.getElementById('message-form');
+      const input = document.getElementById('message-input');
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(['x'], 'a.md', { type: 'text/markdown' }));
+      form.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      const highlighted = form.classList.contains('is-dragover');
+      form.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      return JSON.stringify({ highlighted });
+    })()`);
+    assert.equal(JSON.parse(dragResult).highlighted, true);
+    await until("document.getElementById('request-status').textContent.includes('无法读取拖入文件的路径')");
+    assert.equal(await js("document.getElementById('message-input').value"), "");
+    assert.equal(await js("document.getElementById('message-form').classList.contains('is-dragover')"), false);
+    console.log("通过：拖入文件高亮输入框，无系统路径时提示且不写入");
+
     assert.deepEqual(errors, []);
   } finally {
     win.destroy();

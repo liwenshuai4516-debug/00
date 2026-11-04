@@ -411,6 +411,8 @@ async function main() {
     await check("预览失败显示主进程错误且不伪装内容", `document.querySelector('.right-panel__status').dataset.error===''&&document.querySelector('.right-panel__markdown')===null`);
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelector('.right-panel__hero')!==null`);
+    // 卡片在工作台加载完成后才可点击，避免时序波动导致点击落空。
+    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card')[0].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
     await click('.right-panel__card');
     await wait(`document.querySelectorAll('.right-panel__env').length===2`);
     await check("项目环境列出地址、账号和密码状态", `document.querySelector('.right-panel__env-url').textContent==='https://demo.invalid'&&document.querySelector('.right-panel__env-badge').textContent==='密码已配置'&&document.querySelector('.right-panel__env-meta').textContent==='账号：demo'`);
@@ -425,7 +427,7 @@ async function main() {
     await check("编辑项目环境保存后与后端配置同步", `document.querySelector('.right-panel__env-url').textContent==='https://edited.invalid'&&document.querySelector('.right-panel__status').textContent.includes('已保存')`);
     assert.equal(environments[0].address, "https://edited.invalid");
     await click('.right-panel__nav .right-sidebar__icon-button');
-    await wait(`document.querySelectorAll('.right-panel__card').length===4`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card')[1].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
     await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
     await wait(`document.querySelectorAll('.case-card').length===1`);
     await check("测试数据按模块和用例展示最近结果", `document.querySelectorAll('.case-module').length===1&&document.querySelector('.case-module__name').textContent==='演示模块'&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-run').textContent==='通过'&&document.querySelector('.case-card__status').textContent==='通过'`);
