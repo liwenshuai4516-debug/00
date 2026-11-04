@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { readdir, readFile, realpath, stat, lstat } = require("node:fs/promises");
+const { readdir, readFile, realpath, stat, lstat, rm } = require("node:fs/promises");
 
 // UI 与接口测试共用 qa-report/v1 摘要；目录按测试类型分开，页面统一聚合。
 const REPORT_ROOTS = [
@@ -389,7 +389,52 @@ function createTestReportService(projectStore) {
     };
   }
 
-  return { list, get };
+  async function remove(projectId, kind, id) {
+    if (!REPORT_KINDS.has(kind)) throw new Error("测试报告类型无效。");
+    if (typeof id !== "string" || !/^[\p{L}\p{N}_.-]{1,200}$/u.test(id) || id === "." || id === "..") {
+      throw new Error("测试报告编号无效。");
+    }
+    const project = await resolveProject(projectId);
+    const source = REPORT_ROOTS.find((item) => item.kind === kind);
+    const { root } = await resolveRoot(project.workspaceDir, source);
+    if (!root) throw new Error("测试报告不存在或已被清理。");
+    const target = path.join(root, id);
+    const relative = path.relative(root, target);
+    if (!relative || relative !== id || isOutside(relative)) {
+      throw new Error("测试报告路径无效。");
+    }
+    let directoryInfo;
+    try {
+      directoryInfo = await lstat(target);
+    } catch (error) {
+      if (error.code === "ENOENT") throw new Error("测试报告不存在或已被清理。");
+      throw error;
+    }
+    if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) {
+      throw new Error("测试报告目录无效。");
+    }
+    let task = null;
+    try {
+      task = JSON.parse(await readFile(path.join(target, "task.json"), "utf8"));
+    } catch {
+      // 没有 task.json 的旧批次仍可删除。
+    }
+    if (task?.status === "running") throw new Error("测试批次正在执行，不能删除。");
+    let summaryInfo;
+    try {
+      summaryInfo = await lstat(path.join(target, "summary.json"));
+    } catch (error) {
+      if (error.code === "ENOENT") throw new Error("测试报告不存在或已被清理。");
+      throw error;
+    }
+    if (!summaryInfo.isFile() || summaryInfo.isSymbolicLink()) {
+      throw new Error("测试报告摘要无效，不能删除。");
+    }
+    await rm(target, { recursive: true, force: false });
+    return { kind, id };
+  }
+
+  return { list, get, remove };
 }
 
 module.exports = { createTestReportService };

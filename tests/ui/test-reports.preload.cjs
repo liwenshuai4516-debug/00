@@ -107,4 +107,10 @@ contextBridge.exposeInMainWorld("agent", {
     if (!detail) throw new Error("测试报告不存在或已被清理。");
     return detail;
   },
+  deleteTestReport: async (_projectId, kind, id) => {
+    const index = reports.findIndex((report) => report.kind === kind && report.id === id);
+    if (index < 0) throw new Error("测试报告不存在或已被清理。");
+    reports.splice(index, 1);
+    return { kind, id };
+  },
 });

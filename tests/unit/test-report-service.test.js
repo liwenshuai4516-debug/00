@@ -2,7 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const os = require("node:os");
-const { mkdtemp, mkdir, writeFile, rm, symlink } = require("node:fs/promises");
+const { mkdtemp, mkdir, writeFile, rm, symlink, access } = require("node:fs/promises");
 const { createProjectStore } = require("../../src/main/storage/project-store.js");
 const { createTestReportService } = require("../../src/main/services/test-report-service.js");
 
@@ -167,6 +167,39 @@ test("拒绝无效类型、路径穿越、缺失报告和符号链接摘要", as
   await mkdir(linkDir, { recursive: true });
   await symlink(outside, path.join(linkDir, "summary.json"));
   await assert.rejects(service.get(project.id, "ui", "ui-link"), /不存在|无效/);
+});
+
+test("删除整份报告并拒绝正在执行的批次", async (t) => {
+  const { workspace, project, service } = await setup(t);
+  await writeSummary(workspace, "ui", "ui-remove", {
+    runId: "ui-remove",
+    status: "passed",
+    tests: [{ title: "可删除", status: "passed" }],
+  });
+  await writeFile(path.join(workspace, "qa", "ui", "runs", "ui-remove", "evidence.png"), "evidence");
+  await writeSummary(workspace, "api", "api-keep", {
+    runId: "api-keep",
+    status: "passed",
+    tests: [{ title: "保留", status: "passed" }],
+  });
+
+  assert.deepEqual(await service.remove(project.id, "ui", "ui-remove"), { kind: "ui", id: "ui-remove" });
+  await assert.rejects(access(path.join(workspace, "qa", "ui", "runs", "ui-remove")), /ENOENT/);
+  await assert.rejects(service.remove(project.id, "ui", "ui-remove"), /不存在/);
+  const remaining = await service.list(project.id);
+  assert.deepEqual(remaining.reports.map((report) => report.id), ["api-keep"]);
+
+  await assert.rejects(service.remove(project.id, "other", "api-keep"), /类型无效/);
+  await assert.rejects(service.remove(project.id, "api", "../api-keep"), /编号无效/);
+
+  await writeSummary(workspace, "ui", "ui-running", {
+    runId: "ui-running",
+    status: "passed",
+    tests: [{ title: "运行中", status: "passed" }],
+  });
+  await writeFile(path.join(workspace, "qa", "ui", "runs", "ui-running", "task.json"), JSON.stringify({ status: "running" }));
+  await assert.rejects(service.remove(project.id, "ui", "ui-running"), /正在执行/);
+  await access(path.join(workspace, "qa", "ui", "runs", "ui-running", "summary.json"));
 });
 
 test("没有运行目录时返回空报告集合", async (t) => {

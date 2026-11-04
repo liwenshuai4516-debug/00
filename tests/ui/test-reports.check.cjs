@@ -35,7 +35,11 @@ async function main() {
   ${iconSprite}
   <div id="tabs"></div>
   <div id="body"></div>
-  <dialog id="confirm"></dialog>
+  <dialog id="confirm">
+    <h2 id="right-panel-confirm-title"></h2>
+    <p id="right-panel-confirm-message"></p>
+    <div><button type="button" data-cancel>取消</button><button type="button" data-confirm>确定</button></div>
+  </dialog>
   <script type="module">
     import { createRightSidebarPanel } from "${panelUrl}";
     const panel = createRightSidebarPanel({
@@ -113,6 +117,15 @@ async function main() {
 
     await check("无效批次有提示", `document.querySelector('.right-panel__note').textContent.includes('1 个批次缺少有效的 summary.json')`);
     await check("报告面板没有横向溢出", `document.getElementById('body').scrollWidth<=document.getElementById('body').clientWidth`);
+
+    await run(`document.querySelector('.report-card[data-kind="ui"] .report-card__head').click()`);
+    await wait(`document.querySelector('.report-card[data-kind="ui"] .report-detail__actions')!==null`);
+    await run(`document.querySelector('.report-card[data-kind="ui"] .report-detail__actions .right-panel__action--danger').click()`);
+    await wait(`document.getElementById('confirm').open`);
+    await check("删除报告需要确认整个批次目录", `document.getElementById('right-panel-confirm-message').textContent.includes('整个批次目录')&&document.getElementById('right-panel-confirm-message').textContent.includes('不可恢复')`);
+    await run(`document.querySelector('#confirm [data-confirm]').click()`);
+    await wait(`document.querySelectorAll('.report-card').length===1`);
+    await check("删除后移除报告卡片并保留其他报告", `document.querySelectorAll('.report-card').length===1&&document.querySelector('.report-card').dataset.kind==='api'&&document.querySelector('.right-panel__status').textContent.includes('已删除测试报告')`);
 
     assert.deepEqual(errors, [], "页面不应有 console error");
     console.log(`PASS ${passed} 项检查`);

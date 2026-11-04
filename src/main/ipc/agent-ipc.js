@@ -243,6 +243,11 @@ function registerAgentIpc(
   ipcMain.handle("agent:get-test-report", (_event, projectId, kind, id) =>
     projectService.getTestReport(projectId, kind, id),
   );
+  ipcMain.handle("agent:delete-test-report", (_event, projectId, kind, id) => {
+    return runIdleOperation(() =>
+      projectService.deleteTestReport(projectId, kind, id),
+    );
+  });
 
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 

@@ -1422,6 +1422,14 @@
   margin-top: 4px;
 }
 
+.report-detail__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
 .report-cases {
   margin-top: 10px;
   padding-top: 7px;

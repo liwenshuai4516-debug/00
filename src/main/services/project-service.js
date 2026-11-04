@@ -84,6 +84,10 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return testReports.get(projectId, kind, id);
   }
 
+  function deleteTestReport(projectId, kind, id) {
+    return testReports.remove(projectId, kind, id);
+  }
+
   return {
     listProjects,
     addProject,
@@ -98,6 +102,7 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     updateTestCaseAssertions,
     listTestReports,
     getTestReport,
+    deleteTestReport,
   };
 }
 

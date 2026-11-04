@@ -1675,7 +1675,48 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     } else {
       box.append(element("p", { class: "report-detail__empty", text: "没有逐例结果。" }));
     }
+    box.append(element("div", { class: "report-detail__actions" },
+      element("button", {
+        type: "button",
+        class: "right-panel__action right-panel__action--danger",
+        disabled: busy,
+        onclick: () => void deleteReport(detail),
+      }, icon("trash"), element("span", { text: "删除报告" })),
+    ));
     return box;
+  }
+
+  async function deleteReport(report) {
+    const confirmed = await confirmAction({
+      title: "删除测试报告",
+      message: `将删除报告「${reportTitle(report)}」及整个批次目录（摘要、证据、日志），不可恢复。正在执行的批次不会被删除。`,
+      confirmLabel: "删除报告",
+    });
+    if (!confirmed) {
+      setStatus("已取消删除。");
+      return;
+    }
+    busy = true;
+    setStatus("正在删除测试报告…");
+    render();
+    try {
+      await api().deleteTestReport(selectedId, report.kind, report.id);
+      const key = reportKey(report);
+      expandedReports.delete(key);
+      reportDetails.delete(key);
+      const reports = (reportsData?.reports ?? []).filter(
+        (item) => item.kind !== report.kind || item.id !== report.id,
+      );
+      if (reportsData) {
+        reportsData = { ...reportsData, reports, totals: reportTotals(reports) };
+      }
+      setStatus(`已删除测试报告「${reportTitle(report)}」。`);
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
   }
 
   function renderReportTest(test) {
