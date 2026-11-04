@@ -40,7 +40,12 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return projectStore.rename(projectId, name);
   }
 
-  return { listProjects, addProject, openProject, renameProject };
+  // 本机配置只提供后端读取，页面接口继续使用脱敏后的项目登记信息。
+  function getProjectData(projectId) {
+    return projectStore.readData(projectId);
+  }
+
+  return { listProjects, addProject, openProject, renameProject, getProjectData };
 }
 
 module.exports = { createProjectService };
