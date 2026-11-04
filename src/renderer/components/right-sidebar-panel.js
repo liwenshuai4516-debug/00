@@ -4,6 +4,20 @@ import { renderMarkdown } from "./markdown-renderer.js";
 import { normalizeBrowserUrl } from "./browser-url.js";
 
 const SIZE_UNITS = ["B", "KB", "MB", "GB"];
+const CASE_TYPE_LABELS = {
+  functional: "功能",
+  permission: "权限",
+  boundary: "边界",
+  exception: "异常",
+  regression: "回归",
+};
+const DATA_POLICY_LABELS = {
+  "read-only": "只读",
+  "write-unique": "写入（唯一数据）",
+  "write-disposable": "写入（可清理）",
+  "no-write": "不写数据",
+};
+const ASSERTION_KIND_LABELS = { business: "业务", guard: "前置" };
 
 const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
   month: "2-digit",
@@ -66,6 +80,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let view = "home";
   let editingId = null;
   let data = null;
+  let caseQuery = "";
+  const expandedCases = new Set();
   let status = { text: "", error: false };
   let busy = false;
   let currentFile = null;
@@ -537,7 +553,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   function renderTestData() {
-    setNav("测试数据", () => go("home"), [
+    const environment = environments.find((item) => item.id === selectedId);
+    setNav(environment ? `测试数据 · ${environment.name}` : "测试数据", () => go("home"), [
       iconButton("刷新测试数据", "refresh", () => void refreshData(), busy),
     ]);
 
@@ -568,6 +585,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     select.addEventListener("change", () => {
       selectedId = select.value;
       data = null;
+      caseQuery = "";
+      expandedCases.clear();
       void refreshData();
     });
 
@@ -594,7 +613,28 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         text: "qa/data 下暂无测试数据。",
       }));
     } else {
-      panel.append(renderDataGroups(data.items));
+      const catalog = data.catalog;
+      if (catalog?.modules?.length) {
+        panel.append(renderCaseCatalog(catalog));
+        if (catalog.legacy?.length) {
+          panel.append(element("p", {
+            class: "right-panel__note",
+            text: `${catalog.legacy.length} 个资产未包含 qa-ui-case 元数据，按原文件列在下方。`,
+          }));
+        }
+        if (catalog.truncated) {
+          panel.append(element("p", {
+            class: "right-panel__note",
+            text: "标准化用例超过 200 个，仅展示前 200 个资产。",
+          }));
+        }
+      } else {
+        panel.append(element("p", {
+          class: "right-panel__empty",
+          text: "暂无标准化用例。使用 qa-ui-record 录制后，会按项目 / 模块 / 用例展示。",
+        }));
+      }
+      panel.append(renderFileSection(data.items));
       if (data.truncated) {
         panel.append(element("p", {
           class: "right-panel__note",
@@ -609,6 +649,183 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }));
     panel.append(statusLine());
     body.append(panel);
+  }
+
+  function renderFileSection(items) {
+    const section = element("section", { class: "right-panel__files" });
+    section.append(element("div", { class: "right-panel__files-title" },
+      element("span", { text: "qa/data 文件" }),
+      element("span", { text: `${items.length} 个` }),
+    ));
+    section.append(renderDataGroups(items));
+    return section;
+  }
+
+  function renderCaseCatalog(catalog) {
+    const container = element("div", { class: "case-catalog" });
+    const summary = element("div", { class: "case-catalog__summary" });
+    const stat = (value, label) => element("span", { class: "case-catalog__stat" },
+      element("strong", { text: String(value) }),
+      label,
+    );
+    summary.append(
+      stat(catalog.totals.modules, "模块"),
+      stat(catalog.totals.cases, "用例"),
+      stat(catalog.totals.assertions, "断言"),
+    );
+    const policies = [...new Set(catalog.modules.map((module) => module.dataPolicy))];
+    summary.append(element("span", {
+      class: "case-catalog__policy",
+      text: policies.length === 1
+        ? DATA_POLICY_LABELS[policies[0]] ?? policies[0]
+        : "混合数据策略",
+    }));
+
+    const search = element("input", {
+      type: "search",
+      class: "case-catalog__search",
+      placeholder: "搜索用例、断言、模块或标签",
+      "aria-label": "搜索用例",
+      value: caseQuery,
+    });
+    const list = element("div", { class: "case-catalog__list" });
+    const paint = () => {
+      list.replaceChildren(...renderCaseModules(catalog, caseQuery));
+    };
+    search.addEventListener("input", () => {
+      caseQuery = search.value;
+      paint();
+    });
+    paint();
+
+    container.append(summary, search, list);
+    return container;
+  }
+
+  function renderCaseModules(catalog, query) {
+    const needle = query.trim().toLowerCase();
+    const sections = [];
+    for (const module of catalog.modules) {
+      const moduleText = [module.title, module.page, ...module.tags].join(" ").toLowerCase();
+      const moduleHit = !needle || moduleText.includes(needle);
+      const cases = moduleHit
+        ? module.cases
+        : module.cases.filter((item) => [item.name, item.type, item.priority,
+          ...item.assertions.flatMap((assertion) => [assertion.text, assertion.source])]
+          .join(" ").toLowerCase().includes(needle));
+      if (cases.length === 0) continue;
+      sections.push(renderCaseModule(module, cases));
+    }
+    if (sections.length === 0) {
+      sections.push(element("p", {
+        class: "case-catalog__empty",
+        text: "没有匹配的用例。",
+      }));
+    }
+    return sections;
+  }
+
+  function renderCaseModule(module, cases) {
+    const section = element("section", { class: "case-module" });
+    const header = element("div", { class: "case-module__head" },
+      element("div", { class: "case-module__title" },
+        element("span", { class: "case-module__name", text: module.title }),
+        element("span", {
+          class: "case-module__page",
+          text: module.role ? `${module.page} · ${module.role}` : module.page,
+        }),
+      ),
+      element("span", { class: "case-module__count", text: `${cases.length} 条` }),
+    );
+    section.append(header);
+    if (module.tags.length > 0) {
+      section.append(element("div", { class: "case-module__tags" },
+        module.tags.slice(0, 4).map((tag) => element("span", { class: "case-tag", text: tag })),
+      ));
+    }
+    const list = element("div", { class: "case-module__cases" });
+    for (const item of cases) list.append(renderCaseCard(module, item));
+    section.append(list);
+    return section;
+  }
+
+  function renderCaseCard(module, item) {
+    const key = `${item.assetPath}::${item.name}`;
+    const expanded = expandedCases.has(key);
+    const article = element("article", { class: "case-card" });
+    const head = element("button", {
+      type: "button",
+      class: "case-card__head",
+      "aria-expanded": String(expanded),
+    });
+    head.append(
+      element("span", {
+        class: "case-card__priority",
+        dataset: { priority: item.priority },
+        text: item.priority,
+      }),
+      element("span", { class: "case-card__name", text: item.name }),
+      element("span", {
+        class: "case-card__meta",
+        text: `${CASE_TYPE_LABELS[item.type] ?? item.type} · ${item.assertions.length} 断言`,
+      }),
+      element("span", { class: "case-card__chevron", "aria-hidden": "true", text: "›" }),
+    );
+
+    const detail = element("div", { class: "case-card__body" });
+    detail.hidden = !expanded;
+    detail.append(element("p", {
+      class: "case-card__context",
+      text: `模块 ${module.title} · 页面 ${module.page}${module.role ? ` · 角色 ${module.role}` : ""}`,
+    }));
+    if (item.assertions.length > 0) {
+      const assertions = element("ol", { class: "case-assertions" });
+      for (const assertion of item.assertions) {
+        assertions.append(element("li", { class: "case-assertion" },
+          element("span", { class: "case-assertion__id", text: assertion.id }),
+          element("div", { class: "case-assertion__body" },
+            element("p", { class: "case-assertion__text", text: assertion.text }),
+            assertion.source
+              ? element("p", { class: "case-assertion__source", text: `来源：${assertion.source}` })
+              : null,
+          ),
+          element("span", {
+            class: "case-assertion__kind",
+            dataset: { kind: assertion.kind },
+            text: ASSERTION_KIND_LABELS[assertion.kind] ?? assertion.kind,
+          }),
+        ));
+      }
+      detail.append(assertions);
+    } else {
+      detail.append(element("p", { class: "case-card__context", text: "该用例没有登记断言。" }));
+    }
+
+    const files = [
+      ["资产", item.assetPath],
+      ["脚本", item.specPath],
+      ["说明", item.documentPath],
+      ["录制", item.recordedAt ? formatTime(item.recordedAt) : ""],
+    ].filter(([, value]) => value);
+    if (files.length > 0) {
+      detail.append(element("dl", { class: "case-card__files" },
+        files.flatMap(([label, value]) => [
+          element("dt", { text: label }),
+          element("dd", { text: value }),
+        ]),
+      ));
+    }
+
+    head.addEventListener("click", () => {
+      const open = detail.hidden;
+      detail.hidden = !open;
+      head.setAttribute("aria-expanded", String(open));
+      if (open) expandedCases.add(key);
+      else expandedCases.delete(key);
+    });
+
+    article.append(head, detail);
+    return article;
   }
 
   function renderDataGroups(items) {

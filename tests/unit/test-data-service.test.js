@@ -54,6 +54,60 @@ test("列出 qa/data 下的相对路径并跳过隐藏文件和符号链接", as
   assert.ok(Number.isFinite(spec.modifiedAt));
 });
 
+test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
+  const { service, project, dataRoot } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  await writeFile(path.join(cases, "权限.asset.json"), JSON.stringify({
+    caseId: "权限",
+    recordedAt: "2026-11-04T06:48:43.222Z",
+    caseMeta: {
+      schema: "qa-ui-case/v1",
+      caseId: "权限",
+      project: { id: "pms", name: "项目管理系统" },
+      page: "/pms/Contract",
+      role: "管理员",
+      dataPolicy: "read-only",
+      tags: ["合同管理", "列表"],
+      cases: [
+        {
+          name: "T1 列表可见", type: "functional", priority: "P2",
+          assertions: [
+            { id: "A1", kind: "business", text: "列表出现", source: "页面基线" },
+          ],
+        },
+        {
+          name: "T2 权限拒绝", type: "permission", priority: "P0",
+          assertions: [
+            { id: "A2", kind: "guard", text: "无权限不可见", source: "需求声明" },
+            { id: "A3", kind: "business", text: "列表为空", source: "页面基线" },
+          ],
+        },
+      ],
+    },
+  }));
+  await writeFile(path.join(cases, "legacy.asset.json"), JSON.stringify({ caseId: "legacy" }));
+
+  const result = await service.list(project.id);
+  assert.equal(result.catalog.totals.modules, 1);
+  assert.equal(result.catalog.totals.cases, 2);
+  assert.equal(result.catalog.totals.assertions, 3);
+  assert.equal(result.catalog.totals.legacy, 1);
+  assert.deepEqual(result.catalog.legacy.map((item) => item.name), ["legacy.asset.json"]);
+
+  const module = result.catalog.modules[0];
+  assert.equal(module.title, "合同管理");
+  assert.equal(module.page, "/pms/Contract");
+  assert.deepEqual(module.tags, ["合同管理", "列表"]);
+  assert.deepEqual(module.cases.map((item) => item.name), ["T2 权限拒绝", "T1 列表可见"]);
+  assert.equal(module.cases[0].priority, "P0");
+  assert.equal(module.cases[0].type, "permission");
+  assert.equal(module.cases[0].assertions[0].kind, "guard");
+  assert.equal(module.cases[0].assertions[0].source, "需求声明");
+  assert.equal(module.cases[0].specPath, "ui/cases/权限.spec.cjs");
+  assert.equal(module.cases[0].documentPath, "ui/cases/权限.md");
+  assert.equal(module.cases[0].assetPath, "ui/cases/权限.asset.json");
+});
+
 test("删除单个文件并保留其他测试数据", async (t) => {
   const { service, project, dataRoot } = await setup(t);
   const result = await service.remove(project.id, "ui/cases/demo.spec.cjs");
@@ -90,7 +144,17 @@ test("没有 qa/data、未知项目或无效编号明确返回/报错", async (t
   await mkdir(emptyWorkspace, { recursive: true });
   const emptyProject = await store.add(emptyWorkspace);
   const empty = await service.list(emptyProject.id);
-  assert.deepEqual(empty, { available: false, truncated: false, items: [] });
+  assert.deepEqual(empty, {
+    available: false,
+    truncated: false,
+    items: [],
+    catalog: {
+      modules: [],
+      legacy: [],
+      truncated: false,
+      totals: { modules: 0, cases: 0, assertions: 0, legacy: 0 },
+    },
+  });
 
   await assert.rejects(service.list("missing"), /未找到该项目环境/);
   await assert.rejects(service.remove("missing", "root.txt"), /未找到该项目环境/);
