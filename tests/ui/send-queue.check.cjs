@@ -60,6 +60,9 @@ const chat = {
     if (sent.length === 1) {
       gate = Promise.withResolvers();
       await gate.promise;
+    } else {
+      // 模拟真实流式延迟：事件先于 invoke 回复到达页面。
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
     emit({ type: "message_end", message });
     emit({ type: "turn_end", message });
@@ -98,14 +101,27 @@ async function main() {
     await submit();
     await until("!document.getElementById('stop-button').disabled");
 
-    // 生成中提交第二条：进入待发送队列，输入框清空，不打断当前请求。
+    // 生成中提交第二条与第三条：进入待发送队列，输入框清空，不打断当前请求。
     await type("第二条");
     await submit();
-    await until("!document.getElementById('send-queue').hidden");
-    assert.equal(await js("document.querySelector('.send-queue__text').textContent"), "第二条");
+    await type("第三条");
+    await submit();
+    await until("document.querySelectorAll('.send-queue__item').length===2");
+    assert.equal(await js("document.querySelectorAll('.send-queue__text')[0].textContent"), "第二条");
     assert.equal(await js("document.getElementById('message-input').value"), "");
     assert.equal(sent.length, 1);
     console.log("通过：生成中提交进入待发送队列，输入框清空且不打断当前请求");
+
+    // 移除第二条之外的一项，再把剩余项编辑回输入框并重新排队。
+    await js("document.querySelectorAll('.send-queue__action')[3].click()");
+    await until("document.querySelectorAll('.send-queue__item').length===1");
+    assert.equal(await js("document.querySelector('.send-queue__text').textContent"), "第二条");
+    await js("document.querySelector('.send-queue__action').click()");
+    await until("document.getElementById('send-queue').hidden");
+    assert.equal(await js("document.getElementById('message-input').value"), "第二条");
+    await submit();
+    await until("!document.getElementById('send-queue').hidden");
+    console.log("通过：待发送项可移除，编辑后回到输入框并重新排队");
 
     // 第一条结束后自动发送队列中的第二条。
     gate.resolve();

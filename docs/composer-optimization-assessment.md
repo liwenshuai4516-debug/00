@@ -82,7 +82,7 @@
 - 当前请求**正常结束**后自动发送队首；停止或结果未确认时不自动续发，队列保留，可点「发送下一条」手动继续。
 - 队列项可「编辑」（仅在输入框为空时）或「移除」；切换会话、新建对话时清空，避免把旧内容发到新会话。
 - 队列只保存在页面内存，关闭应用不恢复；宿主仍保证一次只有一个 prompt，事件归属与未确认发送语义不变。
-- 验证：`tests/ui/send-queue.check.cjs` 覆盖生成中排队、输入清空、本轮结束后自动发送；`output-trace.check.cjs` 与 `sidebar-layout.check.cjs` 回归通过。
+- 验证：`tests/ui/send-queue.check.cjs` 覆盖生成中排队、输入清空、移除/编辑后重新排队、本轮结束后自动发送；`output-trace.check.cjs` 与 `sidebar-layout.check.cjs` 回归通过。
 
 **未使用 Pi 原生排队**：`session.prompt(..., { streamingBehavior: "followUp" | "steer" })` 会在同一轮内投递，但当前页面的实时事件、过程视图和未确认发送都按“一次请求”建模。要让队列在工具执行中途生效或支持插话，需要先重新设计事件归属与订阅生命周期，属于独立提案。
 
