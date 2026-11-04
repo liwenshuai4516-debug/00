@@ -796,11 +796,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function updateBrowserChrome() {
     const reload = body.querySelector(".browser-bar__reload");
-    if (reload) reload.textContent = browserLoading ? "×" : "⟳";
+    if (reload) reload.replaceChildren(icon(browserLoading ? "stop" : "refresh"));
     const back = body.querySelector(".browser-bar__back");
     if (back) back.disabled = !canGo("back");
     const forward = body.querySelector(".browser-bar__forward");
     if (forward) forward.disabled = !canGo("forward");
+    const external = body.querySelector(".browser-bar__external");
+    if (external) external.disabled = browserUrl === "";
   }
 
   function createBrowserView() {
@@ -846,17 +848,16 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   function renderBrowser() {
     setNav(browserTitle || "浏览器", () => go("home"));
 
+    // 与 DSH 一致：工具栏 + 页面贴边铺满，不使用内层卡片边框。
     const panel = element("div", { class: "right-panel right-panel--browser" });
-    panel.append(statusLine());
 
     const bar = element("div", { class: "browser-bar" });
     const back = element("button", {
       type: "button",
-      class: "browser-bar__icon browser-bar__back",
+      class: "browser-bar__tool browser-bar__back",
       "aria-label": "后退",
       title: "后退",
-      text: "←",
-    });
+    }, icon("arrow-left"));
     back.addEventListener("click", () => {
       if (!canGo("back")) return;
       try {
@@ -867,11 +868,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
     const forward = element("button", {
       type: "button",
-      class: "browser-bar__icon browser-bar__forward",
+      class: "browser-bar__tool browser-bar__forward",
       "aria-label": "前进",
       title: "前进",
-      text: "→",
-    });
+    }, icon("arrow-left"));
     forward.addEventListener("click", () => {
       if (!canGo("forward")) return;
       try {
@@ -882,11 +882,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
     const reload = element("button", {
       type: "button",
-      class: "browser-bar__icon browser-bar__reload",
+      class: "browser-bar__tool browser-bar__reload",
       "aria-label": "刷新或停止",
       title: "刷新或停止",
-      text: browserLoading ? "×" : "⟳",
-    });
+    }, icon(browserLoading ? "stop" : "refresh"));
     reload.addEventListener("click", () => {
       if (!browserView || !browserView.isConnected) return;
       try {
@@ -896,6 +895,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         // 尚未完成首次加载时忽略。
       }
     });
+
+    const addressBox = element("div", { class: "browser-bar__address-box" });
     const address = element("input", {
       type: "text",
       class: "browser-bar__address",
@@ -905,7 +906,6 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       "aria-label": "浏览器地址",
       value: browserUrl,
     });
-    const open = element("button", { type: "button", class: "browser-bar__go", text: "打开" });
     const submit = () => {
       const url = normalizeBrowserUrl(address.value);
       if (url === null) {
@@ -915,26 +915,53 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       }
       navigateBrowser(url);
     };
-    open.addEventListener("click", submit);
+    // 不叫 go：避免遮蔽外层的 go(next) 视图切换函数。
+    const goButton = element("button", {
+      type: "button",
+      class: "browser-bar__go",
+      "aria-label": "前往",
+      title: "前往",
+      text: "前往",
+    });
+    goButton.addEventListener("click", submit);
     address.addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
       submit();
     });
-    bar.append(back, forward, reload, address, open);
+    addressBox.append(address, goButton);
+
+    const external = element("button", {
+      type: "button",
+      class: "browser-bar__tool browser-bar__external",
+      "aria-label": "在系统浏览器中打开",
+      title: "在系统浏览器中打开",
+      disabled: browserUrl === "",
+    }, icon("globe"));
+    external.addEventListener("click", () => {
+      if (browserUrl === "") return;
+      const open = window.agent?.openExternalUrl;
+      if (typeof open !== "function") {
+        setStatusText("页面接口尚未就绪，请稍后重试。", true);
+        return;
+      }
+      Promise.resolve(open(browserUrl)).catch(() => setStatusText("无法打开系统浏览器。", true));
+    });
+
+    bar.append(back, forward, reload, addressBox, external);
     panel.append(bar);
 
     const surface = element("div", { class: "right-panel__browser" });
     if (browserUrl === "") {
       surface.append(element("p", {
-        class: "right-panel__empty",
+        class: "right-panel__browser-start",
         text: "输入网址开始浏览。页面在独立会话中加载，不继承应用权限。",
       }));
     } else {
       browserView = createBrowserView();
       surface.append(browserView);
     }
-    panel.append(surface);
+    panel.append(surface, statusLine());
     body.append(panel);
 
     if (browserUrl === "") address.focus();

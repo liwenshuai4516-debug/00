@@ -68,6 +68,10 @@ async function main() {
       if (projectIndex >= 0) projects.splice(projectIndex, 1);
       return { id: removed.id, name: removed.name };
     }
+    if (name === "openExternalUrl") {
+      if (!/^https?:\/\//i.test(args[0])) throw Error("只支持 http(s) 地址。");
+      return undefined;
+    }
     if (name === "listWorkspaceDirectory") {
       if (args[0] === "src") throw Error("目录不存在或不可读。");
       if (args[0] === "docs") {
@@ -316,13 +320,22 @@ async function main() {
     // 浏览器：空状态、拒绝非 http(s)、加载本地页面并同步标题与地址。
     await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('浏览器')).click()`);
     await wait(`document.querySelector('.browser-bar__address')!==null`);
-    await check("浏览器空状态提供地址栏且不创建 webview", `document.querySelector('webview')===null&&document.querySelector('.right-panel__browser .right-panel__empty')!==null`);
+    await check("浏览器空状态提供地址栏且不创建 webview", `document.querySelector('webview')===null&&document.querySelector('.right-panel__browser-start')!==null`);
     await run(`document.querySelector('.browser-bar__address').value='javascript:alert(1)';document.querySelector('.browser-bar__go').click()`);
     await check("浏览器拒绝非 http(s) 地址", `document.querySelector('.right-panel__status').dataset.error===''&&document.querySelector('.right-panel__status').textContent.includes('http(s)')&&document.querySelector('webview')===null`);
     await run(`document.querySelector('.browser-bar__address').value='http://127.0.0.1:${port}/';document.querySelector('.browser-bar__go').click()`);
     await wait(`document.querySelector('webview')!==null`);
     await wait(`document.querySelector('.right-panel__nav-title').textContent==='本地页面'`);
     await check("浏览器加载本地页面并同步地址", `document.querySelector('.browser-bar__address').value.includes('127.0.0.1:${port}')&&document.querySelector('webview').getAttribute('partition')==='persist:browser-panel'`);
+    await check("浏览器面板无内层卡片边框且工具栏 38px", `getComputedStyle(document.querySelector('.right-panel--browser')).padding==='0px'&&getComputedStyle(document.querySelector('.right-panel__browser')).borderTopWidth==='0px'&&Math.round(document.querySelector('.browser-bar').getBoundingClientRect().height)===38`);
+    await run(`document.querySelector('.browser-bar__external').click()`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok(
+      calls.some(([name, args]) => name === "openExternalUrl" && String(args?.[0]).startsWith("http://127.0.0.1:")),
+      "系统浏览器打开应收到当前地址",
+    );
+    passed++;
+    console.log("PASS 浏览器可在系统浏览器中打开当前地址");
     if (process.env.RIGHT_SIDEBAR_BROWSER_SCREENSHOT_PATH) {
       // 等 webview 完成首帧再截图。
       await run(`new Promise(r=>setTimeout(r,400))`);

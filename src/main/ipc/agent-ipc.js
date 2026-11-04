@@ -97,6 +97,14 @@ function registerAgentIpc(
   );
   ipcMain.handle("agent:list-workspace-directory", (_event, dirPath) => listWorkspaceDirectory(dirPath));
 
+  // 浏览器面板的“在系统浏览器中打开”：只接受 http(s)，由主进程调用系统默认浏览器。
+  ipcMain.handle("agent:open-external-url", (_event, url) => {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+      throw new Error("只支持 http(s) 地址。");
+    }
+    return require("electron").shell.openExternal(url);
+  });
+
   // 异常后的状态核对必须等生成结束，读取期间阻止新的发送与会话操作。
   ipcMain.handle("agent:inspect-composer-send", (_event, sessionId) => {
     return runIdleOperation(() => composerDraftService.inspectSend(sessionId));

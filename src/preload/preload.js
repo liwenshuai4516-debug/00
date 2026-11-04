@@ -124,6 +124,13 @@ contextBridge.exposeInMainWorld("agent", {
     }
     return ipcRenderer.invoke("agent:read-preview-file", filePath);
   },
+  // 只允许 http(s)；实际打开动作与校验在主进程完成。
+  openExternalUrl: (url) => {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+      throw new Error("只支持 http(s) 地址。");
+    }
+    return ipcRenderer.invoke("agent:open-external-url", url);
+  },
   // 目录路径为空表示工作目录根；解析与边界同样在主进程完成。
   listWorkspaceDirectory: (dirPath) => {
     if (dirPath !== undefined && dirPath !== null && typeof dirPath !== "string") {
