@@ -78,6 +78,7 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 禁止用实际值倒推预期；禁止断言 loading、骨架屏、样式类、请求码等中间态；动态值断言格式或正则，不断言具体时间、随机 ID、自增序号。
 日志里的 assert 行可能把可访问名截成前缀（实测 10 个字符），最终断言用输入/计划中的完整业务值，不照抄前缀。
 一个 expect 一个事实，用 web-first 断言（toBeVisible/toHaveText/toHaveCount/toHaveValue/toHaveURL），不用 expect(await ...)。
+列表/筛选断言不要硬编码“共 N 条”：测试数据会增长。优先断言总数大于 0、总数等于当前行数、每行都满足筛选条件；只有唯一键/隔离数据才断言精确条数。
 断言失败信息要能定位业务步骤：test 名称和步骤注释与 plan 对应。
 
 ### 3.2 定位器
