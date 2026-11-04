@@ -29,6 +29,9 @@ import { createWindowCloseController } from "./components/window-close-controlle
 
 const form = document.getElementById("message-form");
 const input = document.getElementById("message-input");
+// 工作区入口放在页面初始化阶段声明，会话信息回调可能早于输入区组件创建。
+const workspaceChip = document.getElementById("workspace-chip");
+const workspaceChipName = document.getElementById("workspace-chip-name");
 const sendButton = document.getElementById("send-button");
 const stopButton = document.getElementById("stop-button");
 const templateSelect = document.getElementById("task-template-select");
@@ -613,7 +616,10 @@ const sessionInfoPanel = createSessionInfoPanel(
   () => window.agent.getSessionInfo(),
   {
     readSessionId: () => composerState.sessionId,
-    onState: (state) => contextUsage.render(state),
+    onState: (state) => {
+      contextUsage.render(state);
+      renderWorkspaceChip(state.info?.workspaceDir);
+    },
   },
 );
 window.addEventListener(
@@ -1316,6 +1322,24 @@ form.addEventListener("drop", (event) => {
   void insertDroppedFiles(files);
 });
 
+// 拖入与「+」选择共用：把归一化后的路径插入光标处。
+function insertFileReferences(items) {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  const tokens = `${items.map((item) => `@${item.path}`).join(" ")} `;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(end);
+  input.value = `${before}${tokens}${after}`;
+  const position = before.length + tokens.length;
+  input.setSelectionRange(position, position);
+  // 走原有 input 事件，草稿保存与发送校验沿用同一链路。
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+  setRequestStatus(`已插入 ${items.length} 个文件引用。`);
+  return true;
+}
+
 async function insertDroppedFiles(files) {
   if (input.readOnly) return;
   const paths = [];
@@ -1340,24 +1364,43 @@ async function insertDroppedFiles(files) {
     setRequestStatus(error.message);
     return;
   }
-  if (!Array.isArray(items) || items.length === 0) {
+  if (!insertFileReferences(items)) {
     setRequestStatus("拖入的内容不是可引用的普通文件。");
-    return;
   }
-
-  const tokens = `${items.map((item) => `@${item.path}`).join(" ")} `;
-  const start = input.selectionStart ?? input.value.length;
-  const end = input.selectionEnd ?? start;
-  const before = input.value.slice(0, start);
-  const after = input.value.slice(end);
-  input.value = `${before}${tokens}${after}`;
-  const position = before.length + tokens.length;
-  input.setSelectionRange(position, position);
-  // 走原有 input 事件，草稿保存与发送校验沿用同一链路。
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.focus();
-  setRequestStatus(`已插入 ${items.length} 个文件引用。`);
 }
+
+const addFileButton = document.getElementById("add-file-button");
+addFileButton.addEventListener("click", () => { void pickFileReferences(); });
+
+async function pickFileReferences() {
+  if (input.readOnly) return;
+  addFileButton.disabled = true;
+  try {
+    const result = await window.agent.pickFiles();
+    if (result?.canceled) return;
+    if (!insertFileReferences(result?.items ?? [])) {
+      setRequestStatus("没有可引用的普通文件。");
+    }
+  } catch (error) {
+    setRequestStatus(error.message);
+  } finally {
+    addFileButton.disabled = false;
+  }
+}
+
+// 工作区入口：显示当前目录名，点击展开右侧栏的文件浏览。
+function renderWorkspaceChip(workspaceDir) {
+  const value = typeof workspaceDir === "string" ? workspaceDir : "";
+  const name = value.split(/[\\/]/).filter(Boolean).pop();
+  workspaceChipName.textContent = name ?? "工作区";
+  workspaceChip.title = value === ""
+    ? "当前工作目录"
+    : `当前工作目录：${value}（点击浏览文件）`;
+}
+
+workspaceChip.addEventListener("click", () => {
+  document.dispatchEvent(new CustomEvent("open-file-browser"));
+});
 
 input.addEventListener("input", updateSlashMenu);
 input.addEventListener("input", (event) => fileReferenceMenu.update(event));

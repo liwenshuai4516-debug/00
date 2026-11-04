@@ -65,6 +65,12 @@ document.addEventListener("open-file-preview", (event) => {
   void rightSidebarPanel.openFile(filePath);
 });
 
+// 输入区工作区入口：展开右侧栏并进入文件浏览。
+document.addEventListener("open-file-browser", () => {
+  if (!rightSidebar.isOpen()) rightSidebar.open();
+  rightSidebarPanel.openFiles();
+});
+
 // 会话切换后关闭旧工作目录的文件预览，避免把上一个项目的文件留在侧栏。
 document.addEventListener("session-changed", () => rightSidebarPanel.resetWorkspaceView());
 

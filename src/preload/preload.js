@@ -131,6 +131,7 @@ contextBridge.exposeInMainWorld("agent", {
   },
   // 拖入文件：先取系统路径，再由主进程判定相对/绝对与是否可引用。
   getPathForFile: (file) => webUtils.getPathForFile(file),
+  pickFiles: () => ipcRenderer.invoke("agent:pick-files"),
   describeDroppedFiles: (paths) => {
     if (!Array.isArray(paths)) throw new Error("拖入内容无效。");
     return ipcRenderer.invoke("agent:describe-dropped-files", paths);

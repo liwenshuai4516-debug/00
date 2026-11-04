@@ -1353,5 +1353,5 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (view === "file" || view === "files") go("home");
   }
 
-  return { open, refresh: open, openFile, resetWorkspaceView };
+  return { open, refresh: open, openFile, openFiles: openTree, resetWorkspaceView };
 }

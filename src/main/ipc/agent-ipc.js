@@ -111,6 +111,16 @@ function registerAgentIpc(
   );
   ipcMain.handle("agent:describe-dropped-files", (_event, paths) => describeDroppedFiles(paths));
 
+  // 输入区「+」选择文件：主进程弹原生对话框，复用拖入的路径归一化。
+  ipcMain.handle("agent:pick-files", async (event) => {
+    const { dialog, BrowserWindow } = require("electron");
+    const options = { title: "选择要引用的文件", properties: ["openFile", "multiSelections"] };
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true, items: [] };
+    return { canceled: false, items: await describeDroppedFiles(result.filePaths) };
+  });
+
   // webview 是独立 webContents，页面里的 DevTools 入口由主进程按宿主窗口定位。
   const { openBrowserDevToolsForHost } = require("../services/guest-browser-policy.js");
   ipcMain.handle("agent:open-browser-devtools", (event) => openBrowserDevToolsForHost(event.sender));

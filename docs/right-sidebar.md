@@ -114,3 +114,7 @@ node --test tests/unit/project-environment.test.js tests/unit/test-data-service.
 - 浏览器不提供下载、多标签、书签和地址历史；切换视图会重建 webview 并丢失前进/后退历史。
 - 页面开发者工具由 Electron 创建为独立窗口；本轮自动检查覆盖“调试”按钮与右键菜单入口，受限沙箱中无法确认窗口实际渲染，需要在真实应用窗口复核。
 - 全屏按 768px 断点自动选择，未提供手动全屏切换按钮。
+
+## 输入区入口
+
+输入区工作区 chip 点击时派发 `open-file-browser`：`page-shell` 展开右侧栏并调用 `rightSidebarPanel.openFiles()` 进入文件浏览，复用已有文件树。

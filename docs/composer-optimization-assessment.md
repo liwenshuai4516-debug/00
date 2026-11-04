@@ -84,6 +84,16 @@
 - 队列只保存在页面内存，关闭应用不恢复；宿主仍保证一次只有一个 prompt，事件归属与未确认发送语义不变。
 - 验证：`tests/ui/send-queue.check.cjs` 覆盖生成中排队、输入清空、移除/编辑后重新排队、本轮结束后自动发送，以及连按两次 Esc 停止（单次与组词中的 Esc 不触发）；`output-trace.check.cjs` 与 `sidebar-layout.check.cjs` 回归通过。
 
+### 输入区控制行
+
+![输入区控制行](images/composer-controls.png)
+
+- 左侧新增「+」：通过主进程原生对话框选择普通文件，复用拖入的路径归一化后插入 `@相对路径`；单次最多 20 个，目录、缺失和越界内容跳过。
+- 工作区入口显示当前目录名，点击展开右侧栏文件浏览；复用会话信息同一次 `getSessionInfo()` 读取，不额外请求。
+- 模型选择改为紧凑内联，上下文入口与发送按钮保持右侧分组；窄于 480px 时控制行换行，避免窄主列横向溢出。
+- 说明：Pi 没有 DSH 的工作区权限沙箱，这里显示**真实工作目录**，不提供没有实际效果的权限选择器；Pi 原生工具仍可直接读写文件（见 AGENTS 的边界说明）。
+- 验证：`tests/ui/send-queue.check.cjs` 断言添加入口与工作目录名；`context-usage-page.check.cjs` 与 `sidebar-layout.check.cjs` 的窄窗无溢出检查通过。原生文件对话框需要人工验收。
+
 ### 生成中插话（⌘/Ctrl+Enter）
 
 - 生成中按 `⌘/Ctrl+Enter`：通过 Pi 的 `session.prompt(text, { streamingBehavior: "steer" })` 排队，在当前轮工具结束后、下一次模型请求前投递；普通 `Enter` 仍进入宿主侧待发送队列。

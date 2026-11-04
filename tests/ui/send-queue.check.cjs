@@ -107,6 +107,9 @@ async function main() {
   try {
     await win.loadFile(path.join(root, "src/renderer/index.html"));
     await idle();
+    // 输入区控制行：添加文件入口与真实工作目录名。
+    assert.ok(await js("document.getElementById('add-file-button')!==null"));
+    assert.equal(await js("document.getElementById('workspace-chip-name').textContent"), "demo");
 
     await type("第一条");
     await until("!document.getElementById('send-button').disabled");

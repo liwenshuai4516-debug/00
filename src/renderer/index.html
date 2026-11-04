@@ -265,7 +265,7 @@
         <form id="message-form" class="composer">
           <label for="message-input" class="sr-only">输入消息</label>
           <textarea id="message-input" rows="3" autocomplete="off"
-            placeholder="向闪电31发送消息，输入 / 查看可用命令" aria-controls="slash-command-menu"
+            placeholder="发消息，/ 调用指令，@ 引用文件" aria-controls="slash-command-menu"
             aria-expanded="false" aria-autocomplete="list"
             aria-describedby="message-input-hint composer-draft-status"></textarea>
           <!-- 命令菜单只列出名称、说明和来源；选中后填入输入框，由用户确认后发送。 -->
@@ -283,47 +283,63 @@
           </div>
 
           <div class="composer-actions">
-            <button id="draft-toggle" class="draft-toggle" type="button" aria-controls="proposal-review-panel"
-              aria-expanded="false">
-              <svg class="icon" aria-hidden="true">
-                <use href="#icon-files" />
-              </svg>
-              <span>文件草稿</span>
-            </button>
-            <div id="model-selector" class="model-selector" aria-busy="false">
-              <label for="model-select" class="sr-only">当前对话模型</label>
-              <select id="model-select" aria-describedby="model-status" disabled>
-                <option value="">正在读取模型……</option>
-              </select>
-              <button type="button" hidden>重新读取</button>
-              <p id="model-status" role="status" aria-atomic="true">正在读取当前模型……</p>
-            </div>
-            <div id="context-usage" class="context-usage">
-              <button id="context-usage-toggle" type="button" aria-controls="context-usage-details" aria-expanded="false"><span class="context-usage__ring" aria-hidden="true"></span><span class="context-usage__label" data-usage-label>上下文读取中…</span></button>
-              <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title"
-                hidden>
-                <h2 id="context-usage-title">上下文用量</h2>
-                <p data-usage></p>
-                <p>这是当前模型上下文的估算，不代表费用、账号配额或全部原始历史。</p>
-                <p>整理会调用模型生成摘要，保留原始历史；仅在你点击后执行。</p>
-                <div class="context-usage-actions">
-                  <button data-refresh type="button">重新读取</button>
-                  <button data-compact type="button" disabled>整理上下文</button>
-                </div>
-              </section>
-              <span class="sr-only" role="status" aria-atomic="true" data-announcement></span>
-            </div>
-            <div class="send-actions">
-              <button id="stop-button" class="round-button" type="button" disabled aria-label="停止生成" title="停止生成（连按两次 Esc）">
+            <div class="composer-tools">
+              <button id="add-file-button" class="composer-icon-button" type="button" aria-label="添加文件引用"
+                title="添加文件引用">
                 <svg class="icon" aria-hidden="true">
-                  <use href="#icon-stop" />
+                  <use href="#icon-plus" />
                 </svg>
               </button>
-              <button id="send-button" class="round-button primary-button" type="submit" aria-label="发送消息" title="发送消息">
+              <button id="workspace-chip" class="workspace-chip" type="button" aria-label="工作区" title="当前工作目录">
                 <svg class="icon" aria-hidden="true">
-                  <use href="#icon-send" />
+                  <use href="#icon-folder" />
                 </svg>
+                <span id="workspace-chip-name">工作区</span>
               </button>
+              <button id="draft-toggle" class="draft-toggle" type="button" aria-controls="proposal-review-panel"
+                aria-expanded="false">
+                <svg class="icon" aria-hidden="true">
+                  <use href="#icon-files" />
+                </svg>
+                <span>文件草稿</span>
+              </button>
+            </div>
+            <div class="composer-trail">
+              <div id="model-selector" class="model-selector" aria-busy="false">
+                <label for="model-select" class="sr-only">当前对话模型</label>
+                <select id="model-select" aria-describedby="model-status" disabled>
+                  <option value="">正在读取模型……</option>
+                </select>
+                <button type="button" hidden>重新读取</button>
+                <p id="model-status" role="status" aria-atomic="true">正在读取当前模型……</p>
+              </div>
+              <div id="context-usage" class="context-usage">
+                <button id="context-usage-toggle" type="button" aria-controls="context-usage-details" aria-expanded="false"><span class="context-usage__ring" aria-hidden="true"></span><span class="context-usage__label" data-usage-label>上下文读取中…</span></button>
+                <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title"
+                  hidden>
+                  <h2 id="context-usage-title">上下文用量</h2>
+                  <p data-usage></p>
+                  <p>这是当前模型上下文的估算，不代表费用、账号配额或全部原始历史。</p>
+                  <p>整理会调用模型生成摘要，保留原始历史；仅在你点击后执行。</p>
+                  <div class="context-usage-actions">
+                    <button data-refresh type="button">重新读取</button>
+                    <button data-compact type="button" disabled>整理上下文</button>
+                  </div>
+                </section>
+                <span class="sr-only" role="status" aria-atomic="true" data-announcement></span>
+              </div>
+              <div class="send-actions">
+                <button id="stop-button" class="round-button" type="button" disabled aria-label="停止生成" title="停止生成（连按两次 Esc）">
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#icon-stop" />
+                  </svg>
+                </button>
+                <button id="send-button" class="round-button primary-button" type="submit" aria-label="发送消息" title="发送消息">
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#icon-send" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </form>
