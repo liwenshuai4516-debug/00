@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const os = require("node:os");
 const { mkdtemp, mkdir, rm, writeFile } = require("node:fs/promises");
+const http = require("node:http");
 const { app, BrowserWindow, ipcMain } = require("electron");
 app.disableHardwareAcceleration();
 app.on("window-all-closed", () => {});
@@ -134,7 +135,7 @@ async function main() {
   });
   const win = new BrowserWindow({
     width: 1120, height: 820, show: false,
-    webPreferences: { preload: path.join(__dirname, "sidebar-layout.preload.cjs"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    webPreferences: { preload: path.join(__dirname, "sidebar-layout.preload.cjs"), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, webviewTag: true },
   });
   win.webContents.session.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*"] }, (_details, done) => done({ cancel: true }));
   const errors = [];
@@ -142,6 +143,13 @@ async function main() {
   await win.loadFile(path.join(root, "src/renderer/index.html"));
   win.webContents.debugger.attach("1.3");
   await win.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
+  // 浏览器检查使用本地页面，避免测试访问外网。
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end("<!doctype html><html><head><title>本地页面</title></head><body><h1>ok</h1></body></html>");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
   const run = source => win.webContents.executeJavaScript(source);
   const wait = expression => run(`(async()=>{for(let i=0;i<300;i++){if(${expression})return;await new Promise(r=>setTimeout(r,10));}throw Error('等待失败: '+${JSON.stringify(expression)});})()`);
   let passed = 0;
@@ -301,9 +309,27 @@ async function main() {
     await click("#right-sidebar-toggle");
     await wait(`Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424`);
     await check("右侧边栏按 45% 与中栏 400 约束打开", `document.getElementById('app-right-sidebar').hasAttribute('data-open')&&document.getElementById('app-right-sidebar').getAttribute('aria-hidden')===null&&document.getElementById('right-sidebar-toggle').hidden&&document.activeElement.id==='right-sidebar-close'&&Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424&&document.documentElement.scrollWidth<=innerWidth`);
-    await wait(`document.querySelectorAll('.right-panel__card').length===3&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='2 个文件'`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===4&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='2 个文件'`);
     if (process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    await check("右侧栏工作台显示 logo 与两张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据,文件浏览'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'`);
+    await check("右侧栏工作台显示 logo 与四张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据,文件浏览,浏览器'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'`);
+
+    // 浏览器：空状态、拒绝非 http(s)、加载本地页面并同步标题与地址。
+    await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('浏览器')).click()`);
+    await wait(`document.querySelector('.browser-bar__address')!==null`);
+    await check("浏览器空状态提供地址栏且不创建 webview", `document.querySelector('webview')===null&&document.querySelector('.right-panel__browser .right-panel__empty')!==null`);
+    await run(`document.querySelector('.browser-bar__address').value='javascript:alert(1)';document.querySelector('.browser-bar__go').click()`);
+    await check("浏览器拒绝非 http(s) 地址", `document.querySelector('.right-panel__status').dataset.error===''&&document.querySelector('.right-panel__status').textContent.includes('http(s)')&&document.querySelector('webview')===null`);
+    await run(`document.querySelector('.browser-bar__address').value='http://127.0.0.1:${port}/';document.querySelector('.browser-bar__go').click()`);
+    await wait(`document.querySelector('webview')!==null`);
+    await wait(`document.querySelector('.right-panel__nav-title').textContent==='本地页面'`);
+    await check("浏览器加载本地页面并同步地址", `document.querySelector('.browser-bar__address').value.includes('127.0.0.1:${port}')&&document.querySelector('webview').getAttribute('partition')==='persist:browser-panel'`);
+    if (process.env.RIGHT_SIDEBAR_BROWSER_SCREENSHOT_PATH) {
+      // 等 webview 完成首帧再截图。
+      await run(`new Promise(r=>setTimeout(r,400))`);
+      await writeFile(process.env.RIGHT_SIDEBAR_BROWSER_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+    await click('.right-panel__nav .right-sidebar__icon-button');
+    await wait(`document.querySelector('.right-panel__hero')!==null`);
 
     // 文件树：从工作台卡片进入，目录按需展开，文件点击进入预览。
     await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('文件浏览')).click()`);
@@ -347,7 +373,7 @@ async function main() {
     await check("编辑项目环境保存后与后端配置同步", `document.querySelector('.right-panel__env-url').textContent==='https://edited.invalid'&&document.querySelector('.right-panel__status').textContent.includes('已保存')`);
     assert.equal(environments[0].address, "https://edited.invalid");
     await click('.right-panel__nav .right-sidebar__icon-button');
-    await wait(`document.querySelectorAll('.right-panel__card').length===3`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===4`);
     await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
     await wait(`document.querySelectorAll('.right-panel__file').length===2`);
     await check("测试数据按 ui 分类列出文件", `document.querySelectorAll('.right-panel__group').length===1&&document.querySelector('.right-panel__group-title').textContent.includes('ui')&&document.querySelectorAll('.right-panel__file').length===2`);
@@ -360,7 +386,7 @@ async function main() {
     await check("删除测试数据文件后刷新列表", `document.querySelectorAll('.right-panel__file').length===1&&document.querySelector('.right-panel__status').textContent.includes('已删除')`);
     assert.equal(testData.length, 1);
     await click('.right-panel__nav .right-sidebar__icon-button');
-    await wait(`document.querySelectorAll('.right-panel__card').length===3`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===4`);
     await click('.right-panel__card');
     await wait(`document.querySelectorAll('.right-panel__env').length===2`);
     await run(`document.querySelectorAll('.right-panel__env')[1].querySelector('.right-panel__action--danger').click()`);
@@ -410,6 +436,7 @@ async function main() {
     assert.deepEqual(errors, []);
     console.log(`侧栏布局 ${passed} 项检查通过。`);
   } finally {
+    server.close();
     win.destroy();
     await rm(temporary, { recursive: true, force: true, maxRetries: 5 });
   }

@@ -236,7 +236,18 @@ function createWindow() {
       preload: path.join(projectRoot, "src/preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // 右侧栏浏览器使用 <webview>；域名、弹窗和 preload 由下方主进程钩子限制。
+      webviewTag: true,
     },
+  });
+
+  // 不信任页面传入的 webview 配置：去掉 preload，强制隔离与沙箱。
+  window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+    webPreferences.sandbox = true;
+    if (!isBrowserUrl(params.src)) event.preventDefault();
   });
 
   registerWindowCloseGuard(window, ipcMain, quitGuard.cancelQuit, () =>
@@ -257,6 +268,24 @@ function createWindow() {
   });
   window.loadFile(path.join(projectRoot, "src/renderer/index.html"));
 }
+
+// 右侧栏浏览器只允许 http(s) 主文档；webview 不允许弹窗或跳转到本地协议。
+function isBrowserUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+app.on("web-contents-created", (_event, contents) => {
+  if (contents.getType() !== "webview") return;
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-navigate", (event, url) => {
+    if (!isBrowserUrl(url)) event.preventDefault();
+  });
+});
 
 app.whenReady().then(() => {
   createWindow();

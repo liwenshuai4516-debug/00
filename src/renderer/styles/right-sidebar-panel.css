@@ -730,3 +730,75 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+/* 侧栏浏览器：地址栏在上，webview 占满剩余高度。 */
+.right-panel--browser {
+  min-height: 0;
+}
+
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 8px;
+}
+
+.browser-bar__icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.browser-bar__icon:hover:not(:disabled) {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.browser-bar__address {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.browser-bar__go {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.right-panel__browser {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.right-panel__browser-view {
+  flex: 1;
+  width: 100%;
+  min-height: 320px;
+  border: 0;
+  /* 页面未声明背景时按白底显示，避免暗色主题下黑字落在深色背景上。 */
+  background: #fff;
+}
+
+.right-panel__browser .right-panel__empty {
+  padding: 16px;
+}

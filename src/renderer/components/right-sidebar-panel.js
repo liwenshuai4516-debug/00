@@ -1,6 +1,7 @@
 // 右侧栏内容：工作台卡片、项目环境 CRUD、qa/data 测试数据清理与文件预览。
 // 内容只通过受限 IPC 读写；密码不会从主进程回填到页面。
 import { renderMarkdown } from "./markdown-renderer.js";
+import { normalizeBrowserUrl } from "./browser-url.js";
 
 const SIZE_UNITS = ["B", "KB", "MB", "GB"];
 
@@ -70,6 +71,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let currentFile = null;
   let currentFilePath = "";
   let fileOrigin = "home";
+  let browserUrl = "";
+  let browserTitle = "";
+  let browserLoading = false;
+  let browserView = null;
   const treeChildren = new Map();
   const treeExpanded = new Set();
   let treeRootEntries = null;
@@ -120,6 +125,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   function render() {
     tabs.replaceChildren();
     body.replaceChildren();
+    // 离开浏览器视图时丢弃 webview；回到该视图会按最后地址重新加载。
+    if (view !== "browser") browserView = null;
     body.setAttribute("aria-busy", String(busy));
 
     if (view === "environments") renderEnvironments();
@@ -127,6 +134,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     else if (view === "data") renderTestData();
     else if (view === "file") renderFile();
     else if (view === "files") renderFiles();
+    else if (view === "browser") renderBrowser();
     else renderHome();
   }
 
@@ -221,6 +229,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         description: "浏览当前工作目录并预览文档",
         meta: "工作目录",
         onClick: () => void openTree(),
+      }),
+      featureCard({
+        iconName: "globe",
+        title: "浏览器",
+        description: "在侧栏打开网页，独立会话加载",
+        meta: "http(s)",
+        onClick: () => openBrowser(),
       }),
     );
 
@@ -729,6 +744,201 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       busy = false;
       render();
     }
+  }
+
+  // 侧栏浏览器：<webview> 在独立分区加载 http(s) 页面，不继承应用 preload。
+  function openBrowser() {
+    view = "browser";
+    setStatus("");
+    render();
+  }
+
+  function navigateBrowser(url) {
+    const attached = browserView?.isConnected === true;
+    browserUrl = url;
+    browserLoading = true;
+    setStatus("");
+    if (attached) {
+      try {
+        browserView.loadURL(url);
+        syncAddress();
+        updateBrowserChrome();
+        return;
+      } catch {
+        // 尚未 dom-ready 时改为重建 webview，由 src 触发加载。
+      }
+    }
+    render();
+  }
+
+  function syncAddress() {
+    const input = body.querySelector(".browser-bar__address");
+    if (input && document.activeElement !== input) input.value = browserUrl;
+  }
+
+  function setStatusText(text, error = false) {
+    const node = body.querySelector(".right-panel__status");
+    if (!node) return;
+    node.textContent = text;
+    if (error) node.dataset.error = "";
+    else delete node.dataset.error;
+  }
+
+  // webview 在 dom-ready 之前调用 canGoBack/loadURL 会抛错，统一按“不可用”处理。
+  function canGo(direction) {
+    if (!browserView || !browserView.isConnected) return false;
+    try {
+      return direction === "back" ? browserView.canGoBack() : browserView.canGoForward();
+    } catch {
+      return false;
+    }
+  }
+
+  function updateBrowserChrome() {
+    const reload = body.querySelector(".browser-bar__reload");
+    if (reload) reload.textContent = browserLoading ? "×" : "⟳";
+    const back = body.querySelector(".browser-bar__back");
+    if (back) back.disabled = !canGo("back");
+    const forward = body.querySelector(".browser-bar__forward");
+    if (forward) forward.disabled = !canGo("forward");
+  }
+
+  function createBrowserView() {
+    const view = document.createElement("webview");
+    view.className = "right-panel__browser-view";
+    view.setAttribute("partition", "persist:browser-panel");
+    view.setAttribute("webpreferences", "contextIsolation=yes,sandbox=yes,nodeIntegration=no");
+    view.setAttribute("src", browserUrl);
+
+    view.addEventListener("did-start-loading", () => {
+      browserLoading = true;
+      updateBrowserChrome();
+    });
+    view.addEventListener("did-stop-loading", () => {
+      browserLoading = false;
+      updateBrowserChrome();
+    });
+    view.addEventListener("did-navigate", (event) => {
+      browserUrl = event.url;
+      syncAddress();
+      updateBrowserChrome();
+    });
+    view.addEventListener("did-navigate-in-page", (event) => {
+      browserUrl = event.url;
+      syncAddress();
+      updateBrowserChrome();
+    });
+    view.addEventListener("page-title-updated", (event) => {
+      browserTitle = event.title;
+      const title = document.querySelector(".right-panel__nav-title");
+      if (title) title.textContent = browserTitle || "浏览器";
+    });
+    view.addEventListener("did-fail-load", (event) => {
+      // -3 是主动取消（例如停止或新导航），不属于加载失败。
+      if (event.errorCode === -3) return;
+      browserLoading = false;
+      setStatusText(`页面加载失败：${event.errorDescription || event.errorCode}`, true);
+      updateBrowserChrome();
+    });
+    return view;
+  }
+
+  function renderBrowser() {
+    setNav(browserTitle || "浏览器", () => go("home"));
+
+    const panel = element("div", { class: "right-panel right-panel--browser" });
+    panel.append(statusLine());
+
+    const bar = element("div", { class: "browser-bar" });
+    const back = element("button", {
+      type: "button",
+      class: "browser-bar__icon browser-bar__back",
+      "aria-label": "后退",
+      title: "后退",
+      text: "←",
+    });
+    back.addEventListener("click", () => {
+      if (!canGo("back")) return;
+      try {
+        browserView.goBack();
+      } catch {
+        // 历史尚未就绪时忽略点击。
+      }
+    });
+    const forward = element("button", {
+      type: "button",
+      class: "browser-bar__icon browser-bar__forward",
+      "aria-label": "前进",
+      title: "前进",
+      text: "→",
+    });
+    forward.addEventListener("click", () => {
+      if (!canGo("forward")) return;
+      try {
+        browserView.goForward();
+      } catch {
+        // 历史尚未就绪时忽略点击。
+      }
+    });
+    const reload = element("button", {
+      type: "button",
+      class: "browser-bar__icon browser-bar__reload",
+      "aria-label": "刷新或停止",
+      title: "刷新或停止",
+      text: browserLoading ? "×" : "⟳",
+    });
+    reload.addEventListener("click", () => {
+      if (!browserView || !browserView.isConnected) return;
+      try {
+        if (browserLoading) browserView.stop();
+        else browserView.reload();
+      } catch {
+        // 尚未完成首次加载时忽略。
+      }
+    });
+    const address = element("input", {
+      type: "text",
+      class: "browser-bar__address",
+      placeholder: "输入网址，例如 https://example.com",
+      autocomplete: "off",
+      spellcheck: "false",
+      "aria-label": "浏览器地址",
+      value: browserUrl,
+    });
+    const open = element("button", { type: "button", class: "browser-bar__go", text: "打开" });
+    const submit = () => {
+      const url = normalizeBrowserUrl(address.value);
+      if (url === null) {
+        setStatusText("只支持 http(s) 网址。", true);
+        address.focus();
+        return;
+      }
+      navigateBrowser(url);
+    };
+    open.addEventListener("click", submit);
+    address.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      submit();
+    });
+    bar.append(back, forward, reload, address, open);
+    panel.append(bar);
+
+    const surface = element("div", { class: "right-panel__browser" });
+    if (browserUrl === "") {
+      surface.append(element("p", {
+        class: "right-panel__empty",
+        text: "输入网址开始浏览。页面在独立会话中加载，不继承应用权限。",
+      }));
+    } else {
+      browserView = createBrowserView();
+      surface.append(browserView);
+    }
+    panel.append(surface);
+    body.append(panel);
+
+    if (browserUrl === "") address.focus();
+    updateBrowserChrome();
   }
 
   // 文件树按目录懒加载：只缓存展开过的层级，切换会话时整体丢弃。
