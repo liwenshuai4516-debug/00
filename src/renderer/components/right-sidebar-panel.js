@@ -1,0 +1,717 @@
+// 右侧栏内容：工作台卡片、项目环境 CRUD 与 qa/data 测试数据清理。
+// 内容只通过受限 IPC 读写；密码不会从主进程回填到页面。
+const SIZE_UNITS = ["B", "KB", "MB", "GB"];
+
+const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function formatSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < SIZE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${SIZE_UNITS[unit]}`;
+}
+
+function formatTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : dateFormatter.format(date);
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function element(tag, attributes = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else if (key === "dataset") Object.assign(node.dataset, value);
+    else if (key.startsWith("on") && typeof value === "function") {
+      node.addEventListener(key.slice(2).toLowerCase(), value);
+    } else node.setAttribute(key, value === true ? "" : String(value));
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#icon-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
+  let environments = [];
+  let selectedId = null;
+  let view = "home";
+  let editingId = null;
+  let data = null;
+  let status = { text: "", error: false };
+  let busy = false;
+
+  function api() {
+    if (!window.agent?.listProjectEnvironments) {
+      throw new Error("页面接口尚未就绪，请稍后重试。");
+    }
+    return window.agent;
+  }
+
+  function setStatus(text, error = false) {
+    status = { text, error };
+  }
+
+  function statusLine() {
+    const node = element("p", {
+      class: "right-panel__status",
+      role: "status",
+      "aria-live": "polite",
+      text: status.text,
+    });
+    if (status.error) node.dataset.error = "";
+    return node;
+  }
+
+  function iconButton(label, iconName, onClick, disabled = false) {
+    const button = element("button", {
+      type: "button",
+      class: "right-sidebar__icon-button",
+      "aria-label": label,
+      title: label,
+      disabled,
+      onclick: onClick,
+    }, icon(iconName));
+    return button;
+  }
+
+  function setNav(title, onBack, actions = []) {
+    const nav = element("div", { class: "right-panel__nav" });
+    nav.append(iconButton("返回", "arrow-left", onBack, busy));
+    nav.append(element("span", { class: "right-panel__nav-title", text: title }));
+    nav.append(element("span", { class: "right-panel__nav-spacer" }));
+    for (const action of actions) nav.append(action);
+    tabs.replaceChildren(nav);
+  }
+
+  function render() {
+    tabs.replaceChildren();
+    body.replaceChildren();
+    body.setAttribute("aria-busy", String(busy));
+
+    if (view === "environments") renderEnvironments();
+    else if (view === "form") renderEnvironmentForm();
+    else if (view === "data") renderTestData();
+    else renderHome();
+  }
+
+  function go(next) {
+    view = next;
+    setStatus("");
+    render();
+  }
+
+  async function loadEnvironments() {
+    const list = await api().listProjectEnvironments();
+    environments = Array.isArray(list) ? list : [];
+
+    let session = null;
+    try {
+      session = await api().getSessionInfo();
+    } catch {
+      session = null;
+    }
+    if (!environments.some((environment) => environment.id === selectedId)) {
+      selectedId = environments.find(
+        (environment) => environment.workspaceDir === session?.workspaceDir,
+      )?.id ?? environments[0]?.id ?? null;
+    }
+  }
+
+  async function loadData() {
+    const projectId = selectedId;
+    if (!projectId) {
+      data = null;
+      return;
+    }
+    let next;
+    try {
+      next = { projectId, ...(await api().listTestData(projectId)) };
+    } catch (error) {
+      next = {
+        projectId,
+        available: false,
+        truncated: false,
+        items: [],
+        error: errorMessage(error),
+      };
+    }
+    if (selectedId === projectId) data = next;
+  }
+
+  function dataCountText() {
+    if (!selectedId) return "未选择环境";
+    if (!data || data.projectId !== selectedId) return busy ? "读取中…" : "—";
+    if (data.error) return "读取失败";
+    if (!data.available) return "无 qa/data";
+    return `${data.items.length} 个文件`;
+  }
+
+  function renderHome() {
+    const panel = element("div", { class: "right-panel" });
+    const hero = element("section", { class: "right-panel__hero" });
+    hero.append(
+      element("div", { class: "right-panel__logo", "aria-hidden": "true" }, icon("qa-mark")),
+      element("h2", { class: "right-panel__title", text: "测试工作台" }),
+      element("p", {
+        class: "right-panel__subtitle",
+        text: "管理项目环境，查看和清理各项目 qa/data 中的测试数据。",
+      }),
+    );
+
+    const cards = element("div", { class: "right-panel__cards" });
+    cards.append(
+      featureCard({
+        iconName: "globe",
+        title: "项目环境",
+        description: "维护项目地址、账号与自动登录配置",
+        meta: `${environments.length} 个`,
+        onClick: () => go("environments"),
+      }),
+      featureCard({
+        iconName: "database",
+        title: "测试数据",
+        description: "查看并清理 qa/data 中的测试文件",
+        meta: dataCountText(),
+        onClick: () => {
+          view = "data";
+          setStatus("");
+          render();
+          if (!data || data.projectId !== selectedId) void refreshData();
+        },
+      }),
+    );
+
+    panel.append(hero, cards, statusLine());
+    body.append(panel);
+  }
+
+  function featureCard({ iconName, title, description, meta, onClick }) {
+    const button = element("button", {
+      type: "button",
+      class: "right-panel__card",
+      disabled: busy,
+      onclick: onClick,
+    });
+    button.append(
+      element("span", { class: "right-panel__card-icon" }, icon(iconName)),
+      element("span", { class: "right-panel__card-text" },
+        element("span", { class: "right-panel__card-title", text: title }),
+        element("span", { class: "right-panel__card-desc", text: description }),
+      ),
+      element("span", { class: "right-panel__card-meta", text: meta }),
+      element("span", { class: "right-panel__card-chevron" }, icon("chevron-right")),
+    );
+    return button;
+  }
+
+  function renderEnvironments() {
+    setNav("项目环境", () => go("home"), [
+      iconButton("添加项目环境", "plus", () => void addEnvironment(), busy),
+    ]);
+
+    const panel = element("div", { class: "right-panel" });
+    panel.append(element("section", { class: "right-panel__section" },
+      element("div", { class: "right-panel__section-head" },
+        element("p", {
+          class: "right-panel__section-desc",
+          text: "地址、账号和密码保存在 config/projects.local.json；密码只写入本机，不回填页面。",
+        }),
+      ),
+    ));
+
+    if (environments.length === 0) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: busy ? "正在读取项目环境…" : "还没有项目环境。点击右上角加号选择项目目录。",
+      }));
+    } else {
+      const list = element("div", { class: "right-panel__list" });
+      for (const environment of environments) {
+        list.append(environmentRow(environment));
+      }
+      panel.append(list);
+    }
+
+    panel.append(statusLine());
+    body.append(panel);
+  }
+
+  function environmentRow(environment) {
+    const card = element("article", { class: "right-panel__env" });
+    card.append(
+      element("div", { class: "right-panel__env-head" },
+        element("span", { class: "right-panel__env-name", text: environment.name }),
+        element("span", {
+          class: "right-panel__env-badge",
+          text: environment.passwordConfigured ? "密码已配置" : "未配置密码",
+        }),
+      ),
+      element("p", {
+        class: "right-panel__env-url",
+        text: environment.address || "未配置地址",
+        title: environment.address || "未配置地址",
+      }),
+      element("p", {
+        class: "right-panel__env-meta",
+        text: environment.account ? `账号：${environment.account}` : "未配置账号",
+        title: environment.workspaceDir,
+      }),
+      element("div", { class: "right-panel__env-actions" },
+        actionButton("edit", "编辑", () => {
+          editingId = environment.id;
+          view = "form";
+          setStatus("");
+          render();
+        }),
+        actionButton("trash", "删除", () => void deleteEnvironment(environment), true),
+      ),
+    );
+    return card;
+  }
+
+  function actionButton(iconName, label, onClick, danger = false) {
+    const button = element("button", {
+      type: "button",
+      class: `right-panel__action${danger ? " right-panel__action--danger" : ""}`,
+      disabled: busy,
+      onclick: onClick,
+    }, icon(iconName), element("span", { text: label }));
+    return button;
+  }
+
+  async function addEnvironment() {
+    if (busy) return;
+    busy = true;
+    setStatus("请选择要添加的项目目录…");
+    render();
+    try {
+      const result = await api().addProject();
+      if (result?.canceled) {
+        setStatus("已取消添加。");
+        return;
+      }
+      await loadEnvironments();
+      selectedId = result.project.id;
+      editingId = result.project.id;
+      view = "form";
+      setStatus("");
+      document.dispatchEvent(new CustomEvent("projects-changed"));
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  function renderEnvironmentForm() {
+    const environment = environments.find((item) => item.id === editingId);
+    setNav("编辑项目环境", () => {
+      view = "environments";
+      editingId = null;
+      setStatus("");
+      render();
+    });
+
+    if (!environment) {
+      body.append(element("div", { class: "right-panel" },
+        element("p", { class: "right-panel__empty", text: "未找到项目环境，请返回列表重新读取。" }),
+        statusLine(),
+      ));
+      return;
+    }
+
+    const panel = element("div", { class: "right-panel" });
+    const form = element("form", { class: "right-panel__form", novalidate: true });
+    form.append(
+      field("名称", element("input", {
+        class: "right-panel__input",
+        name: "name",
+        type: "text",
+        maxlength: "40",
+        required: true,
+        value: environment.name,
+      })),
+      element("div", { class: "right-panel__field" },
+        element("span", { class: "right-panel__label", text: "工作目录" }),
+        element("p", { class: "right-panel__readonly", text: environment.workspaceDir }),
+      ),
+      field("地址", element("input", {
+        class: "right-panel__input",
+        name: "address",
+        type: "text",
+        inputmode: "url",
+        placeholder: "https://example.invalid",
+        value: environment.address,
+      })),
+      field("账号", element("input", {
+        class: "right-panel__input",
+        name: "account",
+        type: "text",
+        autocomplete: "off",
+        value: environment.account,
+      })),
+      field("密码", element("input", {
+        class: "right-panel__input",
+        name: "password",
+        type: "password",
+        autocomplete: "new-password",
+        placeholder: environment.passwordConfigured ? "留空保持当前密码" : "可留空",
+      })),
+    );
+
+    const passwordInput = form.querySelector('[name="password"]');
+    if (environment.passwordConfigured) {
+      const clearPassword = element("input", {
+        type: "checkbox",
+        name: "clearPassword",
+      });
+      clearPassword.addEventListener("change", () => {
+        passwordInput.disabled = clearPassword.checked;
+        if (clearPassword.checked) passwordInput.value = "";
+      });
+      form.append(element("label", { class: "right-panel__checkbox" },
+        clearPassword,
+        element("span", { text: "清除已存密码" }),
+      ));
+    }
+    form.append(element("p", {
+      class: "right-panel__hint",
+      text: "密码只写入本机配置，页面不会收到已存密码。留空表示保持；填写即替换。",
+    }));
+
+    const formStatus = element("p", { class: "right-panel__status", role: "status", "aria-live": "polite" });
+    const cancel = element("button", {
+      type: "button",
+      class: "right-panel__button",
+      text: "取消",
+      onclick: () => {
+        view = "environments";
+        editingId = null;
+        setStatus("");
+        render();
+      },
+    });
+    const save = element("button", {
+      type: "submit",
+      class: "right-panel__button right-panel__button--primary",
+      text: "保存",
+    });
+    form.append(element("div", { class: "right-panel__form-actions" }, cancel, save), formStatus);
+
+    form.addEventListener("submit", (event) => {
+      void saveEnvironment(event, environment, form, formStatus);
+    });
+
+    panel.append(form, statusLine());
+    body.append(panel);
+  }
+
+  function field(label, control) {
+    return element("label", { class: "right-panel__field" },
+      element("span", { class: "right-panel__label", text: label }),
+      control,
+    );
+  }
+
+  async function saveEnvironment(event, environment, form, formStatus) {
+    event.preventDefault();
+    if (form.dataset.saving === "true") return;
+
+    const name = form.querySelector('[name="name"]').value;
+    const address = form.querySelector('[name="address"]').value;
+    const account = form.querySelector('[name="account"]').value;
+    const password = form.querySelector('[name="password"]').value;
+    const clear = form.querySelector('[name="clearPassword"]')?.checked === true;
+
+    const payload = { name, address, account };
+    if (clear) payload.password = "";
+    else if (password !== "") payload.password = password;
+
+    form.dataset.saving = "true";
+    for (const control of form.querySelectorAll("input, button")) control.disabled = true;
+    formStatus.textContent = "正在保存…";
+    delete formStatus.dataset.error;
+
+    try {
+      await api().saveProjectEnvironment(environment.id, payload);
+      await loadEnvironments();
+      view = "environments";
+      editingId = null;
+      setStatus(`已保存项目环境「${name.trim()}」。`);
+      document.dispatchEvent(new CustomEvent("projects-changed"));
+      render();
+    } catch (error) {
+      formStatus.textContent = errorMessage(error);
+      formStatus.dataset.error = "";
+      form.dataset.saving = "false";
+      for (const control of form.querySelectorAll("input, button")) control.disabled = false;
+    }
+  }
+
+  async function deleteEnvironment(environment) {
+    const confirmed = await confirmAction({
+      title: "删除项目环境",
+      message: `将删除「${environment.name}」的项目环境配置（地址、账号和密码），不会删除工作目录、会话或 qa/data 测试数据。`,
+      confirmLabel: "删除环境",
+    });
+    if (!confirmed) {
+      setStatus("已取消删除。");
+      render();
+      return;
+    }
+
+    busy = true;
+    setStatus("正在删除项目环境…");
+    render();
+    try {
+      await api().deleteProjectEnvironment(environment.id);
+      await loadEnvironments();
+      if (data?.projectId === environment.id) data = null;
+      setStatus(`已删除项目环境「${environment.name}」。`);
+      document.dispatchEvent(new CustomEvent("projects-changed"));
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  function renderTestData() {
+    setNav("测试数据", () => go("home"), [
+      iconButton("刷新测试数据", "refresh", () => void refreshData(), busy),
+    ]);
+
+    const panel = element("div", { class: "right-panel" });
+    if (environments.length === 0) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: "还没有项目环境。先添加项目，才能读取它的 qa/data。",
+      }));
+      panel.append(statusLine());
+      body.append(panel);
+      return;
+    }
+
+    const select = element("select", {
+      class: "right-panel__select",
+      "aria-label": "选择项目环境",
+      disabled: busy,
+    });
+    for (const environment of environments) {
+      select.append(element("option", {
+        value: environment.id,
+        text: environment.name,
+        selected: environment.id === selectedId,
+      }));
+    }
+    select.value = selectedId ?? "";
+    select.addEventListener("change", () => {
+      selectedId = select.value;
+      data = null;
+      void refreshData();
+    });
+
+    panel.append(element("div", { class: "right-panel__toolbar" },
+      select,
+      element("span", { class: "right-panel__root-label", text: "qa/data" }),
+    ));
+
+    if (!data || data.projectId !== selectedId) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: busy ? "正在读取测试数据…" : "选择环境后读取测试数据。",
+      }));
+    } else if (data.error) {
+      panel.append(element("p", { class: "right-panel__empty", text: `读取失败：${data.error}` }));
+    } else if (!data.available) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: "当前项目的 qa/data 目录不存在。",
+      }));
+    } else if (data.items.length === 0) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: "qa/data 下暂无测试数据。",
+      }));
+    } else {
+      panel.append(renderDataGroups(data.items));
+      if (data.truncated) {
+        panel.append(element("p", {
+          class: "right-panel__note",
+          text: "仅显示前 500 个文件。",
+        }));
+      }
+    }
+
+    panel.append(element("p", {
+      class: "right-panel__note",
+      text: "删除只移除 qa/data 下的单个文件；项目环境、工作目录和会话不会受影响。",
+    }));
+    panel.append(statusLine());
+    body.append(panel);
+  }
+
+  function renderDataGroups(items) {
+    const groups = new Map();
+    for (const item of items) {
+      const category = item.category || "根目录";
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push(item);
+    }
+
+    const container = element("div");
+    for (const [category, groupItems] of groups) {
+      const group = element("section", { class: "right-panel__group" });
+      group.append(element("div", { class: "right-panel__group-title" },
+        element("span", { text: category }),
+        element("span", { text: `${groupItems.length} 个文件` }),
+      ));
+      for (const item of groupItems) group.append(fileRow(item));
+      container.append(group);
+    }
+    return container;
+  }
+
+  function fileRow(item) {
+    const row = element("div", { class: "right-panel__file" });
+    row.append(
+      element("span", { class: "right-panel__file-icon" }, icon("files")),
+      element("div", { class: "right-panel__file-main" },
+        element("span", { class: "right-panel__file-name", text: item.name, title: item.name }),
+        element("span", { class: "right-panel__file-path", text: item.path, title: item.path }),
+      ),
+      element("span", { class: "right-panel__file-meta", text: `${formatSize(item.size)} · ${formatTime(item.modifiedAt)}` }),
+      element("button", {
+        type: "button",
+        class: "right-panel__file-delete",
+        "aria-label": `删除 ${item.path}`,
+        title: "删除文件",
+        disabled: busy,
+        onclick: () => void deleteTestData(item),
+      }, icon("trash")),
+    );
+    return row;
+  }
+
+  async function refreshData() {
+    if (!selectedId) {
+      render();
+      return;
+    }
+    busy = true;
+    render();
+    try {
+      await loadData();
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  async function deleteTestData(item) {
+    const confirmed = await confirmAction({
+      title: "删除测试数据",
+      message: `将删除「${item.path}」。只删除这个文件，不会删除项目环境或其他测试数据。`,
+      confirmLabel: "删除文件",
+    });
+    if (!confirmed) {
+      setStatus("已取消删除。");
+      render();
+      return;
+    }
+
+    const projectId = selectedId;
+    busy = true;
+    setStatus("正在删除测试数据…");
+    render();
+    try {
+      await api().deleteTestData(projectId, item.path);
+      if (selectedId === projectId) await loadData();
+      setStatus(`已删除 ${item.path}。`);
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  function confirmAction({ title, message, confirmLabel }) {
+    if (!confirmDialog) return Promise.resolve(window.confirm(message));
+    const titleNode = confirmDialog.querySelector("#right-panel-confirm-title");
+    const messageNode = confirmDialog.querySelector("#right-panel-confirm-message");
+    const cancel = confirmDialog.querySelector("[data-cancel]");
+    const confirm = confirmDialog.querySelector("[data-confirm]");
+    titleNode.textContent = title;
+    messageNode.textContent = message;
+    confirm.textContent = confirmLabel;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        cancel.removeEventListener("click", cancelHandler);
+        confirm.removeEventListener("click", confirmHandler);
+        confirmDialog.removeEventListener("close", closeHandler);
+        confirmDialog.close();
+        resolve(value);
+      };
+      const cancelHandler = () => finish(false);
+      const confirmHandler = () => finish(true);
+      const closeHandler = () => finish(false);
+      cancel.addEventListener("click", cancelHandler);
+      confirm.addEventListener("click", confirmHandler);
+      confirmDialog.addEventListener("close", closeHandler);
+      confirmDialog.showModal();
+      cancel.focus();
+    });
+  }
+
+  async function open() {
+    view = "home";
+    editingId = null;
+    setStatus("");
+    busy = true;
+    render();
+    try {
+      await loadEnvironments();
+      await loadData();
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  return { open, refresh: open };
+}

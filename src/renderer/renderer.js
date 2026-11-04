@@ -515,6 +515,11 @@ const projectPanel = createProjectPanel(
   document.getElementById("project-rename-dialog"),
 );
 
+// 右侧栏新增、保存或删除项目环境后，左栏项目与会话分组同步刷新。
+document.addEventListener("projects-changed", () => {
+  void projectPanel.refresh();
+});
+
 // 在页面初始化时创建面板，供所有函数和事件处理使用。
 const proposalPanelElement = document.getElementById("proposal-panel");
 const proposalReviewPanel = document.getElementById("proposal-review-panel");

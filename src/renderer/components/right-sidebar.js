@@ -39,6 +39,7 @@ function readStoredWidth() {
  * @param {HTMLButtonElement} options.close 面板内的收起按钮
  * @param {() => number} options.getLeftWidth 左侧栏当前宽度
  * @param {(options?: { persist?: boolean }) => void} [options.collapseLeft]
+ * @param {() => void} [options.onOpen] 面板打开后加载内容
  */
 export function createRightSidebar({
   sidebar,
@@ -46,6 +47,7 @@ export function createRightSidebar({
   close,
   getLeftWidth,
   collapseLeft,
+  onOpen,
 }) {
   const resize = sidebar.querySelector(".right-sidebar__resize");
   let open = false;
@@ -156,6 +158,7 @@ export function createRightSidebar({
     open = true;
     syncOpen();
     close.focus();
+    onOpen?.();
   }
 
   function closePanel() {

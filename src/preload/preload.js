@@ -172,6 +172,34 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke("agent:rename-project", projectId, name),
   addProject: () => ipcRenderer.invoke("agent:add-project"),
 
+  // 环境列表不包含密码原文；保存时密码缺省表示保持原值，空串表示清除。
+  listProjectEnvironments: () =>
+    ipcRenderer.invoke("agent:list-project-environments"),
+  saveProjectEnvironment: (projectId, input) => {
+    const payload = {
+      name: input?.name,
+      address: input?.address,
+      account: input?.account,
+    };
+    if (input !== null && typeof input === "object"
+      && Object.hasOwn(input, "password")) {
+      payload.password = input.password;
+    }
+    return ipcRenderer.invoke(
+      "agent:save-project-environment",
+      projectId,
+      payload,
+    );
+  },
+  deleteProjectEnvironment: (projectId) =>
+    ipcRenderer.invoke("agent:delete-project-environment", projectId),
+
+  // 测试数据只提交项目编号与 qa/data 下的相对路径。
+  listTestData: (projectId) =>
+    ipcRenderer.invoke("agent:list-test-data", projectId),
+  deleteTestData: (projectId, relativePath) =>
+    ipcRenderer.invoke("agent:delete-test-data", projectId, relativePath),
+
   // 页面只提交编号，工作目录由主进程从项目记录读取。
   openProject: (projectId) =>
     ipcRenderer.invoke("agent:open-project", projectId),

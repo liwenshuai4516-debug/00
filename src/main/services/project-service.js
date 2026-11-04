@@ -1,5 +1,9 @@
+const { createTestDataService } = require("./test-data-service.js");
+
 // 系统窗口与会话服务由启动入口注入；页面只提交项目编号。
 function createProjectService(projectStore, chooseDirectory, sessionService) {
+  const testData = createTestDataService(projectStore);
+
   function listProjects() {
     return projectStore.list();
   }
@@ -45,7 +49,39 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return projectStore.readData(projectId);
   }
 
-  return { listProjects, addProject, openProject, renameProject, getProjectData };
+  // 环境列表和读取只回传声明字段；密码原文仍只留在主进程。
+  function listProjectEnvironments() {
+    return projectStore.listEnvironments();
+  }
+
+  function saveProjectEnvironment(projectId, input) {
+    return projectStore.updateData(projectId, input);
+  }
+
+  function deleteProjectEnvironment(projectId) {
+    return projectStore.remove(projectId);
+  }
+
+  function listTestData(projectId) {
+    return testData.list(projectId);
+  }
+
+  function deleteTestData(projectId, relativePath) {
+    return testData.remove(projectId, relativePath);
+  }
+
+  return {
+    listProjects,
+    addProject,
+    openProject,
+    renameProject,
+    getProjectData,
+    listProjectEnvironments,
+    saveProjectEnvironment,
+    deleteProjectEnvironment,
+    listTestData,
+    deleteTestData,
+  };
 }
 
 module.exports = { createProjectService };

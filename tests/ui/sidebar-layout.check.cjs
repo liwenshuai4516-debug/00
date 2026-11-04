@@ -22,6 +22,14 @@ async function main() {
     { id: "a2", title: "写一首古诗", workspaceDir: "/demo/a", updatedAt: 4 },
     { id: "old1", title: "旧项目会话", workspaceDir: "/history/a", updatedAt: 1 },
   ];
+  const environments = [
+    { id: "a", name: "演示项目", workspaceDir: "/demo/a", address: "https://demo.invalid", account: "demo", passwordConfigured: true },
+    { id: "b", name: "未创建对话的项目", workspaceDir: "/demo/b", address: "", account: "", passwordConfigured: false },
+  ];
+  let testData = [
+    { path: "ui/cases/demo.spec.cjs", name: "demo.spec.cjs", category: "ui", size: 2048, modifiedAt: 1762300000000 },
+    { path: "ui/cases/demo.md", name: "demo.md", category: "ui", size: 512, modifiedAt: 1762200000000 },
+  ];
   const unsentSessions = [];
   let current = "a1", nextId = 0;
   let addMode = "cancel", listFail = false, openFail = false;
@@ -39,6 +47,37 @@ async function main() {
       if (listFail) throw Error("模拟清单失败");
       return projects;
     }
+    if (name === "listProjectEnvironments") return environments;
+    if (name === "saveProjectEnvironment") {
+      const environment = environments.find((item) => item.id === args[0]);
+      if (!environment) throw Error("未找到项目环境");
+      environment.name = args[1].name;
+      environment.address = String(args[1].address ?? "").trim();
+      environment.account = args[1].account;
+      if (Object.hasOwn(args[1], "password")) {
+        environment.passwordConfigured = args[1].password.length > 0;
+      }
+      return environment;
+    }
+    if (name === "deleteProjectEnvironment") {
+      const index = environments.findIndex((item) => item.id === args[0]);
+      if (index < 0) throw Error("未找到项目环境");
+      const [removed] = environments.splice(index, 1);
+      const projectIndex = projects.findIndex((item) => item.id === removed.id);
+      if (projectIndex >= 0) projects.splice(projectIndex, 1);
+      return { id: removed.id, name: removed.name };
+    }
+    if (name === "listTestData") {
+      return args[0] === "a"
+        ? { available: true, truncated: false, items: testData.map((item) => ({ ...item })) }
+        : { available: false, truncated: false, items: [] };
+    }
+    if (name === "deleteTestData") {
+      const index = testData.findIndex((item) => item.path === args[1]);
+      if (index < 0) throw Error("测试数据已不存在");
+      testData.splice(index, 1);
+      return { path: args[1] };
+    }
     if (name === "getSessionInfo") return { sessionId: current, workspaceDir: "/demo/a", provider: "demo", modelId: "demo", contextUsage: null };
     if (name === "listModels") return { provider: "demo", modelId: "demo", models: [{ id: "demo", name: "演示模型", provider: "demo" }] };
     if (name === "readModelConfiguration") return { modelsPath: "/demo/pi/models.json" };
@@ -55,6 +94,7 @@ async function main() {
       if (addMode === "cancel") return { canceled: true };
       const project = { id: "new-" + ++nextId, name: "新增项目 " + nextId, workspaceDir: "/demo/new-" + nextId };
       projects.push(project);
+      environments.push({ id: project.id, name: project.name, workspaceDir: project.workspaceDir, address: "", account: "", passwordConfigured: false });
       return { canceled: false, project };
     }
     if (name === "openProject") {
@@ -224,13 +264,71 @@ async function main() {
     unsentSessions.length=0;
     await click('.session-project-open'); await idle();
     if (!await run(`document.querySelector('.recent-sessions').open`)) await click('.recent-sessions > summary');
+    // 右侧栏内容按固定的两个环境与两个数据文件验证，清掉前面左栏添加用例的影响。
+    environments.splice(0, environments.length,
+      { id: "a", name: "演示项目", workspaceDir: "/demo/a", address: "https://demo.invalid", account: "demo", passwordConfigured: true },
+      { id: "b", name: "未创建对话的项目", workspaceDir: "/demo/b", address: "", account: "", passwordConfigured: false });
+    testData = [
+      { path: "ui/cases/demo.spec.cjs", name: "demo.spec.cjs", category: "ui", size: 2048, modifiedAt: 1762300000000 },
+      { path: "ui/cases/demo.md", name: "demo.md", category: "ui", size: 512, modifiedAt: 1762200000000 },
+    ];
+    projects.splice(0, projects.length,
+      { id: "a", name: "演示项目", workspaceDir: "/demo/a" },
+      { id: "b", name: "未创建对话的项目", workspaceDir: "/demo/b" });
+    await run(`document.dispatchEvent(new CustomEvent("projects-changed"))`);
+    await wait(`document.querySelectorAll('.session-project-open').length===2`);
     // 右侧边栏外壳：默认收起，按钮在会话 header 右上角，宽度规则与 DSH 一致。
     await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     await check("右侧边栏默认收起，header 右上角显示镜像按钮", `!document.getElementById('app-right-sidebar').hasAttribute('data-open')&&document.getElementById('app-right-sidebar').getAttribute('aria-hidden')==='true'&&!document.getElementById('right-sidebar-toggle').hidden&&getComputedStyle(document.querySelector('#right-sidebar-toggle .right-sidebar__mirror')).transform!=='none'`);
     await click("#right-sidebar-toggle");
     await wait(`Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424`);
     await check("右侧边栏按 45% 与中栏 400 约束打开", `document.getElementById('app-right-sidebar').hasAttribute('data-open')&&document.getElementById('app-right-sidebar').getAttribute('aria-hidden')===null&&document.getElementById('right-sidebar-toggle').hidden&&document.activeElement.id==='right-sidebar-close'&&Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424&&document.documentElement.scrollWidth<=innerWidth`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===2&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='2 个文件'`);
     if (process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    await check("右侧栏工作台显示 logo 与两张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'`);
+    await click('.right-panel__card');
+    await wait(`document.querySelectorAll('.right-panel__env').length===2`);
+    await check("项目环境列出地址、账号和密码状态", `document.querySelector('.right-panel__env-url').textContent==='https://demo.invalid'&&document.querySelector('.right-panel__env-badge').textContent==='密码已配置'&&document.querySelector('.right-panel__env-meta').textContent==='账号：demo'`);
+    await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+    if (process.env.RIGHT_SIDEBAR_ENV_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_ENV_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    await click('.right-panel__env .right-panel__action');
+    await wait(`document.querySelector('.right-panel__form')!==null`);
+    await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+    if (process.env.RIGHT_SIDEBAR_FORM_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_FORM_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    await run(`document.querySelector('[name="address"]').value='https://edited.invalid';document.querySelector('.right-panel__form').requestSubmit()`);
+    await wait(`document.querySelectorAll('.right-panel__env').length===2&&document.querySelector('.right-panel__env-url').textContent==='https://edited.invalid'`);
+    await check("编辑项目环境保存后与后端配置同步", `document.querySelector('.right-panel__env-url').textContent==='https://edited.invalid'&&document.querySelector('.right-panel__status').textContent.includes('已保存')`);
+    assert.equal(environments[0].address, "https://edited.invalid");
+    await click('.right-panel__nav .right-sidebar__icon-button');
+    await wait(`document.querySelectorAll('.right-panel__card').length===2`);
+    await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
+    await wait(`document.querySelectorAll('.right-panel__file').length===2`);
+    await check("测试数据按 ui 分类列出文件", `document.querySelectorAll('.right-panel__group').length===1&&document.querySelector('.right-panel__group-title').textContent.includes('ui')&&document.querySelectorAll('.right-panel__file').length===2`);
+    await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+    if (process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    await click('.right-panel__file-delete');
+    await wait(`document.getElementById('right-sidebar-confirm-dialog').open`);
+    await click('#right-sidebar-confirm-dialog [data-confirm]');
+    await wait(`document.querySelectorAll('.right-panel__file').length===1`);
+    await check("删除测试数据文件后刷新列表", `document.querySelectorAll('.right-panel__file').length===1&&document.querySelector('.right-panel__status').textContent.includes('已删除')`);
+    assert.equal(testData.length, 1);
+    await click('.right-panel__nav .right-sidebar__icon-button');
+    await wait(`document.querySelectorAll('.right-panel__card').length===2`);
+    await click('.right-panel__card');
+    await wait(`document.querySelectorAll('.right-panel__env').length===2`);
+    await run(`document.querySelectorAll('.right-panel__env')[1].querySelector('.right-panel__action--danger').click()`);
+    await wait(`document.getElementById('right-sidebar-confirm-dialog').open`);
+    await click('#right-sidebar-confirm-dialog [data-confirm]');
+    await wait(`document.querySelectorAll('.right-panel__env').length===1`);
+    await check("删除项目环境只移除配置记录", `document.querySelectorAll('.right-panel__env').length===1&&document.querySelector('.right-panel__status').textContent.includes('已删除项目环境')`);
+    assert.equal(environments.length, 1);
+    assert.equal(projects.some((project) => project.id === "b"), false);
+    await run(`document.querySelector('.right-panel__nav .right-sidebar__icon-button:last-of-type').click()`);
+    await wait(`document.querySelector('.right-panel__form')!==null`);
+    await run(`document.querySelector('[name="name"]').value='新增环境';document.querySelector('[name="address"]').value='https://new.invalid';document.querySelector('.right-panel__form').requestSubmit()`);
+    await wait(`document.querySelectorAll('.right-panel__env').length===2`);
+    await check("添加项目环境后进入列表", `document.querySelectorAll('.right-panel__env').length===2&&document.querySelector('.right-panel__status').textContent.includes('已保存')`);
+    assert.equal(environments.some((environment) => environment.name === "新增环境"), true);
     await run(`document.querySelector('.right-sidebar__resize').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}))`);
     await check("右侧边栏键盘改宽同步无障碍数值", `document.querySelector('.right-sidebar__resize').getAttribute('aria-valuenow')==='408'`);
     await run(`new Promise(r=>setTimeout(r,250))`);

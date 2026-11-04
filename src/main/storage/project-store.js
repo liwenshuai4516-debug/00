@@ -81,6 +81,121 @@ function createProjectStore(storagePath, legacyStoragePath) {
     return { id: project.id, name: project.name, workspaceDir: project.workspaceDir };
   }
 
+  // 环境列表只回传地址、账号和密码是否已配置，绝不回传密码原文。
+  function toEnvironment(project) {
+    return {
+      id: project.id,
+      name: project.name,
+      workspaceDir: project.workspaceDir,
+      address: typeof project.address === "string" ? project.address : "",
+      account: typeof project.account === "string" ? project.account : "",
+      passwordConfigured:
+        typeof project.password === "string" && project.password.length > 0,
+    };
+  }
+
+  function normalizeAddress(input) {
+    if (typeof input !== "string") {
+      throw new Error("项目地址必须是字符串。");
+    }
+    const value = input.trim();
+    if (value === "") return "";
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error("项目地址配置无效，请填写 HTTP/HTTPS 地址。");
+    }
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password
+    ) {
+      throw new Error(
+        "项目地址配置无效：必须使用 HTTP/HTTPS，且不能包含账号密码。",
+      );
+    }
+    return value;
+  }
+
+  async function listEnvironments() {
+    return (await readProjects()).map(toEnvironment);
+  }
+
+  // 更新项目环境字段；password 缺省表示保持原密码，空字符串表示清除。
+  async function updateData(projectId, input) {
+    if (typeof projectId !== "string" || !projectId.trim()) {
+      throw new Error("请选择项目。");
+    }
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      throw new Error("项目环境数据无效。");
+    }
+
+    const projects = await readProjects();
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) {
+      throw new Error("未找到该项目，请重新读取项目环境。");
+    }
+
+    let changed = false;
+    if (input.name !== undefined) {
+      if (typeof input.name !== "string") {
+        throw new Error("项目名称必须是字符串。");
+      }
+      const name = input.name.trim();
+      if (!name || name.length > 40) {
+        throw new Error("项目名称请输入 1～40 个字符。");
+      }
+      if (project.name !== name) {
+        project.name = name;
+        changed = true;
+      }
+    }
+    if (input.address !== undefined) {
+      const address = normalizeAddress(input.address);
+      if (project.address !== address) {
+        project.address = address;
+        changed = true;
+      }
+    }
+    if (input.account !== undefined) {
+      if (typeof input.account !== "string") {
+        throw new Error("账号必须是字符串。");
+      }
+      if (project.account !== input.account) {
+        project.account = input.account;
+        changed = true;
+      }
+    }
+    if (Object.hasOwn(input, "password")) {
+      if (typeof input.password !== "string") {
+        throw new Error("密码必须是字符串。");
+      }
+      if (project.password !== input.password) {
+        project.password = input.password;
+        changed = true;
+      }
+    }
+
+    if (changed) await save(projects);
+    return toEnvironment(project);
+  }
+
+  // 只删除项目登记与环境字段，不触碰工作目录、会话或测试数据。
+  async function remove(projectId) {
+    if (typeof projectId !== "string" || !projectId.trim()) {
+      throw new Error("请选择项目。");
+    }
+    const projects = await readProjects();
+    const index = projects.findIndex((item) => item.id === projectId);
+    if (index < 0) {
+      throw new Error("未找到该项目，请重新读取项目环境。");
+    }
+    const [removed] = projects.splice(index, 1);
+    await save(projects);
+    return { id: removed.id, name: removed.name };
+  }
+
   async function list() {
     return (await readProjects()).map(toSummary);
   }
@@ -195,6 +310,15 @@ function createProjectStore(storagePath, legacyStoragePath) {
     return toSummary(project);
   }
 
-  return { list, add, rename: renameProject, readData };}
+  return {
+    list,
+    add,
+    rename: renameProject,
+    readData,
+    listEnvironments,
+    updateData,
+    remove,
+  };
+}
 
 module.exports = { createProjectStore };

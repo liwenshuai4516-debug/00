@@ -1,17 +1,36 @@
 # 右侧边栏
 
-右侧边栏外壳参考 DeepSeek Harness 的 `ui-sidebar-right`，只实现停靠列、开合和宽度；**面板内容未实现**，页面把内容挂到 `#right-sidebar-body` 即可。
+右侧边栏参考 DeepSeek Harness 的 `ui-sidebar-right`：贴右边缘的停靠列、窄屏全屏、header 右上角展开按钮和 DSH 风格的卡片。当前已接入**项目环境**与**测试数据**两个工作台功能。
 
-## 行为
+## 外壳
 
 - 会话 header 最右侧（对话操作 `...` 右侧）的镜像面板按钮只在收起时显示；点击打开。展开形状与左侧栏图标一致，方向镜像。
 - 首次打开宽度取视口 45%，最小 300px，最大 70%，并给中栏保留 400px。示例：1120 窗口、左栏 296px 时右栏 424px、中栏 400px。
-- 打开时若视口窄于 1024px，先**临时**收起左侧栏；不写回左栏的展开偏好，关闭右栏后左栏保持当前收起形态，重新启动应用恢复偏好。宽屏下左栏被拖得很宽、剩余空间不足 300px 时也会让位。
-- 左缘 8px 热区可拖拽改宽；分隔条聚焦后支持 ←/→（Shift 加速）与 Home/End。宽度写入 `localStorage` 的 `agent-client:right-sidebar`，打开状态不持久化，刷新后回到收起态（与 DSH 的布局重置一致）。
-- 视口窄于 768px 时打开为覆盖窗口的全屏面板；底层左侧栏与聊天设为 `inert`，关闭后恢复。窗口变宽后保持当前形态直到用户收起。
-- 左栏重新展开导致中栏不足 400px 时，右栏自动收起让位。
-- 中栏窄于 160px 时先隐藏 header 里的展开入口，避免挤压会话标题；中栏恢复后入口自动出现。
-- 面板取页面底色与正文颜色，不做浮起卡片；左边框使用 `--border`，主题切换沿用项目语义变量。
+- 打开时若视口窄于 1024px，先临时收起左侧栏；宽屏下左栏被拖得很宽、剩余空间不足 300px 时也会让位。临时收起不写回左栏偏好，重启后恢复。
+- 左缘 8px 热区可拖拽改宽；分隔条聚焦后支持 ←/→（Shift 加速）与 Home/End。宽度写入 `localStorage` 的 `agent-client:right-sidebar`，打开状态不持久化。
+- 视口窄于 768px 时打开为全屏面板，底层左侧栏与聊天设为 `inert`；关闭后恢复。左栏重新展开导致中栏不足 400px 时，右栏自动收起。
+- 中栏窄于 160px 时隐藏 header 入口，避免挤压会话标题。
+
+## 工作台
+
+打开面板先显示工作台：盾牌形状的 QA logo、“测试工作台”标题，以及两张 DSH 风格的功能卡片。
+
+### 项目环境
+
+- 读取 `config/projects.local.json` 中的项目登记与环境字段（`id`、`name`、`workspaceDir`、`address`、`account`、`password`）。
+- 列表显示名称、地址、账号和“密码已配置/未配置”；**密码原文不会返回页面**。
+- 添加：点击右上角加号，由系统目录窗口选择项目目录；登记后进入环境表单，填写名称、地址、账号和密码。
+- 编辑：可修改名称、HTTP/HTTPS 地址、账号；密码留空表示保持原密码，输入新值替换，勾选“清除已存密码”后保存为空。
+- 删除：二次确认后只移除项目环境配置，不删除工作目录、会话或 `qa/data` 测试数据。
+- 保存和删除经主进程 `runIdleOperation` 串行执行，生成或切换期间会明确拒绝；成功后通知左栏项目与会话分组刷新。
+- 地址校验与密码字段规则在主进程完成；页面只提交字段值，不提交任意配置文件路径。
+
+### 测试数据
+
+- 数据目录为当前项目 `workspaceDir/qa/data`。当前登记的“项目管理系统”工作目录是 `/Users/liyingjun/Desktop/SW-QA/18-00work space`，对应 `/Users/liyingjun/Desktop/SW-QA/18-00work space/qa/data`。
+- 递归列出 `qa/data` 下的普通文件，按顶层目录（如 `ui`）分组；显示相对路径、大小和修改时间，最多 500 个文件。隐藏文件和符号链接跳过。
+- 删除：点击文件行右侧删除按钮，二次确认后只删除该文件；不会删除目录、项目环境或其他文件。新增和修改尚未实现，等字段确定后再补。
+- 路径由主进程根据项目编号解析，页面只提交项目编号和 `qa/data` 下的相对路径；拒绝绝对路径、`..`、目录、符号链接和越界目标。
 
 ## 结构与内容接入
 
@@ -19,31 +38,39 @@
 <aside id="app-right-sidebar" class="right-sidebar">
   <div class="right-sidebar__inner">
     <div class="right-sidebar__chrome">
-      <div id="right-sidebar-tabs"></div> <!-- 预留 tab 条 -->
+      <div id="right-sidebar-tabs"></div> <!-- 视图标题、返回、添加/刷新 -->
       <button id="right-sidebar-close">…</button>
     </div>
-    <div id="right-sidebar-body"></div> <!-- 内容挂载点 -->
+    <div id="right-sidebar-body"></div> <!-- 工作台、环境、测试数据视图 -->
   </div>
   <div class="right-sidebar__resize"></div>
 </aside>
 ```
 
-顶栏 44px，只放收起按钮和预留的 `#right-sidebar-tabs`；内容区是 `#right-sidebar-body`，由页面自行填充和滚动。打开/收起按钮、宽度与主题都由外壳处理，业务代码不需要再接管几何。
+内容由 `src/renderer/components/right-sidebar-panel.js` 管理；删除确认使用独立 `#right-sidebar-confirm-dialog`。外壳不注册业务，后续新增视图复用 `#right-sidebar-tabs` 与 `#right-sidebar-body`。
 
 ## 验证
 
 ```bash
 ./node_modules/.bin/electron tests/ui/sidebar-layout.check.cjs
+node --test tests/unit/project-environment.test.js tests/unit/test-data-service.test.js
 ```
 
-侧栏页面检查本轮 51 项，其中右侧栏覆盖：默认收起与 header 镜像按钮、45%/中栏 400 宽度约束、键盘改宽、宽度写入、收起恢复 0 宽与焦点、窄窗全屏及底层 `inert`、窄于 1024 时临时收起左栏。检查使用临时模拟接口，不读取真实配置或会话、不请求模型。
+侧栏页面检查本轮 58 项，右侧栏新增覆盖：工作台 logo 与两张卡片、环境列表字段、编辑保存与后端同步、测试数据分类列表、删除文件确认、删除项目环境、添加项目环境，以及原有的宽度/全屏/左栏让位。检查使用临时模拟接口，不读取真实配置、会话或测试数据，不请求模型。
 
-![右侧边栏打开](images/right-sidebar-open.png)
+单元测试覆盖：环境列表不回传密码、缺省密码保持、显式空密码清除、非法字段拒绝且不改写配置、删除只移除登记；测试数据相对路径、隐藏文件/符号链接跳过、删除单文件、目录穿越/绝对路径/目录/符号链接/缺失文件拒绝。
+
+![右侧边栏工作台](images/right-sidebar-open.png)
+
+![项目环境列表](images/right-sidebar-environments.png)
+
+![测试数据列表](images/right-sidebar-data.png)
 
 ![右侧边栏收起时的 header 按钮](images/right-sidebar-closed.png)
 
 ## 边界
 
-- 真实指针拖拽改宽未在自动检查中模拟，需真实鼠标操作验收。
-- 面板内容、tab 条和真实业务交互尚未实现；本壳只保证空面板与开合几何。
-- 全屏面板按 768px 断点自动选择，未提供手动全屏切换按钮；如需要可后续补。
+- 真实指针拖拽、真实系统目录选择和真实配置写入未在自动检查中代替人工验收；测试使用临时配置和临时数据目录。
+- 项目环境密码是本机明文配置，不是加密凭据库；页面不回填已存密码，也不代表自动登录一定成功。
+- 测试数据只支持删除文件；新增、修改、字段结构和分类编辑尚未实现。
+- 全屏按 768px 断点自动选择，未提供手动全屏切换按钮。

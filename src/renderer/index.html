@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="./styles/output-trace.css" />
   <link rel="stylesheet" href="./styles/sidebar-shell.css" />
   <link rel="stylesheet" href="./styles/right-sidebar.css" />
+  <link rel="stylesheet" href="./styles/right-sidebar-panel.css" />
   <link rel="stylesheet" href="./styles/themes/sakura.css" />
   <script type="module" src="./theme/theme-preference.js" blocking="render"></script>
 
@@ -52,6 +53,34 @@
       <symbol id="icon-history" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="8.5" />
         <path d="M12 7.5V12l3 2" />
+      </symbol>
+      <symbol id="icon-qa-mark" viewBox="0 0 24 24">
+        <path d="M12 2.7 20 6v6.1c0 4.7-3.3 8-8 9.2-4.7-1.2-8-4.5-8-9.2V6l8-3.3Z" />
+        <path d="m8.6 12.1 2.3 2.3 4.6-4.7" />
+      </symbol>
+      <symbol id="icon-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M3.5 12h17M12 3.5c2.5 2.4 3.8 5.3 3.8 8.5s-1.3 6.1-3.8 8.5c-2.5-2.4-3.8-5.3-3.8-8.5S9.5 5.9 12 3.5Z" />
+      </symbol>
+      <symbol id="icon-database" viewBox="0 0 24 24">
+        <ellipse cx="12" cy="5.5" rx="7.5" ry="3" />
+        <path d="M4.5 5.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6M4.5 11.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6" />
+      </symbol>
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+        <path d="M19 12H5m6-6-6 6 6 6" />
+      </symbol>
+      <symbol id="icon-edit" viewBox="0 0 24 24">
+        <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z" />
+        <path d="m14 6 4 4" />
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M4 7h16M9 7V4.5h6V7M6.5 7l.8 12.5h9.4L17.5 7M10 11v5M14 11v5" />
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" />
+      </symbol>
+      <symbol id="icon-chevron-right" viewBox="0 0 24 24">
+        <path d="m9 5 7 7-7 7" />
       </symbol>
       <symbol id="icon-more" viewBox="0 0 24 24">
         <circle cx="5" cy="12" r="1" />
@@ -333,6 +362,17 @@
         aria-valuenow="300" aria-valuemin="300" aria-valuemax="900" tabindex="0"></div>
     </aside>
   </div>
+
+  <!-- 右侧栏的删除确认；与设置对话框分开，避免互相替换内容。 -->
+  <dialog id="right-sidebar-confirm-dialog" class="right-panel-confirm"
+    aria-labelledby="right-panel-confirm-title">
+    <h2 id="right-panel-confirm-title">确认删除</h2>
+    <p id="right-panel-confirm-message"></p>
+    <div class="right-panel-confirm__actions">
+      <button type="button" data-cancel autofocus>取消</button>
+      <button type="button" data-confirm>确认删除</button>
+    </div>
+  </dialog>
 
   <!-- 独立配置对话框：关闭不会替换聊天、输入框或文件草稿节点。 -->
   <dialog id="model-settings-dialog" class="model-settings-dialog" aria-labelledby="model-settings-title"

@@ -1,6 +1,6 @@
 # 项目前置数据与 UI 自动登录接入
 
-沿用现有项目菜单的登记与名称，每个项目增加地址、账号、密码三个字段。没有新增凭据编辑页面或把密码暴露给模型的接口；主进程通过 `projectService.getProjectData(projectId)` 按需读取四项数据。
+沿用现有项目菜单的登记与名称，每个项目增加地址、账号、密码三个字段。主进程通过 `projectService.getProjectData(projectId)` 按需读取四项数据，没有向模型暴露密码的工具。右侧边栏现在提供本机环境编辑，但页面只读取地址、账号和密码是否已配置，密码原文不回填。
 
 ## 配置文件
 
@@ -39,6 +39,16 @@ config/projects.local.json
 
 旧项目可以手工补充字段；缺失字段读取为空字符串，不自动迁移或重写旧记录。显式 `null`、数字等不视为空值，读取前置数据时报错。配置不完整不影响普通项目打开；是否满足具体测试的登录要求由使用方判断。
 
+## 右侧栏环境编辑接口
+
+右侧边栏通过受限 IPC 使用以下主进程接口：
+
+- `listProjectEnvironments()`：返回 `id`、`name`、`workspaceDir`、`address`、`account`、`passwordConfigured`，不返回密码原文。
+- `saveProjectEnvironment(id, input)`：可更新 `name`、`address`、`account`；`password` 缺省表示保持原密码，空字符串表示清除，非空字符串表示替换。
+- `deleteProjectEnvironment(id)`：只移除项目登记和环境字段，不删除工作目录、会话或 `qa/data` 测试数据。
+
+添加项目仍复用系统目录选择与 `addProject`，随后在环境表单中补齐字段。地址只接受空字符串或 HTTP/HTTPS 且不能内嵌账号密码；名称沿用 1～40 字校验；账号和密码保留原文。保存和删除使用 `runIdleOperation`，与生成、整理和会话切换互斥。
+
 ## 读取与保密边界
 
 `src/main/storage/project-store.js` 的 `readData(projectId)` 和现有主进程项目服务的 `getProjectData(projectId)` 返回：
@@ -56,7 +66,7 @@ config/projects.local.json
 
 现有列表、添加和重命名只向页面返回 `id`、`name`、`workspaceDir`。后台保存时保留其他记录及其扩展字段；JSON 格式错误时不覆盖原文件。名称等登记信息的原有校验继续适用。
 
-为支持本期手工编辑，账号密码是**本机明文配置，不是加密凭据库**。实际配置及其临时写入文件已被当前仓库的 `.gitignore` 忽略，仓库只提交不含真实数据的 `config/projects.example.json`；不要强制提交实际配置。应用写入时使用 `0600` 文件权限和同目录临时文件原子替换；手工编辑器或同步、备份软件可能改变权限或复制文件，不能据此承诺加密或进程访问隔离。不要将实际内容复制进报告或聊天，不要记录、导出或向模型返回 `getProjectData()` 的完整结果。当前自动登录在后端按需使用凭据并经私有 IPC 交给登录子进程，不把本接口登记为返回密码的模型工具。
+为支持本期手工编辑，账号密码是**本机明文配置，不是加密凭据库**；页面编辑表单不回填已存密码，只能留空保持、输入新值或显式清除。实际配置及其临时写入文件已被当前仓库的 `.gitignore` 忽略，仓库只提交不含真实数据的 `config/projects.example.json`；不要强制提交实际配置。应用写入时使用 `0600` 文件权限和同目录临时文件原子替换；手工编辑器或同步、备份软件可能改变权限或复制文件，不能据此承诺加密或进程访问隔离。不要将实际内容复制进报告或聊天，不要记录、导出或向模型返回 `getProjectData()` 的完整结果。当前自动登录在后端按需使用凭据并经私有 IPC 交给登录子进程，不把本接口登记为返回密码的模型工具。
 
 2026-11-04 已接入 UI 工作流：qa_ui_project 按地址匹配配置，qa_ui_login 的 auto 分支在后端读取凭据、按需登录并交接临时状态，详见 [内置 UI 测试](ui-testing-runtime.md)。无需在每个阶段人工输入账号密码；验证码、MFA、跨域认证、配置或表单失效仍需处理。没有持久登录态复用、多环境、凭据加密或团队共享。`qa-workspace-prepare` 的职责仍是准备测试输入目录，不会读取或复制这份配置。
 
@@ -66,7 +76,8 @@ config/projects.local.json
 node --test tests/unit/project-config-location.test.js \
   tests/unit/project-data.test.js tests/unit/project-store.test.js \
   tests/unit/project-service.test.js tests/unit/project-rename.test.js \
-  tests/unit/project-rename-ipc.test.js tests/unit/project-open.test.js
+  tests/unit/project-rename-ipc.test.js tests/unit/project-open.test.js \
+  tests/unit/project-environment.test.js tests/unit/test-data-service.test.js
 ```
 
 本期使用临时目录、模拟账号密码和现有真实存储/服务/IPC 检查：新记录默认值与文件权限、旧记录兼容、按编号隔离及重读、原文保留、配置持久化、页面返回字段白名单，以及损坏配置的报错与保护。位置迁移检查覆盖启动接线、旧配置完整保留、并发首次迁移、新文件优先及损坏时不覆盖。测试不读取真实配置或会话，不访问业务站点，不请求模型；不替代真实登录或测试执行验收。

@@ -149,6 +149,31 @@ function registerAgentIpc(
     return runIdleOperation(() => projectService.renameProject(projectId, name));
   });
 
+  // 环境列表只读；保存和删除与项目切走、生成共用互斥入口。
+  ipcMain.handle("agent:list-project-environments", () =>
+    projectService.listProjectEnvironments(),
+  );
+  ipcMain.handle("agent:save-project-environment", (_event, projectId, input) => {
+    return runIdleOperation(() =>
+      projectService.saveProjectEnvironment(projectId, input),
+    );
+  });
+  ipcMain.handle("agent:delete-project-environment", (_event, projectId) => {
+    return runIdleOperation(() =>
+      projectService.deleteProjectEnvironment(projectId),
+    );
+  });
+
+  // 测试数据读取只返回相对路径和元信息；删除只接受项目编号与相对路径。
+  ipcMain.handle("agent:list-test-data", (_event, projectId) =>
+    projectService.listTestData(projectId),
+  );
+  ipcMain.handle("agent:delete-test-data", (_event, projectId, relativePath) => {
+    return runIdleOperation(() =>
+      projectService.deleteTestData(projectId, relativePath),
+    );
+  });
+
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 
   ipcMain.handle("agent:set-session-pinned", (_event, sessionId, pinned) =>

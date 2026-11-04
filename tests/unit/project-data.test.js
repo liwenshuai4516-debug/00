@@ -139,3 +139,55 @@ test("实际项目 IPC 的列表、添加与重命名不传递账号密码", asy
   assert.deepEqual(await handlers.get("agent:add-project")({ sender: {} }), { canceled: false, project });
   assert.deepEqual(await handlers.get("agent:rename-project")({}, project.id, "名称"), { ...project, name: "名称" });
 });
+
+test("实际 IPC 环境编辑与测试数据删除只提交编号和相对路径", async (t) => {
+  const { workspace, store, project } = await setup(t);
+  await mkdir(path.join(workspace, "qa", "data", "ui"), { recursive: true });
+  await writeFile(path.join(workspace, "qa", "data", "ui", "demo.spec.cjs"), "demo\n");
+
+  const service = createProjectService(store, () => ({ canceled: true }));
+  const handlers = new Map();
+  registerAgentIpc(
+    { handle: (name, handler) => handlers.set(name, handler) },
+    {},
+    { isBusy: () => false },
+    {},
+    {},
+    {},
+    {},
+    service,
+  );
+
+  const initial = await handlers.get("agent:list-project-environments")({});
+  assert.equal(initial.length, 1);
+  assert.equal(initial[0].passwordConfigured, false);
+  assert.equal("password" in initial[0], false);
+
+  const saved = await handlers.get("agent:save-project-environment")({}, project.id, {
+    name: "订单系统",
+    address: "https://example.invalid",
+    account: "tester",
+    password: "private-value",
+  });
+  assert.deepEqual(saved, {
+    id: project.id,
+    name: "订单系统",
+    workspaceDir: project.workspaceDir,
+    address: "https://example.invalid",
+    account: "tester",
+    passwordConfigured: true,
+  });
+
+  const data = await handlers.get("agent:list-test-data")({}, project.id);
+  assert.deepEqual(data.items.map((item) => item.path), ["ui/demo.spec.cjs"]);
+  assert.deepEqual(
+    await handlers.get("agent:delete-test-data")({}, project.id, "ui/demo.spec.cjs"),
+    { path: "ui/demo.spec.cjs" },
+  );
+
+  assert.deepEqual(
+    await handlers.get("agent:delete-project-environment")({}, project.id),
+    { id: project.id, name: "订单系统" },
+  );
+  assert.deepEqual(await handlers.get("agent:list-project-environments")({}), []);
+});
