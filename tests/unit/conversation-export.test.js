@@ -43,6 +43,8 @@ test("按用户选择的位置保存 UTF-8 展示文本，保留中文和换行"
       assert.equal(actualSender, sender);
       assert.deepEqual(options.filters, [
         { name: "文本文件", extensions: ["txt"] },
+        { name: "Markdown", extensions: ["md"] },
+        { name: "JSON", extensions: ["json"] },
       ]);
 
       return { canceled: false, filePath };
@@ -208,4 +210,38 @@ test("生成时拒绝导出，选择位置期间拒绝冲突操作，取消后�
 
   await handlers.get("agent:new-chat")({});
   assert.equal(newChats, 1);
+});
+test("按扩展名导出 Markdown 与 JSON，JSON 只含展示字段", async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "agent-export-format-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+
+  const history = [
+    { role: "user", text: "第一行\n第二行" },
+    { role: "assistant", text: "回复", internalData: "不可导出的内部字段" },
+  ];
+  const info = { sessionId: "s1", workspaceDir: "/work", provider: "mock", modelId: "m1" };
+
+  for (const [name, ext] of [["对话.md", "md"], ["对话.json", "json"]]) {
+    const filePath = path.join(dir, name);
+    const service = createConversationExportService(
+      { loadHistory: async () => history, getSessionInfo: async () => info },
+      async () => ({ canceled: false, filePath }),
+    );
+    assert.deepEqual(await service.exportConversation({}), { canceled: false });
+
+    const text = await readFile(filePath, "utf8");
+    if (ext === "md") {
+      assert.match(text, /^# 当前对话（上下文快照）/);
+      assert.match(text, /## 我\n\n第一行\n第二行/);
+      assert.match(text, /## Agent\n\n回复/);
+    } else {
+      const payload = JSON.parse(text);
+      assert.equal(payload.workspaceDir, "/work");
+      assert.deepEqual(payload.messages, [
+        { role: "user", text: "第一行\n第二行" },
+        { role: "assistant", text: "回复" },
+      ]);
+      assert.equal("internalData" in payload.messages[1], false);
+    }
+  }
 });
