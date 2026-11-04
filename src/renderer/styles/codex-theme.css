@@ -702,6 +702,12 @@ select option {
   .conversation-heading {
     gap: 8px;
   }
+  /* 窄窗口 header 使用紧凑按钮，给标题和右侧栏入口留空间。 */
+  .chat-header .icon-button,
+  .chat-header .conversation-menu > summary {
+    width: 28px;
+    height: 28px;
+  }
   #messages {
     padding: 18px 16px 40px;
   }

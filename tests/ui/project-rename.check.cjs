@@ -194,8 +194,10 @@ async function main() {
         win.setSize(width, 820); await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
         if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='true'`)) await click('#sidebar-toggle');
         await open(); await input("很长的项目名称".repeat(5));
-        await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
-        assert.equal(await js(`document.documentElement.scrollWidth<=innerWidth&&[document.querySelector('${dialog}'),document.getElementById('app-sidebar'),document.getElementById('session-list')].every(e=>e.scrollWidth<=e.clientWidth+1)&&document.querySelector('${dialog}').getBoundingClientRect().right<=innerWidth`), true);
+        const fit = `document.documentElement.scrollWidth<=innerWidth&&[document.querySelector('${dialog}'),document.getElementById('app-sidebar'),document.getElementById('session-list')].every(e=>e.scrollWidth<=e.clientWidth+1)&&document.querySelector('${dialog}').getBoundingClientRect().right<=innerWidth`;
+        // 等待侧栏展开/收起过渡结束，避免在中间帧测量宽度。
+        await until(fit);
+        assert.equal(await js(fit), true);
         await fs.writeFile(path.join(temporary, `rename-${width}.png`), (await win.webContents.capturePage()).toPNG());
         await click(`${dialog} [data-cancel]`);
         if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='false'`)) await click('#sidebar-toggle');

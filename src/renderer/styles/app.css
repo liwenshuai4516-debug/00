@@ -70,11 +70,11 @@ label {
   color: var(--muted);
 }
 
-/* 外壳占满窗口，各区域分别管理滚动。侧栏宽度由自身控制，轨道态也保留列。 */
+/* 外壳占满窗口，各区域分别管理滚动。左右栏宽度由各自外壳控制。 */
 .app-shell {
   height: 100dvh;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 .sidebar {

@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="./styles/pi-resources.css" />
   <link rel="stylesheet" href="./styles/output-trace.css" />
   <link rel="stylesheet" href="./styles/sidebar-shell.css" />
+  <link rel="stylesheet" href="./styles/right-sidebar.css" />
   <link rel="stylesheet" href="./styles/themes/sakura.css" />
   <script type="module" src="./theme/theme-preference.js" blocking="render"></script>
 
@@ -200,6 +201,13 @@
               </details>
             </div>
           </details>
+          <!-- 右侧边栏折叠时才显示；图标是左侧栏图标的镜像。 -->
+          <button id="right-sidebar-toggle" class="icon-button" type="button"
+            aria-label="打开右侧边栏" aria-controls="app-right-sidebar" aria-expanded="false" title="打开右侧边栏">
+            <svg class="icon right-sidebar__mirror" aria-hidden="true">
+              <use href="#icon-sidebar" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -306,6 +314,24 @@
         </div>
       </footer>
     </main>
+
+    <!-- 右侧边栏外壳：内容由页面挂到 #right-sidebar-body，外壳不注册业务。 -->
+    <aside id="app-right-sidebar" class="right-sidebar" aria-label="右侧边栏" aria-hidden="true" inert>
+      <div class="right-sidebar__inner">
+        <div class="right-sidebar__chrome">
+          <div id="right-sidebar-tabs" class="right-sidebar__tabs"></div>
+          <button id="right-sidebar-close" class="right-sidebar__icon-button" type="button" aria-label="收起右侧边栏"
+            title="收起右侧边栏">
+            <svg class="icon right-sidebar__mirror" aria-hidden="true">
+              <use href="#icon-sidebar" />
+            </svg>
+          </button>
+        </div>
+        <div id="right-sidebar-body" class="right-sidebar__body"></div>
+      </div>
+      <div class="right-sidebar__resize" role="separator" aria-orientation="vertical" aria-label="调整右侧边栏宽度"
+        aria-valuenow="300" aria-valuemin="300" aria-valuemax="900" tabindex="0"></div>
+    </aside>
   </div>
 
   <!-- 独立配置对话框：关闭不会替换聊天、输入框或文件草稿节点。 -->

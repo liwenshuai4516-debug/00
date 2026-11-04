@@ -2,6 +2,7 @@ import {
   createSidebarShell,
   SIDEBAR_AUTO_COLLAPSE_BELOW,
 } from "./sidebar-shell.js";
+import { createRightSidebar } from "./right-sidebar.js";
 
 // 只管理页面展示，不调用 window.agent，不改变业务状态。
 const sidebar = document.getElementById("app-sidebar");
@@ -38,6 +39,14 @@ const sidebarShell = createSidebarShell({
   onCollapse: () => {
     if (!searchField.hidden) setSearch(false, { focus: false });
   },
+});
+
+createRightSidebar({
+  sidebar: document.getElementById("app-right-sidebar"),
+  toggle: document.getElementById("right-sidebar-toggle"),
+  close: document.getElementById("right-sidebar-close"),
+  getLeftWidth: () => sidebarShell.getWidth(),
+  collapseLeft: (options) => sidebarShell.collapse(options),
 });
 
 searchToggle.addEventListener("click", () => setSearch(searchField.hidden));

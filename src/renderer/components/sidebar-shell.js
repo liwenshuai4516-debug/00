@@ -58,6 +58,8 @@ export function createSidebarShell({ sidebar, toggle, onCollapse }) {
 
   const stored = readStored();
   let storedCollapsed = stored.collapsed ?? false;
+  // 右侧栏打开时临时收起，不写回左栏的展开偏好。
+  let temporaryCollapsed = false;
   let width = clampWidth(stored.width ?? SIDEBAR_DEFAULT_WIDTH);
   let narrow = narrowQuery.matches;
   let narrowExpanded = false;
@@ -74,7 +76,7 @@ export function createSidebarShell({ sidebar, toggle, onCollapse }) {
   let collapseFocus = false;
 
   function isCollapsed() {
-    return narrow ? !narrowExpanded : storedCollapsed;
+    return narrow ? !narrowExpanded : storedCollapsed || temporaryCollapsed;
   }
 
   function setWidth(px) {
@@ -92,6 +94,8 @@ export function createSidebarShell({ sidebar, toggle, onCollapse }) {
     const label = collapsed ? "展开侧栏" : "收起侧栏";
     toggle.setAttribute("aria-label", label);
     toggle.title = label;
+    // 右栏外壳根据左栏宽度决定 header 入口是否可用。
+    document.dispatchEvent(new CustomEvent("sidebar-state-change"));
   }
 
   function persist() {
@@ -192,22 +196,37 @@ export function createSidebarShell({ sidebar, toggle, onCollapse }) {
   function expand() {
     if (!isCollapsed()) return;
     if (narrow) narrowExpanded = true;
-    else storedCollapsed = false;
+    else {
+      storedCollapsed = false;
+      temporaryCollapsed = false;
+    }
     persist();
     apply();
   }
 
-  function collapse() {
+  function collapse({ persist: shouldPersist = true } = {}) {
     if (isCollapsed()) return;
     if (narrow) narrowExpanded = false;
-    else storedCollapsed = true;
-    persist();
+    else if (shouldPersist) {
+      storedCollapsed = true;
+      temporaryCollapsed = false;
+    } else {
+      temporaryCollapsed = true;
+    }
+    if (shouldPersist) persist();
     apply();
   }
 
   function toggleSidebar() {
-    if (narrow) narrowExpanded = isCollapsed();
-    else storedCollapsed = !storedCollapsed;
+    if (narrow) {
+      narrowExpanded = isCollapsed();
+    } else if (isCollapsed()) {
+      storedCollapsed = false;
+      temporaryCollapsed = false;
+    } else {
+      storedCollapsed = true;
+      temporaryCollapsed = false;
+    }
     persist();
     apply();
   }
@@ -305,5 +324,6 @@ export function createSidebarShell({ sidebar, toggle, onCollapse }) {
     toggle: toggleSidebar,
     isCollapsed,
     isNarrow: () => narrow,
+    getWidth: () => (isCollapsed() ? SIDEBAR_RAIL_WIDTH : width),
   };
 }
