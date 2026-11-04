@@ -43,6 +43,12 @@ async function main() {
     if (name === "loadHistory") return [];
     if (name === "currentSession") return current;
     if (name === "listSessions") return sessions;
+    if (name === "searchSessions") {
+      const query = String(args[0] ?? "");
+      return query.includes("断言基线")
+        ? { items: [{ id: "old1", matches: 2, snippet: "…旧项目会话包含断言基线…" }], truncated: false }
+        : { items: [], truncated: false };
+    }
     if (name === "listProposals") return [];
     if (name === "listProjects") {
       if (listFail) throw Error("模拟清单失败");
@@ -227,6 +233,11 @@ async function main() {
     await check("点击搜索图标展开并聚焦", `!document.getElementById('session-search-field').hidden&&document.activeElement.id==='session-search'&&document.getElementById('session-search-toggle').getAttribute('aria-expanded')==='true'`);
     await search("古诗");
     await check("标题搜索只显示命中会话并展开", `document.querySelectorAll('.session-group').length===1&&document.querySelector('.session-group').open&&document.querySelector('.session-group-items button').textContent==='写一首古诗'`);
+    await search("断言基线");
+    await wait(`document.querySelector('.session-match')!==null`);
+    await check("内容搜索展示命中片段", `document.querySelector('.session-match').textContent.includes('断言基线')&&document.querySelector('.session-row[data-session-id="old1"]')!==null&&document.querySelectorAll('.session-group').length===1`);
+    await search("古诗");
+    await wait(`document.querySelectorAll('.session-match').length===0`);
     await click("#session-search-toggle");
     await check("收起搜索清除筛选，恢复折叠和焦点，保留聊天草稿", `document.getElementById('session-search-field').hidden&&document.getElementById('session-search').value===''&&document.querySelectorAll('.session-group').length===3&&!document.querySelector('.session-group').open&&document.activeElement.id==='session-search-toggle'&&document.getElementById('message-input').value==='保留输入  '&&document.getElementById('proposal-list').textContent==='保留文件草稿'`);
     assert.equal(calls.filter(c => c[0] === "openProject" || c[0] === "openSession").length, opensBefore);

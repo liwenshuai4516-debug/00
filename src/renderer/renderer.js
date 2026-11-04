@@ -449,11 +449,39 @@ function focusSessionActions(sessionId) {
     !document.getElementById("settings-archive-panel").hidden;
   (inArchive ? archiveList : sessionList).focusActions(sessionId);
 }
-// 搜索只更新侧栏展示，不切换当前会话。
+// 搜索只更新侧栏展示，不切换当前会话；内容搜索防抖并丢弃迟到结果。
 const sessionSearch = document.getElementById("session-search");
+const sessionSearchMatches = new Map();
+let sessionSearchTimer;
+let sessionSearchSerial = 0;
+
+async function searchSessionContents(value, request) {
+  try {
+    const result = await window.agent.searchSessions(value);
+    if (request !== sessionSearchSerial) return;
+    sessionSearchMatches.clear();
+    for (const item of result?.items ?? []) {
+      if (typeof item?.id !== "string") continue;
+      sessionSearchMatches.set(item.id, typeof item.snippet === "string" ? item.snippet : "");
+    }
+    sessionList.setMatches(sessionSearchMatches);
+  } catch {
+    // 内容搜索失败不影响按标题过滤。
+  }
+}
 
 sessionSearch.addEventListener("input", () => {
-  sessionList.setQuery(sessionSearch.value);
+  const value = sessionSearch.value.trim();
+  const request = ++sessionSearchSerial;
+  sessionList.setQuery(value);
+  clearTimeout(sessionSearchTimer);
+
+  // 新关键词立即清掉旧内容命中，避免用上一轮片段展示当前查询。
+  sessionSearchMatches.clear();
+  sessionList.setMatches(sessionSearchMatches);
+
+  if (value.length < 2) return;
+  sessionSearchTimer = setTimeout(() => { void searchSessionContents(value, request); }, 250);
 });
 
 let unsentReadVersion = 0;

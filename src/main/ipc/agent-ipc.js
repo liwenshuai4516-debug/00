@@ -104,6 +104,14 @@ function registerAgentIpc(
   );
   ipcMain.handle("agent:search-workspace-files", (_event, query) => searchWorkspaceFiles(query));
 
+  // 会话内容搜索：只读最近会话的展示文本，扫描量与结果数在服务内限制。
+  const { createSessionSearch } = require("../services/session-search-service.js");
+  const searchSessions = createSessionSearch({
+    listSessions: () => sessionService.listSessions(),
+    previewSession: (sessionId) => sessionService.previewSession(sessionId),
+  });
+  ipcMain.handle("agent:search-sessions", (_event, query) => searchSessions(query));
+
   // 拖入文件只转换为可引用的路径文本；目录、缺失与越界内容不插入。
   const { createDroppedPathResolver } = require("../services/dropped-path-service.js");
   const describeDroppedFiles = createDroppedPathResolver(

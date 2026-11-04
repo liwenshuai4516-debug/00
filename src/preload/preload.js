@@ -132,6 +132,11 @@ contextBridge.exposeInMainWorld("agent", {
   // 拖入文件：先取系统路径，再由主进程判定相对/绝对与是否可引用。
   getPathForFile: (file) => webUtils.getPathForFile(file),
   pickFiles: () => ipcRenderer.invoke("agent:pick-files"),
+  // 会话内容搜索：只提交关键词，读取范围与结果上限在主进程。
+  searchSessions: (query) => {
+    if (typeof query !== "string") throw new Error("搜索词无效。");
+    return ipcRenderer.invoke("agent:search-sessions", query);
+  },
   describeDroppedFiles: (paths) => {
     if (!Array.isArray(paths)) throw new Error("拖入内容无效。");
     return ipcRenderer.invoke("agent:describe-dropped-files", paths);

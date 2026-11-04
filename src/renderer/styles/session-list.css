@@ -189,3 +189,14 @@
 .sidebar-conversations .session-group-path { display: none; }
 
 .sidebar-conversations .session-group > summary { padding-block: 0; }
+
+/* 会话内容搜索命中的摘要，位于对应会话行下方。 */
+.session-match {
+  margin: -2px 0 6px;
+  padding: 0 10px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

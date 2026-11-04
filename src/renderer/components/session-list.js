@@ -14,6 +14,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
   let sessions = [];
   let projects = [];
   let query = "";
+  let matches = new Map();
   const archivedView = actions.archived === true;
   const notice = createArchiveNotice(id => actions.onSetArchived(id, false));
   const status = document.createElement("p");
@@ -82,7 +83,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
     // filter 创建新数组，排序不会改动主进程传来的列表。
     const visibleSessions = sessions
       .filter(session => (session.archivedAt != null) === archivedView)
-      .filter((session) => session.title.toLowerCase().includes(query))
+      .filter((session) => session.title.toLowerCase().includes(query) || matches.has(session.id))
       .sort((first, second) => second.updatedAt - first.updatedAt || first.id.localeCompare(second.id));
     const groups = new Map();
     const projectsByDirectory = new Map(projects.map((project) => [project.workspaceDir, project]));
@@ -313,6 +314,16 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
           }
         }
         items.appendChild(row);
+
+        // 标题没命中但内容命中时，在行下方展示片段。
+        const snippet = query ? matches.get(session.id) : undefined;
+        if (snippet !== undefined) {
+          const match = document.createElement("p");
+          match.className = "session-match";
+          match.textContent = snippet || "匹配到对话内容";
+          match.title = match.textContent;
+          items.appendChild(match);
+        }
       }
 
       group.append(summary, items);
@@ -343,6 +354,13 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
 
   function setQuery(value) {
     query = value.trim().toLowerCase();
+    if (!query) matches = new Map();
+    draw();
+  }
+
+  // 内容命中来自主进程搜索；只影响展示，不改变排序与打开逻辑。
+  function setMatches(next) {
+    matches = next instanceof Map ? next : new Map();
     draw();
   }
 
@@ -376,7 +394,7 @@ export function createSessionList(container, onSelect, onOpenProject, actions = 
   }
 
   return {
-    render, setActive, setBusy, setQuery, setProjects, setStatus, updatePinned, updateArchived, focusActions,
+    render, setActive, setBusy, setQuery, setMatches, setProjects, setStatus, updatePinned, updateArchived, focusActions,
     dispose() { document.removeEventListener("click", onOutsideClick); notice.dispose(); },
   };
 }
