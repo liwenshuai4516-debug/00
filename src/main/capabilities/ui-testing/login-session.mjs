@@ -3,24 +3,24 @@ import { mkdtemp, chmod, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-function receive(child, expected, signal) {
+function receive(child, expected, signal, timeout = 30_000) {
   return new Promise((resolve, reject) => {
-    const finish = (error) => {
+    const finish = (error, message) => {
       clearTimeout(timer);
       child.off("message", onMessage);
       child.off("exit", onExit);
       child.off("error", onError);
       signal?.removeEventListener("abort", onAbort);
-      error ? reject(error) : resolve();
+      error ? reject(error) : resolve(message);
     };
     const onMessage = (message) => {
-      if (message.status === expected) finish();
+      if (message.status === expected || message.event === expected) finish(null, message);
       else if (message.status === "error") finish(new Error(message.message));
     };
     const onExit = () => finish(new Error("登录窗口已关闭，请重新开始。"));
     const onError = () => finish(new Error("登录进程启动失败。"));
     const onAbort = () => finish(new Error("登录操作已取消。"));
-    const timer = setTimeout(() => finish(new Error("登录窗口响应超时。")), 30_000);
+    const timer = setTimeout(() => finish(new Error("登录窗口响应超时。")), timeout);
     child.on("message", onMessage);
     child.once("exit", onExit);
     child.once("error", onError);
@@ -43,6 +43,14 @@ export async function openLogin(runtime, targetUrl, signal) {
     file: path.join(directory, "state.json"),
     origin: new URL(targetUrl).origin,
     status: "open",
+    async auto(credentials, selectors, signal) {
+      if (!child.connected) throw new Error("登录窗口已关闭，请重新登录。");
+      const waiting = receive(child, "auto-result", signal, 60_000);
+      child.send({ action: "auto", credentials, selectors, file: entry.file });
+      const message = await waiting;
+      if (message.status === "saved") entry.status = "saved";
+      return message;
+    },
     async save(signal) {
       if (!child.connected) throw new Error("登录窗口已关闭，请重新登录。");
       const waiting = receive(child, "saved", signal);

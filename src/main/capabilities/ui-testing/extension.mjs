@@ -1,8 +1,9 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdir, realpath, writeFile, readFile } from "node:fs/promises";
+import { mkdir, realpath, writeFile, readFile, readdir } from "node:fs/promises";
 import { randomUUID, createHash } from "node:crypto";
 import { openLogin } from "./login-session.mjs";
+import { resolveProject, readCredentials } from "./project-context.mjs";
 import { Type } from "typebox";
 
 const serverName = "desktop-playwright-test";
@@ -15,8 +16,36 @@ function quote(value) {
 export function createUiTestingExtension(runtime) {
   return (pi) => {
     let activeRecordingDir = null;
-    const logins = new Map();
     const result = (details) => ({ content: [{ type: "text", text: JSON.stringify(details, null, 2) }], details });
+    const logins = new Map();
+    const projects = new Map();
+    async function boundProject(projectRef, ctx) {
+      const project = projects.get(projectRef);
+      if (!project || project.workspace !== await realpath(ctx.cwd)) {
+        throw new Error("项目检查已失效或工作区已切换，请重新调用 qa_ui_project。");
+      }
+      if (await realpath(project.caseDir) !== project.caseDir) throw new Error("测试数据目录已改变，请重新检查工作区。");
+      return project;
+    }
+    pi.registerTool({
+      name: "qa_ui_project",
+      label: "检查 UI 项目与测试数据目录",
+      description: "按当前会话工作区检查 qa/data，按地址匹配已登记项目。只返回项目名称、地址及配置完整性，不返回账号密码。",
+      executionMode: "sequential",
+      parameters: Type.Object({
+        targetUrl: Type.String(),
+        projectId: Type.Optional(Type.String()),
+        projectName: Type.Optional(Type.String()),
+        expectedWorkspaceRoot: Type.Optional(Type.String()),
+      }),
+      async execute(_id, params, signal, _update, ctx) {
+        signal?.throwIfAborted();
+        const project = await resolveProject(runtime, params, ctx.cwd);
+        const projectRef = randomUUID();
+        projects.set(projectRef, { ...project, loginChecked: false, recordings: new Map() });
+        return result({ status: "ready", projectRef, ...project });
+      },
+    });
     const target = (value) => {
       const url = new URL(value);
       if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
@@ -37,18 +66,56 @@ export function createUiTestingExtension(runtime) {
     pi.registerTool({
       name: "qa_ui_login",
       label: "可见窗口登录与清理",
-      description: "start 打开独立可见窗口供用户手动登录；complete 经用户确认保存本次私有登录态；cancel 关闭窗口并删除登录态。禁止索取密码。",
+      description: "auto 根据 projectRef 由后端读取已配置凭据，判断登录需要并尝试一次自动登录；仅验证码等异常返回人工处理。start/complete 保留手动方式，cancel 清理。凭据不返回模型。",
       executionMode: "sequential",
       parameters: Type.Object({
-        action: Type.Union([Type.Literal("start"), Type.Literal("complete"), Type.Literal("cancel")]),
+        action: Type.Union([Type.Literal("auto"), Type.Literal("start"), Type.Literal("complete"), Type.Literal("cancel")]),
+        projectRef: Type.Optional(Type.String()),
+        selectors: Type.Optional(Type.Object({
+          account: Type.Optional(Type.String()), password: Type.Optional(Type.String()),
+          submit: Type.Optional(Type.String()), authenticated: Type.Optional(Type.String()),
+        })),
         targetUrl: Type.Optional(Type.String()),
         loginId: Type.Optional(Type.String()),
       }),
       async execute(_id, params, signal, _update, ctx) {
+        if (params.action === "auto") {
+          const project = await boundProject(params.projectRef, ctx);
+          if (project.autoLoginAttempted) throw new Error("本次项目已尝试自动登录，请处理现有窗口或重新检查项目，不能重复提交。");
+          const credentials = await readCredentials(runtime, project);
+          const entry = await openLogin(runtime, project.targetUrl, signal);
+          entry.projectRef = params.projectRef;
+          entry.automatic = true;
+          project.autoLoginAttempted = true;
+          const loginId = randomUUID();
+          logins.set(loginId, entry);
+          let outcome;
+          try { outcome = await entry.auto(credentials, params.selectors, signal); }
+          catch (error) {
+            await entry.cleanup();
+            logins.delete(loginId);
+            throw error;
+          }
+          if (outcome.status === "not-required") {
+            await entry.cleanup();
+            logins.delete(loginId);
+            project.loginChecked = true;
+            project.loginId = null;
+            return result({ status: "not-required", verification: outcome.verification, message: "目标页面可访问且未发现登录表单；录制前仍需检查角色与权限。" });
+          }
+          if (outcome.status === "saved") {
+            project.loginChecked = true;
+            project.loginId = loginId;
+          }
+          return result({ loginId, status: outcome.status, reason: outcome.reason, verification: outcome.verification });
+        }
         if (params.action === "start") {
           if (!ctx.hasUI) throw new Error("手动登录需要可见桌面交互。");
           target(params.targetUrl);
+          const project = params.projectRef ? await boundProject(params.projectRef, ctx) : null;
+          if (project && target(params.targetUrl).href !== project.targetUrl) throw new Error("登录地址与项目检查结果不一致。");
           const entry = await openLogin(runtime, params.targetUrl, signal);
+          entry.projectRef = params.projectRef;
           const loginId = randomUUID();
           logins.set(loginId, entry);
           return result({ loginId, status: "open", message: "请在可见窗口手动登录，完成后调用 complete。登录过程不录制。" });
@@ -61,7 +128,7 @@ export function createUiTestingExtension(runtime) {
           return result({ loginId: params.loginId, status: "deleted" });
         }
         if (entry.status !== "open") throw new Error("登录态已交接，不能重复保存。");
-        if (!ctx.hasUI || !await ctx.ui.confirm("本次 UI 测试登录态", "是否将当前登录态保存到本机私有临时文件，用于本次录制及一个回放批次，并在回放结束或会话关闭时删除？", { signal })) {
+        if (!entry.automatic && (!ctx.hasUI || !await ctx.ui.confirm("本次 UI 测试登录态", "是否将当前登录态保存到本机私有临时文件，用于本次录制及一个回放批次，并在回放结束或会话关闭时删除？", { signal }))) {
           await entry.cleanup();
           logins.delete(params.loginId);
           return result({ status: "cancelled", cleanup: "deleted" });
@@ -73,7 +140,53 @@ export function createUiTestingExtension(runtime) {
           logins.delete(params.loginId);
           throw error;
         }
+        if (entry.projectRef && projects.has(entry.projectRef)) {
+          const project = await boundProject(entry.projectRef, ctx);
+          project.loginChecked = true;
+          project.loginId = params.loginId;
+        }
         return result({ loginId: params.loginId, status: "saved", origin: entry.origin, message: "已私有保存；实际身份与权限仍须在用例前置检查中验证。" });
+      },
+    });
+
+
+    pi.registerTool({
+      name: "qa_ui_finalize",
+      label: "登记格式整理后的 UI 脚本",
+      description: "录制后由 Agent 根据真实日志整理脚本及断言，保存文档，再由此工具检查语法和证据并登记资产版本。此工具不推断业务正确性。",
+      executionMode: "sequential",
+      parameters: Type.Object({ projectRef: Type.String(), caseId: Type.String() }),
+      async execute(_id, params, signal, _update, ctx) {
+        const project = await boundProject(params.projectRef, ctx);
+        const recorded = project.recordings.get(params.caseId);
+        if (!recorded) throw new Error("未找到本次真实录制准备记录。");
+        const logs = (await readdir(recorded.recordingDir)).filter((name) => /^generator-log-.*\.json$/.test(name));
+        if (!logs.length) throw new Error("缺少官方生成日志，不能登记为已录制资产。");
+        for (const name of logs) {
+          const log = JSON.parse(await readFile(path.join(recorded.recordingDir, name), "utf8"));
+          if (log.isError) throw new Error("生成日志存在错误，请先核对原始录制证据。");
+        }
+        const source = await readFile(recorded.caseFile);
+        const document = await readFile(recorded.caseDocument, "utf8");
+        if (!source.length || !document.trim()) throw new Error("脚本和用例说明不能为空。");
+        const credentials = await readCredentials(runtime, project);
+        if (credentials.password && (source.includes(Buffer.from(credentials.password)) || source.includes(Buffer.from(JSON.stringify(credentials.password))))) {
+          throw new Error("脚本包含配置中的密码，请移除凭据后重新整理。");
+        }
+        const checked = await pi.exec(runtime.node, ["--check", recorded.caseFile], { cwd: project.workspace, signal, timeout: 30_000 });
+        if (checked.killed || checked.code !== 0) throw new Error("脚本语法检查未通过，请检查脚本；不会自动回放。");
+        const metadata = {
+          projectId: project.projectId, projectName: project.projectName,
+          targetUrl: project.targetUrl, caseId: params.caseId,
+          sha256: createHash("sha256").update(source).digest("hex"),
+          recordedAt: new Date().toISOString(),
+          recordingLogs: logs.map((name) => path.join(recorded.recordingDir, name)),
+          caseDocument: recorded.caseDocument,
+          status: "recorded-and-syntax-checked",
+        };
+        const assetFile = path.join(project.caseDir, `${params.caseId}.asset.json`);
+        await writeFile(assetFile, JSON.stringify(metadata, null, 2) + "\n");
+        return result({ ...metadata, assetFile, message: "脚本已保存并完成语法和来源登记；业务结果由回放断言判断。" });
       },
     });
 
@@ -118,10 +231,11 @@ export function createUiTestingExtension(runtime) {
       promptSnippet: "准备 UI 录制或已有 case 的测试运行环境。",
       executionMode: "sequential",
       parameters: Type.Object({
-        caseId: Type.Optional(Type.String({ pattern: "^[a-z][a-z0-9-]{0,63}$" })),
-        caseIds: Type.Optional(Type.Array(Type.String({ pattern: "^[a-z][a-z0-9-]{0,63}$" }), { minItems: 1, maxItems: 100 })),
+        caseId: Type.Optional(Type.String({ minLength: 1, maxLength: 180 })),
+        caseIds: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 180 }), { minItems: 1, maxItems: 100 })),
         loginId: Type.Optional(Type.String()),
         headed: Type.Optional(Type.Boolean()),
+        projectRef: Type.Optional(Type.String()),
         targetUrl: Type.String(),
         mode: Type.Optional(Type.Union([
           Type.Literal("record"),
@@ -132,15 +246,36 @@ export function createUiTestingExtension(runtime) {
       async execute(_id, params, signal, _update, ctx) {
         const mode = params.mode ?? "record";
         const parsedUrl = target(params.targetUrl);
-        const caseIds = params.caseIds ?? (params.caseId ? [params.caseId] : []);
+        const project = params.projectRef ? await boundProject(params.projectRef, ctx) : null;
+        if (project && target(params.targetUrl).href !== project.targetUrl) throw new Error("输入地址与项目检查结果不一致，请重新检查。");
+        if (project && !project.loginChecked) throw new Error("请先通过 qa_ui_login 判断并处理登录。");
+        let defaultCaseId = project?.assetName;
+        if (project && mode === "record" && !params.caseId && [".spec.cjs", ".seed.spec.cjs", ".md"].some((suffix) => existsSync(path.join(project.caseDir, defaultCaseId + suffix)))) {
+          defaultCaseId += `__${Date.now()}-${randomUUID().slice(0, 6)}`;
+        }
+        const caseIds = params.caseIds ?? (params.caseId ? [params.caseId] : mode === "record" && project ? [defaultCaseId] : []);
         if (!caseIds.length || new Set(caseIds).size !== caseIds.length ||
-          caseIds.some((id) => !/^[a-z][a-z0-9-]{0,63}$/.test(id)) ||
+          caseIds.some((id) => !/^[\p{L}\p{N}_-]{1,180}$/u.test(id)) ||
           (params.caseIds && params.caseId) || (mode === "record" && caseIds.length !== 1)) {
           throw new Error("录制提供一个 caseId；回放提供 caseId 或不重复的 caseIds。");
         }
         const caseId = caseIds[0];
-        const login = params.loginId ? logins.get(params.loginId) : null;
-        if (params.loginId && (!login || login.status !== "saved" || !existsSync(login.file) || login.origin !== parsedUrl.origin)) {
+        if (project && mode === "run") {
+          for (const id of caseIds) {
+            let metadata;
+            try { metadata = JSON.parse(await readFile(path.join(project.caseDir, `${id}.asset.json`), "utf8")); }
+            catch { /* 缺失或损坏索引统一拒绝，不回显可能含敏感片段的 JSON 错误。 */ }
+            if (metadata?.projectId !== project.projectId || metadata.targetUrl !== project.targetUrl || metadata.sha256 !== createHash("sha256").update(await readFile(path.join(project.caseDir, `${id}.spec.cjs`))).digest("hex")) {
+              throw new Error("脚本尚未完成格式整理、语法检查或版本登记，请先调用 qa_ui_finalize。");
+            }
+          }
+        }
+        if (project && caseIds.some((id) => id !== project.assetName && !id.startsWith(project.assetName + "__"))) {
+          throw new Error("项目脚本名称必须使用返回的项目名称与路径前缀。");
+        }
+        const loginId = params.loginId ?? project?.loginId;
+        const login = loginId ? logins.get(loginId) : null;
+        if (loginId && (!login || login.status !== "saved" || !existsSync(login.file) || login.origin !== parsedUrl.origin)) {
           throw new Error("登录态已失效、已绑定批次或与目标站点不符，请重新登录。");
         }
 
@@ -167,7 +302,7 @@ export function createUiTestingExtension(runtime) {
 
         signal?.throwIfAborted();
 
-        const caseDir = path.join(workspace, "qa/ui/cases");
+        const caseDir = project?.caseDir ?? path.join(workspace, "qa/ui/cases");
         const caseFile = path.join(caseDir, `${caseId}.spec.cjs`);
         const caseFiles = caseIds.map((id) => path.join(caseDir, `${id}.spec.cjs`));
         const seedFile = path.join(caseDir, `${caseId}.seed.spec.cjs`);
@@ -260,6 +395,11 @@ export function createUiTestingExtension(runtime) {
 
         const prepared = {
           status: "prepared",
+          project: project ? { id: project.projectId, name: project.projectName, address: project.address } : null,
+          dataDir: project?.dataDir ?? null,
+          assetFiles: project && mode === "run" ? caseIds.flatMap((id) => [
+            path.join(caseDir, `${id}.md`), path.join(caseDir, `${id}.asset.json`),
+          ]) : [],
           mode,
           caseId,
           caseIds,
@@ -294,6 +434,15 @@ export function createUiTestingExtension(runtime) {
           { flag: "wx" },
         );
 
+        if (project) {
+          if (mode === "record") project.recordings.set(caseId, prepared);
+          await writeFile(path.join(runDir, "project-context.json"), JSON.stringify({
+            projectId: project.projectId, projectName: project.projectName,
+            address: project.address, targetUrl: project.targetUrl,
+            workspace, dataDir: project.dataDir, caseIds,
+            login: login ? "private-state" : "not-required",
+          }, null, 2) + "\n", { flag: "wx" });
+        }
         if (login && mode === "run") login.status = "bound";
 
         return {

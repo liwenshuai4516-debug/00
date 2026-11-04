@@ -12,7 +12,10 @@ import lifecycle from "../../src/main/resources/pi-session-lifecycle.js";
 
 const [base, scenario] = process.argv.slice(2);
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const runtime = runtimePaths.resolveUiTestingRuntime({ isPackaged: false }, root);
+const runtime = {
+  ...runtimePaths.resolveUiTestingRuntime({ isPackaged: false }, root),
+  projectConfig: path.join(base, "projects.json"),
+};
 const workspace = path.join(base, "页面测试 ' workspace");
 const runFile = promisify(execFile);
 await fs.mkdir(workspace, { recursive: true });
@@ -44,15 +47,29 @@ if (scenario === "resources") {
 }
 
 if (scenario === "recording") {
-  const server = http.createServer((request, response) => {
+  const password = "recording-fixture-private-value";
+  let submissions = 0;
+  const server = http.createServer(async (request, response) => {
     response.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (request.url === "/login" && request.method === "POST") {
+      submissions++;
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      const values = new URLSearchParams(body);
+      if (values.get("account") !== "fixture-account" || values.get("password") !== password) {
+        response.writeHead(401); response.end("登录失败"); return;
+      }
+      response.setHeader("Set-Cookie", "recording_identity=fixture-private-session; HttpOnly; Path=/");
+      response.writeHead(302, { Location: "/" }); response.end(); return;
+    }
     if (request.url === "/login") {
-      response.setHeader("Set-Cookie", "recording_identity=fixture; HttpOnly; Path=/");
-      response.end("临时登录完成");
+      response.end('<form method="post" action="/login"><input name="account" autocomplete="username"><input name="password" type="password"><button>登录</button></form>');
       return;
     }
-    response.end(request.headers.cookie?.includes("recording_identity=fixture")
-      ? '<button onclick="this.textContent=\'已完成\'">开始</button>' : "请先登录");
+    if (!request.headers.cookie?.includes("recording_identity=fixture-private-session")) {
+      response.writeHead(302, { Location: "/login" }); response.end(); return;
+    }
+    response.end('<h1>身份：操作员</h1><button onclick="this.textContent=\'已完成\'">开始</button>');
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   let session;
@@ -62,13 +79,28 @@ if (scenario === "recording") {
       { provider: "openai", modelId: "gpt-4", baseUrl: "https://example.invalid/v1", apiKey: "offline-test-only" },
       undefined, undefined, undefined, { uiTestingRuntime: runtime },
     );
-    session.extensionRunner.setUIContext({ async confirm() { return true; } }, "rpc");
     const targetUrl = `http://127.0.0.1:${server.address().port}/`;
+    await fs.writeFile(runtime.projectConfig, JSON.stringify({ projects: [{
+      id: "fixture-project", name: "项目管理系统", workspaceDir: workspace,
+      address: targetUrl, account: "fixture-account", password,
+    }] }));
+    const projectTool = session.agent.state.tools.find((tool) => tool.name === "qa_ui_project");
+    const project = (await projectTool.execute("project-check", { targetUrl })).details;
+    assert.equal(project.projectName, "项目管理系统");
+    assert.ok(!JSON.stringify(project).includes(password));
+    assert.equal(project.caseDir, path.join(workspace, "qa/data/ui/cases"));
+    const prepareTool = session.agent.state.tools.find((tool) => tool.name === "qa_ui_prepare");
+    await assert.rejects(prepareTool.execute("no-login-check", { targetUrl, projectRef: project.projectRef, mode: "record" }), /判断并处理登录/);
     const loginTool = session.agent.state.tools.find((tool) => tool.name === "qa_ui_login");
-    const login = (await loginTool.execute("login-start", { action: "start", targetUrl: targetUrl + "login" })).details;
-    assert.equal((await loginTool.execute("login-save", { action: "complete", loginId: login.loginId })).details.status, "saved");
-    const prepared = (await session.agent.state.tools.find((tool) => tool.name === "qa_ui_prepare")
-      .execute("record-prepare", { caseId: "button", targetUrl, mode: "record", loginId: login.loginId, headed: true })).details;
+    // 实际 SDK 工具调用，无 UI 确认接管；配置凭据仅在后端及登录子进程内流转。
+    const login = await loginTool.execute("login-auto", { action: "auto", projectRef: project.projectRef, selectors: { authenticated: "h1" } });
+    assert.equal(login.details.status, "saved", JSON.stringify(login));
+    assert.equal(submissions, 1);
+    assert.ok(!JSON.stringify(login).includes(password));
+    const prepared = (await prepareTool.execute("record-prepare", {
+      targetUrl, projectRef: project.projectRef, mode: "record", headed: true,
+    })).details;
+    assert.match(prepared.caseId, /^项目管理系统__root__/);
     const prefix = "mcp__desktop_playwright_test__";
     for (let attempt = 0; attempt < 200 && !session.getActiveToolNames().includes(`${prefix}generator_setup_page`); attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -107,8 +139,18 @@ test("button", async ({ page }) => {
 });\n`,
     });
     await call("browser_close", { intent: "录制完成，关闭页面" });
-    const replay = (await session.agent.state.tools.find((tool) => tool.name === "qa_ui_prepare")
-      .execute("record-run", { caseId: "button", targetUrl, mode: "run", loginId: login.loginId })).details;
+    await assert.rejects(prepareTool.execute("not-finalized", { caseId: prepared.caseId, targetUrl, mode: "run", projectRef: project.projectRef }), /qa_ui_finalize/);
+    await fs.writeFile(prepared.caseDocument, "# 开始按钮\n用户预期：点击后显示已完成。来源：本次临时夹具要求。\n");
+    const finalized = (await session.agent.state.tools.find((tool) => tool.name === "qa_ui_finalize")
+      .execute("finalize", { projectRef: project.projectRef, caseId: prepared.caseId })).details;
+    assert.equal(finalized.status, "recorded-and-syntax-checked");
+    const originalSource = await fs.readFile(prepared.caseFile, "utf8");
+    await fs.appendFile(prepared.caseFile, "\n// edited after finalize");
+    await assert.rejects(prepareTool.execute("edited-asset", { caseId: prepared.caseId, targetUrl, mode: "run", projectRef: project.projectRef }), /qa_ui_finalize/);
+    await fs.writeFile(prepared.caseFile, originalSource);
+    const replay = (await prepareTool.execute("record-run", {
+      caseId: prepared.caseId, targetUrl, mode: "run", projectRef: project.projectRef,
+    })).details;
     await runFile("/bin/bash", ["-c", replay.replayCommand], { cwd: workspace, timeout: 90_000 });
     const result = JSON.parse(await fs.readFile(replay.resultsFile, "utf8"));
     assert.equal(result.stats.expected, 1);
@@ -118,6 +160,15 @@ test("button", async ({ page }) => {
     assert.equal(summary.status, "passed");
     assert.equal(summary.cleanup, "deleted");
     assert.equal(summary.tracePolicy, "disabled-for-private-auth");
+    assert.equal(summary.project.name, "项目管理系统");
+    assert.equal(submissions, 1, "回放使用私有状态，不再次提交登录");
+    const manifest = JSON.parse(await fs.readFile(replay.manifestFile, "utf8"));
+    assert.ok(manifest.files.some((file) => file.path.endsWith(".asset.json")));
+    for (const item of manifest.files) {
+      const contents = await fs.readFile(path.join(replay.runDir, item.path));
+      assert.ok(!contents.includes(Buffer.from(password)));
+      assert.ok(!contents.includes(Buffer.from("fixture-private-session")));
+    }
   } finally {
     await lifecycle.closePiSession(session);
     await new Promise((resolve) => server.close(resolve));
@@ -135,7 +186,7 @@ if (scenario === "replay") {
   createUiTestingExtension(replayRuntime)({
     on() {},
     unregisterMcpServer() {},
-    registerTool(tool) { prepare = tool; },
+    registerTool(tool) { if (tool.name === "qa_ui_prepare") prepare = tool; },
     async exec(command, args, options) {
       try {
         const result = await runFile(command, args, options);
@@ -348,6 +399,61 @@ if (scenario === "login-batch") {
     assert.equal((await call("qa_ui_login", { action: "cancel", loginId: cancelledWindow.loginId })).status, "deleted");
     assert.deepEqual(await authDirs(), []);
     assert.deepEqual((await fs.readdir(base)).filter((name) => name.startsWith("playwright_chromiumdev_profile-")), [], "登录窗口及临时浏览器资料也必须回收");
+  } finally {
+    await hooks.get("session_shutdown")();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+if (scenario === "auto-login") {
+  process.env.TMPDIR = base;
+  const tools = new Map();
+  const hooks = new Map();
+  createUiTestingExtension(runtime)({
+    on(name, callback) { hooks.set(name, callback); },
+    registerTool(tool) { tools.set(tool.name, tool); },
+  });
+  const call = async (name, params, cwd = workspace) => tools.get(name).execute("fixture", params,
+    new AbortController().signal, undefined, { cwd, hasUI: false });
+  let submissions = 0;
+  const server = http.createServer(async (request, response) => {
+    response.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (request.method === "POST") submissions++;
+    if (request.url === "/public") { response.end('<h1>公开页面</h1>'); return; }
+    response.end('<form method="post"><input name="username"><input name="password" type="password">' +
+      (request.url === "/captcha" ? '<input name="captcha" placeholder="验证码">' : '') + '<button>登录</button></form>');
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const writeConfig = (account = "fixture-account", password = "fixture-private-password") => fs.writeFile(runtime.projectConfig, JSON.stringify({ projects: [{
+    id: "auto-fixture", name: "自动登录系统", workspaceDir: workspace, address: origin, account, password,
+  }] }));
+  try {
+    await writeConfig("", "");
+    const publicProject = (await call("qa_ui_project", { targetUrl: origin + "/public" })).details;
+    assert.equal(publicProject.credentialsConfigured, false);
+    assert.equal((await call("qa_ui_login", { action: "auto", projectRef: publicProject.projectRef, selectors: { authenticated: "h1" } })).details.status, "not-required");
+    await writeConfig();
+    const captchaProject = (await call("qa_ui_project", { targetUrl: origin + "/captcha" })).details;
+    const captcha = await call("qa_ui_login", { action: "auto", projectRef: captchaProject.projectRef });
+    assert.equal(captcha.details.status, "manual-required");
+    assert.match(captcha.details.reason, /验证码/);
+    assert.equal(submissions, 0);
+    await call("qa_ui_login", { action: "cancel", loginId: captcha.details.loginId });
+    const invalidProject = (await call("qa_ui_project", { targetUrl: origin + "/invalid" })).details;
+    const invalid = await call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef });
+    assert.equal(invalid.details.status, "manual-required");
+    assert.equal(submissions, 1, "登录失败不自动重试");
+    await assert.rejects(call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef }), /不能重复提交/);
+    assert.equal(submissions, 1);
+    assert.ok(!JSON.stringify(invalid).includes("fixture-private-password"));
+    await call("qa_ui_login", { action: "cancel", loginId: invalid.details.loginId });
+    const another = path.join(base, "切换后的工作区");
+    await fs.mkdir(another);
+    await assert.rejects(call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef }, another), /工作区已切换/);
+    await hooks.get("session_shutdown")();
+    assert.deepEqual((await fs.readdir(base)).filter((name) => name.startsWith("qa-ui-auth-")), []);
+    assert.deepEqual((await fs.readdir(base)).filter((name) => name.startsWith("playwright_chromiumdev_profile-")), []);
   } finally {
     await hooks.get("session_shutdown")();
     await new Promise((resolve) => server.close(resolve));

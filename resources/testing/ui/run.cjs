@@ -68,7 +68,7 @@ async function run(taskFile) {
     versions.playwright = require("@playwright/test/package.json").version;
     await writeJson(taskFile, { ...task, status: "running", startedAt });
     await fs.mkdir(path.join(task.runDir, "sources"));
-    for (const file of [...task.caseFiles, task.config, __filename]) {
+    for (const file of [...task.caseFiles, ...(task.assetFiles ?? []), task.config, __filename]) {
       const data = await fs.readFile(file);
       versions.files.push({ path: file, sha256: digest(data) });
       await fs.writeFile(path.join(task.runDir, "sources", `${versions.files.length}-${path.basename(file)}`), data);
@@ -157,6 +157,7 @@ async function run(taskFile) {
   const summary = {
     runId: task.runId, status: cancelled ? "cancelled" : passed ? "passed" : report && problems.length === 0 ? "failed" : "incomplete",
     startedAt, finishedAt: new Date().toISOString(), targetUrl: task.targetUrl,
+    project: task.project ?? null, workspace: task.workspace, dataDir: task.dataDir ?? null,
     caseIds: task.caseIds, testCount: report ? tests.length : null, counts,
     exitCode, cleanup, problems, versions, tests,
     tracePolicy: task.authFile ? "disabled-for-private-auth" : "steps-without-dom-network-sources",
@@ -165,6 +166,7 @@ async function run(taskFile) {
   await writeJson(task.summaryFile, summary);
   await fs.writeFile(task.summaryDocument, [
     `# UI 测试批次 ${task.runId}`, "", `状态：${summary.status}；用例数：${summary.testCount ?? "未知"}；登录态清理：${cleanup}。`,
+    `项目：${task.project?.name ?? "未登记"}；工作区：${task.workspace}。`,
     `范围：${task.caseIds.join(", ")}。统计：${JSON.stringify(counts)}。`, "",
     `运行环境：Node ${versions.node}；Playwright ${versions.playwright ?? "未知"}。`,
     task.authFile ? "本批次关闭 trace，避免归档私有登录态。" : "trace 保留步骤，不含 DOM、网络快照和源码。", "",

@@ -7,6 +7,7 @@ function resolveUiTestingRuntime(app, projectRoot) {
 
   return {
     directory,
+    projectConfig: path.join(projectRoot, "config/projects.local.json"),
     node: path.join(
       directory,
       "bin",

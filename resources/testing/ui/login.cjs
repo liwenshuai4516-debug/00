@@ -9,28 +9,81 @@ let browser;
   const page = await context.newPage();
   browser.on("disconnected", () => process.exit(0));
   process.on("disconnect", () => browser.close());
+  async function save(file) {
+    if (new URL(page.url()).origin !== target.origin) throw new Error("origin-mismatch");
+    const state = await context.storageState({ indexedDB: true });
+    state.origins = state.origins.filter((item) => item.origin === target.origin);
+    state.cookies = state.cookies.filter((cookie) => {
+      const domain = cookie.domain.replace(/^\./, "");
+      return target.hostname === domain || target.hostname.endsWith(`.${domain}`);
+    });
+    await writeFile(file, JSON.stringify(state), { mode: 0o600, flag: "wx" });
+    await chmod(file, 0o600);
+  }
+  async function autoLogin(message) {
+    const selectors = message.selectors ?? {};
+    const password = page.locator(selectors.password || 'input[type="password"]').filter({ visible: true });
+    const verified = async () => {
+      if (new URL(page.url()).origin !== target.origin) return false;
+      if (selectors.authenticated) return page.locator(selectors.authenticated).isVisible();
+      const current = new URL(page.url());
+      return current.pathname === target.pathname && current.hash === target.hash && await password.count() === 0;
+    };
+    try {
+      // 首屏脚本可能稍后渲染表单；先等待明确登录控件或配置的身份探针。
+      await Promise.race([
+        password.first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {}),
+        selectors.authenticated ? page.locator(selectors.authenticated).waitFor({ state: "visible", timeout: 5000 }).catch(() => {}) : new Promise(() => {}),
+      ]);
+      if (await password.count() === 0) {
+        if (!await verified()) return { status: "manual-required", reason: "无法确认目标页面或身份，请处理重定向或配置身份标识。" };
+        return { status: "not-required", verification: selectors.authenticated ? "configured-marker" : "target-route-without-login-form" };
+      }
+      if (new URL(page.url()).origin !== target.origin) return { status: "manual-required", reason: "跨站登录需要人工处理。" };
+      if (!message.credentials.account || !message.credentials.password) return { status: "manual-required", reason: "项目账号或密码未配置。" };
+      if (await page.locator('input[autocomplete="one-time-code"],input[placeholder*="验证码"],input[name*="captcha" i]').filter({ visible: true }).count()) {
+        return { status: "manual-required", reason: "检测到验证码或动态认证，需要人工处理。" };
+      }
+      const account = page.locator(selectors.account || 'input[autocomplete="username"],input[name="username"],input[name="account"],input[type="email"],input[placeholder*="账号"],input[placeholder*="用户名"]').filter({ visible: true });
+      const submit = selectors.submit ? page.locator(selectors.submit).filter({ visible: true })
+        : page.getByRole("button", { name: /^\s*(登\s*录|登录系统|login|sign in)\s*$/i });
+      if (await password.count() !== 1 || await account.count() !== 1 || await submit.count() !== 1) {
+        return { status: "manual-required", reason: "无法唯一识别登录表单，请依据真实页面提供 selectors。" };
+      }
+      const action = await password.evaluate((element) => element.form?.action || location.href);
+      if (new URL(action, page.url()).origin !== target.origin) return { status: "manual-required", reason: "登录表单提交到其他站点，需要人工核对。" };
+      // 凭据仅通过私有 IPC 进入此进程，不经过录制器、工具结果或磁盘脚本。
+      await context.route("**/*", (route) => new URL(route.request().url()).origin === target.origin ? route.continue() : route.abort());
+      await account.fill(message.credentials.account, { timeout: 5000 });
+      await password.fill(message.credentials.password, { timeout: 5000 });
+      await submit.click({ timeout: 5000 });
+      await password.waitFor({ state: "hidden", timeout: 10000 });
+      await page.goto(target.href);
+      if (selectors.authenticated) await page.locator(selectors.authenticated).waitFor({ state: "visible", timeout: 10000 });
+      else await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+      if (!await verified()) throw new Error("verification-failed");
+      await save(message.file);
+      return { status: "saved", verification: selectors.authenticated ? "configured-marker" : "target-route-without-login-form" };
+    } catch {
+      // Playwright 错误可能带输入值，禁止将原始错误发送给宿主。
+      return { status: "manual-required", reason: "自动登录未通过验证；不会重复提交，请检查账号、表单或认证条件。" };
+    }
+  }
   process.on("message", async (message) => {
-    if (message.action === "close") {
-      await browser.close();
+    if (message.action === "close") { await browser.close(); return; }
+    if (message.action === "auto") {
+      const result = await autoLogin(message);
+      process.send({ event: "auto-result", ...result });
+      if (["saved", "not-required"].includes(result.status)) await browser.close();
       return;
     }
     if (message.action !== "save") return;
     try {
-      if (new URL(page.url()).origin !== target.origin) {
-        throw new Error("请先回到目标站点，再交接登录态。");
-      }
-      const state = await context.storageState({ indexedDB: true });
-      state.origins = state.origins.filter((item) => item.origin === target.origin);
-      state.cookies = state.cookies.filter((cookie) => {
-        const domain = cookie.domain.replace(/^\./, "");
-        return target.hostname === domain || target.hostname.endsWith(`.${domain}`);
-      });
-      await writeFile(message.file, JSON.stringify(state), { mode: 0o600, flag: "wx" });
-      await chmod(message.file, 0o600);
+      await save(message.file);
       process.send({ status: "saved" });
       await browser.close();
-    } catch (error) {
-      process.send({ status: "error", message: error.message });
+    } catch {
+      process.send({ status: "error", message: "登录态未保存，请回到目标站点并重新检查。" });
     }
   });
   await page.goto(target.href);
