@@ -890,6 +890,132 @@
   white-space: nowrap;
 }
 
+.case-card__assertion-preview {
+  margin: -2px 0 8px;
+  padding: 0 12px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-assertions__label {
+  margin: 8px 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.case-card__edit {
+  margin-top: 10px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.case-card__edit:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--focus) 40%, var(--border));
+  color: var(--focus);
+}
+
+.case-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.case-editor__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.case-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.case-editor__row {
+  display: grid;
+  grid-template-columns: auto 58px minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.case-editor__id {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+}
+
+.case-editor__kind,
+.case-editor__text,
+.case-editor__source {
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+}
+
+.case-editor__text:focus-visible,
+.case-editor__source:focus-visible,
+.case-editor__kind:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.case-editor__remove {
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.case-editor__remove:hover {
+  border-color: color-mix(in srgb, var(--error-border) 40%, var(--border));
+  color: var(--error-border);
+}
+
+.case-editor__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.case-editor__button {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.case-editor__button--primary {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  color: var(--focus);
+}
+
+.case-editor__button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
 .case-card__files dd {
   margin: 0;
   overflow-wrap: anywhere;

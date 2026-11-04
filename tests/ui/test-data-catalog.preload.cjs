@@ -119,6 +119,7 @@ const catalog = {
   },
 };
 
+let currentCatalog = JSON.parse(JSON.stringify(catalog));
 const items = [
   { path: "ui/cases/合同.asset.json", name: "合同.asset.json", category: "ui", size: 2048, modifiedAt: 1762300000000 },
   { path: "ui/cases/合同.spec.cjs", name: "合同.spec.cjs", category: "ui", size: 1024, modifiedAt: 1762300000000 },
@@ -126,10 +127,33 @@ const items = [
 ];
 
 contextBridge.exposeInMainWorld("agent", {
+  updateTestCaseAssertions: async (_projectId, assetPath, caseName, assertions) => {
+    const findCase = (node) => {
+      for (const item of node.cases ?? []) {
+        if (item.assetPath === assetPath && item.name === caseName) return item;
+      }
+      for (const child of node.children ?? []) {
+        const found = findCase(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    let item = null;
+    for (const module of currentCatalog.modules) {
+      item = findCase(module);
+      if (item) break;
+    }
+    if (!item) throw new Error("未找到该用例");
+    item.assertions = assertions;
+    const countAssertions = (node) => (node.cases ?? []).reduce((sum, test) => sum + test.assertions.length, 0)
+      + (node.children ?? []).reduce((sum, child) => sum + countAssertions(child), 0);
+    currentCatalog.totals.assertions = currentCatalog.modules.reduce((total, module) => total + countAssertions(module), 0);
+    return { path: assetPath, caseName, assertions };
+  },
   listProjectEnvironments: async () => [
     { id: "a", name: "演示项目", workspaceDir: "/demo/a" },
   ],
   getSessionInfo: async () => ({ workspaceDir: "/demo/a" }),
-  listTestData: async () => ({ available: true, truncated: false, items, catalog }),
+  listTestData: async () => ({ available: true, truncated: false, items, catalog: currentCatalog }),
   deleteTestData: async (_projectId, relativePath) => ({ path: relativePath }),
 });

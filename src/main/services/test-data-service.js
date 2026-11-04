@@ -1,5 +1,5 @@
 const path = require("node:path");
-const { readdir, readFile, realpath, stat, lstat, unlink } = require("node:fs/promises");
+const { readdir, readFile, writeFile, realpath, stat, lstat, unlink } = require("node:fs/promises");
 
 const DATA_SEGMENTS = ["qa", "data"];
 const MAX_FILES = 500;
@@ -181,6 +181,47 @@ async function readRunResults(workspace) {
     }
     : null;
   return { latest, byCase };
+}
+
+function normalizeCaseAssertions(assertions) {
+  if (!Array.isArray(assertions) || assertions.length === 0) throw new Error("至少需要一条断言。");
+  if (assertions.length > 50) throw new Error("断言不能超过 50 条。");
+  const result = assertions.map((assertion, index) => {
+    const content = text(assertion?.text, 500);
+    const source = text(assertion?.source, 500);
+    if (!content) throw new Error(`第 ${index + 1} 条断言内容不能为空。`);
+    if (!source) throw new Error(`第 ${index + 1} 条断言来源不能为空。`);
+    return {
+      id: text(assertion?.id, 20) || `A${index + 1}`,
+      kind: assertion?.kind === "guard" ? "guard" : "business",
+      text: content,
+      source,
+    };
+  });
+  if (!result.some((assertion) => assertion.kind === "business")) throw new Error("至少需要一条业务断言。");
+  return result;
+}
+
+function replaceAssertionTableRow(document, caseName, assertions) {
+  const summary = assertions
+    .map((assertion) => `${assertion.id} ${assertion.kind === "guard" ? "前置" : "业务"}：${assertion.text}${assertion.source ? `（${assertion.source}）` : ""}`)
+    .join("；");
+  const lines = document.split("\n");
+  let inSection = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() === "## 用例与断言") { inSection = true; continue; }
+    if (!inSection) continue;
+    if (line.trim().startsWith("## ")) break;
+    if (!line.startsWith("|")) continue;
+    const cells = line.split("|");
+    if (cells.length >= 6 && cells[1].trim() === caseName) {
+      cells[4] = ` ${summary.replaceAll("|", "\\|")} `;
+      lines[index] = cells.join("|");
+      break;
+    }
+  }
+  return lines.join("\n");
 }
 
 // 测试数据只落在项目工作目录的 qa/data；页面只提交相对路径与项目编号。
@@ -472,7 +513,84 @@ function createTestDataService(projectStore) {
     return { path: normalized };
   }
 
-  return { list, remove };
+  async function updateAssertions(projectId, assetPath, caseName, assertions) {
+    if (typeof assetPath !== "string" || !assetPath.trim()) throw new Error("请选择要编辑的用例资产。");
+    if (typeof caseName !== "string" || !caseName.trim()) throw new Error("请选择要编辑的用例。");
+    const normalized = assetPath.replaceAll("\\", "/");
+    const segments = normalized.split("/");
+    if (
+      path.posix.isAbsolute(normalized) ||
+      path.win32.isAbsolute(normalized) ||
+      segments.length !== 3 ||
+      segments[0] !== "ui" ||
+      segments[1] !== "cases" ||
+      !segments[2].endsWith(".asset.json") ||
+      segments.some((segment) => !segment || segment === "." || segment === "..")
+    ) {
+      throw new Error("只能编辑 qa/data/ui/cases 下的用例资产。");
+    }
+    const nextAssertions = normalizeCaseAssertions(assertions);
+    const resolved = await resolveRoot(projectId);
+    if (resolved === null) throw new Error("测试数据目录不存在。");
+    const { root } = resolved;
+    const target = path.join(root, ...segments);
+    const relative = path.relative(root, target);
+    if (!relative || isOutside(relative)) throw new Error("用例资产路径超出 qa/data。");
+
+    let link;
+    try {
+      link = await lstat(target);
+    } catch (error) {
+      if (error.code === "ENOENT") throw new Error("用例资产已不存在，请刷新。");
+      throw error;
+    }
+    if (link.isSymbolicLink()) throw new Error("不能编辑符号链接。");
+    if (!link.isFile()) throw new Error("只能编辑用例资产文件。");
+    const real = await realpath(target);
+    if (isOutside(path.relative(root, real))) throw new Error("用例资产路径超出 qa/data。");
+
+    let metadata;
+    try {
+      metadata = JSON.parse(await readFile(real, "utf8"));
+    } catch {
+      throw new Error("用例资产不是有效 JSON，无法编辑断言。");
+    }
+    const caseMeta = metadata?.caseMeta;
+    if (caseMeta?.schema !== "qa-ui-case/v1" || !Array.isArray(caseMeta.cases)) {
+      throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法编辑断言。");
+    }
+    const targetCase = caseMeta.cases.find((item) => item.name === caseName);
+    if (!targetCase) throw new Error("未找到该用例，请刷新后重试。");
+    targetCase.assertions = nextAssertions;
+    caseMeta.assertionCount = caseMeta.cases.reduce(
+      (total, item) => total + (Array.isArray(item.assertions) ? item.assertions.length : 0),
+      0,
+    );
+
+    // 先更新人读文档，再写资产索引；文档缺失时只更新资产。
+    const documentPath = real.replace(/\.asset\.json$/, ".md");
+    try {
+      let document = await readFile(documentPath, "utf8");
+      const block = document.match(/```json qa-ui-case[ \t]*\r?\n([\s\S]*?)\r?\n```/);
+      if (block) {
+        const documentMeta = JSON.parse(block[1]);
+        const documentCase = documentMeta?.cases?.find((item) => item.name === caseName);
+        if (documentCase) {
+          documentCase.assertions = nextAssertions;
+          document = document.replace(block[0], "```json qa-ui-case\n" + JSON.stringify(documentMeta, null, 2) + "\n```");
+        }
+      }
+      document = replaceAssertionTableRow(document, caseName, nextAssertions);
+      await writeFile(documentPath, document);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+
+    await writeFile(real, JSON.stringify(metadata, null, 2) + "\n");
+    return { path: normalized, caseName, assertions: nextAssertions };
+  }
+
+  return { list, remove, updateAssertions };
 }
 
 module.exports = { createTestDataService };

@@ -246,6 +246,8 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke("agent:list-test-data", projectId),
   deleteTestData: (projectId, relativePath) =>
     ipcRenderer.invoke("agent:delete-test-data", projectId, relativePath),
+  updateTestCaseAssertions: (projectId, assetPath, caseName, assertions) =>
+    ipcRenderer.invoke("agent:update-test-case-assertions", projectId, assetPath, caseName, assertions),
 
   // 页面只提交编号，工作目录由主进程从项目记录读取。
   openProject: (projectId) =>

@@ -231,6 +231,11 @@ function registerAgentIpc(
       projectService.deleteTestData(projectId, relativePath),
     );
   });
+  ipcMain.handle("agent:update-test-case-assertions", (_event, projectId, assetPath, caseName, assertions) => {
+    return runIdleOperation(() =>
+      projectService.updateTestCaseAssertions(projectId, assetPath, caseName, assertions),
+    );
+  });
 
   ipcMain.handle("agent:list-sessions", () => sessionService.listSessions());
 

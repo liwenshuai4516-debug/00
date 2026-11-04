@@ -271,3 +271,105 @@ test("列表按分类和修改时间稳定排序", async (t) => {
     ["ui/cases/demo.spec.cjs", "ui/cases/demo.md", "root.txt"],
   );
 });
+
+test("更新断言同时写入资产与用例说明", async (t) => {
+  const { service, project, dataRoot } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  const caseMeta = {
+    schema: "qa-ui-case/v1",
+    caseId: "权限",
+    project: { id: "pms", name: "项目管理系统" },
+    page: "/pms/Contract",
+    role: "管理员",
+    dataPolicy: "read-only",
+    tags: ["合同管理"],
+    cases: [{
+      name: "T1 列表可见",
+      type: "functional",
+      priority: "P2",
+      assertions: [{ id: "A1", kind: "business", text: "列表出现", source: "页面基线" }],
+    }],
+  };
+  const assetPath = "ui/cases/权限.asset.json";
+  await writeFile(path.join(cases, "权限.asset.json"), JSON.stringify({ caseId: "权限", caseMeta }, null, 2));
+  await writeFile(path.join(cases, "权限.md"), [
+    "# 权限",
+    "",
+    "```json qa-ui-case",
+    JSON.stringify(caseMeta, null, 2),
+    "```",
+    "",
+    "## 用例与断言",
+    "",
+    "| 用例 | 类型 | 优先级 | 断言 |",
+    "| --- | --- | --- | --- |",
+    "| T1 列表可见 | 功能 | P2 | A1 业务：列表出现（页面基线） |",
+    "",
+  ].join("\n"));
+
+  const result = await service.updateAssertions(project.id, assetPath, "T1 列表可见", [
+    { id: "A1", kind: "business", text: "列表出现且总数正确", source: "需求声明" },
+    { kind: "guard", text: "页面无报错", source: "页面基线" },
+  ]);
+
+  assert.equal(result.caseName, "T1 列表可见");
+  assert.equal(result.assertions.length, 2);
+  const asset = JSON.parse(await readFile(path.join(cases, "权限.asset.json"), "utf8"));
+  assert.deepEqual(asset.caseMeta.cases[0].assertions, [
+    { id: "A1", kind: "business", text: "列表出现且总数正确", source: "需求声明" },
+    { id: "A2", kind: "guard", text: "页面无报错", source: "页面基线" },
+  ]);
+  const document = await readFile(path.join(cases, "权限.md"), "utf8");
+  assert.match(document, /列表出现且总数正确/);
+  assert.match(document, /A2 前置：页面无报错（页面基线）/);
+});
+
+test("更新断言拒绝越界路径、非资产、未知用例和空断言", async (t) => {
+  const { service, project, dataRoot } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  const caseMeta = {
+    schema: "qa-ui-case/v1",
+    caseId: "权限",
+    project: { id: "pms", name: "项目管理系统" },
+    page: "/pms/Contract",
+    role: "管理员",
+    dataPolicy: "read-only",
+    tags: [],
+    cases: [{
+      name: "T1 列表可见",
+      type: "functional",
+      priority: "P2",
+      assertions: [{ id: "A1", kind: "business", text: "列表出现", source: "页面基线" }],
+    }],
+  };
+  await writeFile(path.join(cases, "权限.asset.json"), JSON.stringify({ caseId: "权限", caseMeta }, null, 2));
+
+  await assert.rejects(
+    service.updateAssertions(project.id, "../权限.asset.json", "T1 列表可见", caseMeta.cases[0].assertions),
+    /只能编辑 qa\/data\/ui\/cases/,
+  );
+  await assert.rejects(
+    service.updateAssertions(project.id, "ui/cases/demo.md", "T1 列表可见", caseMeta.cases[0].assertions),
+    /只能编辑 qa\/data\/ui\/cases/,
+  );
+  await assert.rejects(
+    service.updateAssertions(project.id, "ui/cases/权限.asset.json", "不存在", caseMeta.cases[0].assertions),
+    /未找到该用例/,
+  );
+  await assert.rejects(
+    service.updateAssertions(project.id, "ui/cases/权限.asset.json", "T1 列表可见", []),
+    /至少需要一条断言/,
+  );
+  await assert.rejects(
+    service.updateAssertions(project.id, "ui/cases/权限.asset.json", "T1 列表可见", [
+      { kind: "guard", text: "页面无报错", source: "页面基线" },
+    ]),
+    /至少需要一条业务断言/,
+  );
+  await assert.rejects(
+    service.updateAssertions(project.id, "ui/cases/权限.asset.json", "T1 列表可见", [
+      { kind: "business", text: "列表出现", source: "" },
+    ]),
+    /断言来源不能为空/,
+  );
+});

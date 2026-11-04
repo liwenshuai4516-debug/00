@@ -140,6 +140,9 @@ async function main() {
         },
       };
     }
+    if (name === "updateTestCaseAssertions") {
+      return { path: args[1], caseName: args[2], assertions: args[3] };
+    }
     if (name === "deleteTestData") {
       const index = testData.findIndex((item) => item.path === args[1]);
       if (index < 0) throw Error("测试数据已不存在");

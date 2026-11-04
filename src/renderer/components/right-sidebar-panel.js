@@ -104,6 +104,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let data = null;
   let caseQuery = "";
   const expandedCases = new Set();
+  let editingAssertions = null;
   const collapsedModules = new Set();
   let status = { text: "", error: false };
   let busy = false;
@@ -635,6 +636,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       caseQuery = "";
       expandedCases.clear();
       collapsedModules.clear();
+      editingAssertions = null;
       void refreshData();
     });
 
@@ -912,7 +914,11 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function renderCaseCard(module, item) {
     const key = `${item.assetPath}::${item.name}`;
-    const expanded = expandedCases.has(key);
+    const editing = editingAssertions?.key === key;
+    const expanded = expandedCases.has(key) || editing;
+    const businessAssertions = item.assertions.filter((assertion) => assertion.kind === "business");
+    const guardAssertions = item.assertions.filter((assertion) => assertion.kind === "guard");
+    const previewAssertion = businessAssertions[0] ?? item.assertions[0] ?? null;
     const article = element("article", { class: "case-card" });
     const head = element("button", {
       type: "button",
@@ -928,7 +934,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       element("span", { class: "case-card__name", text: item.name }),
       element("span", {
         class: "case-card__meta",
-        text: `${CASE_TYPE_LABELS[item.type] ?? item.type} · ${item.assertions.length} 断言`,
+        text: `${CASE_TYPE_LABELS[item.type] ?? item.type} · 业务 ${businessAssertions.length} · 前置 ${guardAssertions.length}`,
       }),
       element("span", {
         class: "case-card__status",
@@ -938,73 +944,232 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       element("span", { class: "case-card__chevron", "aria-hidden": "true", text: "›" }),
     );
 
+    const preview = element("p", {
+      class: "case-card__assertion-preview",
+      text: previewAssertion ? `${previewAssertion.id} ${previewAssertion.text}` : "未登记断言",
+    });
+    preview.hidden = expanded;
+
     const detail = element("div", { class: "case-card__body" });
     detail.hidden = !expanded;
-    const modulePath = (module.path ?? [module.title]).join(" / ");
-    const casePage = item.page ?? module.page ?? "";
-    const caseRole = item.role ?? module.role ?? "";
-    detail.append(element("p", {
-      class: "case-card__context",
-      text: [
-        `模块 ${modulePath}`,
-        casePage ? `页面 ${casePage}` : "",
-        caseRole ? `角色 ${caseRole}` : "",
-      ].filter(Boolean).join(" · "),
-    }));
-    detail.append(element("p", {
-      class: "case-card__result",
-      text: item.lastResult
-        ? `最近运行 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}${item.lastResult.durationMs === null ? "" : ` · ${item.lastResult.durationMs} ms`}`
-        : "最近运行：未运行",
-    }));
-    if (item.assertions.length > 0) {
-      const assertions = element("ol", { class: "case-assertions" });
-      for (const assertion of item.assertions) {
-        assertions.append(element("li", { class: "case-assertion" },
-          element("span", { class: "case-assertion__id", text: assertion.id }),
-          element("div", { class: "case-assertion__body" },
-            element("p", { class: "case-assertion__text", text: assertion.text }),
-            assertion.source
-              ? element("p", { class: "case-assertion__source", text: `来源：${assertion.source}` })
-              : null,
-          ),
-          element("span", {
-            class: "case-assertion__kind",
-            dataset: { kind: assertion.kind },
-            text: ASSERTION_KIND_LABELS[assertion.kind] ?? assertion.kind,
-          }),
+    if (editing) {
+      detail.append(renderAssertionEditor(item));
+    } else {
+      const modulePath = (module.path ?? [module.title]).join(" / ");
+      const casePage = item.page ?? module.page ?? "";
+      const caseRole = item.role ?? module.role ?? "";
+      detail.append(element("p", {
+        class: "case-card__context",
+        text: [
+          `模块 ${modulePath}`,
+          casePage ? `页面 ${casePage}` : "",
+          caseRole ? `角色 ${caseRole}` : "",
+        ].filter(Boolean).join(" · "),
+      }));
+      detail.append(element("p", {
+        class: "case-card__result",
+        text: item.lastResult
+          ? `最近运行 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}${item.lastResult.durationMs === null ? "" : ` · ${item.lastResult.durationMs} ms`}`
+          : "最近运行：未运行",
+      }));
+      if (item.assertions.length > 0) {
+        if (businessAssertions.length) {
+          detail.append(element("div", { class: "case-assertions__label", text: `业务断言 ${businessAssertions.length}` }));
+          detail.append(renderAssertionList(businessAssertions));
+        }
+        if (guardAssertions.length) {
+          detail.append(element("div", { class: "case-assertions__label", text: `前置断言 ${guardAssertions.length}` }));
+          detail.append(renderAssertionList(guardAssertions));
+        }
+        const edit = element("button", {
+          type: "button",
+          class: "case-card__edit",
+          disabled: busy,
+          text: "编辑断言",
+        });
+        edit.addEventListener("click", () => {
+          editingAssertions = {
+            key,
+            assetPath: item.assetPath,
+            caseName: item.name,
+            draft: item.assertions.map((assertion, index) => ({
+              id: assertion.id || `A${index + 1}`,
+              kind: assertion.kind === "guard" ? "guard" : "business",
+              text: assertion.text,
+              source: assertion.source,
+            })),
+          };
+          expandedCases.add(key);
+          render();
+        });
+        detail.append(edit);
+      } else {
+        detail.append(element("p", { class: "case-card__context", text: "该用例没有登记断言。" }));
+      }
+
+      const files = [
+        ["资产", item.assetPath],
+        ["脚本", item.specPath],
+        ["说明", item.documentPath],
+        ["录制", item.recordedAt ? formatTime(item.recordedAt) : ""],
+      ].filter(([, value]) => value);
+      if (files.length > 0) {
+        detail.append(element("dl", { class: "case-card__files" },
+          files.flatMap(([label, value]) => [
+            element("dt", { text: label }),
+            element("dd", { text: value }),
+          ]),
         ));
       }
-      detail.append(assertions);
-    } else {
-      detail.append(element("p", { class: "case-card__context", text: "该用例没有登记断言。" }));
-    }
-
-    const files = [
-      ["资产", item.assetPath],
-      ["脚本", item.specPath],
-      ["说明", item.documentPath],
-      ["录制", item.recordedAt ? formatTime(item.recordedAt) : ""],
-    ].filter(([, value]) => value);
-    if (files.length > 0) {
-      detail.append(element("dl", { class: "case-card__files" },
-        files.flatMap(([label, value]) => [
-          element("dt", { text: label }),
-          element("dd", { text: value }),
-        ]),
-      ));
     }
 
     head.addEventListener("click", () => {
       const open = detail.hidden;
       detail.hidden = !open;
+      preview.hidden = open;
       head.setAttribute("aria-expanded", String(open));
       if (open) expandedCases.add(key);
       else expandedCases.delete(key);
     });
 
-    article.append(head, detail);
+    article.append(head, preview, detail);
     return article;
+  }
+
+  function renderAssertionList(assertions) {
+    const list = element("ol", { class: "case-assertions" });
+    for (const assertion of assertions) {
+      list.append(element("li", { class: "case-assertion" },
+        element("span", { class: "case-assertion__id", text: assertion.id }),
+        element("div", { class: "case-assertion__body" },
+          element("p", { class: "case-assertion__text", text: assertion.text }),
+          assertion.source
+            ? element("p", { class: "case-assertion__source", text: `来源：${assertion.source}` })
+            : null,
+        ),
+        element("span", {
+          class: "case-assertion__kind",
+          dataset: { kind: assertion.kind },
+          text: ASSERTION_KIND_LABELS[assertion.kind] ?? assertion.kind,
+        }),
+      ));
+    }
+    return list;
+  }
+
+  function renderAssertionEditor(item) {
+    const draft = editingAssertions.draft;
+    const container = element("div", { class: "case-editor" });
+    container.append(element("p", {
+      class: "case-editor__hint",
+      text: "编辑只更新用例说明和资产中的断言记录，不修改 spec 代码。",
+    }));
+    const rows = element("div", { class: "case-editor__list" });
+    for (const [index, assertion] of draft.entries()) {
+      const row = element("div", { class: "case-editor__row" });
+      const kind = element("select", { class: "case-editor__kind", "aria-label": "断言类型" });
+      kind.append(
+        element("option", { value: "business", text: "业务", selected: assertion.kind !== "guard" }),
+        element("option", { value: "guard", text: "前置", selected: assertion.kind === "guard" }),
+      );
+      kind.addEventListener("change", () => { assertion.kind = kind.value === "guard" ? "guard" : "business"; });
+      const content = element("input", {
+        type: "text",
+        class: "case-editor__text",
+        placeholder: "断言内容",
+        "aria-label": "断言内容",
+        value: assertion.text,
+      });
+      content.addEventListener("input", () => { assertion.text = content.value; });
+      const source = element("input", {
+        type: "text",
+        class: "case-editor__source",
+        placeholder: "断言来源",
+        "aria-label": "断言来源",
+        value: assertion.source,
+      });
+      source.addEventListener("input", () => { assertion.source = source.value; });
+      const remove = element("button", {
+        type: "button",
+        class: "case-editor__remove",
+        "aria-label": `删除断言 ${assertion.id || index + 1}`,
+        text: "删除",
+      });
+      remove.addEventListener("click", () => {
+        if (draft.length <= 1) {
+          setStatus("至少保留一条断言。", true);
+          render();
+          return;
+        }
+        draft.splice(index, 1);
+        render();
+      });
+      row.append(
+        element("span", { class: "case-editor__id", text: assertion.id || `A${index + 1}` }),
+        kind,
+        content,
+        source,
+        remove,
+      );
+      rows.append(row);
+    }
+    container.append(rows);
+
+    const actions = element("div", { class: "case-editor__actions" });
+    const add = element("button", { type: "button", class: "case-editor__button", text: "新增断言" });
+    add.addEventListener("click", () => {
+      draft.push({ id: `A${draft.length + 1}`, kind: "business", text: "", source: "" });
+      render();
+    });
+    const save = element("button", {
+      type: "button",
+      class: "case-editor__button case-editor__button--primary",
+      text: "保存断言",
+      disabled: busy,
+    });
+    save.addEventListener("click", () => void saveAssertions(item));
+    const cancel = element("button", { type: "button", class: "case-editor__button", text: "取消" });
+    cancel.addEventListener("click", () => {
+      editingAssertions = null;
+      render();
+    });
+    actions.append(add, save, cancel);
+    container.append(actions);
+    return container;
+  }
+
+  async function saveAssertions(item) {
+    const draft = editingAssertions?.draft ?? [];
+    const assertions = draft.map((assertion, index) => ({
+      id: assertion.id || `A${index + 1}`,
+      kind: assertion.kind === "guard" ? "guard" : "business",
+      text: assertion.text.trim(),
+      source: assertion.source.trim(),
+    }));
+    if (assertions.some((assertion) => !assertion.text || !assertion.source)) {
+      setStatus("断言内容和来源不能为空。", true);
+      render();
+      return;
+    }
+    if (!assertions.some((assertion) => assertion.kind === "business")) {
+      setStatus("至少保留一条业务断言。", true);
+      render();
+      return;
+    }
+    busy = true;
+    setStatus("正在保存断言…");
+    render();
+    try {
+      await api().updateTestCaseAssertions(selectedId, item.assetPath, item.name, assertions);
+      await loadData();
+      editingAssertions = null;
+      setStatus("断言已保存。");
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
   }
 
   async function refreshData() {
