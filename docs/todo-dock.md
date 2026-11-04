@@ -42,4 +42,20 @@ node_modules/.bin/electron tests/ui/output-trace.check.cjs
 
 - 单元检查覆盖计数、空列表、空内容/重复拒绝、参数 schema 与历史投影取最后一条。
 - 页面检查覆盖：实时流程没有 `todo_write` 时任务栏隐藏；历史中的清单重建进度与条目；默认折叠与展开后的 `aria-expanded`。
-- 以上为离线自动检查，未使用真实模型验证自然语言触发 `todo_write` 的频率或效果。
+
+## 真实模型验收（2026-11-04）
+
+使用者明确授权使用已有模型与认证，仅临时隔离工作目录、会话与资源目录（临时 agent 目录只符号链接既有 `auth.json`、`models.json`，不复制凭据）。使用 `deepseek/deepseek-flash` 发送一次三步任务请求，不涉及用户历史或真实项目目录。
+
+| 观察项 | 结果 |
+| --- | --- |
+| 工具注册 | `todo_write` 出现在模型可用工具中，无需 `tools` 白名单 |
+| 调用次数 | 4 次，均为整表替换 |
+| 状态推进 | `in_progress,pending,pending` → `completed,in_progress,pending` → `completed,completed,in_progress` → 全部 `completed` |
+| 最终清单 | 读取 a.txt；在 b.txt 末尾追加一行“完成”；用 read 确认 b.txt 内容 |
+| 实际文件 | b.txt 内容为“待办 / 完成”，与总结一致 |
+| 历史投影 | 从记录的工具结果重建出同一清单，与实时投影一致 |
+| 耗时 | 约 7.1 秒，包含 read/bash 工具往返 |
+
+该次验收只覆盖一个请求与一种任务类型，不证明所有场景都会触发清单，也不代表供应商侧计费结果。
+
