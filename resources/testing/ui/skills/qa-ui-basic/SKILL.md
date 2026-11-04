@@ -98,7 +98,7 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 | 无可信 cwd，或工作区不可写 | 🔴 暂停，请用户选择工作区 | 本次结束；不在安装目录、技能目录或聊天提到的其他目录创建文件 |
 | qa_ui_project 报错、多候选等价或名称冲突 | 按返回原因补 projectId/projectName 后重查 | 🔴 仍冲突则请用户确认项目；不猜账号，不按目录名选取 |
 | qa_ui_login 返回 manual-required | 🔴 用户在现有可见窗口完成验证码/MFA，成功后 complete(loginId) | 用户放弃或仍失败：cancel(loginId) 并停止本次录制，不重复 auto |
-| 内置运行环境缺失，或 qa_ui_* / 官方录制工具未登记 | 报告缺失路径或 verify 原始报错 | 停止；不自行安装依赖、不改用其他工具、不声称已录制 |
+| 内置运行环境缺失，或 qa_ui_* / 官方录制工具未登记 | 先确认当前会话使用内置 MCP（不是 proxy-only 适配器）且已新开会话；报告缺失路径或 verify 原始报错 | 停止；不自行安装依赖、不改用其他工具、不声称已录制 |
 | qa_ui_prepare 拒绝（未登录、地址不一致、同名资产、登录态失效） | 按错误重查项目或登录，或换 caseId | 不覆盖或迁移旧资产，不跳过检查强行录制 |
 | qa_ui_finalize 拒绝（缺日志、语法、密码、说明为空） | 修正脚本或说明后重新 finalize | 未 recorded-and-syntax-checked 不得进入回放 |
 | 回放超时、被终止或报告缺失 | 读 summary 判 incomplete，列出缺失项与残留 | 不自动重放同一命令，不把未完成记为通过 |

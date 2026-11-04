@@ -17,6 +17,16 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
 | `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
 
+## 录制工具与 MCP 模式
+
+`qa_ui_prepare(mode=record)` 通过 `pi.registerMcpServer("desktop-playwright-test", ...)` 启动官方 Playwright Test MCP。该注册依赖**内置 MCP** 的 `direct` 暴露，工具名应为 `mcp__desktop_playwright_test__generator_setup_page`、`browser_click`、`browser_verify_*` 等。
+
+如果 Pi 设置了 `-builtin:mcp` 并安装 `pi-mcp-adapter`，适配器会把运行时注册降级为 proxy-only，不暴露上述直连工具，`qa_ui_finalize` 也会因缺少 `generator-log-*.json` 拒绝登记。带 UI 测试运行时的 SW-QA 会话会在设置读取层过滤该适配器并重新启用内置 MCP；只影响当前应用会话，不改用户的全局 `settings.json`，也不影响其他客户端。
+
+修改后必须**新开会话/重启客户端**，已启动的会话不会重新加载扩展。验证方式是会话工具清单出现上述 `mcp__desktop_playwright_test__*`，或 `qa_ui_prepare(mode=record)` 后录制目录生成 `generator-log-*.json`。
+
+已有 `*.seed.spec.cjs` 的 caseId 不能再次用于 record（prepare 会以“同名 case 已存在”拒绝）；中断后请用新的 caseId 重新 prepare，旧种子和空录制目录仅作中间产物保留，不能据此 finalize。
+
 通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui`；发布读取 `process.resourcesPath/testing/ui`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
 
 ## 当前七步流程（2026-11-04）
