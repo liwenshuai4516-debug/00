@@ -69,6 +69,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let busy = false;
   let currentFile = null;
   let currentFilePath = "";
+  let fileOrigin = "home";
+  const treeChildren = new Map();
+  const treeExpanded = new Set();
+  let treeRootEntries = null;
 
   function api() {
     if (!window.agent?.listProjectEnvironments) {
@@ -122,6 +126,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     else if (view === "form") renderEnvironmentForm();
     else if (view === "data") renderTestData();
     else if (view === "file") renderFile();
+    else if (view === "files") renderFiles();
     else renderHome();
   }
 
@@ -209,6 +214,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
           render();
           if (!data || data.projectId !== selectedId) void refreshData();
         },
+      }),
+      featureCard({
+        iconName: "folder",
+        title: "文件浏览",
+        description: "浏览当前工作目录并预览文档",
+        meta: "工作目录",
+        onClick: () => void openTree(),
       }),
     );
 
@@ -719,8 +731,116 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
   }
 
+  // 文件树按目录懒加载：只缓存展开过的层级，切换会话时整体丢弃。
+  async function openTree() {
+    view = "files";
+    treeRootEntries = null;
+    treeChildren.clear();
+    treeExpanded.clear();
+    setStatus("");
+    render();
+    await loadTree("");
+  }
+
+  async function loadTree(dirPath) {
+    try {
+      const result = await api().listWorkspaceDirectory(dirPath);
+      const entries = Array.isArray(result?.entries) ? result.entries : [];
+      if (dirPath === "") treeRootEntries = entries;
+      else treeChildren.set(dirPath, entries);
+      setStatus(result?.truncated ? "目录较大，只显示前 500 项。" : "");
+    } catch (error) {
+      if (dirPath === "") treeRootEntries = [];
+      setStatus(errorMessage(error), true);
+    }
+    render();
+  }
+
+  async function toggleDir(dirPath) {
+    if (treeExpanded.has(dirPath)) {
+      treeExpanded.delete(dirPath);
+      render();
+      return;
+    }
+    treeExpanded.add(dirPath);
+    if (treeChildren.has(dirPath)) {
+      render();
+      return;
+    }
+    render();
+    await loadTree(dirPath);
+  }
+
+  function treeItems(entries) {
+    return entries.map((entry) => {
+      if (entry.type !== "dir") {
+        const button = element("button", {
+          type: "button",
+          class: "file-tree__row file-tree__row--file",
+          disabled: busy,
+          onclick: () => void openFile(entry.path, "files"),
+        },
+        element("span", { class: "file-tree__chevron" }),
+        icon("files"),
+        element("span", { class: "file-tree__name", text: entry.name }));
+        return element("li", { class: "file-tree__item", role: "treeitem" }, button);
+      }
+
+      const expanded = treeExpanded.has(entry.path);
+      const item = element("li", {
+        class: "file-tree__item",
+        role: "treeitem",
+        "aria-expanded": String(expanded),
+      });
+      const button = element("button", {
+        type: "button",
+        class: "file-tree__row",
+        disabled: busy,
+        onclick: () => void toggleDir(entry.path),
+      },
+      element("span", {
+        class: expanded ? "file-tree__chevron file-tree__chevron--open" : "file-tree__chevron",
+      }, icon("chevron-right")),
+      icon("folder"),
+      element("span", { class: "file-tree__name", text: entry.name }));
+      item.append(button);
+
+      if (expanded) {
+        const group = element("ul", { class: "file-tree__group", role: "group" });
+        const children = treeChildren.get(entry.path);
+        if (children === undefined) {
+          group.append(element("li", { class: "file-tree__loading", text: "读取中…" }));
+        } else {
+          group.append(...treeItems(children));
+        }
+        item.append(group);
+      }
+      return item;
+    });
+  }
+
+  function renderFiles() {
+    setNav("文件", () => go("home"), [
+      iconButton("刷新文件树", "refresh", () => void openTree(), busy),
+    ]);
+
+    const panel = element("div", { class: "right-panel right-panel--files" });
+    panel.append(statusLine());
+    if (treeRootEntries === null) {
+      panel.append(element("p", { class: "right-panel__empty", text: "正在读取工作目录…" }));
+    } else if (treeRootEntries.length === 0) {
+      panel.append(element("p", { class: "right-panel__empty", text: "工作目录为空，或目录不可读。" }));
+    } else {
+      const tree = element("ul", { class: "file-tree", role: "tree", "aria-label": "工作目录" });
+      tree.append(...treeItems(treeRootEntries));
+      panel.append(tree);
+    }
+    body.append(panel);
+  }
+
   // Markdown 里的本地路径链接经页面事件进入这里；路径解析与边界在主进程完成。
-  async function openFile(filePath) {
+  async function openFile(filePath, origin = "home") {
+    fileOrigin = origin === "files" ? "files" : "home";
     view = "file";
     currentFilePath = typeof filePath === "string" ? filePath : "";
     currentFile = null;
@@ -746,7 +866,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function renderFile() {
     const name = currentFilePath.split("/").filter(Boolean).pop() || "文件预览";
-    setNav(name, () => go("home"), [
+    setNav(name, () => go(fileOrigin), [
       iconButton("重新读取", "refresh", () => void openFile(currentFilePath), busy),
     ]);
 
@@ -785,11 +905,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     body.append(panel);
   }
 
-  // 切换会话后旧路径可能不再属于当前工作目录，回到工作台而不是继续展示旧内容。
-  function resetFileView() {
-    if (view !== "file") return;
-    go("home");
+  // 切换会话后旧路径不再属于当前工作目录，文件与文件树都回到工作台。
+  function resetWorkspaceView() {
+    treeChildren.clear();
+    treeExpanded.clear();
+    treeRootEntries = null;
+    if (view === "file" || view === "files") go("home");
   }
 
-  return { open, refresh: open, openFile, resetFileView };
+  return { open, refresh: open, openFile, resetWorkspaceView };
 }

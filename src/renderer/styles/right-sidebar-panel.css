@@ -637,3 +637,96 @@
 .right-panel__markdown a {
   color: var(--focus);
 }
+
+/* 文件树：按目录懒加载，行高与预览列表保持一致。 */
+.right-panel--files {
+  min-height: 0;
+}
+
+.file-tree,
+.file-tree__group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file-tree {
+  overflow: auto;
+}
+
+.file-tree__group {
+  padding-left: 14px;
+}
+
+.file-tree__item {
+  min-width: 0;
+}
+
+.file-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+
+.file-tree__row:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.file-tree__row:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.file-tree__row .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.file-tree__chevron {
+  display: inline-flex;
+  flex: none;
+  width: 12px;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.file-tree__chevron--open {
+  transform: rotate(90deg);
+}
+
+.file-tree__chevron .icon {
+  width: 12px;
+  height: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-tree__chevron { transition: none; }
+}
+
+.file-tree__name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.file-tree__row--file .file-tree__name {
+  color: var(--muted);
+}
+
+.file-tree__loading {
+  padding: 4px 6px 4px 24px;
+  color: var(--muted);
+  font-size: 12px;
+}

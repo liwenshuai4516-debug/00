@@ -124,6 +124,13 @@ contextBridge.exposeInMainWorld("agent", {
     }
     return ipcRenderer.invoke("agent:read-preview-file", filePath);
   },
+  // 目录路径为空表示工作目录根；解析与边界同样在主进程完成。
+  listWorkspaceDirectory: (dirPath) => {
+    if (dirPath !== undefined && dirPath !== null && typeof dirPath !== "string") {
+      throw new Error("目录路径无效。");
+    }
+    return ipcRenderer.invoke("agent:list-workspace-directory", dirPath ?? "");
+  },
 
   // 获取当前会话的 ID，用于在列表中标记当前对话。
   currentSession: () => ipcRenderer.invoke("agent:current-session"),

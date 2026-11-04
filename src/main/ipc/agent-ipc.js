@@ -90,6 +90,13 @@ function registerAgentIpc(
   );
   ipcMain.handle("agent:read-preview-file", (_event, filePath) => readPreviewFile(filePath));
 
+  // 文件树同样只读，按目录按需列出一层。
+  const { createWorkspaceTreeReader } = require("../services/workspace-tree-service.js");
+  const listWorkspaceDirectory = createWorkspaceTreeReader(
+    async () => (await sessionService.getSessionInfo()).workspaceDir,
+  );
+  ipcMain.handle("agent:list-workspace-directory", (_event, dirPath) => listWorkspaceDirectory(dirPath));
+
   // 异常后的状态核对必须等生成结束，读取期间阻止新的发送与会话操作。
   ipcMain.handle("agent:inspect-composer-send", (_event, sessionId) => {
     return runIdleOperation(() => composerDraftService.inspectSend(sessionId));

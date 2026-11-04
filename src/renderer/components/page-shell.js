@@ -66,7 +66,7 @@ document.addEventListener("open-file-preview", (event) => {
 });
 
 // 会话切换后关闭旧工作目录的文件预览，避免把上一个项目的文件留在侧栏。
-document.addEventListener("session-changed", () => rightSidebarPanel.resetFileView());
+document.addEventListener("session-changed", () => rightSidebarPanel.resetWorkspaceView());
 
 searchToggle.addEventListener("click", () => setSearch(searchField.hidden));
 

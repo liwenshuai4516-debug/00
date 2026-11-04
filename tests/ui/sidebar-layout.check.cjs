@@ -67,6 +67,20 @@ async function main() {
       if (projectIndex >= 0) projects.splice(projectIndex, 1);
       return { id: removed.id, name: removed.name };
     }
+    if (name === "listWorkspaceDirectory") {
+      if (args[0] === "src") throw Error("目录不存在或不可读。");
+      if (args[0] === "docs") {
+        return { path: "docs", truncated: false, entries: [
+          { name: "需求.md", path: "docs/需求.md", type: "file", size: 48 },
+          { name: "cases.md", path: "docs/cases.md", type: "file", size: 20 },
+        ] };
+      }
+      return { path: "", truncated: false, entries: [
+        { name: "docs", path: "docs", type: "dir", size: 0 },
+        { name: "src", path: "src", type: "dir", size: 0 },
+        { name: "README.md", path: "README.md", type: "file", size: 120 },
+      ] };
+    }
     if (name === "readPreviewFile") {
       if (args[0] === "docs/missing.md") throw Error("文件不存在或不可读。");
       return { path: args[0], size: 48, content: "# 需求文档\n\n- **本地预览**\n" };
@@ -287,9 +301,25 @@ async function main() {
     await click("#right-sidebar-toggle");
     await wait(`Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424`);
     await check("右侧边栏按 45% 与中栏 400 约束打开", `document.getElementById('app-right-sidebar').hasAttribute('data-open')&&document.getElementById('app-right-sidebar').getAttribute('aria-hidden')===null&&document.getElementById('right-sidebar-toggle').hidden&&document.activeElement.id==='right-sidebar-close'&&Math.round(document.getElementById('app-right-sidebar').getBoundingClientRect().width)===424&&document.documentElement.scrollWidth<=innerWidth`);
-    await wait(`document.querySelectorAll('.right-panel__card').length===2&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='2 个文件'`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===3&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='2 个文件'`);
     if (process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    await check("右侧栏工作台显示 logo 与两张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'`);
+    await check("右侧栏工作台显示 logo 与两张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据,文件浏览'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'`);
+
+    // 文件树：从工作台卡片进入，目录按需展开，文件点击进入预览。
+    await run(`[...document.querySelectorAll('.right-panel__card')].find(b=>b.textContent.includes('文件浏览')).click()`);
+    await wait(`document.querySelectorAll('.file-tree__row').length===3`);
+    await check("文件树列出工作目录根，目录在前", `[...document.querySelectorAll('.file-tree__name')].map(e=>e.textContent).join(',')==='docs,src,README.md'`);
+    await run(`[...document.querySelectorAll('.file-tree__row')].find(b=>b.textContent.includes('docs')).click()`);
+    await wait(`document.querySelectorAll('.file-tree__group .file-tree__row').length===2`);
+    await check("展开目录按需加载下一层", `[...document.querySelectorAll('.file-tree__group .file-tree__name')].map(e=>e.textContent).join(',')==='需求.md,cases.md'`);
+    await run(`[...document.querySelectorAll('.file-tree__row--file')].find(b=>b.textContent.includes('需求.md')).click()`);
+    await wait(`document.querySelector('.right-panel__markdown')!==null`);
+    await check("文件树点击文件打开预览", `document.querySelector('.right-panel__nav-title').textContent==='需求.md'`);
+    await click('.right-panel__nav .right-sidebar__icon-button');
+    await wait(`document.querySelector('.file-tree')!==null`);
+    await check("预览返回文件树并保留展开状态", `document.querySelectorAll('.file-tree__group .file-tree__row').length===2`);
+    await click('.right-panel__nav .right-sidebar__icon-button');
+    await wait(`document.querySelector('.right-panel__hero')!==null`);
 
     // 文件预览：页面事件打开侧栏的文件视图，Markdown 走正文清理链路。
     await run(`document.dispatchEvent(new CustomEvent('open-file-preview',{detail:{path:'docs/需求.md'}}))`);
@@ -317,7 +347,7 @@ async function main() {
     await check("编辑项目环境保存后与后端配置同步", `document.querySelector('.right-panel__env-url').textContent==='https://edited.invalid'&&document.querySelector('.right-panel__status').textContent.includes('已保存')`);
     assert.equal(environments[0].address, "https://edited.invalid");
     await click('.right-panel__nav .right-sidebar__icon-button');
-    await wait(`document.querySelectorAll('.right-panel__card').length===2`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===3`);
     await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
     await wait(`document.querySelectorAll('.right-panel__file').length===2`);
     await check("测试数据按 ui 分类列出文件", `document.querySelectorAll('.right-panel__group').length===1&&document.querySelector('.right-panel__group-title').textContent.includes('ui')&&document.querySelectorAll('.right-panel__file').length===2`);
@@ -330,7 +360,7 @@ async function main() {
     await check("删除测试数据文件后刷新列表", `document.querySelectorAll('.right-panel__file').length===1&&document.querySelector('.right-panel__status').textContent.includes('已删除')`);
     assert.equal(testData.length, 1);
     await click('.right-panel__nav .right-sidebar__icon-button');
-    await wait(`document.querySelectorAll('.right-panel__card').length===2`);
+    await wait(`document.querySelectorAll('.right-panel__card').length===3`);
     await click('.right-panel__card');
     await wait(`document.querySelectorAll('.right-panel__env').length===2`);
     await run(`document.querySelectorAll('.right-panel__env')[1].querySelector('.right-panel__action--danger').click()`);
