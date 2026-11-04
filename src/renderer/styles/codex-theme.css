@@ -594,6 +594,61 @@ select option {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.thinking-picker {
+  position: relative;
+  flex: none;
+}
+.thinking-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.thinking-toggle:hover:not(:disabled) {
+  color: var(--text);
+}
+.thinking-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.thinking-menu {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 6px);
+  min-width: 6rem;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px var(--menu-shadow);
+}
+.thinking-menu[hidden] {
+  display: none;
+}
+.thinking-option {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.thinking-option:hover,
+.thinking-option[aria-selected="true"] {
+  background: var(--hover);
+}
 .draft-toggle {
   display: flex;
   align-items: center;

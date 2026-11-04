@@ -94,6 +94,12 @@
 - 说明：Pi 没有 DSH 的工作区权限沙箱，这里显示**真实工作目录**，不提供没有实际效果的权限选择器；Pi 原生工具仍可直接读写文件（见 AGENTS 的边界说明）。
 - 验证：`tests/ui/send-queue.check.cjs` 断言添加入口与工作目录名；`context-usage-page.check.cjs` 与 `sidebar-layout.check.cjs` 的窄窗无溢出检查通过。原生文件对话框需要人工验收。
 
+### 思考等级
+
+- 输入区控制行显示当前模型的思考等级（如「思考 高」），点击展开档位菜单；与 `/thinking` 命令共用同一接口，由 Pi 按模型记忆档位。
+- 生成中、关闭流程或没有可用档位时禁用；点击外部或 Esc 收起。
+- 验证：`tests/ui/send-queue.check.cjs` 断言标签、四个档位、选择「低」后标签更新且主进程收到 `low`。
+
 ### 生成中插话（⌘/Ctrl+Enter）
 
 - 生成中按 `⌘/Ctrl+Enter`：通过 Pi 的 `session.prompt(text, { streamingBehavior: "steer" })` 排队，在当前轮工具结束后、下一次模型请求前投递；普通 `Enter` 仍进入宿主侧待发送队列。

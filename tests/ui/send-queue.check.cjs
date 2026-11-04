@@ -19,6 +19,9 @@ let busy = false;
 let gate;
 let stopCalls = 0;
 const steers = [];
+let thinkingLevel = "high";
+const thinkingLevels = ["off", "low", "medium", "high"];
+const thinkingCalls = [];
 const draft = () => drafts.get(sessionId) ?? { sessionId, text: "", revision: 0 };
 const assistant = (content) => ({
   role: "assistant", content, provider: "mock", model: "offline", stopReason: "stop",
@@ -28,13 +31,18 @@ const assistant = (content) => ({
 const session = {
   loadHistory: async () => [],
   currentSession: async () => sessionId,
-  getSessionInfo: async () => ({ sessionId, workspaceDir: "/demo", provider: "mock", modelId: "offline", contextUsage: null }),
+  getSessionInfo: async () => ({ sessionId, workspaceDir: "/demo", provider: "mock", modelId: "offline", contextUsage: null, thinkingLevel, thinkingLevels }),
   listSessions: async () => [{ id: sessionId, title: "待发送队列", workspaceDir: "/demo", updatedAt: 1 }],
   listUnsentSessions: async () => [],
   listModels: async () => ({ provider: "mock", modelId: "offline", models: [{ provider: "mock", id: "offline", name: "offline" }] }),
   newChat: async () => sessionId,
   previewSession: async () => ({ title: "待发送队列", history: [] }),
   listSlashCommands: async () => [],
+  setThinkingLevel: async (level) => {
+    thinkingCalls.push(level);
+    thinkingLevel = level;
+    return { thinkingLevel: level, thinkingLevels };
+  },
 };
 const composer = {
   loadCurrentDraft: async () => ({ ...draft() }),
@@ -110,6 +118,18 @@ async function main() {
     // 输入区控制行：添加文件入口与真实工作目录名。
     assert.ok(await js("document.getElementById('add-file-button')!==null"));
     assert.equal(await js("document.getElementById('workspace-chip-name').textContent"), "demo");
+    // 思考等级可在输入区切换，与 /thinking 共用接口。
+    assert.equal(await js("document.getElementById('thinking-toggle').textContent"), "思考 高");
+    await js("document.getElementById('thinking-toggle').click()");
+    await until("!document.getElementById('thinking-menu').hidden");
+    assert.equal(await js("document.querySelectorAll('.thinking-option').length"), 4);
+    await js("[...document.querySelectorAll('.thinking-option')].find(b=>b.textContent==='低').click()");
+    await until("document.getElementById('thinking-toggle').textContent==='思考 低'");
+    assert.deepEqual(thinkingCalls, ["low"]);
+    if (process.env.COMPOSER_SCREENSHOT_PATH) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      require("node:fs").writeFileSync(process.env.COMPOSER_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
 
     await type("第一条");
     await until("!document.getElementById('send-button').disabled");

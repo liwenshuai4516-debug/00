@@ -32,6 +32,11 @@ const input = document.getElementById("message-input");
 // 工作区入口放在页面初始化阶段声明，会话信息回调可能早于输入区组件创建。
 const workspaceChip = document.getElementById("workspace-chip");
 const workspaceChipName = document.getElementById("workspace-chip-name");
+const thinkingPicker = document.getElementById("thinking-picker");
+const thinkingToggle = document.getElementById("thinking-toggle");
+const thinkingMenu = document.getElementById("thinking-menu");
+let thinkingState = { level: "", levels: [] };
+let thinkingBusy = false;
 const sendButton = document.getElementById("send-button");
 const stopButton = document.getElementById("stop-button");
 const templateSelect = document.getElementById("task-template-select");
@@ -619,6 +624,11 @@ const sessionInfoPanel = createSessionInfoPanel(
     onState: (state) => {
       contextUsage.render(state);
       renderWorkspaceChip(state.info?.workspaceDir);
+      thinkingState = {
+        level: state.info?.thinkingLevel ?? "",
+        levels: state.info?.thinkingLevels ?? [],
+      };
+      renderThinking();
     },
   },
 );
@@ -717,6 +727,9 @@ function setBusy(busy, generating = false) {
   pageGenerating = generating;
   const blocked = busy || closing || archiveSyncPending;
   sendQueueView?.setBusy(blocked);
+  thinkingBusy = blocked;
+  if (blocked) closeThinkingMenu();
+  renderThinking();
   // 关闭冻结与原操作忙碌分别保存；原 finally 不能提前解除关闭冻结。
   proposalPanelElement.disabled = blocked;
   modelSelector.setBusy(blocked);
@@ -1387,6 +1400,80 @@ async function pickFileReferences() {
     addFileButton.disabled = false;
   }
 }
+
+// 思考等级：与 /thinking 命令共用同一接口，只影响当前模型。
+const THINKING_LABELS = {
+  off: "关",
+  minimal: "最低",
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "很高",
+  max: "最高",
+};
+
+function thinkingLabel(level) {
+  return THINKING_LABELS[level] ?? (level === "" ? "思考" : level);
+}
+
+function closeThinkingMenu() {
+  thinkingMenu.hidden = true;
+  thinkingToggle.setAttribute("aria-expanded", "false");
+}
+
+function renderThinking() {
+  const level = thinkingState.level;
+  const label = level === "" ? "思考" : `思考 ${thinkingLabel(level)}`;
+  thinkingToggle.textContent = label;
+  thinkingToggle.title = level === "" ? "思考等级" : `思考等级：${thinkingLabel(level)}`;
+  thinkingToggle.setAttribute("aria-label", thinkingToggle.title);
+  thinkingToggle.disabled = thinkingBusy || thinkingState.levels.length === 0;
+}
+
+function openThinkingMenu() {
+  if (thinkingToggle.disabled) return;
+  thinkingMenu.replaceChildren(...thinkingState.levels.map((level) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "thinking-option";
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(level === thinkingState.level));
+    option.textContent = thinkingLabel(level);
+    option.addEventListener("click", () => { void applyThinking(level); });
+    return option;
+  }));
+  thinkingMenu.hidden = false;
+  thinkingToggle.setAttribute("aria-expanded", "true");
+}
+
+async function applyThinking(level) {
+  closeThinkingMenu();
+  if (level === thinkingState.level) return;
+  thinkingToggle.disabled = true;
+  try {
+    await window.agent.setThinkingLevel(level);
+    await sessionInfoPanel.refresh();
+    setRequestStatus(`思考等级已设置为 ${thinkingLabel(level)}。`);
+  } catch (error) {
+    addMessage("error", error.message);
+  } finally {
+    renderThinking();
+  }
+}
+
+thinkingToggle.addEventListener("click", () => {
+  if (thinkingMenu.hidden) openThinkingMenu();
+  else closeThinkingMenu();
+});
+document.addEventListener("click", (event) => {
+  if (thinkingMenu.hidden || thinkingPicker.contains(event.target)) return;
+  closeThinkingMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || thinkingMenu.hidden) return;
+  closeThinkingMenu();
+  thinkingToggle.focus();
+});
 
 // 工作区入口：显示当前目录名，点击展开右侧栏的文件浏览。
 function renderWorkspaceChip(workspaceDir) {
