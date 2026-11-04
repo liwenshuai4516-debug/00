@@ -45,16 +45,17 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 工具会继承本次项目登录状态，未判断登录、工作区切换或地址冲突会阻止准备。
 
 仅用当前会话实际登记的官方 desktop-playwright-test 工具；未出现时按文末表停止，不自建脚本或改用其他工具：
-1. generator_setup_page：plan 写目标、真实操作范围与有来源的预期；project=chromium；seedFile=返回值。
-2. browser_snapshot 先取 ref；再用 browser_click（element、target=ref、intent）、browser_type（text）、browser_fill_form（fields，含 name/type/value）、browser_press_key（key）、browser_select_option（values）、browser_wait_for（text/time）执行。DOM 变化或 ref 失效后重新 snapshot；每步 intent 写实际操作。
-3. generator_read_log（无参数），宿主保存真实官方日志。不把未操作步骤写成录制事实。
-4. generator_write_test：fileName=caseFileName，code 为 CommonJS 脚本，依据真实日志生成。
-5. 成功或失败均调用 browser_close，关闭失败如实报告。
+1. generator_setup_page：plan 逐步写「动作 → 可观察预期 → 数据来源」；project=chromium；seedFile=返回值。
+2. browser_snapshot 取 ref 后执行 browser_click（element、target=ref、intent）、browser_type（text）、browser_fill_form（fields，含 name/type/value）、browser_press_key（key）、browser_select_option（values）、browser_wait_for（text/time，只等明确条件）。intent 用该步动作原文；DOM 变化或 ref 失效后重新 snapshot。
+3. 每个业务步骤后立即用 browser_verify_text_visible、browser_verify_element_visible、browser_verify_value 验证预期（按 schema 传 text、role+accessibleName、type+element+target+value）；验证不通过先查数据、前置状态和步骤，不先录完再补断言。
+4. generator_read_log（无参数），逐条核对动作与断言都已入日志；日志没有的业务预期先现场验证，确实无法验证的写明需求来源和未验证原因。宿主保存真实官方日志。
+5. generator_write_test：fileName=caseFileName，code 为 CommonJS 脚本，只写日志中有证据的步骤与断言。
+6. 成功或失败均调用 browser_close，关闭失败如实报告。
 
 ## 5. 整理脚本并持久化
 
-整理已保存脚本：两空格缩进、明确 test 名称、稳定业务定位器、独立初态、显式 expect 断言。可在一个文件中保存多个独立 test；不保留临时 ref，不依赖录制窗口或前一个 test 的残留状态。
-每个业务预期注明用户/需求/声明/基线来源；观察不自动升级为需求。不为通过而改预期、删断言或跳过测试。不写入密码或私有登录状态。
+整理已保存脚本：两空格缩进；test 名称写「业务动作 + 预期结果」；定位器优先 getByRole/getByLabel/getByText 加业务名称，不得依赖临时 ref，样式类仅在无法用角色/标签定位时使用并注明原因，nth 仅限同角色重复控件；每个 test 自建初态，写入类数据用唯一值并登记清理；业务预期写成显式 expect 并注明用户/需求/声明/基线来源。禁止 waitForTimeout、条件断言和 try/catch 吞错。可在一个文件中保存多个独立 test；不依赖录制窗口或前一个 test 的残留状态。
+观察不自动升级为需求。不为通过而改预期、删断言或跳过测试。不写入密码或私有登录状态。
 保存 caseDocument：项目、页面、角色、前置条件、测试输入引用、真实步骤、日志路径及每项断言来源。只记录本次明确归属的数据清理动作。
 
 文件命名由工具生成“项目名称__页面路径__短摘要.spec.cjs”；路由 hash 纳入页面路径，同名重复录制自动追加版本，禁止覆盖旧资产。不要自行重命名到准备路径之外。
