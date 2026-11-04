@@ -144,6 +144,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   const expandedCases = new Set();
   let editingAssertions = null;
   const collapsedModules = new Set();
+  const knownModuleKeys = new Set();
   let reportsData = null;
   let reportKindFilter = "all";
   const expandedReports = new Set();
@@ -252,6 +253,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   async function loadEnvironments() {
+    const previousSelectedId = selectedId;
     const list = await api().listProjectEnvironments();
     environments = Array.isArray(list) ? list : [];
 
@@ -265,6 +267,18 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       selectedId = environments.find(
         (environment) => environment.workspaceDir === session?.workspaceDir,
       )?.id ?? environments[0]?.id ?? null;
+    }
+    if (selectedId !== previousSelectedId) {
+      data = null;
+      caseQuery = "";
+      expandedCases.clear();
+      editingAssertions = null;
+      collapsedModules.clear();
+      knownModuleKeys.clear();
+      reportsData = null;
+      reportKindFilter = "all";
+      expandedReports.clear();
+      reportDetails.clear();
     }
   }
 
@@ -670,7 +684,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
 
     const select = element("select", {
-      class: "right-panel__select",
+      class: "right-panel__select right-panel__select--compact",
       "aria-label": "选择项目环境",
       disabled: busy,
     });
@@ -688,6 +702,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       caseQuery = "";
       expandedCases.clear();
       collapsedModules.clear();
+      knownModuleKeys.clear();
       editingAssertions = null;
       void refreshData();
     });
@@ -819,7 +834,22 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     };
   }
 
+  // 新出现的子模块默认折叠；一级模块保持展开，已记录的展开/折叠状态不被刷新覆盖。
+  function seedCollapsedModules(catalog) {
+    const stack = [...catalog.modules];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      const key = node.key ?? [...(node.path ?? [node.title])].join("\u001f");
+      if (!knownModuleKeys.has(key)) {
+        knownModuleKeys.add(key);
+        if ((node.depth ?? 0) > 0) collapsedModules.add(key);
+      }
+      stack.push(...(node.children ?? []));
+    }
+  }
+
   function renderCaseCatalog(catalog) {
+    seedCollapsedModules(catalog);
     const container = element("div", { class: "case-catalog" });
     const summary = element("div", { class: "case-catalog__summary" });
     const stat = (value, label) => element("span", { class: "case-catalog__stat" },
@@ -1348,6 +1378,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       expandedCases.clear();
       editingAssertions = null;
       collapsedModules.clear();
+      knownModuleKeys.clear();
       reportsData = null;
       reportKindFilter = "all";
       expandedReports.clear();
