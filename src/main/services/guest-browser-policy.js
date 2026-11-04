@@ -42,7 +42,8 @@ function openBrowserDevToolsForHost(host) {
   );
   if (!guest) throw new Error("浏览器页面尚未打开。");
   guest.openDevTools({ mode: "detach" });
-  return guest;
+  // 只返回可结构化克隆的普通对象；WebContents 不能经 IPC 传回页面。
+  return { opened: true };
 }
 
 module.exports = { installGuestBrowserPolicy, isBrowserUrl, openBrowserDevToolsForHost };
