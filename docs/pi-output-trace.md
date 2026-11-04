@@ -12,6 +12,12 @@
 
 ![展开的思考与工具详情](images/output-trace-expanded.png)
 
+工具卡片使用离线合成的演示数据，仅用于核对排版：
+
+![终端卡片](images/output-trace-tool-cards.png)
+
+![差异与读取卡片](images/output-trace-tool-diff.png)
+
 ## 官方依据
 
 已阅读 [Pi 最新文档](https://pi.dev/docs/latest)，并核对本项目固定的 Pi 1.4.0 安装包文档、公开导出和类型：
@@ -56,6 +62,21 @@ Pi 没有单独的 trace 对象或“skill 执行成功”事件。本功能是�
 
 工具没有结束事件时显示“结果未确认”。发送结束却没有收到 `agent_settled` 时明确提示，不凭发送返回猜测成功。停止后仍接收工具结束和 settled 收尾。监听只发送到发起请求的页面，按请求会话过滤；官方扩展替换会话时保留原请求归属，结束/异常均解除订阅。旧草稿操作入口保持兼容。
 
+## 工具卡片
+
+结构明确的工具用卡片展示，其余继续使用通用参数/结果。卡片只从调用参数与已记录结果派生，字段缺失或格式不符时回退，不猜测文件内容。
+
+| 工具 | 卡片内容 | 数据来源 |
+| --- | --- | --- |
+| bash / pwsh | 命令行抬头、终端输出、`exit N` 徽标 | `args.command`、结果文本；退出码优先用 `structuredContent.exit_code` |
+| read | 文件路径、起始行与行数上限、正文 | `args.path/offset/limit`、结果文本 |
+| write | 文件路径、`+N`、正文行 | `args.path/content` |
+| edit | 文件路径、`+N -M`、差异行（新增/删除/上下文） | `details.diff`；缺失时按 `edits[].oldText/newText` 逐段还原 |
+
+卡片存在时，参数与原始结果收进默认折叠的「参数与原始结果」；没有卡片的工具保持原来的直接展示。主进程只投影 `exitCode`、`diff`、`fullOutputPath` 三个标量字段，不把 `details` 或 `structuredContent` 整体送到页面。历史消息只保存 `details`，旧记录没有结构化退出码时从 Pi 追加的 `Command exited with code N` 文本读取。
+
+页面最多渲染 200 行卡片内容、12000 字符文本；超出部分只在页面截断，Pi 历史和模型上下文不变。
+
 ## Skill 的证据边界
 
 - **显式展开**：本次输入为 `/skill:name`，且实际 user 消息经 SDK 公开 `parseSkillBlock` 解析后，与当前 loader 的技能名和路径一致。只说明指令已展开，不说明技能任务成功。
@@ -75,7 +96,7 @@ node --test tests/unit/output-events.test.js tests/unit/pi-output-runtime.test.j
 node_modules/.bin/electron tests/ui/output-trace.check.cjs
 ```
 
-上述 37 项单元/集成检查及完整页面检查通过。真实 SDK 检查只替换公开 Agent 的模型流函数，实际使用 Pi 1.4.0 会话、原生 read、技能展开与历史保存，覆盖两 turn 和订阅释放；另模拟会话替换以核对原请求归属和新订阅清理。页面检查覆盖增量终值覆盖、同名工具乱序结束、嵌套、自动重试、停止、缺失结束、历史恢复、重复发送、Markdown 复制、安全文本及 1120/680 宽度；脚本输出临时截图位置。本轮补充思考行预览与 Markdown、工具目标与 write/edit 行数统计、代码块语言标签与复制、流式光标的页面断言。既有 `context-usage-page.check.cjs` 的 19 项检查也通过，覆盖旧文本通道兼容、上下文用量、切换、停止、整理与窄窗。
+上述 37 项单元/集成检查及完整页面检查通过。真实 SDK 检查只替换公开 Agent 的模型流函数，实际使用 Pi 1.4.0 会话、原生 read、技能展开与历史保存，覆盖两 turn 和订阅释放；另模拟会话替换以核对原请求归属和新订阅清理。页面检查覆盖增量终值覆盖、同名工具乱序结束、嵌套、自动重试、停止、缺失结束、历史恢复、重复发送、Markdown 复制、安全文本及 1120/680 宽度；脚本输出临时截图位置。本轮补充思考行预览与 Markdown、工具目标与 write/edit 行数统计、代码块语言标签与复制、流式光标，以及 bash 退出码、write/read/edit 卡片与折叠原始区的页面断言。既有 `context-usage-page.check.cjs` 的 19 项检查也通过，覆盖旧文本通道兼容、上下文用量、切换、停止、整理与窄窗。
 
 扩大运行 `session-service.test.js` 时，“缺少模型配置必须报错”的旧断言失败；隔离的修改前提交 `bd3623b` 同样失败（实际先报缺少工作目录），不将它记录为本功能通过，也未改动该无关断言。本轮没有进行真实供应商推理验收。
 

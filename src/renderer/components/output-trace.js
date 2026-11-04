@@ -111,6 +111,110 @@ function changeStat(name, args) {
   return total.added || total.removed ? total : null;
 }
 
+const MAX_CARD_LINES = 200;
+
+// 退出码优先用结构化结果；历史记录只保存结果文本，从 Pi 追加的结束语读取。
+function exitCodeOf(call) {
+  if (Number.isInteger(call.exitCode)) return call.exitCode;
+  const match = /(?:^|\n)Command exited with code (\d+)\s*$/u.exec(call.result ?? "");
+  return match ? Number(match[1]) : undefined;
+}
+
+// 只对结构确定的工具生成卡片；其余继续走通用参数/结果。
+function toolCard(call) {
+  const args = call.args ?? {};
+  const name = call.name;
+  const text = call.result ?? "";
+  if (name === "bash" || name === "pwsh") {
+    if (typeof args.command !== "string" || args.command.trim() === "") return null;
+    return { kind: "terminal", command: args.command, output: text, exitCode: exitCodeOf(call) };
+  }
+  if (name === "read") {
+    if (typeof args.path !== "string" || args.path.trim() === "") return null;
+    return {
+      kind: "read", path: args.path, text,
+      offset: Number.isInteger(args.offset) && args.offset > 0 ? args.offset : 1,
+      limit: Number.isInteger(args.limit) && args.limit > 0 ? args.limit : undefined,
+    };
+  }
+  if (name === "write") {
+    if (typeof args.path !== "string" || typeof args.content !== "string") return null;
+    return { kind: "write", path: args.path, content: args.content };
+  }
+  if (name === "edit") {
+    if (typeof args.path !== "string" || args.path.trim() === "") return null;
+    const edits = (Array.isArray(args.edits) ? args.edits : [])
+      .filter(edit => typeof edit?.oldText === "string" && typeof edit?.newText === "string");
+    const diff = typeof call.diff === "string" ? call.diff : "";
+    if (diff === "" && edits.length === 0) return null;
+    return { kind: "diff", path: args.path, diff, edits };
+  }
+  return null;
+}
+
+// Pi 的 edit 差异文本以 +、- 或空格开头，并自带行号；缺失时按参数逐段还原。
+function diffRows(card) {
+  if (card.diff !== "") {
+    return card.diff.split("\n").map(text => ({
+      kind: text.startsWith("+") ? "add" : text.startsWith("-") ? "del" : "context",
+      text,
+    }));
+  }
+  const rows = [];
+  for (const edit of card.edits) {
+    if (rows.length > 0) rows.push({ kind: "gap", text: "……" });
+    for (const line of edit.oldText.split("\n")) rows.push({ kind: "del", text: `-${line}` });
+    for (const line of edit.newText.split("\n")) rows.push({ kind: "add", text: `+${line}` });
+  }
+  return rows;
+}
+
+function cappedRows(rows) {
+  if (rows.length <= MAX_CARD_LINES) return rows;
+  return [...rows.slice(0, MAX_CARD_LINES), { kind: "gap", text: `……共 ${rows.length} 行，页面仅显示前 ${MAX_CARD_LINES} 行` }];
+}
+
+function linesBlock(rows) {
+  const box = element("div", "trace-lines");
+  for (const row of rows) {
+    // 空行保留一个空格，横向滚动与行高才稳定。
+    box.append(element("div", `trace-line trace-line-${row.kind}`, row.text === "" ? " " : row.text));
+  }
+  return box;
+}
+
+function renderCard(call, card) {
+  const node = element("div", "trace-card");
+  node.dataset.kind = card.kind;
+  const header = element("div", "trace-card-header");
+  header.append(element("span", "trace-card-path", card.kind === "terminal" ? `$ ${oneLine(card.command, 120)}` : card.path));
+
+  if (card.kind === "terminal") {
+    if (card.exitCode !== undefined) {
+      header.append(element("span", card.exitCode === 0 ? "trace-exit trace-exit-ok" : "trace-exit trace-exit-bad", `exit ${card.exitCode}`));
+    }
+  } else if (card.kind === "read") {
+    header.append(element("span", "trace-card-meta", card.limit ? `第 ${card.offset} 行起 · 最多 ${card.limit} 行` : `第 ${card.offset} 行起`));
+  } else {
+    const stat = changeStat(card.kind === "diff" ? "edit" : "write", call.args);
+    const label = stat && [stat.added && `+${stat.added}`, stat.removed && `-${stat.removed}`].filter(Boolean).join(" ");
+    if (label) header.append(element("span", "trace-card-meta", label));
+  }
+  node.append(header);
+
+  if (card.kind === "terminal") {
+    node.append(element("pre", "trace-terminal", preview(card.output || "（尚无输出）")));
+  } else if (card.kind === "read") {
+    node.append(element("pre", "trace-read", preview(card.text || "（尚无内容）")));
+  } else if (card.kind === "write") {
+    const rows = card.content.split("\n").map(line => ({ kind: "add", text: `+${line}` }));
+    node.append(linesBlock(cappedRows(rows)));
+  } else {
+    node.append(linesBlock(cappedRows(diffRows(card))));
+  }
+  return node;
+}
+
 export function createOutputTrace(container, { historical = false, onUpdate = () => {} } = {}) {
   const root = element("section", "output-run");
   container.append(root);
@@ -266,9 +370,35 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     const args = element("pre", "trace-args");
     const result = element("pre", "trace-result");
     const meta = element("p", "trace-meta");
+    const cardNode = element("div", "trace-card-slot");
+    const raw = element("div", "trace-raw");
+    // 自身内容与嵌套子调用分开存放，切换布局时不会移除子调用。
+    const own = element("div", "trace-own");
+    const nested = element("div", "trace-nested");
+    raw.append(element("p", "trace-caption", "参数"), args, element("p", "trace-caption", "结果 / 最近一次进度"), result);
     for (const node of [args, result]) node.tabIndex = 0;
-    view.body.append(meta, element("p", "trace-caption", "参数"), args, element("p", "trace-caption", "结果 / 最近一次进度"), result);
-    const call = { ...view, id, name, state: "等待执行", args: undefined, result: "", done: false };
+    own.append(meta, cardNode, raw);
+    view.body.append(own, nested);
+    // 有卡片时原始参数与结果收进折叠区；没有卡片时保持原来的直接展示。
+    let rawDetails;
+    let rawMode;
+    function setRawMode(withCard) {
+      const next = withCard ? "card" : "plain";
+      if (rawMode === next) return;
+      rawMode = next;
+      if (withCard) {
+        rawDetails ??= (() => {
+          const node = element("details", "trace-raw");
+          node.append(element("summary", "", "参数与原始结果"));
+          return node;
+        })();
+        rawDetails.append(raw);
+        own.replaceChildren(meta, cardNode, rawDetails);
+      } else {
+        own.replaceChildren(meta, cardNode, raw);
+      }
+    }
+    const call = { ...view, nested, id, name, state: "等待执行", args: undefined, result: "", done: false };
     call.renderTiming = () => {
       const summary = view.summary;
       // 名称、目标、状态与耗时分开排版，目标过长时由 CSS 省略，不挤掉状态。
@@ -294,12 +424,17 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     };
     call.render = () => {
       call.renderTiming();
-      // 调用编号保留在节点属性和悬停提示里，正文只展示对阅读有用的信息。
-      meta.textContent = [call.skill?.path, call.parent && `嵌套调用 ${call.parent}`].filter(Boolean).join("\n");
+      const card = toolCard(call);
+      // 卡片已经展示文件路径时不再重复；调用编号只保留在节点属性和悬停提示里。
+      meta.textContent = [card ? "" : call.skill?.path, call.parent && `嵌套调用 ${call.parent}`].filter(Boolean).join("\n");
       meta.hidden = meta.textContent === "";
       meta.title = `toolCallId: ${call.id}${call.parent ? ` · parentToolCallId: ${call.parent}` : ""}`;
       args.textContent = preview(call.rawArgs ?? json(call.args));
       result.textContent = preview(call.result || (call.done ? "无文本结果" : "尚未返回结果"));
+      cardNode.replaceChildren();
+      cardNode.hidden = !card;
+      if (card) cardNode.append(renderCard(call, card));
+      setRawMode(Boolean(card));
     };
     calls.set(id, call);
     schedule(call.render);
@@ -350,8 +485,13 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     call.skill = event.skill ?? call.skill;
     call.parent = event.parentToolCallId ?? call.parent;
     if (!historical && event.type !== "tool_execution_end") call.startedAt ??= performance.now();
-    if (call.parent && calls.has(call.parent)) calls.get(call.parent).body.append(call.node);
-    if (event.result) call.result = textContent(event.result.content);
+    if (call.parent && calls.has(call.parent)) calls.get(call.parent).nested.append(call.node);
+    if (event.result) {
+      call.result = textContent(event.result.content);
+      call.exitCode = event.result.exitCode;
+      call.diff = event.result.diff;
+      call.fullOutputPath = event.result.fullOutputPath;
+    }
     if (event.type === "tool_execution_end") {
       call.done = true;
       call.state = event.isError ? "执行失败" : "执行完成";
@@ -442,14 +582,15 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     if (output.role === "assistant") { startTurn(); finalMessage(output); }
     if (output.role === "toolResult") {
       execution({ type: "tool_execution_end", toolCallId: output.toolCallId, toolName: output.toolName,
-        result: { content: output.content }, isError: output.isError, durationMs: output.durationMs, skill: output.skill });
+        result: { content: output.content, exitCode: output.exitCode, diff: output.diff, fullOutputPath: output.fullOutputPath },
+        isError: output.isError, durationMs: output.durationMs, skill: output.skill });
       for (const nested of output.nestedCalls?.calls ?? []) {
         const call = tool(nested.id, nested.name);
         call.parent = output.toolCallId; call.args = nested.arguments; call.done = nested.status !== "unfinished";
         call.state = { ok: "执行完成", error: "执行失败", unfinished: "结果未确认" }[nested.status];
         call.result = nested.error || "历史仅保存嵌套调用摘要，未记录结果正文。";
         call.durationMs = nested.durationMs;
-        calls.get(output.toolCallId).body.append(call.node);
+        calls.get(output.toolCallId).nested.append(call.node);
         schedule(call.render);
       }
       if (output.nestedCalls?.complete === false) lifecycle("nestedCalls", "嵌套调用记录不完整");

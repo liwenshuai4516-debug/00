@@ -100,6 +100,118 @@
   background: color-mix(in srgb, var(--surface) 55%, transparent);
 }
 
+/* 工具卡片：终端、读取、写入与差异共用同一外壳。 */
+/* 详情里已有卡片时不再套一层外框，避免双重边框。 */
+.output-trace .trace-tool > .trace-body:has(.trace-card) {
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.output-trace .trace-card {
+  margin: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.output-trace .trace-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.output-trace .trace-card-path {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.output-trace .trace-card-meta {
+  flex: none;
+  color: var(--muted);
+}
+
+.output-trace .trace-exit {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 16px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.output-trace .trace-exit-ok {
+  color: light-dark(#1a7f37, #63c27f);
+}
+
+.output-trace .trace-exit-bad {
+  color: light-dark(#b42318, #e07b74);
+}
+
+.output-trace .trace-terminal,
+.output-trace .trace-read {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre;
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+  user-select: text;
+  tab-size: 2;
+}
+
+.output-trace .trace-lines {
+  max-height: 320px;
+  overflow: auto;
+  padding: 4px 0;
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  tab-size: 2;
+}
+
+.output-trace .trace-line {
+  padding: 0 10px;
+  white-space: pre;
+}
+
+.output-trace .trace-line-add {
+  background: var(--added-background);
+  color: light-dark(#1a7f37, #8fd6a2);
+}
+
+.output-trace .trace-line-del {
+  background: var(--removed-background);
+  color: light-dark(#b42318, #efa49e);
+}
+
+.output-trace .trace-line-context,
+.output-trace .trace-line-gap {
+  color: var(--muted);
+}
+
+.output-trace .trace-line-gap {
+  text-align: center;
+}
+
+.output-trace .trace-raw {
+  margin-top: 6px;
+}
+
+.output-trace .trace-raw > summary {
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 /* 思考行：折叠时一行预览，展开后按 Markdown 排版。 */
 .output-trace .trace-thinking > summary {
   white-space: nowrap;

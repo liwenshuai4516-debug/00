@@ -17,6 +17,22 @@ function contentBlocks(content) {
   });
 }
 
+// 工具结果里只取渲染卡片需要的标量字段，避免把 details/structuredContent 整体送到页面。
+function toolResultExtras(details, structured) {
+  const extras = {};
+  if (details && typeof details === "object") {
+    if (typeof details.diff === "string") extras.diff = details.diff;
+    if (typeof details.fullOutputPath === "string") extras.fullOutputPath = details.fullOutputPath;
+  }
+  if (structured && typeof structured === "object") {
+    if (Number.isInteger(structured.exit_code)) extras.exitCode = structured.exit_code;
+    if (extras.fullOutputPath === undefined && typeof structured.full_output_path === "string") {
+      extras.fullOutputPath = structured.full_output_path;
+    }
+  }
+  return extras;
+}
+
 function outputMessage(message) {
   if (!message) return null;
   if (message.role === "assistant") return {
@@ -27,6 +43,8 @@ function outputMessage(message) {
   if (message.role === "toolResult") return {
     role: "toolResult", toolCallId: message.toolCallId, toolName: message.toolName,
     content: contentBlocks(message.content), isError: message.isError,
+    // 历史消息只保存 details；bash 的退出码在旧记录里只能从结果文本读取。
+    ...toolResultExtras(message.details, undefined),
     durationMs: message.durationMs, nestedCalls: message.nestedCalls && {
       complete: message.nestedCalls.complete,
       calls: message.nestedCalls.calls.map(call => ({
@@ -103,7 +121,10 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
         parentToolCallId: event.parentToolCallId, args: event.args,
         skill: skill ?? calls.get(event.toolCallId),
       };
-      if (result) projected.result = { content: contentBlocks(result.content) };
+      if (result) projected.result = {
+        content: contentBlocks(result.content),
+        ...toolResultExtras(result.details, result.structuredContent),
+      };
       if (event.type === "tool_execution_end") {
         projected.isError = event.isError;
         projected.durationMs = event.durationMs;

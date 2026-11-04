@@ -151,6 +151,9 @@ async function main() {
     assert.equal(await js(`document.querySelectorAll('.chat-message[data-streaming="true"]').length`), 0);
     // 工具行展示目标路径，代码块带语言标签与复制入口。
     assert.match(await js(`document.querySelector('.trace-tool[data-tool-call-id="c1"] summary').textContent`), /read · \/demo\/\.pi\/skills\/demo\/SKILL\.md · 执行完成/);
+    assert.equal(await js(`document.querySelector('.trace-tool[data-tool-call-id="c1"] .trace-card')?.dataset.kind`), "read");
+    assert.match(await js(`document.querySelector('.trace-tool[data-tool-call-id="c1"] .trace-card-path').textContent`), /SKILL\.md$/);
+    assert.equal(await js(`document.querySelector('.trace-tool[data-tool-call-id="c1"] .trace-raw').open`), false);
     assert.equal(await js(`document.querySelectorAll('.output-run .code-block').length`), 1);
     assert.equal(await js(`document.querySelector('.code-block-language').textContent`), "js");
     assert.equal(await js(`document.querySelectorAll('.output-run [data-role="assistant"]').length`), 2);
@@ -253,6 +256,17 @@ async function main() {
         await paint();
         check(host.querySelector('.chat-message[data-streaming="true"]')===null, '完成后移除光标标记');
         streaming.dispose();
+        const bashTrace = createOutputTrace(host);
+        bashTrace.accept({type:'message_start',message:msg([])});
+        bashTrace.accept({type:'message_end',message:msg([{type:'toolCall',id:'b',name:'bash',arguments:{command:'echo hi'}}])});
+        bashTrace.accept({type:'tool_execution_start',toolCallId:'b',toolName:'bash',args:{command:'echo hi'}});
+        bashTrace.accept({type:'tool_execution_update',toolCallId:'b',toolName:'bash',result:{content:[{type:'text',text:'hi'}]}});
+        await paint();
+        check(host.querySelector('.trace-tool[data-tool-call-id="b"] .trace-terminal')?.textContent.includes('hi'), 'bash 卡片展示实时输出');
+        bashTrace.accept({type:'tool_execution_end',toolCallId:'b',toolName:'bash',isError:true,durationMs:5,result:{content:[{type:'text',text:'hi' + String.fromCharCode(10,10) + 'Command exited with code 7'}],exitCode:7}});
+        await paint();
+        check(host.querySelector('.trace-tool[data-tool-call-id="b"] .trace-exit-bad')?.textContent==='exit 7', 'bash 卡片展示非零退出码');
+        bashTrace.dispose();
         const writeTrace = createOutputTrace(host);
         writeTrace.accept({type:'message_start',message:msg([])});
         const nl = String.fromCharCode(10);
@@ -260,6 +274,9 @@ async function main() {
         writeTrace.accept({type:'tool_execution_start',toolCallId:'w',toolName:'write',args:{path:'/a.txt',content:['a','b','c'].join(nl)}});
         await paint();
         check(host.querySelector('.trace-tool[data-tool-call-id="w"] .trace-diff-added')?.textContent==='+3', 'write 展示新增行数');
+        check(host.querySelector('.trace-tool[data-tool-call-id="w"] .trace-card[data-kind="write"]')!==null, 'write 生成文件卡片');
+        check(host.querySelector('.trace-tool[data-tool-call-id="w"] .trace-card-meta')?.textContent==='+3', 'write 卡片显示行数');
+        check(host.querySelector('.trace-tool[data-tool-call-id="w"] .trace-raw').open===false, '原始参数默认折叠');
         writeTrace.dispose();
         const editTrace = createOutputTrace(host);
         editTrace.accept({type:'message_start',message:msg([])});
@@ -268,6 +285,10 @@ async function main() {
         await paint();
         check(host.querySelector('.trace-tool[data-tool-call-id="e"] .trace-diff-added')?.textContent==='+2', 'edit 统计新增行');
         check(host.querySelector('.trace-tool[data-tool-call-id="e"] .trace-diff-removed')?.textContent==='-1', 'edit 统计删除行');
+        editTrace.accept({type:'tool_execution_end',toolCallId:'e',toolName:'edit',isError:false,durationMs:4,result:{content:[{type:'text',text:'ok'}],diff:' 1 a' + String.fromCharCode(10) + '-2 b' + String.fromCharCode(10) + '+2 c'}});
+        await paint();
+        check(host.querySelector('.trace-tool[data-tool-call-id="e"] .trace-line-del')?.textContent==='-2 b', '差异卡片展示删除行');
+        check(host.querySelector('.trace-tool[data-tool-call-id="e"] .trace-line-add')?.textContent==='+2 c', '差异卡片展示新增行');
         editTrace.dispose();
         const historical = createOutputTrace(host,{historical:true});
         historical.restore(msg([{type:'text',text:'历史正文'}])); historical.finish();
