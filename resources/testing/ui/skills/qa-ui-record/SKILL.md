@@ -9,6 +9,7 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 
 已有 qa_ui_project 返回的 projectRef、项目地址和登录判断（saved 或 not-required）；缺任一项先回 qa-ui-basic 第 1-3 步，不跳过。
 本技能只做「准备录制 → 现场录制 → 读日志 → 写脚本 → 关闭页面 → 整理说明 → finalize」，不改七步顺序，不接管回放和报告。
+断言来源、业务/守卫断言、数据不变量、断言编辑和失败判定由 `qa-ui-assertion` 维护；写/改断言前加载该技能，本技能不重复展开断言规则。
 不改被测业务操作流程：用户给的动作顺序、页面路径和业务规则照原样执行，只提升脚本的可验证性与可维护性。
 
 ## 测试环境授权与预期来源
@@ -71,15 +72,11 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 
 ## 3. 四条质量线
 
-### 3.1 断言来源
+### 3.1 断言规则
 
-每个 expect 对应 caseDocument 中一条「预期 + 来源」；来源写用户/需求/页面规则，默认「页面规则」，不写「页面显示」。
-至少一个业务结果断言：记录出现在列表、状态变更、详情字段等于输入、错误提示出现且数据未写入。
-禁止用实际值倒推预期；禁止断言 loading、骨架屏、样式类、请求码等中间态；动态值断言格式或正则，不断言具体时间、随机 ID、自增序号。
-日志里的 assert 行可能把可访问名截成前缀（实测 10 个字符），最终断言用输入/计划中的完整业务值，不照抄前缀。
-一个 expect 一个事实，用 web-first 断言（toBeVisible/toHaveText/toHaveCount/toHaveValue/toHaveURL），不用 expect(await ...)。
-列表/筛选断言不要硬编码“共 N 条”：测试数据会增长。优先断言总数大于 0、总数等于当前行数、每行都满足筛选条件；只有唯一键/隔离数据才断言精确条数。
-断言失败信息要能定位业务步骤：test 名称和步骤注释与 plan 对应。
+断言来源、业务/守卫断言、列表与筛选的数据不变量、web-first 写法、断言编辑同步、录制与断言失败判定，统一由 `qa-ui-assertion` 技能维护。
+
+写断言前先加载 `qa-ui-assertion`，按其中规则生成 expect 和 caseDocument 断言；本技能只保留“每条断言必须有来源”的入口检查，不重复规则正文。
 
 ### 3.2 定位器
 
@@ -113,7 +110,7 @@ test 名称写「业务动作 + 预期结果」；步骤注释用录制 intent�
 
 ### 4.2 用例说明：元数据稿 + 含断言的 case 列表
 
-caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校验并写入 .asset.json，缺失或字段不合规会拒绝登记。
+caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校验并写入 .asset.json，缺失或字段不合规会拒绝登记。每个 case 必须有 `steps` 执行步骤；修改步骤后可在右侧栏「测试数据」中直接编辑，不必重新录制。
 元数据块就是后续管理/分类用的元数据稿；正文用例表是从它展开的人读版本，两者必须一致。
 `modulePath` 按被测系统实际左侧导航/菜单的层级填写（如 `["合同管理", "经营合同"]`），同一功能下的多份脚本保持同一路径；不要用页面路由、场景标签或猜测的层级代替。未填写时右侧目录按页面归组，仅用于兼容旧资产。
 
@@ -135,6 +132,12 @@ caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校�
       "name": "新建合同后列表显示该合同",
       "type": "functional",
       "priority": "P1",
+      "steps": [
+        "打开新建合同页面",
+        "填写合同名称和编号",
+        "点击保存",
+        "确认列表出现新合同"
+      ],
       "assertions": [
         { "id": "A1", "kind": "business", "text": "新合同行可见", "source": "用户要求：新建后列表出现" },
         { "id": "A2", "kind": "business", "text": "行内包含合同编号", "source": "用户要求：列表展示编号" }
@@ -185,27 +188,27 @@ caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校�
 | cases[].name | 是 | 与 spec 中 test 标题逐字一致；同文件不重复 |
 | cases[].type | 是 | `functional`、`permission`、`boundary`、`exception`、`regression` |
 | cases[].priority | 是 | `P0`-`P3` |
+| cases[].steps | 是 | 1-50 条真实操作步骤，每条约 500 字内；按“动作 + 目标 + 输入”顺序写，不写实现细节或断言来源 |
 | cases[].assertions[] | 是 | 至少一条；每条都要 text 和 source |
 | assertions[].kind | 否 | `business` 或 `guard`，默认 business |
 | assertions[].id | 否 | 短编号（A1/A2），便于正文引用 |
 
-一个 case 至少一条 business 断言；guard 只用于导航或前置校验，不能替代业务结果。
+断言字段的取值和 business/guard 规则见 `qa-ui-assertion`；本表只定义元数据字段。
 
 ## 5. finalize 前自检
 
 逐项确认，未通过先改再 finalize：
-- 每个 expect 有来源，caseDocument 已登记；
+- 断言按 `qa-ui-assertion` 自检，且 spec、资产元数据、说明表三处一致；
 - 元数据块 schema、caseId、project.id 与工具返回一致；
 - modulePath 与实际导航层级一致，未用页面路由或标签代替；
-- cases[].name 与 spec 的 test 标题一致，每条断言都有 text 和 source；
+- cases[].steps 覆盖真实操作顺序且与 spec 一致，没有把断言写成执行步骤；
+- cases[].name 与 spec 的 test 标题一致；
 - 正文用例表与元数据块一致；
 - 「覆盖范围」覆盖全部可见筛选、工具栏按钮和行操作，未覆盖项有原因；
-- 断言使用完整业务值，不是日志里的截断前缀；
 - 无 ref、自动 id、样式类（例外已注明）；
 - 写入数据唯一并登记清理；
 - 无 waitForTimeout、networkidle、轮询；
-- 每个 test 自建初态，结构上不依赖前一个 test；
-- 断言失败信息能定位业务步骤。
+- 每个 test 自建初态，结构上不依赖前一个 test。
 
 ## 6. 失败与兜底
 
@@ -213,7 +216,7 @@ caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校�
 | --- | --- | --- |
 | 官方录制工具未登记或环境缺失 | 报告缺失路径或原始报错 | 停止；不安装依赖、不换工具、不声称已录制 |
 | setup 或操作工具失败 | 重读 browser_snapshot 后重试一次，保留原始错误 | 无有效日志不 finalize，按未完成报告 |
-| 现场验证不通过 | 查数据、角色权限、前置状态和步骤 | 不写未验证断言；记录未验证原因，必要时停止 |
+| 现场验证不通过 | 查数据、角色权限、前置状态和步骤；按 `qa-ui-assertion` 判定录制或断言问题 | 不写未验证断言；记录未验证原因，必要时停止 |
 | 日志缺失或工具报错 | 不写脚本、不 finalize | 重新录制；旧记录不冒充本次证据 |
 | finalize 拒绝（语法/密码/空说明） | 修正后重新 finalize | 未 recorded-and-syntax-checked 不进回放 |
 

@@ -41,6 +41,7 @@ if (scenario === "resources") {
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-basic").length, expected);
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-record").length, expected);
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-execute").length, expected);
+      assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-assertion").length, expected);
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-test-report").length, expected);
       assert.deepEqual(diagnostics, []);
     } finally {

@@ -16,6 +16,7 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步流程、项目/登录/回放/报告的操作约定 |
 | `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
 | `resources/testing/ui/skills/qa-ui-execute/SKILL.md` | 按 caseId 单项/批量/定时执行，不录制、不改脚本 |
+| `resources/testing/ui/skills/qa-ui-assertion/SKILL.md` | 独立断言规则：来源、业务/守卫、数据不变量、编辑同步、失败判定 |
 | `resources/testing/reporting/SKILL.md` | `qa-test-report`：UI 与接口共用的报告状态、通过条件和交付规则 |
 | `resources/testing/ui/execute.cjs` | 独立执行 CLI：读配置、无头登录、校验资产、生成批次并调用 `run.cjs` |
 | `src/main/services/test-report-service.js` | 聚合 `qa/ui/runs` 与 `qa/api/runs` 的 `qa-report/v1` 摘要，校验路径与大小 |
@@ -35,6 +36,16 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 已有 `*.seed.spec.cjs` 的 caseId 不能再次用于 record（prepare 会以“同名 case 已存在”拒绝）；中断后请用新的 caseId 重新 prepare，旧种子和空录制目录仅作中间产物保留，不能据此 finalize。
 
 通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui` 与 `resources/testing/reporting`；发布分别读取 `process.resourcesPath/testing/ui`、`testing/reporting`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
+
+## 独立断言规则（2026-11-04）
+
+断言能力从录制技能中拆到 `qa-ui-assertion`，录制流程本身不变：`qa-ui-record` 仍在原步骤写断言，只把规则正文改为引用该技能。
+
+- 来源：用户需求/用例说明 → 页面规则；默认标「页面规则」
+- 区分 business 与 guard；至少一条业务结果断言
+- 列表/筛选用不变量：总数 > 0、总数等于行数、每行满足条件；不硬编码「共 N 条」
+- 断言编辑需同步 spec、`.asset.json`、`.md` 和 `sha256`，不能只改展示
+- 失败判定：操作正确但 Expected/Received 只差数据量/动态值，按断言问题；筛选未生效、请求缺参数按录制或产品问题
 
 ## 独立执行 skill（2026-11-04）
 
