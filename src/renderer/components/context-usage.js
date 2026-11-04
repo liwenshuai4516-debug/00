@@ -3,6 +3,7 @@ import { formatContextUsage } from "./session-info-panel.js";
 // 只消费会话信息组件的状态，不自行读取接口或请求模型。
 export function createContextUsage(element, { onRefresh, onCompact }) {
   const toggle = element.querySelector("#context-usage-toggle");
+  const labelNode = element.querySelector("[data-usage-label]");
   const details = element.querySelector("#context-usage-details");
   const usageText = element.querySelector("[data-usage]");
   const announcement = element.querySelector("[data-announcement]");
@@ -44,7 +45,12 @@ export function createContextUsage(element, { onRefresh, onCompact }) {
       label = "上下文读取失败";
       text = `上下文读取失败：${state.error}；可重新读取。`;
     }
-    toggle.textContent = label;
+    labelNode.textContent = label;
+    // 窄窗只显示环形时，无障碍名称仍保留完整文案。
+    toggle.setAttribute("aria-label", label);
+    // 环形指示只用百分比着色，未知或失败时保持中性。
+    const percent = known ? Math.min(100, Math.max(0, usage.percent)) : 0;
+    toggle.style.setProperty("--usage-percent", String(percent));
     toggle.title = text;
     toggle.disabled = frozen;
     element.dataset.level = level;

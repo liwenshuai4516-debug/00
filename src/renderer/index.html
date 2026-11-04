@@ -296,6 +296,21 @@
               <button type="button" hidden>重新读取</button>
               <p id="model-status" role="status" aria-atomic="true">正在读取当前模型……</p>
             </div>
+            <div id="context-usage" class="context-usage">
+              <button id="context-usage-toggle" type="button" aria-controls="context-usage-details" aria-expanded="false"><span class="context-usage__ring" aria-hidden="true"></span><span class="context-usage__label" data-usage-label>上下文读取中…</span></button>
+              <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title"
+                hidden>
+                <h2 id="context-usage-title">上下文用量</h2>
+                <p data-usage></p>
+                <p>这是当前模型上下文的估算，不代表费用、账号配额或全部原始历史。</p>
+                <p>整理会调用模型生成摘要，保留原始历史；仅在你点击后执行。</p>
+                <div class="context-usage-actions">
+                  <button data-refresh type="button">重新读取</button>
+                  <button data-compact type="button" disabled>整理上下文</button>
+                </div>
+              </section>
+              <span class="sr-only" role="status" aria-atomic="true" data-announcement></span>
+            </div>
             <div class="send-actions">
               <button id="stop-button" class="round-button" type="button" disabled aria-label="停止生成" title="停止生成（连按两次 Esc）">
                 <svg class="icon" aria-hidden="true">
@@ -331,22 +346,6 @@
         </details>
         <div class="composer-meta-row">
           <p id="message-input-hint">Enter 发送 · Shift+Enter 换行</p>
-          <div id="context-usage" class="context-usage">
-            <button id="context-usage-toggle" type="button" aria-controls="context-usage-details"
-              aria-expanded="false">上下文读取中…</button>
-            <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title"
-              hidden>
-              <h2 id="context-usage-title">上下文用量</h2>
-              <p data-usage></p>
-              <p>这是当前模型上下文的估算，不代表费用、账号配额或全部原始历史。</p>
-              <p>整理会调用模型生成摘要，保留原始历史；仅在你点击后执行。</p>
-              <div class="context-usage-actions">
-                <button data-refresh type="button">重新读取</button>
-                <button data-compact type="button" disabled>整理上下文</button>
-              </div>
-            </section>
-            <span class="sr-only" role="status" aria-atomic="true" data-announcement></span>
-          </div>
         </div>
       </footer>
     </main>

@@ -11,30 +11,82 @@
   margin: 0;
   text-align: left;
 }
+/* 常驻入口在输入区控制行：环形指示 + 百分比文案。 */
 .context-usage {
   position: relative;
+  flex: none;
   min-width: 0;
   max-width: 100%;
-  margin-left: auto;
 }
 #context-usage-toggle {
-  min-height: 44px;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
   max-width: 100%;
-  padding: 6px 8px;
-  border-color: transparent;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--muted);
   font-size: 12px;
-  white-space: normal;
+  white-space: nowrap;
+}
+#context-usage-toggle:hover:not(:disabled) {
+  color: var(--text);
+}
+.context-usage__ring {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: conic-gradient(var(--text) calc(var(--usage-percent, 0) * 1%), var(--border) 0);
+  opacity: 0.7;
+}
+.context-usage__ring::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--composer-background, var(--surface));
+}
+.context-usage__label {
+  display: block;
+  max-width: 11rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 窄窗优先保留环形与百分比，文案过长时省略，避免控制行横向溢出。 */
+@media (max-width: 720px) {
+  .context-usage__label { max-width: 7rem; }
+}
+
+@media (max-width: 420px) {
+  .context-usage__label { max-width: 5rem; }
+}
+
+/* 极窄输入区：压缩间距与内边距，避免控制行把页面撑出 1px 横向滚动。 */
+@media (max-width: 430px) {
+  .composer-actions { gap: 6px; }
+  #context-usage-toggle { padding: 4px 6px; }
 }
 .context-usage[data-level="high"] #context-usage-toggle {
   color: var(--text);
   border-color: var(--border);
 }
+.context-usage[data-level="high"] .context-usage__ring {
+  background: conic-gradient(var(--error-border) calc(var(--usage-percent, 0) * 1%), var(--border) 0);
+  opacity: 1;
+}
 .context-usage-details {
   position: absolute;
   z-index: 4;
   right: 0;
-  bottom: 100%;
+  bottom: calc(100% + 8px);
   width: min(360px, calc(100vw - 32px));
   max-height: min(360px, 55dvh);
   overflow: auto;
@@ -51,3 +103,23 @@
 .context-usage-details p { margin: 8px 0; white-space: pre-wrap; }
 .context-usage-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .context-usage-actions button { min-height: 44px; }
+
+/* 窄窗下详情相对 composer 定位，避免贴右侧时越出视口。 */
+@media (max-width: 560px) {
+  .context-usage {
+    /* 详情改为相对 composer 定位。 */
+    position: static;
+  }
+
+  /* 窄窗只保留环形指示，文案放在悬停提示与无障碍名称里。 */
+  .context-usage__label {
+    display: none;
+  }
+
+  .context-usage-details {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+  }
+}
