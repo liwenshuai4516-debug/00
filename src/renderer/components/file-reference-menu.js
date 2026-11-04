@@ -45,12 +45,21 @@ export function createFileReferenceMenu({ input, menu, onStatus = () => {} }) {
       button.id = `file-reference-option-${index}`;
       button.dataset.index = String(index);
 
+      const isDirectory = item.type === "dir";
+      button.dataset.type = isDirectory ? "dir" : "file";
+
       const name = document.createElement("span");
       name.className = "file-reference-name";
       name.textContent = item.name;
+      if (isDirectory) {
+        const badge = document.createElement("span");
+        badge.className = "file-reference-badge";
+        badge.textContent = "目录";
+        name.append(badge);
+      }
       const relative = document.createElement("span");
       relative.className = "file-reference-path";
-      relative.textContent = item.path;
+      relative.textContent = isDirectory ? `${item.path}/` : item.path;
       button.append(name, relative);
 
       button.addEventListener("mousedown", (event) => event.preventDefault());
@@ -75,7 +84,8 @@ export function createFileReferenceMenu({ input, menu, onStatus = () => {} }) {
     }
     const before = input.value.slice(0, start);
     const after = input.value.slice(caret);
-    const inserted = `@${item.path} `;
+    // 目录以斜杠结尾，方便模型和用户区分文件与目录。
+    const inserted = `@${item.path}${item.type === "dir" ? "/" : ""} `;
     input.value = `${before}${inserted}${after}`;
     const position = before.length + inserted.length;
     input.setSelectionRange(position, position);

@@ -49,3 +49,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.file-reference-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  font-size: 10px;
+}

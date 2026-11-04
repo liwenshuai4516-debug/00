@@ -30,14 +30,20 @@ test("文件引用搜索跳过工程目录、凭据与符号链接", async () =>
   try {
     const search = createWorkspaceSearch(async () => root);
     const result = await search("");
-    // 空查询按相对路径长度排序，根目录文件优先。
+    // 空查询按相对路径长度排序，目录与文件一起返回。
     assert.deepEqual(result.items.map((item) => item.path), [
+      "src",
       "a.md",
+      "docs",
       "docs/b.md",
       "docs/c.txt",
       "src/app.js",
       "app.test.js",
     ]);
+    assert.deepEqual(
+      result.items.filter((item) => item.type === "dir").map((item) => item.path),
+      ["src", "docs"],
+    );
     assert.equal(result.truncated, false);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -52,7 +58,8 @@ test("查询按路径过滤，名称匹配优先", async () => {
     const app = await search("app");
     assert.deepEqual(app.items.map((item) => item.path), ["src/app.js", "app.test.js"]);
     const docs = await search("docs");
-    assert.deepEqual(docs.items.map((item) => item.path), ["docs/b.md", "docs/c.txt"]);
+    assert.deepEqual(docs.items.map((item) => item.path), ["docs", "docs/b.md", "docs/c.txt"]);
+    assert.equal(docs.items[0].type, "dir");
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });

@@ -75,6 +75,7 @@ async function main() {
     const paths = await js("[...document.querySelectorAll('.file-reference-path')].map(node=>node.textContent)");
     assert.ok(paths.includes("docs/需求评审.md"), "应列出 Markdown 文档");
     assert.ok(paths.includes("src/app.js"), "应列出源码文件");
+    assert.ok(paths.includes("docs/"), "应列出目录并带斜杠");
     assert.ok(!paths.some((item) => item.includes(".env") || item.includes("node_modules")), "不应列出凭据与工程目录");
     console.log("通过：输入 @ 列出工作目录文件，跳过凭据与工程目录");
 
@@ -85,6 +86,14 @@ async function main() {
     await until("document.getElementById('file-reference-menu').hidden");
     assert.equal(await js("document.getElementById('message-input').value"), "@src/app.js ");
     console.log("通过：按名称过滤后回车插入相对路径并关闭菜单");
+
+    await type("@docs");
+    await until("document.querySelector('.file-reference-item[data-type=\"dir\"]')!==null");
+    assert.equal(await js("document.querySelector('.file-reference-item[data-type=\"dir\"] .file-reference-path').textContent"), "docs/");
+    await key("Enter");
+    await until("document.getElementById('file-reference-menu').hidden");
+    assert.equal(await js("document.getElementById('message-input').value"), "@docs/ ");
+    console.log("通过：目录带徽标展示并以斜杠结尾插入");
 
     await type("@");
     await until("!document.getElementById('file-reference-menu').hidden");

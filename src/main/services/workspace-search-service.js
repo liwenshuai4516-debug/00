@@ -1,7 +1,7 @@
 const { readdir, realpath } = require("node:fs/promises");
 const path = require("node:path");
 
-// 文件引用只搜索工作目录内的普通文件；限制扫描量，避免大仓库卡住输入。
+// 引用搜索覆盖工作目录内的普通文件与目录；限制扫描量，避免大仓库卡住输入。
 const MAX_SCAN = 2000;
 const MAX_RESULTS = 50;
 const MAX_DEPTH = 10;
@@ -59,14 +59,15 @@ function createWorkspaceSearch(getWorkspaceDir) {
         if (SKIP_NAMES.has(name) || DENIED_FILE.test(name) || entry.isSymbolicLink()) continue;
         const full = path.join(dir, name);
         scanned += 1;
+        const relative = path.relative(root, full).split(path.sep).join("/");
+        const matched = query === "" || relative.toLowerCase().includes(query);
         if (entry.isDirectory()) {
+          if (matched) matches.push({ path: relative, name, type: "dir" });
           if (depth + 1 <= MAX_DEPTH) queue.push({ dir: full, depth: depth + 1 });
           continue;
         }
-        if (!entry.isFile()) continue;
-        const relative = path.relative(root, full).split(path.sep).join("/");
-        if (query !== "" && !relative.toLowerCase().includes(query)) continue;
-        matches.push({ path: relative, name });
+        if (!entry.isFile() || !matched) continue;
+        matches.push({ path: relative, name, type: "file" });
       }
     }
 
