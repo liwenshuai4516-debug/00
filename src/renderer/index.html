@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="./styles/output-trace.css" />
   <link rel="stylesheet" href="./styles/todo-dock.css" />
   <link rel="stylesheet" href="./styles/send-queue.css" />
+  <link rel="stylesheet" href="./styles/file-reference.css" />
   <link rel="stylesheet" href="./styles/sidebar-shell.css" />
   <link rel="stylesheet" href="./styles/right-sidebar.css" />
   <link rel="stylesheet" href="./styles/right-sidebar-panel.css" />
@@ -267,6 +268,8 @@
             aria-describedby="message-input-hint composer-draft-status"></textarea>
           <!-- 命令菜单只列出名称、说明和来源；选中后填入输入框，由用户确认后发送。 -->
           <div id="slash-command-menu" class="slash-command-menu" role="listbox" aria-label="可用命令" hidden></div>
+          <!-- @ 文件引用：选中后插入工作目录相对路径的纯文本。 -->
+          <div id="file-reference-menu" class="file-reference-menu" role="listbox" aria-label="文件引用" hidden></div>
           <!-- 模板先进入输入框，由用户补充资料后自行发送。 -->
           <!-- 测试任务模板暂时用不到，隐藏入口；结构与逻辑保留，去掉 hidden 即可恢复。 -->
           <div class="task-template-row" hidden>

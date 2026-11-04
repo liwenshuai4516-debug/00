@@ -124,6 +124,13 @@ contextBridge.exposeInMainWorld("agent", {
     }
     return ipcRenderer.invoke("agent:read-preview-file", filePath);
   },
+  // 输入框 @ 文件引用：只提交搜索词，路径解析与边界在主进程完成。
+  searchWorkspaceFiles: (query) => {
+    if (query !== undefined && query !== null && typeof query !== "string") {
+      throw new Error("搜索词无效。");
+    }
+    return ipcRenderer.invoke("agent:search-workspace-files", query ?? "");
+  },
   // 侧栏浏览器的开发者工具窗口由主进程打开。
   openBrowserDevTools: () => ipcRenderer.invoke("agent:open-browser-devtools"),
   // 只允许 http(s)；实际打开动作与校验在主进程完成。

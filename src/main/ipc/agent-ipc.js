@@ -97,6 +97,13 @@ function registerAgentIpc(
   );
   ipcMain.handle("agent:list-workspace-directory", (_event, dirPath) => listWorkspaceDirectory(dirPath));
 
+  // 输入框 @ 文件引用：只返回工作目录内的相对路径，扫描量与结果数在主进程限制。
+  const { createWorkspaceSearch } = require("../services/workspace-search-service.js");
+  const searchWorkspaceFiles = createWorkspaceSearch(
+    async () => (await sessionService.getSessionInfo()).workspaceDir,
+  );
+  ipcMain.handle("agent:search-workspace-files", (_event, query) => searchWorkspaceFiles(query));
+
   // webview 是独立 webContents，页面里的 DevTools 入口由主进程按宿主窗口定位。
   const { openBrowserDevToolsForHost } = require("../services/guest-browser-policy.js");
   ipcMain.handle("agent:open-browser-devtools", (event) => openBrowserDevToolsForHost(event.sender));

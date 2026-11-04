@@ -7,6 +7,7 @@ import { createSessionInfoPanel, formatContextUsage } from "./components/session
 import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSendQueue } from "./components/send-queue.js";
+import { createFileReferenceMenu } from "./components/file-reference-menu.js";
 import { createTodoDock } from "./components/todo-dock.js";
 import { createSessionList } from "./components/session-list.js";
 import { createUnsentSendPanel } from "./components/unsent-send-panel.js";
@@ -138,6 +139,13 @@ const composerPersistence = createComposerPersistence(
     extensionUiPanel?.setSession(state.sessionId);
   },
 );
+
+// 输入框 @ 文件引用：只插入相对路径文本，搜索与边界在主进程完成。
+const fileReferenceMenu = createFileReferenceMenu({
+  input,
+  menu: document.getElementById("file-reference-menu"),
+  onStatus: (text) => setRequestStatus(text),
+});
 
 // 生成中的提交进入待发送队列；本轮结束后按顺序自动发送。
 sendQueueView = createSendQueue(document.getElementById("send-queue"), {
@@ -630,6 +638,7 @@ function setBusy(busy, generating = false) {
 // 用历史消息替换当前页面内容。
 function showHistory(history) {
   stopSequenceAt = 0;
+  fileReferenceMenu.close();
   proposalPanel.clear();
   // 待发送队列只属于当前会话，切换后不把旧内容发到新会话。
   sendQueueView?.clear();
@@ -1179,8 +1188,13 @@ function updateSlashMenu(event) {
 }
 
 input.addEventListener("input", updateSlashMenu);
+input.addEventListener("input", (event) => fileReferenceMenu.update(event));
+input.addEventListener("click", () => fileReferenceMenu.update());
 // 焦点离开输入框时收起菜单，避免浮层遮挡其他控件。
-input.addEventListener("blur", () => closeSlashMenu());
+input.addEventListener("blur", () => {
+  closeSlashMenu();
+  fileReferenceMenu.close();
+});
 
 // 解析内置命令；资源命令仍需交给 Pi 展开。
 function parseHostCommand(text) {
@@ -1294,6 +1308,9 @@ async function renameFromCommand(args) {
 
 // Enter 发送；Shift+Enter 保留 textarea 的默认换行行为。
 input.addEventListener("keydown", (event) => {
+  // @ 文件引用菜单打开时优先处理方向键、确认与关闭。
+  if (fileReferenceMenu.handleKeydown(event)) return;
+
   // 命令菜单打开时优先处理方向键、补全和关闭。
   if (!event.isComposing && !slashMenu.hidden) {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
