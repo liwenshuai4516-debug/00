@@ -1,6 +1,9 @@
 .env
 .env.*
 !.env.example
+# 本机项目配置包含账号密码，仅提交不含真实数据的示例。
+/config/projects.local.json
+/config/projects.local.json.*.tmp
 sessions/
 node_modules/
 .workbuddy/

@@ -201,6 +201,7 @@ const workspaceSelectionService = createWorkspaceSelectionService(
   chooseWorkspaceDirectory,
 );
 const projectStore = createProjectStore(
+  path.join(projectRoot, "config", "projects.local.json"),
   path.join(app.getPath("userData"), "projects.json"),
 );
 const projectService = createProjectService(

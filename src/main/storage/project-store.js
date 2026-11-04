@@ -7,19 +7,28 @@ const {
   mkdir,
   writeFile,
   rename,
+  link,
   rm,
 } = require("node:fs/promises");
 
 // 保存项目元信息和本机前置配置，不创建会话，也不修改工作目录中的文件。
-function createProjectStore(storagePath) {
+function createProjectStore(storagePath, legacyStoragePath) {
   async function readProjects() {
     let text;
+    let fromLegacy = false;
 
     try {
       text = await readFile(storagePath, "utf8");
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
-      return [];
+      if (!legacyStoragePath) return [];
+      try {
+        text = await readFile(legacyStoragePath, "utf8");
+        fromLegacy = true;
+      } catch (legacyError) {
+        if (legacyError.code !== "ENOENT") throw legacyError;
+        return [];
+      }
     }
 
     let data;
@@ -51,6 +60,16 @@ function createProjectStore(storagePath) {
       }
       ids.add(project.id);
       directories.add(project.workspaceDir);
+    }
+
+    if (fromLegacy) {
+      try {
+        // 校验完成后才迁移；排他发布，避免覆盖同时创建的本地配置。
+        await save(data.projects, true);
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+        return readProjects();
+      }
     }
 
     // 不逐个检查目录是否仍存在；暂时失效的项目也应保留在列表中。
@@ -103,7 +122,7 @@ function createProjectStore(storagePath) {
 
   // 后续通过 IPC 的互斥入口调用，避免多个添加操作相互覆盖。
     // 添加与重命名共用原子写入，调用方通过 IPC 串行执行。
-  async function save(projects) {
+  async function save(projects, createOnly = false) {
     await mkdir(path.dirname(storagePath), { recursive: true });
 
     const temporaryPath = `${storagePath}.${randomUUID()}.tmp`;
@@ -115,7 +134,11 @@ function createProjectStore(storagePath) {
         { encoding: "utf8", mode: 0o600, flag: "wx" },
       );
       // 同目录替换，读取者不会看到尚未写完的 JSON。
-      await rename(temporaryPath, storagePath);
+      if (createOnly) {
+        await link(temporaryPath, storagePath);
+      } else {
+        await rename(temporaryPath, storagePath);
+      }
     } finally {
       await rm(temporaryPath, { force: true });
     }
