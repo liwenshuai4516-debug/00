@@ -87,9 +87,12 @@ async function main() {
     assert.equal(reads.size, 0, "输入归属确认前不读取展示信息");
     draftGate.resolve();
     await until(() => ["models", "info", "unsent"].every(name => reads.has(name)), "新建后的读取应并行");
-    assert.equal(await disabled(), true);
+    // 新对话在输入绑定后即可使用；辅助读取仍在后台进行。
+    assert.equal(await disabled(), false, "辅助读取不阻塞新对话");
+    assert.equal(await js("document.getElementById('request-status').textContent"), "就绪");
     failInfo = true;
     for (const name of ["models", "info", "unsent"]) release(name);
+    await until(() => js("document.body.textContent.includes('信息读取失败')"), "信息失败展示");
     await idle();
     assert.equal(await js("document.getElementById('message-input').value"), "");
     assert.equal(drafts.get("first").text, "原会话输入");

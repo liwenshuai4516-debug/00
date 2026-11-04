@@ -1515,32 +1515,45 @@ form.addEventListener("submit", async (event) => {
 // 新建对话也供内置命令复用，不另建一套清空与刷新逻辑。
 async function startNewChat() {
   setBusy(true);
+  setRequestStatus("正在创建新对话…");
+  const started = performance.now();
 
   try {
     sessionInfoPanel.invalidate();
     const sessionId = await window.agent.newChat();
-    await bindComposer(sessionId);
+    const created = performance.now();
 
-    setRequestStatus("就绪");
-
+    // 主进程已确认新会话；先清空旧内容，再读取新会话的输入。
     messages.replaceChildren();
-
-    // 新建会话只需恢复一次跟随状态。
     messageScroll.followLatest();
-
-    proposalPanel.clear();
     todoDock.clear();
+    proposalPanel.clear();
     // 新会话尚未发送消息时，可能还没有历史列表项。
     sessionList.setActive("");
-  } catch (error) {
-    addMessage("error", error.message);
-  } finally {
-    // 三项读取互不依赖；输入仍在全部读取结束后恢复发送。
-    await Promise.all([
+
+    await bindComposer(sessionId);
+    setRequestStatus("就绪");
+
+    // 新会话已可用，不再等待模型目录、未发送列表等辅助读取。
+    setBusy(false);
+    input.focus();
+    void Promise.all([
       modelSelector.refresh(),
-      sessionInfoPanel.refresh(),
       refreshUnsentSessions(),
-    ]);
+    ]).catch(() => {
+      // 各组件自行展示读取失败；后台刷新不能重新锁住新对话。
+    });
+
+    const bound = performance.now();
+    if (created - started >= 500) {
+      console.info(`[新建对话] 主进程创建会话：${Math.round(created - started)} ms`);
+    }
+    if (bound - created >= 500) {
+      console.info(`[新建对话] 绑定新会话：${Math.round(bound - created)} ms`);
+    }
+  } catch (error) {
+    setRequestStatus("新建对话失败，请重试。");
+    addMessage("error", error.message);
     setBusy(false);
     input.focus();
   }

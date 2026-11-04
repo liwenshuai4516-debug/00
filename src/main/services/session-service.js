@@ -810,11 +810,22 @@ function createSessionService(
   }
 
   async function newChat() {
+    const started = performance.now();
     const previousSession = sessionPromise ? await sessionPromise : undefined;
 
     const nextSession = await createSession();
+    const created = performance.now();
     sessionPromise = Promise.resolve(observeSession(nextSession));
     await closePiSession(previousSession, "new", nextSession.sessionFile);
+    const closed = performance.now();
+
+    // 只记录慢步骤和耗时，不输出目录、配置或会话内容。
+    if (created - started >= 500) {
+      console.info(`[新建对话] 创建 Pi 会话：${Math.round(created - started)} ms`);
+    }
+    if (closed - created >= 500) {
+      console.info(`[新建对话] 关闭旧会话：${Math.round(closed - created)} ms`);
+    }
 
     // 返回实际创建的编号，供页面关联该会话的输入草稿。
     return nextSession.sessionId;
