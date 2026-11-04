@@ -25,6 +25,21 @@ export function createMessageScroll(container, latestButton) {
     update();
   }
 
+  // 切换会话后恢复阅读位置；位置越界时夹在有效范围内。
+  function restore(position = {}) {
+    following = position.following !== false;
+    const max = Math.max(0, container.scrollHeight - container.clientHeight);
+    const top = Number(position.top);
+    container.scrollTop = following || !Number.isFinite(top)
+      ? max
+      : Math.min(Math.max(0, top), max);
+    latestButton.hidden = following;
+  }
+
+  function isFollowing() {
+    return following;
+  }
+
   container.addEventListener("scroll", () => {
     const gap =
       container.scrollHeight - container.clientHeight - container.scrollTop;
@@ -41,5 +56,5 @@ export function createMessageScroll(container, latestButton) {
     container.focus({ preventScroll: true });
   });
 
-  return { update, followLatest };
+  return { update, followLatest, restore, isFollowing };
 }

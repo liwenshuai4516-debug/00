@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="./styles/todo-dock.css" />
   <link rel="stylesheet" href="./styles/send-queue.css" />
   <link rel="stylesheet" href="./styles/file-reference.css" />
+  <link rel="stylesheet" href="./styles/turn-rail.css" />
   <link rel="stylesheet" href="./styles/sidebar-shell.css" />
   <link rel="stylesheet" href="./styles/right-sidebar.css" />
   <link rel="stylesheet" href="./styles/right-sidebar-panel.css" />
@@ -246,6 +247,7 @@
       <section class="thread-area" aria-label="当前对话">
         <div id="messages" role="log" aria-label="聊天消息" aria-live="polite" tabindex="0"></div>
         <button id="latest-message-button" type="button" aria-controls="messages" hidden>回到最新消息 ↓</button>
+        <nav id="turn-rail" class="turn-rail" aria-label="轮次导航" hidden></nav>
       </section>
 
       <details id="proposal-review-panel" class="review-panel">

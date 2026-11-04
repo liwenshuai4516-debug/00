@@ -8,6 +8,7 @@ import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSendQueue } from "./components/send-queue.js";
 import { createFileReferenceMenu } from "./components/file-reference-menu.js";
+import { createTurnRail } from "./components/turn-rail.js";
 import { createTodoDock } from "./components/todo-dock.js";
 import { createSessionList } from "./components/session-list.js";
 import { createUnsentSendPanel } from "./components/unsent-send-panel.js";
@@ -514,7 +515,7 @@ async function openUnsentSession(sessionId) {
     const result = await window.agent.restoreUnsentSession(sessionId);
     restored = true;
     // 主进程已确认切换，先更新消息，再绑定新编号读取完整输入与快照。
-    showHistory(result.history);
+    showHistory(result.history, result.sessionId);
     sessionList.setActive(result.sessionId);
     sessionName.value = "";
     await bindComposer(result.sessionId);
@@ -560,6 +561,20 @@ const messageScroll = createMessageScroll(
   messages,
   document.getElementById("latest-message-button"),
 );
+const turnRail = createTurnRail(messages, document.getElementById("turn-rail"));
+
+// 阅读位置按会话保存：切走再回来时恢复，不强制回到最新。
+const readingPositions = new Map();
+let viewSessionId = "";
+let restoringScroll = false;
+
+messages.addEventListener("scroll", () => {
+  if (restoringScroll || viewSessionId === "") return;
+  readingPositions.set(viewSessionId, {
+    top: messages.scrollTop,
+    following: messageScroll.isFollowing(),
+  });
+}, { passive: true });
 
 
 // Markdown 里的本地路径链接不跳转页面，交给右侧栏预览。
@@ -684,6 +699,7 @@ function addMessage(role, text) {
     });
   }
 
+  if (role === "user") turnRail.refresh();
   messageScroll.update();
   return body;
 }
@@ -718,7 +734,7 @@ function setBusy(busy, generating = false) {
 }
 
 // 用历史消息替换当前页面内容。
-function showHistory(history) {
+function showHistory(history, sessionId = composerState.sessionId) {
   stopSequenceAt = 0;
   historyIndex = -1;
   historyDraft = "";
@@ -727,15 +743,23 @@ function showHistory(history) {
   // 待发送队列只属于当前会话，切换后不把旧内容发到新会话。
   sendQueueView?.clear();
   messages.replaceChildren();
+  viewSessionId = typeof sessionId === "string" ? sessionId : "";
 
-  // 切换会话后恢复跟随最新消息。
-  messageScroll.followLatest();
+  const saved = readingPositions.get(viewSessionId) ?? null;
+  restoringScroll = true;
+  messageScroll.restore(saved ?? { following: true });
 
   appendOutputHistory(messages, history, () => messageScroll.update());
+  messageScroll.restore(saved ?? { following: true });
   todoDock.showHistory(history);
+  turnRail.refresh();
   // 右侧栏据此关闭上一个工作目录的文件预览。
   document.dispatchEvent(new CustomEvent("session-changed"));
-  messageScroll.update();
+  // 历史渲染后布局才稳定，下一帧再校正一次阅读位置。
+  requestAnimationFrame(() => {
+    messageScroll.restore(saved ?? { following: true });
+    restoringScroll = false;
+  });
 }
 // 获取历史列表，并标记当前正在使用的会话。
 // 主进程保存草稿数据；切换会话后由页面重新建立操作入口。

@@ -1,0 +1,51 @@
+/* 轮次导航轨：贴在消息区右侧，不参与布局占用。 */
+.turn-rail {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  transform: translateY(-50%);
+}
+
+.turn-rail[hidden] {
+  display: none;
+}
+
+.turn-rail__mark {
+  width: 14px;
+  height: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text) 32%, transparent);
+  cursor: pointer;
+  transition: width 0.12s ease, background 0.12s ease;
+}
+
+.turn-rail__mark:hover {
+  background: color-mix(in srgb, var(--text) 65%, transparent);
+}
+
+.turn-rail__mark[aria-current="true"] {
+  width: 18px;
+  background: var(--text);
+}
+
+.turn-rail__mark:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 窄窗优先保证正文宽度，隐藏导航轨。 */
+@media (max-width: 640px) {
+  .turn-rail {
+    display: none;
+  }
+}
