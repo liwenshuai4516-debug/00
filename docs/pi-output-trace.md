@@ -107,3 +107,17 @@ node_modules/.bin/electron tests/ui/output-trace.check.cjs
 自动页面检查已增加固定时钟验收：等待状态、思考/响应/工具各阶段、SDK 时间优先、重试不提前折叠、完成冻结、缺失时间不伪造、键盘焦点保护、异常未确认优先及计时器释放。另保存 `process-live.png` 和 `result-collapsed.png` 供检查；截图与模拟结果不代替真实模型验收。
 
 手动验收：重启应用，在有工具需求的对话中观察自动展开的过程、状态与用时；使用支持 thinking 的模型核对思考内容，发送 `/skill:qa-requirement-review` 核对显式展开，再用自然语言触发技能并观察 read 标记；结束后过程应自动收起且只突出最后结果，可以重新展开查看中间说明。检查停止和重开后的历史。模型不返回 thinking 或未读取技能时，页面应如实保持缺省。
+
+
+## 代码块头栏吸顶
+
+长代码块滚动时，语言标签与复制按钮组成的头栏吸附在消息区顶部，离开该代码块范围后随内容滚走；侧栏文件预览不做吸顶。
+
+![代码块头栏吸顶](images/code-block-sticky.png)
+
+实现要点：
+
+- 头栏 `position: sticky; top: calc(-1 * var(--messages-pad-top))`，按消息区顶部内边距反向偏移，避免吸顶后上方留出一条内容穿过的缝隙。
+- 代码块容器由 `overflow: hidden` 改为 `overflow: clip`：clip 不建立滚动容器，sticky 才能相对消息区生效，同时保留圆角裁剪。
+- 头栏使用不透明背景与 `z-index`，滚动内容不会透出；吸顶规则只作用于 `#messages` 内，侧栏 Markdown 预览不受影响。
+- 页面检查覆盖：长代码块滚动后头栏位置与消息区顶边的偏差不超过 2px、背景不透明、`position` 为 `sticky`。

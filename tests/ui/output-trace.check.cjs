@@ -169,6 +169,50 @@ async function main() {
     assert.equal(await js(`document.querySelectorAll('.output-run .code-block').length`), 1);
     assert.equal(await js(`document.querySelector('.code-block-language').textContent`), "js");
     assert.equal(await js(`document.querySelectorAll('.output-run [data-role="assistant"]').length`), 2);
+
+    // 长代码块滚动时头栏吸附在消息区顶部。
+    await js(`(() => {
+      const host = document.createElement('div');
+      host.className = 'markdown-body';
+      host.id = 'sticky-code-fixture';
+      const figure = document.createElement('figure');
+      figure.className = 'code-block';
+      const header = document.createElement('header');
+      header.className = 'code-block-header';
+      const language = document.createElement('span');
+      language.className = 'code-block-language';
+      language.textContent = 'text';
+      header.append(language);
+      const pre = document.createElement('pre');
+      pre.textContent = Array.from({ length: 120 }, (_, index) => 'line ' + index).join(String.fromCharCode(10));
+      figure.append(header, pre);
+      host.append(figure);
+      document.getElementById('messages').append(host);
+    })()`);
+    const sticky = await js(`(() => {
+      const messages = document.getElementById('messages');
+      const fixture = document.getElementById('sticky-code-fixture');
+      const header = fixture.querySelector('.code-block-header');
+      const top = fixture.getBoundingClientRect().top - messages.getBoundingClientRect().top + messages.scrollTop;
+      messages.scrollTop = top + 240;
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const gap = header.getBoundingClientRect().top - messages.getBoundingClientRect().top;
+        resolve(JSON.stringify({
+          position: getComputedStyle(header).position,
+          gap: Math.round(gap),
+          opaque: getComputedStyle(header).backgroundColor !== 'rgba(0, 0, 0, 0)',
+        }));
+      })));
+    })()`);
+    const stickyState = JSON.parse(sticky);
+    assert.equal(stickyState.position, "sticky");
+    assert.ok(Math.abs(stickyState.gap) <= 2, `头栏未吸顶：${stickyState.gap}`);
+    assert.equal(stickyState.opaque, true);
+    if (process.env.STICKY_SCREENSHOT_PATH) {
+      await js("new Promise(r=>setTimeout(r,200))");
+      await fs.writeFile(process.env.STICKY_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+    await js(`document.getElementById('sticky-code-fixture').remove()`);
     // 实时流程没有 todo_write，任务栏保持隐藏。
     assert.equal(await js(`document.getElementById('todo-dock').hidden`), true);
     assert.doesNotMatch(await bodyText(), /旧通道重复结果/);

@@ -310,7 +310,9 @@ select option {
 
 /* 消息正文与输入框保持同一中心轴。 */
 #messages {
-  padding: 24px 32px 48px;
+  /* 代码块头栏按这段内边距反向偏移，滚动时贴住消息区顶边。 */
+  --messages-pad-top: 24px;
+  padding: var(--messages-pad-top) 32px 48px;
 }
 .chat-message {
   width: min(100%, var(--content-width));
@@ -777,6 +779,7 @@ select option {
     height: 28px;
   }
   #messages {
+    --messages-pad-top: 18px;
     padding: 18px 16px 40px;
   }
   .composer-area {

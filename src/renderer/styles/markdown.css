@@ -75,7 +75,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  overflow: hidden;
+  /* clip 不建立滚动容器，头栏才能相对消息区吸顶。 */
+  overflow: clip;
 }
 
 .markdown-body .code-block-header {
@@ -85,8 +86,15 @@
   gap: 8px;
   padding: 5px 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
   color: var(--muted);
   font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#messages .markdown-body .code-block-header {
+  position: sticky;
+  top: calc(-1 * var(--messages-pad-top, 0px));
+  z-index: 2;
 }
 
 .markdown-body .code-block-language {
