@@ -44,12 +44,12 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir。caseFileName 是官方写脚本工具要求的工作目录相对路径，caseFile 为绝对路径。
 工具会继承本次项目登录状态，未判断登录、工作区切换或地址冲突会阻止准备。
 
-仅用实际发现的官方 desktop-playwright-test 工具：
-1. generator_setup_page，seedFile 使用返回值，project=chromium，plan 写明目标、真实操作范围与有来源的预期。
-2. 先 snapshot 再定位，通过 browser_* 实际执行；按当前 schema 提供 target/intent，DOM 变化后重新读取快照。先确认身份、页面和前置数据，再执行测试步骤。
-3. generator_read_log，宿主保存真实官方日志。不把未操作步骤写成录制事实。
-4. generator_write_test，fileName=caseFileName，依据真实日志保存 CommonJS 脚本。
-5. 成功或失败均尝试 browser_close，关闭失败如实报告。
+仅用当前会话实际登记的官方 desktop-playwright-test 工具；未出现时按文末表停止，不自建脚本或改用其他工具：
+1. generator_setup_page：plan 写目标、真实操作范围与有来源的预期；project=chromium；seedFile=返回值。
+2. browser_snapshot 先取 ref；再用 browser_click（element、target=ref、intent）、browser_type（text）、browser_fill_form（fields，含 name/type/value）、browser_press_key（key）、browser_select_option（values）、browser_wait_for（text/time）执行。DOM 变化或 ref 失效后重新 snapshot；每步 intent 写实际操作。
+3. generator_read_log（无参数），宿主保存真实官方日志。不把未操作步骤写成录制事实。
+4. generator_write_test：fileName=caseFileName，code 为 CommonJS 脚本，依据真实日志生成。
+5. 成功或失败均调用 browser_close，关闭失败如实报告。
 
 ## 5. 整理脚本并持久化
 
