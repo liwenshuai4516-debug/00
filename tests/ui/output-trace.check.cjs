@@ -278,18 +278,26 @@ async function main() {
       document.body.append(dockHost);
       const { createTodoDock } = await import(new URL('./components/todo-dock.js', location.href).href);
       const dock = createTodoDock(dockHost);
-      dock.accept({type:'tool_execution_update',result:{todos:[{content:'未完成',status:'pending'}]}});
+      dock.accept({type:'tool_execution_update',toolName:'todo_write',result:{todos:[{content:'未完成',status:'pending'}]}});
       check(dockHost.hidden, '非结束事件不更新任务栏');
-      dock.accept({type:'tool_execution_end',result:{todos:[{content:'进行中',status:'in_progress'}]}});
+      dock.accept({type:'tool_execution_end',toolName:'read',result:{todos:[{content:'伪造任务',status:'pending'}]}});
+      check(dockHost.hidden, '非 todo_write 结果不更新任务栏');
+      dock.accept({type:'tool_execution_end',toolName:'todo_write',result:{todos:[{content:'进行中',status:'in_progress'}]}});
       check(!dockHost.hidden, '工具结束显示任务栏');
       check(dockHost.querySelector('.todo-dock-progress').textContent==='1 进行中', '任务进度按状态汇总');
-      dock.showHistory([{output:{todos:[{content:'完成',status:'completed'},{content:'待办',status:'pending'}]}}]);
+      dock.accept({type:'tool_execution_end',toolName:'read',result:{todos:[{content:'覆盖任务',status:'completed'}]}});
+      check(dockHost.querySelector('.todo-dock-progress').textContent==='1 进行中', '其他工具不能覆盖任务栏');
+      dock.showHistory([{role:'user'},{output:{toolName:'todo_write',todos:[{content:'完成',status:'completed'},{content:'待办',status:'pending'}]}}]);
       check(dockHost.querySelectorAll('.todo-dock-item').length===2, '历史重建任务项');
+      dock.showHistory([{output:{toolName:'todo_write',todos:[{content:'旧轮任务',status:'pending'}]}},{role:'user'},{role:'assistant'}]);
+      check(dockHost.hidden, '新请求的历史不恢复上一轮清单');
+      dock.accept({type:'agent_start'});
+      check(dockHost.hidden, '新请求开始清空任务栏');
       dock.clear();
       check(dockHost.hidden, '清空隐藏任务栏');
       // 展开状态按会话记忆：切走再回来保持展开，新会话保持折叠。
       dock.setSession("s1");
-      dock.accept({type:'tool_execution_end',result:{todos:[{content:'记忆任务',status:'in_progress'}]}});
+      dock.accept({type:'tool_execution_end',toolName:'todo_write',result:{todos:[{content:'记忆任务',status:'in_progress'}]}});
       check(dockHost.querySelector('.todo-dock-list').hidden===true, '新会话默认折叠');
       dockHost.querySelector('.todo-dock-header').click();
       check(dockHost.querySelector('.todo-dock-list').hidden===false, '点击展开任务栏');
@@ -297,6 +305,7 @@ async function main() {
       check(dockHost.querySelector('.todo-dock-list').hidden===true, '切换会话恢复折叠');
       dock.setSession("s1");
       check(dockHost.querySelector('.todo-dock-list').hidden===false, '回到原会话恢复展开');
+      check(dockHost.querySelectorAll('.todo-dock-item').length===0, '切换会话不保留上一会话清单');
       dockHost.remove();
       const linkTrace = createOutputTrace(host);
       linkTrace.accept({type:'message_start',message:msg([])});

@@ -1,16 +1,18 @@
 // 任务清单来自 todo_write 的工具结果；页面只负责展示，不另存一份状态。
+// 清单只代表当前这次用户请求：新请求开始或切换会话时先清空，历史也只恢复最后一段请求。
 const STATUS_LABELS = {
   pending: "待处理",
   in_progress: "进行中",
   completed: "已完成",
 };
 
-// 按时间顺序取最后一条带 todos 的工具结果；历史里没有则清单为空。
+// 从最新一段用户消息之后取最后一条 todo_write；上一轮的清单不延续到新请求。
 export function todosFromHistory(history) {
   let latest = [];
   for (const item of history ?? []) {
-    const todos = item?.output?.todos;
-    if (Array.isArray(todos)) latest = todos;
+    if (item?.role === "user") latest = [];
+    const output = item?.output;
+    if (output?.toolName === "todo_write" && Array.isArray(output.todos)) latest = output.todos;
   }
   return latest;
 }
@@ -99,19 +101,21 @@ export function createTodoDock(root) {
 
   return {
     // 切换会话时恢复该会话上次的展开状态，未记录过则保持折叠。
+    // 先清空上一个会话的清单，等历史按当前请求重建，避免短暂串台。
     setSession(next) {
       const id = typeof next === "string" ? next : "";
       if (id === sessionId) return;
       sessionId = id;
       collapsed = !(expandedBySession.get(id) ?? false);
-      syncOpen();
+      setTodos([]);
     },
     setTodos,
     clear: () => setTodos([]),
     showHistory: (history) => setTodos(todosFromHistory(history)),
-    // 实时事件：只接受工具结束结果里的清单，其他事件不改变面板。
+    // 实时事件：每次用户请求开始时清空，只接受 todo_write 结束结果里的清单。
     accept: (event) => {
-      if (event?.type !== "tool_execution_end") return;
+      if (event?.type === "agent_start") { setTodos([]); return; }
+      if (event?.type !== "tool_execution_end" || event.toolName !== "todo_write") return;
       const next = event.result?.todos;
       if (Array.isArray(next)) setTodos(next);
     },

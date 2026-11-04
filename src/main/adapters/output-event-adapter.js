@@ -18,13 +18,13 @@ function contentBlocks(content) {
 }
 
 // 工具结果里只取渲染卡片需要的标量字段，避免把 details/structuredContent 整体送到页面。
-function toolResultExtras(details, structured) {
+function toolResultExtras(details, structured, toolName) {
   const extras = {};
   if (details && typeof details === "object") {
     if (typeof details.diff === "string") extras.diff = details.diff;
     if (typeof details.fullOutputPath === "string") extras.fullOutputPath = details.fullOutputPath;
-    // 任务清单只保留可识别的条目标题与状态，页面不接收其他 details 内容。
-    if (Array.isArray(details.todos)) {
+    // 任务清单只来自 todo_write，避免扩展或普通工具伪造同名 details。
+    if (toolName === "todo_write" && Array.isArray(details.todos)) {
       extras.todos = details.todos
         .filter(todo => todo && typeof todo.content === "string"
           && ["pending", "in_progress", "completed"].includes(todo.status))
@@ -51,7 +51,7 @@ function outputMessage(message) {
     role: "toolResult", toolCallId: message.toolCallId, toolName: message.toolName,
     content: contentBlocks(message.content), isError: message.isError,
     // 历史消息只保存 details；bash 的退出码在旧记录里只能从结果文本读取。
-    ...toolResultExtras(message.details, undefined),
+    ...toolResultExtras(message.details, undefined, message.toolName),
     durationMs: message.durationMs, nestedCalls: message.nestedCalls && {
       complete: message.nestedCalls.complete,
       calls: message.nestedCalls.calls.map(call => ({
@@ -148,7 +148,7 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
       };
       if (result) projected.result = {
         content: contentBlocks(result.content),
-        ...toolResultExtras(result.details, result.structuredContent),
+        ...toolResultExtras(result.details, result.structuredContent, event.toolName),
       };
       if (event.type === "tool_execution_end") {
         projected.isError = event.isError;

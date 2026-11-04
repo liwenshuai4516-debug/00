@@ -7,9 +7,10 @@ async function loadProjection() {
   return module.todosFromHistory;
 }
 
-const withTodos = (todos) => ({ output: { todos } });
+const withTodos = (todos) => ({ output: { toolName: "todo_write", todos } });
+const withToolTodos = (toolName, todos) => ({ output: { toolName, todos } });
 
-test("历史投影取最后一条 todo_write 结果", async () => {
+test("历史投影取当前请求里最后一条 todo_write 结果", async () => {
   const todosFromHistory = await loadProjection();
   const history = [
     { role: "user", text: "开始" },
@@ -24,6 +25,33 @@ test("历史投影取最后一条 todo_write 结果", async () => {
   assert.deepEqual(todosFromHistory(history), [
     { content: "检查输出", status: "completed" },
     { content: "整理结论", status: "pending" },
+  ]);
+});
+
+test("新的用户请求会清空上一轮清单，本轮未写任务时为空", async () => {
+  const todosFromHistory = await loadProjection();
+  const history = [
+    { role: "user", text: "第一轮" },
+    withTodos([{ content: "上一轮任务", status: "in_progress" }]),
+    { role: "assistant", text: "第一轮完成" },
+    { role: "user", text: "第二轮" },
+    { role: "assistant", text: "第二轮还没写任务" },
+  ];
+
+  assert.deepEqual(todosFromHistory(history), []);
+});
+
+test("只接受 todo_write 的清单，其他工具的同名字段不覆盖", async () => {
+  const todosFromHistory = await loadProjection();
+  const history = [
+    { role: "user", text: "开始" },
+    withToolTodos("read", [{ content: "伪造任务", status: "pending" }]),
+    withTodos([{ content: "真实任务", status: "in_progress" }]),
+    withToolTodos("bash", [{ content: "另一个伪造任务", status: "completed" }]),
+  ];
+
+  assert.deepEqual(todosFromHistory(history), [
+    { content: "真实任务", status: "in_progress" },
   ]);
 });
 
