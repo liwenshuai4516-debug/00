@@ -17,6 +17,7 @@ const drafts = new Map();
 const sent = [];
 let busy = false;
 let gate;
+let stopCalls = 0;
 const draft = () => drafts.get(sessionId) ?? { sessionId, text: "", revision: 0 };
 const assistant = (content) => ({
   role: "assistant", content, provider: "mock", model: "offline", stopReason: "stop",
@@ -57,7 +58,7 @@ const chat = {
     emit({ type: "agent_start" });
     emit({ type: "turn_start" });
     emit({ type: "message_start", message: assistant([]) });
-    if (sent.length === 1) {
+    if (sent.length === 1 || sent.length === 3) {
       gate = Promise.withResolvers();
       await gate.promise;
     } else {
@@ -71,7 +72,10 @@ const chat = {
     busy = false;
     return { outcome: "completed", draft: consumed };
   },
-  stop: async () => gate?.resolve(),
+  stop: async () => {
+    stopCalls += 1;
+    gate?.resolve();
+  },
 };
 registerAgentIpc(ipcMain, session, chat, {}, {}, {}, {}, { listProjects: async () => [] }, composer, {});
 
@@ -133,6 +137,22 @@ async function main() {
     assert.equal(await js("document.querySelectorAll('.output-run').length"), 2);
     assert.match(await js("document.getElementById('messages').textContent"), /回复 2/);
     console.log("通过：本轮结束后按顺序自动发送队列内容");
+
+    // 连按两次 Esc 停止生成；单次 Esc 和组词中的 Esc 不计入。
+    await type("停止测试");
+    await until("!document.getElementById('send-button').disabled");
+    await submit();
+    await until("!document.getElementById('stop-button').disabled");
+    await js("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    assert.equal(stopCalls, 0, "单次 Esc 不应停止");
+    await js("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,isComposing:true}))");
+    await js("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await js("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    for (let i = 0; i < 200 && stopCalls === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(stopCalls, 1, "连续两次 Esc 应调用一次停止");
+    await idle();
+    console.log("通过：连按两次 Esc 停止生成，单次与组词中的 Esc 不触发");
 
     assert.deepEqual(errors, []);
   } finally {

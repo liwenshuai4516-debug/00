@@ -629,6 +629,7 @@ function setBusy(busy, generating = false) {
 
 // 用历史消息替换当前页面内容。
 function showHistory(history) {
+  stopSequenceAt = 0;
   proposalPanel.clear();
   // 待发送队列只属于当前会话，切换后不把旧内容发到新会话。
   sendQueueView?.clear();
@@ -1696,7 +1697,9 @@ async function openHistorySession(sessionId) {
   }
 }
 
-stopButton.addEventListener("click", async () => {
+// 停止按钮与连按两次 Esc 共用同一条取消路径。
+async function stopGenerating() {
+  if (stopButton.disabled) return;
   stopButton.disabled = true;
   setRequestStatus("正在停止，请稍候……");
 
@@ -1705,6 +1708,34 @@ stopButton.addEventListener("click", async () => {
   } catch (error) {
     addMessage("error", error.message);
   }
+}
+
+stopButton.addEventListener("click", () => void stopGenerating());
+
+// 连续两次 Esc 停止生成；输入法组词、重复按键、菜单和对话框打开时不计入。
+const STOP_SEQUENCE_MS = 500;
+let stopSequenceAt = 0;
+
+function escapeCanStop() {
+  if (!pageGenerating || stopButton.disabled || closing) return false;
+  if (!slashMenu.hidden) return false;
+  if (document.querySelector("dialog[open]")) return false;
+  return true;
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.repeat || event.isComposing || event.defaultPrevented) return;
+  if (!escapeCanStop()) {
+    stopSequenceAt = 0;
+    return;
+  }
+  const now = performance.now();
+  if (stopSequenceAt !== 0 && now - stopSequenceAt <= STOP_SEQUENCE_MS) {
+    stopSequenceAt = 0;
+    void stopGenerating();
+    return;
+  }
+  stopSequenceAt = now;
 });
 renameButton.addEventListener("click", async () => {
   const name = sessionName.value.trim();
