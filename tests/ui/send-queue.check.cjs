@@ -154,6 +154,29 @@ async function main() {
     await idle();
     console.log("通过：连按两次 Esc 停止生成，单次与组词中的 Esc 不触发");
 
+    // 输入历史：空输入框 ↑ 调出已发送原文，↓ 回到空白；有文字时不接管。
+    await js("document.getElementById('message-input').focus()");
+    const press = (key) => js(`document.getElementById('message-input').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(key)},bubbles:true,cancelable:true}))`);
+    const value = () => js("document.getElementById('message-input').value");
+    await press("ArrowUp");
+    assert.equal(await value(), "停止测试");
+    await press("ArrowUp");
+    assert.equal(await value(), "第二条");
+    await press("ArrowUp");
+    assert.equal(await value(), "第一条");
+    await press("ArrowUp");
+    assert.equal(await value(), "第一条", "最旧一条处保持");
+    await press("ArrowDown");
+    assert.equal(await value(), "第二条");
+    await press("ArrowDown");
+    assert.equal(await value(), "停止测试");
+    await press("ArrowDown");
+    assert.equal(await value(), "", "越过最新一条恢复原草稿");
+    await type("abc");
+    await press("ArrowUp");
+    assert.equal(await value(), "abc", "有文字时不接管方向键");
+    console.log("通过：空输入框↑调出历史、↓恢复草稿，有文字时不接管");
+
     assert.deepEqual(errors, []);
   } finally {
     win.destroy();

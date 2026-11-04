@@ -147,6 +147,67 @@ const fileReferenceMenu = createFileReferenceMenu({
   onStatus: (text) => setRequestStatus(text),
 });
 
+// 输入历史：每个会话保留最近发送的原文；↑/↓ 只在空输入框或翻阅过程中接管。
+const promptHistory = new Map();
+const HISTORY_LIMIT = 50;
+let historyIndex = -1;
+let historyDraft = "";
+let applyingHistory = false;
+
+function currentHistory() {
+  return promptHistory.get(composerState.sessionId) ?? [];
+}
+
+function recordPromptHistory(text) {
+  const value = typeof text === "string" ? text.trim() : "";
+  if (value === "") return;
+  const list = promptHistory.get(composerState.sessionId) ?? [];
+  if (list.at(-1) === value) return;
+  list.push(value);
+  if (list.length > HISTORY_LIMIT) list.shift();
+  promptHistory.set(composerState.sessionId, list);
+  historyIndex = -1;
+  historyDraft = "";
+}
+
+function applyHistoryText(text) {
+  applyingHistory = true;
+  input.value = text;
+  const end = text.length;
+  input.setSelectionRange(end, end);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  applyingHistory = false;
+}
+
+function handleHistoryKey(event) {
+  const list = currentHistory();
+  if (list.length === 0) return false;
+  const navigating = historyIndex >= 0;
+
+  if (event.key === "ArrowUp") {
+    if (!navigating) {
+      // 只有空输入框才进入历史，避免抢走多行文本的光标移动。
+      if (input.value !== "") return false;
+      historyDraft = input.value;
+      historyIndex = list.length - 1;
+    } else if (historyIndex > 0) {
+      historyIndex -= 1;
+    }
+    applyHistoryText(list[historyIndex]);
+    return true;
+  }
+
+  if (!navigating) return false;
+  if (historyIndex < list.length - 1) {
+    historyIndex += 1;
+    applyHistoryText(list[historyIndex]);
+    return true;
+  }
+  historyIndex = -1;
+  applyHistoryText(historyDraft);
+  return true;
+}
+
 // 生成中的提交进入待发送队列；本轮结束后按顺序自动发送。
 sendQueueView = createSendQueue(document.getElementById("send-queue"), {
   onEdit(text) {
@@ -638,6 +699,8 @@ function setBusy(busy, generating = false) {
 // 用历史消息替换当前页面内容。
 function showHistory(history) {
   stopSequenceAt = 0;
+  historyIndex = -1;
+  historyDraft = "";
   fileReferenceMenu.close();
   proposalPanel.clear();
   // 待发送队列只属于当前会话，切换后不把旧内容发到新会话。
@@ -1190,6 +1253,12 @@ function updateSlashMenu(event) {
 input.addEventListener("input", updateSlashMenu);
 input.addEventListener("input", (event) => fileReferenceMenu.update(event));
 input.addEventListener("click", () => fileReferenceMenu.update());
+// 手动编辑退出历史翻阅；程序写入历史时不重置。
+input.addEventListener("input", () => {
+  if (applyingHistory) return;
+  historyIndex = -1;
+  historyDraft = "";
+});
 // 焦点离开输入框时收起菜单，避免浮层遮挡其他控件。
 input.addEventListener("blur", () => {
   closeSlashMenu();
@@ -1311,6 +1380,16 @@ input.addEventListener("keydown", (event) => {
   // @ 文件引用菜单打开时优先处理方向键、确认与关闭。
   if (fileReferenceMenu.handleKeydown(event)) return;
 
+  // 空输入框里的 ↑/↓ 翻阅已发送原文；命令菜单打开时不接管。
+  if (
+    slashMenu.hidden &&
+    (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+    handleHistoryKey(event)
+  ) {
+    event.preventDefault();
+    return;
+  }
+
   // 命令菜单打开时优先处理方向键、补全和关闭。
   if (!event.isComposing && !slashMenu.hidden) {
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -1372,6 +1451,7 @@ form.addEventListener("submit", async (event) => {
     if (!composerState.loaded || composerState.error || archiveSyncPending) {
       return;
     }
+    // 排队项在真正发送时由正常链路记录历史，避免把未发送的内容算进去。
     sendQueueView.add(submitted);
     input.value = "";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1387,6 +1467,8 @@ form.addEventListener("submit", async (event) => {
     await runHostCommand(hostCommand);
     return;
   }
+
+  recordPromptHistory(submitted);
 
   setBusy(true);
   let ticket;
