@@ -81,7 +81,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 
 - 固定官方 `earendil-works/pi` 的 `v1.4.0`：[SDK](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/sdk.md)、[配置](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/configuration.md)、[Skills](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/skills.md)、[Extensions](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/extensions.md)、[Packages](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/packages.md)、[Security](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/security.md)。签名以安装包公开导出和 `.d.ts` 为准，不深层导入未公开内部函数。
 - 通过 `SettingsManager.create(cwd, getAgentDir(), { projectTrusted: false })` 与 `DefaultResourceLoader` 使用官方配置、资源发现、过滤、冲突和诊断，不再自行采集技能路径。资源目录为 `getAgentDir()`，默认 `~/.pi/agent`，可用 `PI_CODING_AGENT_DIR` 覆盖。原 `<userData>/pi-resources` 不再作为运行入口；既有文件保留，未自动迁移或删除。
-- 不传 `tools`/`customTools` 覆盖原生登记，默认 read/bash/edit/write；尊重 `defaultTools`、扩展工具及其原生参数。Pi 1.4.0 的 edit 使用 `edits[]`。旧文件草稿记录和待保存接口保留兼容，新 Agent 文件操作按实际工具结果直接落盘。
+- 不传 `tools`/`excludeTools` 覆盖原生登记，默认 read/bash/edit/write；`customTools` 只追加桌面自己的 `todo_write`（见[任务清单](docs/todo-dock.md)），尊重 `defaultTools`、扩展工具及其原生参数。Pi 1.4.0 的 edit 使用 `edits[]`。旧文件草稿记录和待保存接口保留兼容，新 Agent 文件操作按实际工具结果直接落盘。
 - 技能、模板、扩展、主题、上下文和包资源由官方 loader 发现。本仓库维护的技能统一放在 `.pi/skills/`，随工作目录和项目信任加载；不再通过源码目录显式追加内置技能。独立 Markdown、符号链接、脚本/资产、`.pi`、个人和项目 `.agents/skills` 均遵循 Pi 自身发现规则与读取工具，不另行收窄格式。默认发现关闭项已撤回，不能再假设外部资源全部禁用。
 - 项目信任顺序为：受保护资源检查 → 用户扩展 project_trust 首个 yes/no → 最近保存决定 → global defaultProjectTrust → 宿主询问。通过公开 `LoadExtensionsResult` 事件处理器和 `ProjectTrustStore` 适配；未公开导出的 CLI resolver 不深层导入。上下文文件按 Pi 规则不受此信任开关保护；信任与 cwd 都不是工具或扩展的隔离边界。
 - 不覆盖原生系统提示词；保留 SYSTEM.md/APPEND_SYSTEM.md 的发现与优先级，通过公开 appendSystemPromptOverride 追加桌面结果说明和已有业务提示词。业务提示词快照继续按原会话保存，不改写使用者已存内容；其中若引用旧草稿工具，以当前实际工具为准。
@@ -123,5 +123,6 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - [侧栏布局](docs/sidebar-layout.md)
 - [关闭与重启验收](docs/window-close-acceptance.md)
 - [无历史待确认发送的查看与清理](docs/unsent-send-review.md)
+- [任务清单与任务栏](docs/todo-dock.md)
 
 历史步骤、测试明细和阶段候选见 Git 历史及 `docs/`；旧 `*-step.md` 中的“下一步”“尚未接入”仅代表当时状态，继续开发以实际源码及本节待办为准。这里只维护长期约定、当前未完项和必要验证边界，不再累积逐轮过程记录、临时目录与重复测试数字。

@@ -15,6 +15,7 @@ import modelConfig from "./config/model-config.js";
 import requestStatus from "./adapters/request-status.js";
 import { bindDesktopRuntime } from "./resources/desktop-session-runtime.mjs";
 import { TEST_AGENT_PROMPT } from "./prompts/test-agent-prompt.mjs";
+import { todoWriteTool } from "./tools/todo-write.mjs";
 
 const { formatToolResult, toHistory } = messageAdapter;
 const { createOutputEventAdapter } = outputAdapter;
@@ -151,8 +152,10 @@ export async function createPiAgent(
   }
   recordStage("模型目录与认证");
 
-  // 不传 tools/customTools：沿用 Pi 的默认工具及 defaultTools 配置。
+  // 不传 tools/excludeTools：沿用 Pi 的默认工具及 defaultTools 配置。
+  // customTools 只追加注册，不会替换原生工具；任务清单由页面任务栏读取工具结果。
   const { session } = await createAgentSession({
+    customTools: [todoWriteTool],
     cwd: workspaceRoot,
     agentDir,
     modelRuntime: runtime,

@@ -24,6 +24,10 @@ const call = (id, file) => ({ type: "toolCall", id, name: "read", arguments: { p
 const first = assistant([{ type: "thinking", thinking: "先核对 **技能指令** 与 <img src=x onerror=alert(1)> 的安全性。\n\n第二段：确认加载结果。" },
   { type: "text", text: "先读取技能与参考资料。" }, call("c1", skill.path), call("c2", "missing.txt")], "toolUse");
 const final = assistant([{ type: "text", text: "**检查完成**\n\n```js\nconst ok = true;\n```" }]);
+const todoResult = { role: "toolResult", toolCallId: "todo1", toolName: "todo_write", isError: false, durationMs: 2,
+  content: [{ type: "text", text: "已更新任务清单：1 待处理，1 进行中，1 已完成。" }],
+  details: { todos: [{ content: "检查输出", status: "completed" }, { content: "核对技能", status: "in_progress" },
+    { content: "整理结论", status: "pending" }] } };
 const toolResult = (id, isError, text) => ({ role: "toolResult", toolCallId: id, toolName: "read", isError,
   content: [{ type: "text", text }], durationMs: 5 });
 const session = {
@@ -88,7 +92,7 @@ const chat = {
     emit({ type: "message_end", message: final }); emit({ type: "turn_end", message: final });
     emit({ type: "auto_retry_end", success: true }); emit({ type: "agent_end", willRetry: false });
     emit({ type: "agent_settled", aborted: false });
-    history = toHistory([{ role: "user", content: text }, first, toolResult("c2", true, "文件不存在"), toolResult("c1", false, "技能指令"), final],
+    history = toHistory([{ role: "user", content: text }, first, toolResult("c2", true, "文件不存在"), toolResult("c1", false, "技能指令"), todoResult, final],
       { includeTrace: true, skills: [{ name: "demo", filePath: skill.path }], cwd: "/demo" });
     history[3].output.nestedCalls = { complete: false, calls: [{ id: "child", name: "bash", status: "unfinished" }] };
     busy = false; return { outcome: "completed", draft: consumed };
@@ -157,6 +161,8 @@ async function main() {
     assert.equal(await js(`document.querySelectorAll('.output-run .code-block').length`), 1);
     assert.equal(await js(`document.querySelector('.code-block-language').textContent`), "js");
     assert.equal(await js(`document.querySelectorAll('.output-run [data-role="assistant"]').length`), 2);
+    // 实时流程没有 todo_write，任务栏保持隐藏。
+    assert.equal(await js(`document.getElementById('todo-dock').hidden`), true);
     assert.doesNotMatch(await bodyText(), /旧通道重复结果/);
     assert.match(await bodyText(), /auto_retry_start/);
     await js(`document.querySelector('.output-run').scrollIntoView({block:'start'})`);
@@ -176,6 +182,14 @@ async function main() {
     console.log("通过：完整页面实时展开、收尾折叠仅保留最终正文，原生流、并行/嵌套工具、重试、复制与窄窗");
     win.reload(); await until(`document.querySelector('.output-trace>summary')?.textContent.includes('历史恢复')`); await idle();
     assert.match(await bodyText(), /2 条响应记录 · 历史恢复/);
+    // 历史里的 todo_write 结果重建任务栏，默认折叠。
+    assert.equal(await js(`document.getElementById('todo-dock').hidden`), false);
+    assert.equal(await js(`document.querySelector('.todo-dock-progress').textContent`), "1 已完成 · 1 进行中 · 1 待处理");
+    assert.equal(await js(`document.querySelectorAll('.todo-dock-item').length`), 3);
+    assert.equal(await js(`document.querySelector('.todo-dock-list').hidden`), true);
+    await js(`document.querySelector('.todo-dock-header').click()`);
+    assert.equal(await js(`document.querySelector('.todo-dock-list').hidden`), false);
+    assert.equal(await js(`document.querySelector('.todo-dock-header').getAttribute('aria-expanded')`), "true");
     assert.match(await bodyText(), /历史仅保存嵌套调用摘要/);
     assert.match(await bodyText(), /嵌套调用记录不完整/);
     assert.doesNotMatch(await bodyText(), /agent_settled/);
@@ -207,6 +221,20 @@ async function main() {
       const msg = (content, durationMs) => ({ role: 'assistant', content, durationMs, stopReason: 'stop' });
       const trace = createOutputTrace(host);
       const feed = trace.accept;
+      const dockHost = document.createElement('div');
+      document.body.append(dockHost);
+      const { createTodoDock } = await import(new URL('./components/todo-dock.js', location.href).href);
+      const dock = createTodoDock(dockHost);
+      dock.accept({type:'tool_execution_update',result:{todos:[{content:'未完成',status:'pending'}]}});
+      check(dockHost.hidden, '非结束事件不更新任务栏');
+      dock.accept({type:'tool_execution_end',result:{todos:[{content:'进行中',status:'in_progress'}]}});
+      check(!dockHost.hidden, '工具结束显示任务栏');
+      check(dockHost.querySelector('.todo-dock-progress').textContent==='1 进行中', '任务进度按状态汇总');
+      dock.showHistory([{output:{todos:[{content:'完成',status:'completed'},{content:'待办',status:'pending'}]}}]);
+      check(dockHost.querySelectorAll('.todo-dock-item').length===2, '历史重建任务项');
+      dock.clear();
+      check(dockHost.hidden, '清空隐藏任务栏');
+      dockHost.remove();
       try {
         await paint();
         check(host.querySelector('.output-trace>summary').textContent.includes('正在准备请求'), '首个模型事件前展示等待状态');

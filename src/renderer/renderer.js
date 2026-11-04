@@ -6,6 +6,7 @@ import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel, formatContextUsage } from "./components/session-info-panel.js";
 import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
+import { createTodoDock } from "./components/todo-dock.js";
 import { createSessionList } from "./components/session-list.js";
 import { createUnsentSendPanel } from "./components/unsent-send-panel.js";
 import { TASK_TEMPLATES } from "./components/task-templates.js";
@@ -442,6 +443,8 @@ const messageScroll = createMessageScroll(
   messages,
   document.getElementById("latest-message-button"),
 );
+// 任务清单来自 todo_write 的工具结果，切换会话时随历史重建。
+const todoDock = createTodoDock(document.getElementById("todo-dock"));
 const sessionName = document.getElementById("session-name");
 const renameButton = document.getElementById("rename-button");
 
@@ -594,6 +597,7 @@ function showHistory(history) {
   messageScroll.followLatest();
 
   appendOutputHistory(messages, history, () => messageScroll.update());
+  todoDock.showHistory(history);
   messageScroll.update();
 }
 // 获取历史列表，并标记当前正在使用的会话。
@@ -1354,6 +1358,7 @@ form.addEventListener("submit", async (event) => {
     if ((output.requestSessionId ?? output.sessionId) !== ticket.sessionId) return;
     nativeOutputReceived = true;
     outputTrace.accept(output);
+    todoDock.accept(output);
     if (!stopButton.disabled && output.type === "message_update" && output.assistantMessageEvent.type.startsWith("thinking_")) {
       setRequestStatus("模型正在思考……");
     }
@@ -1524,6 +1529,7 @@ async function startNewChat() {
     messageScroll.followLatest();
 
     proposalPanel.clear();
+    todoDock.clear();
     // 新会话尚未发送消息时，可能还没有历史列表项。
     sessionList.setActive("");
   } catch (error) {

@@ -1,0 +1,107 @@
+/* 任务栏位于输入框上方；没有任务时整体隐藏，不占用高度。 */
+.todo-dock {
+  width: min(100%, var(--content-width));
+  margin: 0 auto 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--page);
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.todo-dock[hidden] {
+  display: none;
+}
+
+.todo-dock-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+}
+
+.todo-dock-header:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.todo-dock-header:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.todo-dock-title {
+  flex: none;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.todo-dock-progress {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.todo-dock-chevron {
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.todo-dock-list {
+  max-height: 180px;
+  margin: 0;
+  padding: 2px 12px 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.todo-dock-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  line-height: 1.5;
+}
+
+.todo-dock-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.todo-dock-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.todo-dock-item[data-status="pending"] .todo-dock-dot {
+  opacity: 0.45;
+}
+
+.todo-dock-item[data-status="in_progress"] .todo-dock-dot {
+  background: var(--text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.todo-dock-item[data-status="in_progress"] .todo-dock-content {
+  color: var(--text);
+}
+
+.todo-dock-item[data-status="completed"] .todo-dock-content {
+  color: var(--muted);
+  opacity: 0.75;
+}

@@ -23,6 +23,13 @@ function toolResultExtras(details, structured) {
   if (details && typeof details === "object") {
     if (typeof details.diff === "string") extras.diff = details.diff;
     if (typeof details.fullOutputPath === "string") extras.fullOutputPath = details.fullOutputPath;
+    // 任务清单只保留可识别的条目标题与状态，页面不接收其他 details 内容。
+    if (Array.isArray(details.todos)) {
+      extras.todos = details.todos
+        .filter(todo => todo && typeof todo.content === "string"
+          && ["pending", "in_progress", "completed"].includes(todo.status))
+        .map(todo => ({ content: todo.content, status: todo.status }));
+    }
   }
   if (structured && typeof structured === "object") {
     if (Number.isInteger(structured.exit_code)) extras.exitCode = structured.exit_code;
