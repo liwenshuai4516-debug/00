@@ -64,6 +64,14 @@ function parseCaseMetadata(document, project, caseId) {
     names.add(item.name);
     if (!caseTypes.has(item.type)) throw new Error(`${label}.type 必须是 functional、permission、boundary、exception 或 regression。`);
     if (!casePriorities.has(item.priority)) throw new Error(`${label}.priority 必须是 P0、P1、P2 或 P3。`);
+    if (!Array.isArray(item.steps) || item.steps.length < 1 || item.steps.length > 50) {
+      throw new Error(`${label}.steps 必须是 1-50 条非空执行步骤。`);
+    }
+    for (const [stepIndex, step] of item.steps.entries()) {
+      if (!hasText(step) || step.trim().length > 500) {
+        throw new Error(`${label}.steps[${stepIndex}] 必须是非空字符串且不超过 500 字。`);
+      }
+    }
     if (!Array.isArray(item.assertions) || !item.assertions.length) throw new Error(`${label} 至少包含一条断言。`);
     for (const [assertionIndex, assertion] of item.assertions.entries()) {
       const assertionLabel = `${label}.assertions[${assertionIndex}]`;

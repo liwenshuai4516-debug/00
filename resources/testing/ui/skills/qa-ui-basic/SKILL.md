@@ -71,11 +71,11 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 加载并遵循 qa-ui-record 技能（与本源文件同级的 ../qa-ui-record/SKILL.md；未加载时先读取），按它完成功能面盘点、录制、现场断言和脚本整理。
 本步骤保留流程约束：先盘点查询项、工具栏按钮、行操作和展开收起控件并形成覆盖矩阵，再调用 qa_ui_prepare（mode=record、projectRef、targetUrl）；默认不手填 caseId；使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir；结束调用 browser_close。测试环境的写操作按覆盖矩阵执行；仅非测试环境或不可逆外部副作用的操作列入未覆盖，不静默跳过。
 录制必须现场验证预期：每个业务步骤后用 browser_verify_* 验证，generator_read_log 核对动作与断言，generator_write_test 只写日志有证据的步骤与断言。
-脚本质量按 qa-ui-record 的断言来源、定位器、数据隔离、等待方式执行；仅用实际登记的官方 desktop-playwright-test 工具，未出现时停止。
+脚本质量按 qa-ui-assertion 的断言规则和 qa-ui-record 的定位器、数据隔离、等待方式执行；仅用实际登记的官方 desktop-playwright-test 工具，未出现时停止。
 
 ## 5. 整理脚本并持久化
 
-按 qa-ui-record 整理脚本与 caseDocument，再调用 qa_ui_finalize，提供 projectRef、caseId。工具要求本次真实生成日志、非空脚本与用例说明，检查语法和密码误写，保存 .asset.json 版本及来源索引；它不替 Agent 格式化，也不批准业务正确性。
+按 qa-ui-record 整理脚本与 caseDocument（每个 case 必须有 1-50 条真实执行步骤），再调用 qa_ui_finalize，提供 projectRef、caseId。工具要求本次真实生成日志、非空脚本与用例说明，检查语法和密码误写，保存 .asset.json 版本及来源索引；它不替 Agent 格式化，也不批准业务正确性。
 录制流程中仅 recorded-and-syntax-checked 才进入回放；只执行场景使用已 finalize 的资产。修改脚本后重新 finalize；准备回放后再改脚本则重新准备批次。
 
 文件命名由工具生成“项目名称__页面路径__短摘要.spec.cjs”；路由 hash 纳入页面路径，同名重复录制自动追加版本，禁止覆盖旧资产。不要自行重命名到准备路径之外。

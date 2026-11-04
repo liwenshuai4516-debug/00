@@ -162,6 +162,7 @@ test("button", async ({ page }) => {
         name: "button",
         type: "functional",
         priority: "P1",
+        steps: ["打开临时页面", "点击开始按钮"],
         assertions: [{ id: "A1", kind: "business", text: "按钮文字变为已完成", source: "本次临时夹具要求" }],
       }],
     };
@@ -175,6 +176,20 @@ test("button", async ({ page }) => {
     await assert.rejects(finalizeTool.execute("finalize-invalid-module", {
       projectRef: project.projectRef, caseId: prepared.caseId,
     }), /modulePath/);
+    const withoutSteps = {
+      ...caseMetadata,
+      cases: caseMetadata.cases.map(({ steps: _steps, ...rest }) => rest),
+    };
+    await fs.writeFile(prepared.caseDocument, [
+      "# 开始按钮",
+      "",
+      "```json qa-ui-case",
+      JSON.stringify(withoutSteps, null, 2),
+      "```",
+    ].join("\n"));
+    await assert.rejects(finalizeTool.execute("finalize-missing-steps", {
+      projectRef: project.projectRef, caseId: prepared.caseId,
+    }), /steps/);
     await fs.writeFile(prepared.caseDocument, [
       "# 开始按钮",
       "",
@@ -193,6 +208,7 @@ test("button", async ({ page }) => {
     assert.deepEqual(finalized.caseMeta.modulePath, ["夹具", "开始按钮"]);
     assert.equal(finalized.caseMeta.caseCount, 1);
     assert.equal(finalized.caseMeta.assertionCount, 1);
+    assert.deepEqual(finalized.caseMeta.cases[0].steps, ["打开临时页面", "点击开始按钮"]);
     const originalSource = await fs.readFile(prepared.caseFile, "utf8");
     await fs.appendFile(prepared.caseFile, "\n// edited after finalize");
     await assert.rejects(prepareTool.execute("edited-asset", { caseId: prepared.caseId, targetUrl, mode: "run", projectRef: project.projectRef }), /qa_ui_finalize/);

@@ -93,17 +93,28 @@ async function main() {
     await check("展开子模块后仍保持用例折叠", `document.querySelector('.case-module--nested > .case-module__body').hidden===false&&[...document.querySelectorAll('.case-card__body')].every((node)=>node.hidden===true)`);
     await check("子模块显示页面、角色与汇总条数", `(()=>{const node=document.querySelectorAll('.case-module--nested')[0];return node.querySelector('.case-module__page').textContent.includes('/pms/OperationContract')&&node.querySelector('.case-module__page').textContent.includes('管理员')&&node.querySelector('.case-module__count').textContent==='2 条'&&node.querySelectorAll('.case-card').length===2;})()`);
     await check("模块内用例按优先级排序", `document.querySelector('.case-module--nested .case-card__name').textContent==='T2 权限拒绝时列表为空'&&document.querySelector('.case-module--nested .case-card__priority').textContent==='P0'`);
-    await check("折叠行显示断言预览与业务/前置计数", `document.querySelector('.case-module--nested .case-card__assertion-preview').textContent.includes('列表 0 行')&&document.querySelector('.case-module--nested .case-card__meta').textContent.includes('业务 1')&&document.querySelector('.case-module--nested .case-card__meta').textContent.includes('前置 1')`);
+    await check("折叠行显示断言预览与断言计数", `document.querySelector('.case-module--nested .case-card__assertion-preview').textContent.includes('列表 0 行')&&document.querySelector('.case-module--nested .case-card__meta').textContent.includes('业务 1')&&document.querySelector('.case-module--nested .case-card__meta').textContent.includes('前置 1')`);
     await run(`document.querySelector('.case-module[data-depth="0"] > .case-module__head').click()`);
     await check("折叠一级模块隐藏整棵子树", `document.querySelector('.case-module[data-depth="0"] > .case-module__body').hidden===true&&document.querySelector('.case-module[data-depth="0"] > .case-module__head').getAttribute('aria-expanded')==='false'`);
     await run(`document.querySelector('.case-module[data-depth="0"] > .case-module__head').click()`);
     await check("重新展开一级模块恢复子树与箭头", `document.querySelector('.case-module[data-depth="0"] > .case-module__body').hidden===false&&document.querySelector('.case-module[data-depth="0"] > .case-module__head').getAttribute('aria-expanded')==='true'&&getComputedStyle(document.querySelector('.case-module[data-depth="0"] > .case-module__head .case-module__chevron')).transform!=='none'`);
-    await check("展开前不显示断言，展开后按业务/前置分组显示", `(()=>{const card=document.querySelector('.case-module--nested .case-card');const body=card.querySelector('.case-card__body');const before=body.hidden;card.querySelector('.case-card__head').click();const labels=[...body.querySelectorAll('.case-assertions__label')].map((node)=>node.textContent).join(',');return before&&!body.hidden&&labels==='业务断言 1,前置断言 1'&&body.textContent.includes('列表 0 行')&&body.textContent.includes('需求声明')&&body.textContent.includes('最近运行 失败')&&body.textContent.includes('模块 合同管理 / 经营合同')&&card.querySelector('.case-card__head').getAttribute('aria-expanded')==='true';})()`);
+    await check("展开前不显示断言，展开后按业务/前置分组显示", `(()=>{const card=document.querySelector('.case-module--nested .case-card');const body=card.querySelector('.case-card__body');const before=body.hidden;card.querySelector('.case-card__head').click();const labels=[...body.querySelectorAll('.case-assertions__label')].map((node)=>node.textContent).join(',');return before&&!body.hidden&&labels==='业务断言 1,前置断言 1'&&body.textContent.includes('执行步骤 3')&&body.textContent.includes('打开合同列表')&&body.textContent.includes('列表 0 行')&&body.textContent.includes('需求声明')&&body.textContent.includes('最近运行 失败')&&body.textContent.includes('模块 合同管理 / 经营合同')&&card.querySelector('.case-card__head').getAttribute('aria-expanded')==='true';})()`);
     await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
     if (process.env.TEST_DATA_CATALOG_SCREENSHOT_PATH) {
       await writeFile(process.env.TEST_DATA_CATALOG_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
-    await run(`document.querySelector('.case-module--nested .case-card__edit').click()`);
+    await run(`[...document.querySelectorAll('.case-module--nested .case-card__edit')].find((button)=>button.textContent==='编辑步骤').click()`);
+    await check("打开执行步骤编辑器", `document.querySelectorAll('.case-editor__row--step').length===3&&document.querySelector('.case-editor__row--step .case-editor__text').value==='打开合同列表'`);
+    await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+    if (process.env.TEST_DATA_STEPS_EDITOR_SCREENSHOT_PATH) {
+      await writeFile(process.env.TEST_DATA_STEPS_EDITOR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+    await run(`(()=>{const input=document.querySelector('.case-editor__row--step .case-editor__text');input.value='打开经营合同列表';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await run(`document.querySelector('.case-editor__button--primary').click()`);
+    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('执行步骤已保存')`);
+    await check("保存步骤后刷新展示", `document.querySelector('.case-module--nested .case-card__body').textContent.includes('打开经营合同列表')&&document.querySelector('.case-editor')===null`);
+
+    await run(`[...document.querySelectorAll('.case-module--nested .case-card__edit')].find((button)=>button.textContent==='编辑断言').click()`);
     await check("打开断言编辑器", `document.querySelectorAll('.case-editor__row').length===2&&document.querySelector('.case-editor__text').value==='列表 0 行'`);
     await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
     if (process.env.TEST_DATA_EDITOR_SCREENSHOT_PATH) {

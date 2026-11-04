@@ -71,12 +71,14 @@ test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
       cases: [
         {
           name: "T1 列表可见", type: "functional", priority: "P2",
+          steps: ["打开权限列表", "确认列表可见"],
           assertions: [
             { id: "A1", kind: "business", text: "列表出现", source: "页面基线" },
           ],
         },
         {
           name: "T2 权限拒绝", type: "permission", priority: "P0",
+          steps: ["打开权限列表", "以受限角色访问"],
           assertions: [
             { id: "A2", kind: "guard", text: "无权限不可见", source: "需求声明" },
             { id: "A3", kind: "business", text: "列表为空", source: "页面基线" },
@@ -115,6 +117,7 @@ test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
   assert.deepEqual(module.cases.map((item) => item.name), ["T2 权限拒绝", "T1 列表可见"]);
   assert.equal(module.cases[0].priority, "P0");
   assert.equal(module.cases[0].type, "permission");
+  assert.deepEqual(module.cases[0].steps, ["打开权限列表", "以受限角色访问"]);
   assert.equal(module.cases[0].assertions[0].kind, "guard");
   assert.equal(module.cases[0].assertions[0].source, "需求声明");
   assert.equal(module.cases[0].specPath, "ui/cases/权限.spec.cjs");
@@ -272,7 +275,7 @@ test("列表按分类和修改时间稳定排序", async (t) => {
   );
 });
 
-test("更新断言同时写入资产与用例说明", async (t) => {
+test("更新步骤与断言同时写入资产和用例说明", async (t) => {
   const { service, project, dataRoot } = await setup(t);
   const cases = path.join(dataRoot, "ui", "cases");
   const caseMeta = {
@@ -287,6 +290,7 @@ test("更新断言同时写入资产与用例说明", async (t) => {
       name: "T1 列表可见",
       type: "functional",
       priority: "P2",
+      steps: ["打开权限列表"],
       assertions: [{ id: "A1", kind: "business", text: "列表出现", source: "页面基线" }],
     }],
   };
@@ -307,6 +311,13 @@ test("更新断言同时写入资产与用例说明", async (t) => {
     "",
   ].join("\n"));
 
+  const stepResult = await service.updateSteps(project.id, assetPath, "T1 列表可见", [
+    "打开权限列表",
+    "点击查询",
+    "确认列表出现",
+  ]);
+  assert.deepEqual(stepResult.steps, ["打开权限列表", "点击查询", "确认列表出现"]);
+
   const result = await service.updateAssertions(project.id, assetPath, "T1 列表可见", [
     { id: "A1", kind: "business", text: "列表出现且总数正确", source: "需求声明" },
     { kind: "guard", text: "页面无报错", source: "页面基线" },
@@ -315,6 +326,7 @@ test("更新断言同时写入资产与用例说明", async (t) => {
   assert.equal(result.caseName, "T1 列表可见");
   assert.equal(result.assertions.length, 2);
   const asset = JSON.parse(await readFile(path.join(cases, "权限.asset.json"), "utf8"));
+  assert.deepEqual(asset.caseMeta.cases[0].steps, ["打开权限列表", "点击查询", "确认列表出现"]);
   assert.deepEqual(asset.caseMeta.cases[0].assertions, [
     { id: "A1", kind: "business", text: "列表出现且总数正确", source: "需求声明" },
     { id: "A2", kind: "guard", text: "页面无报错", source: "页面基线" },
@@ -322,9 +334,10 @@ test("更新断言同时写入资产与用例说明", async (t) => {
   const document = await readFile(path.join(cases, "权限.md"), "utf8");
   assert.match(document, /列表出现且总数正确/);
   assert.match(document, /A2 前置：页面无报错（页面基线）/);
+  assert.match(document, /确认列表出现/);
 });
 
-test("更新断言拒绝越界路径、非资产、未知用例和空断言", async (t) => {
+test("更新步骤/断言拒绝越界路径、非资产、未知用例和非法内容", async (t) => {
   const { service, project, dataRoot } = await setup(t);
   const cases = path.join(dataRoot, "ui", "cases");
   const caseMeta = {
@@ -339,6 +352,7 @@ test("更新断言拒绝越界路径、非资产、未知用例和空断言", as
       name: "T1 列表可见",
       type: "functional",
       priority: "P2",
+      steps: ["打开权限列表"],
       assertions: [{ id: "A1", kind: "business", text: "列表出现", source: "页面基线" }],
     }],
   };
@@ -371,5 +385,13 @@ test("更新断言拒绝越界路径、非资产、未知用例和空断言", as
       { kind: "business", text: "列表出现", source: "" },
     ]),
     /断言来源不能为空/,
+  );
+  await assert.rejects(
+    service.updateSteps(project.id, "ui/cases/权限.asset.json", "T1 列表可见", []),
+    /至少需要一个执行步骤/,
+  );
+  await assert.rejects(
+    service.updateSteps(project.id, "ui/cases/权限.asset.json", "T1 列表可见", ["打开列表", ""]),
+    /第 2 个执行步骤不能为空/,
   );
 });

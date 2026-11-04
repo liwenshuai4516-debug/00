@@ -33,6 +33,7 @@ const catalog = {
               name: "T2 权限拒绝时列表为空",
               type: "permission",
               priority: "P0",
+              steps: ["打开合同列表", "以无权限账号访问", "确认列表为空"],
               assertions: [
                 { id: "A1", kind: "business", text: "列表 0 行", source: "需求声明：无权限不可见" },
                 { id: "A2", kind: "guard", text: "无权限提示可见", source: "页面基线" },
@@ -50,6 +51,7 @@ const catalog = {
               name: "T1 列表加载与结构完整",
               type: "functional",
               priority: "P2",
+              steps: ["打开合同列表", "确认列表结构完整"],
               assertions: [
                 { id: "A1", kind: "business", text: "列表出现", source: "页面基线" },
               ],
@@ -83,6 +85,7 @@ const catalog = {
               name: "T3 合同编号不存在时展示空态",
               type: "exception",
               priority: "P2",
+              steps: ["打开合同列表", "输入不存在的合同编号", "点击查询", "确认展示空态"],
               assertions: [
                 { id: "A1", kind: "business", text: "共 0 条", source: "页面基线" },
                 { id: "A2", kind: "business", text: "表格 0 行", source: "页面基线" },
@@ -127,6 +130,26 @@ const items = [
 ];
 
 contextBridge.exposeInMainWorld("agent", {
+  updateTestCaseSteps: async (_projectId, assetPath, caseName, steps) => {
+    const findCase = (node) => {
+      for (const item of node.cases ?? []) {
+        if (item.assetPath === assetPath && item.name === caseName) return item;
+      }
+      for (const child of node.children ?? []) {
+        const found = findCase(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    let item = null;
+    for (const module of currentCatalog.modules) {
+      item = findCase(module);
+      if (item) break;
+    }
+    if (!item) throw new Error("未找到该用例");
+    item.steps = steps;
+    return { path: assetPath, caseName, steps };
+  },
   updateTestCaseAssertions: async (_projectId, assetPath, caseName, assertions) => {
     const findCase = (node) => {
       for (const item of node.cases ?? []) {

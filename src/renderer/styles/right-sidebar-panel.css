@@ -905,7 +905,8 @@
   white-space: nowrap;
 }
 
-.case-assertions__label {
+.case-assertions__label,
+.case-steps__label {
   margin: 8px 0 4px;
   color: var(--muted);
   font-size: 10px;
@@ -926,6 +927,47 @@
 .case-card__edit:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--focus) 40%, var(--border));
   color: var(--focus);
+}
+
+.case-card__edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.case-card__edit-actions .case-card__edit {
+  margin-top: 0;
+}
+
+.case-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.case-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 6px;
+  background: var(--page);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.case-step__index {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.case-step__text {
+  overflow-wrap: anywhere;
 }
 
 .case-editor {
@@ -952,6 +994,38 @@
   grid-template-columns: auto 58px minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 6px;
   align-items: center;
+}
+
+.case-editor__row--step {
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: start;
+}
+
+.case-editor__row--step .case-editor__text {
+  min-height: 38px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.case-editor__step-action {
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.case-editor__step-action:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.case-editor__step-action:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .case-editor__id {

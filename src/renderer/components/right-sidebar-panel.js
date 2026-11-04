@@ -143,6 +143,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let caseQuery = "";
   const expandedCases = new Set();
   let editingAssertions = null;
+  let editingSteps = null;
   const collapsedModules = new Set();
   const knownModuleKeys = new Set();
   let reportsData = null;
@@ -273,6 +274,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       caseQuery = "";
       expandedCases.clear();
       editingAssertions = null;
+      editingSteps = null;
       collapsedModules.clear();
       knownModuleKeys.clear();
       reportsData = null;
@@ -704,6 +706,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       collapsedModules.clear();
       knownModuleKeys.clear();
       editingAssertions = null;
+      editingSteps = null;
       void refreshData();
     });
 
@@ -811,6 +814,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       item.priority,
       item.page,
       item.role,
+      ...(item.steps ?? []),
       ...(item.assertions ?? []).flatMap((assertion) => [assertion.text, assertion.source]),
     ].join(" ").toLowerCase();
   }
@@ -996,8 +1000,9 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function renderCaseCard(module, item) {
     const key = `${item.assetPath}::${item.name}`;
-    const editing = editingAssertions?.key === key;
-    const expanded = expandedCases.has(key) || editing;
+    const editingAssertionsMode = editingAssertions?.key === key;
+    const editingStepsMode = editingSteps?.key === key;
+    const expanded = expandedCases.has(key) || editingAssertionsMode || editingStepsMode;
     const businessAssertions = item.assertions.filter((assertion) => assertion.kind === "business");
     const guardAssertions = item.assertions.filter((assertion) => assertion.kind === "guard");
     const previewAssertion = businessAssertions[0] ?? item.assertions[0] ?? null;
@@ -1034,7 +1039,9 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
     const detail = element("div", { class: "case-card__body" });
     detail.hidden = !expanded;
-    if (editing) {
+    if (editingStepsMode) {
+      detail.append(renderStepsEditor(item));
+    } else if (editingAssertionsMode) {
       detail.append(renderAssertionEditor(item));
     } else {
       const modulePath = (module.path ?? [module.title]).join(" / ");
@@ -1054,6 +1061,22 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
           ? `最近运行 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}${item.lastResult.durationMs === null ? "" : ` · ${item.lastResult.durationMs} ms`}`
           : "最近运行：未运行",
       }));
+
+      const steps = item.steps ?? [];
+      detail.append(element("div", { class: "case-steps__label", text: `执行步骤 ${steps.length}` }));
+      if (steps.length > 0) {
+        const list = element("ol", { class: "case-steps" });
+        for (const [index, step] of steps.entries()) {
+          list.append(element("li", { class: "case-step" },
+            element("span", { class: "case-step__index", text: String(index + 1) }),
+            element("span", { class: "case-step__text", text: step }),
+          ));
+        }
+        detail.append(list);
+      } else {
+        detail.append(element("p", { class: "case-card__context", text: "未登记执行步骤。" }));
+      }
+
       if (item.assertions.length > 0) {
         if (businessAssertions.length) {
           detail.append(element("div", { class: "case-assertions__label", text: `业务断言 ${businessAssertions.length}` }));
@@ -1063,13 +1086,37 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
           detail.append(element("div", { class: "case-assertions__label", text: `前置断言 ${guardAssertions.length}` }));
           detail.append(renderAssertionList(guardAssertions));
         }
-        const edit = element("button", {
+      } else {
+        detail.append(element("p", { class: "case-card__context", text: "该用例没有登记断言。" }));
+      }
+
+      const editActions = element("div", { class: "case-card__edit-actions" });
+      const editSteps = element("button", {
+        type: "button",
+        class: "case-card__edit",
+        disabled: busy,
+        text: "编辑步骤",
+      });
+      editSteps.addEventListener("click", () => {
+        editingSteps = {
+          key,
+          assetPath: item.assetPath,
+          caseName: item.name,
+          draft: [...(item.steps ?? [])],
+        };
+        editingAssertions = null;
+        expandedCases.add(key);
+        render();
+      });
+      editActions.append(editSteps);
+      if (item.assertions.length > 0) {
+        const editAssertions = element("button", {
           type: "button",
           class: "case-card__edit",
           disabled: busy,
           text: "编辑断言",
         });
-        edit.addEventListener("click", () => {
+        editAssertions.addEventListener("click", () => {
           editingAssertions = {
             key,
             assetPath: item.assetPath,
@@ -1081,13 +1128,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
               source: assertion.source,
             })),
           };
+          editingSteps = null;
           expandedCases.add(key);
           render();
         });
-        detail.append(edit);
-      } else {
-        detail.append(element("p", { class: "case-card__context", text: "该用例没有登记断言。" }));
+        editActions.append(editAssertions);
       }
+      detail.append(editActions);
 
       const files = [
         ["资产", item.assetPath],
@@ -1137,6 +1184,126 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       ));
     }
     return list;
+  }
+
+  function renderStepsEditor(item) {
+    const draft = editingSteps.draft;
+    const container = element("div", { class: "case-editor case-editor--steps" });
+    container.append(element("p", {
+      class: "case-editor__hint",
+      text: "步骤记录本次 case 的实际操作，保存后同步用例说明和资产索引；执行逻辑仍以 spec 脚本为准。",
+    }));
+    const rows = element("div", { class: "case-editor__list" });
+    for (const [index, step] of draft.entries()) {
+      const row = element("div", { class: "case-editor__row case-editor__row--step" });
+      const content = element("textarea", {
+        class: "case-editor__text",
+        rows: "2",
+        placeholder: "例如：在合同编号输入框填写 HSKJ-JYHT-2026-001",
+        "aria-label": `第 ${index + 1} 个执行步骤`,
+      });
+      content.value = step;
+      content.addEventListener("input", () => { draft[index] = content.value; });
+      const up = element("button", {
+        type: "button",
+        class: "case-editor__step-action",
+        disabled: index === 0,
+        title: "上移",
+        "aria-label": "上移执行步骤",
+        text: "↑",
+      });
+      up.addEventListener("click", () => {
+        [draft[index - 1], draft[index]] = [draft[index], draft[index - 1]];
+        render();
+      });
+      const down = element("button", {
+        type: "button",
+        class: "case-editor__step-action",
+        disabled: index === draft.length - 1,
+        title: "下移",
+        "aria-label": "下移执行步骤",
+        text: "↓",
+      });
+      down.addEventListener("click", () => {
+        [draft[index + 1], draft[index]] = [draft[index], draft[index + 1]];
+        render();
+      });
+      const remove = element("button", {
+        type: "button",
+        class: "case-editor__remove",
+        title: "删除步骤",
+        "aria-label": "删除执行步骤",
+        text: "删除",
+      });
+      remove.addEventListener("click", () => {
+        if (draft.length <= 1) {
+          setStatus("至少保留一个执行步骤。", true);
+          render();
+          return;
+        }
+        draft.splice(index, 1);
+        render();
+      });
+      row.append(
+        element("span", { class: "case-editor__id", text: `S${index + 1}` }),
+        content,
+        up,
+        down,
+        remove,
+      );
+      rows.append(row);
+    }
+    container.append(rows);
+
+    const actions = element("div", { class: "case-editor__actions" });
+    const add = element("button", { type: "button", class: "case-editor__button", text: "新增步骤" });
+    add.addEventListener("click", () => {
+      draft.push("");
+      render();
+    });
+    const save = element("button", {
+      type: "button",
+      class: "case-editor__button case-editor__button--primary",
+      text: "保存步骤",
+      disabled: busy,
+    });
+    save.addEventListener("click", () => void saveSteps(item));
+    const cancel = element("button", { type: "button", class: "case-editor__button", text: "取消" });
+    cancel.addEventListener("click", () => {
+      editingSteps = null;
+      render();
+    });
+    actions.append(add, save, cancel);
+    container.append(actions);
+    return container;
+  }
+
+  async function saveSteps(item) {
+    const steps = (editingSteps?.draft ?? []).map((step) => step.trim()).filter(Boolean);
+    if (steps.length === 0) {
+      setStatus("至少保留一个执行步骤。", true);
+      render();
+      return;
+    }
+    if (steps.length > 50) {
+      setStatus("执行步骤不能超过 50 条。", true);
+      render();
+      return;
+    }
+    busy = true;
+    setStatus("正在保存执行步骤…");
+    render();
+    try {
+      await api().updateTestCaseSteps(selectedId, item.assetPath, item.name, steps);
+      await loadData();
+      editingSteps = null;
+      setStatus("执行步骤已保存。");
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
   }
 
   function renderAssertionEditor(item) {
@@ -1213,6 +1380,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const cancel = element("button", { type: "button", class: "case-editor__button", text: "取消" });
     cancel.addEventListener("click", () => {
       editingAssertions = null;
+      editingSteps = null;
       render();
     });
     actions.append(add, save, cancel);
@@ -1245,6 +1413,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       await api().updateTestCaseAssertions(selectedId, item.assetPath, item.name, assertions);
       await loadData();
       editingAssertions = null;
+      editingSteps = null;
       setStatus("断言已保存。");
     } catch (error) {
       setStatus(errorMessage(error), true);
@@ -1377,6 +1546,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       caseQuery = "";
       expandedCases.clear();
       editingAssertions = null;
+      editingSteps = null;
       collapsedModules.clear();
       knownModuleKeys.clear();
       reportsData = null;

@@ -202,6 +202,16 @@ function normalizeCaseAssertions(assertions) {
   return result;
 }
 
+function normalizeCaseSteps(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) throw new Error("至少需要一个执行步骤。");
+  if (steps.length > 50) throw new Error("执行步骤不能超过 50 条。");
+  return steps.map((step, index) => {
+    const content = text(step, 500);
+    if (!content) throw new Error(`第 ${index + 1} 个执行步骤不能为空。`);
+    return content;
+  });
+}
+
 function replaceAssertionTableRow(document, caseName, assertions) {
   const summary = assertions
     .map((assertion) => `${assertion.id} ${assertion.kind === "guard" ? "前置" : "业务"}：${assertion.text}${assertion.source ? `（${assertion.source}）` : ""}`)
@@ -415,10 +425,15 @@ function createTestDataService(projectStore) {
             source: text(assertion?.source, 500),
           }))
           .filter((assertion) => assertion.text);
+        const steps = (Array.isArray(entry.steps) ? entry.steps : [])
+          .slice(0, 50)
+          .map((step) => text(step, 500))
+          .filter(Boolean);
         module.cases.push({
           name,
           type: CASE_TYPES.has(entry.type) ? entry.type : "functional",
           priority: PRIORITIES.has(entry.priority) ? entry.priority : "P2",
+          steps,
           assertions,
           caseId,
           assetPath: item.path,
@@ -513,7 +528,7 @@ function createTestDataService(projectStore) {
     return { path: normalized };
   }
 
-  async function updateAssertions(projectId, assetPath, caseName, assertions) {
+  async function updateCase(projectId, assetPath, caseName, changes) {
     if (typeof assetPath !== "string" || !assetPath.trim()) throw new Error("请选择要编辑的用例资产。");
     if (typeof caseName !== "string" || !caseName.trim()) throw new Error("请选择要编辑的用例。");
     const normalized = assetPath.replaceAll("\\", "/");
@@ -529,7 +544,11 @@ function createTestDataService(projectStore) {
     ) {
       throw new Error("只能编辑 qa/data/ui/cases 下的用例资产。");
     }
-    const nextAssertions = normalizeCaseAssertions(assertions);
+    const nextSteps = changes.steps === undefined ? null : normalizeCaseSteps(changes.steps);
+    const nextAssertions = changes.assertions === undefined
+      ? null
+      : normalizeCaseAssertions(changes.assertions);
+    if (nextSteps === null && nextAssertions === null) throw new Error("没有要保存的用例内容。");
     const resolved = await resolveRoot(projectId);
     if (resolved === null) throw new Error("测试数据目录不存在。");
     const { root } = resolved;
@@ -553,19 +572,22 @@ function createTestDataService(projectStore) {
     try {
       metadata = JSON.parse(await readFile(real, "utf8"));
     } catch {
-      throw new Error("用例资产不是有效 JSON，无法编辑断言。");
+      throw new Error("用例资产不是有效 JSON，无法编辑用例。");
     }
     const caseMeta = metadata?.caseMeta;
     if (caseMeta?.schema !== "qa-ui-case/v1" || !Array.isArray(caseMeta.cases)) {
-      throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法编辑断言。");
+      throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法编辑用例。");
     }
     const targetCase = caseMeta.cases.find((item) => item.name === caseName);
     if (!targetCase) throw new Error("未找到该用例，请刷新后重试。");
-    targetCase.assertions = nextAssertions;
-    caseMeta.assertionCount = caseMeta.cases.reduce(
-      (total, item) => total + (Array.isArray(item.assertions) ? item.assertions.length : 0),
-      0,
-    );
+    if (nextSteps !== null) targetCase.steps = nextSteps;
+    if (nextAssertions !== null) {
+      targetCase.assertions = nextAssertions;
+      caseMeta.assertionCount = caseMeta.cases.reduce(
+        (total, item) => total + (Array.isArray(item.assertions) ? item.assertions.length : 0),
+        0,
+      );
+    }
 
     // 先更新人读文档，再写资产索引；文档缺失时只更新资产。
     const documentPath = real.replace(/\.asset\.json$/, ".md");
@@ -576,21 +598,35 @@ function createTestDataService(projectStore) {
         const documentMeta = JSON.parse(block[1]);
         const documentCase = documentMeta?.cases?.find((item) => item.name === caseName);
         if (documentCase) {
-          documentCase.assertions = nextAssertions;
+          if (nextSteps !== null) documentCase.steps = nextSteps;
+          if (nextAssertions !== null) documentCase.assertions = nextAssertions;
           document = document.replace(block[0], "```json qa-ui-case\n" + JSON.stringify(documentMeta, null, 2) + "\n```");
         }
       }
-      document = replaceAssertionTableRow(document, caseName, nextAssertions);
+      if (nextAssertions !== null) document = replaceAssertionTableRow(document, caseName, nextAssertions);
       await writeFile(documentPath, document);
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
 
     await writeFile(real, JSON.stringify(metadata, null, 2) + "\n");
-    return { path: normalized, caseName, assertions: nextAssertions };
+    return {
+      path: normalized,
+      caseName,
+      ...(nextSteps === null ? {} : { steps: nextSteps }),
+      ...(nextAssertions === null ? {} : { assertions: nextAssertions }),
+    };
   }
 
-  return { list, remove, updateAssertions };
+  function updateAssertions(projectId, assetPath, caseName, assertions) {
+    return updateCase(projectId, assetPath, caseName, { assertions });
+  }
+
+  function updateSteps(projectId, assetPath, caseName, steps) {
+    return updateCase(projectId, assetPath, caseName, { steps });
+  }
+
+  return { list, remove, updateAssertions, updateSteps };
 }
 
 module.exports = { createTestDataService };
