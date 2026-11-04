@@ -100,6 +100,7 @@ test 名称写「业务动作 + 预期结果」；步骤注释用录制 intent�
 
 caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校验并写入 .asset.json，缺失或字段不合规会拒绝登记。
 元数据块就是后续管理/分类用的元数据稿；正文用例表是从它展开的人读版本，两者必须一致。
+`modulePath` 按被测系统实际左侧导航/菜单的层级填写（如 `["合同管理", "经营合同"]`），同一功能下的多份脚本保持同一路径；不要用页面路由、场景标签或猜测的层级代替。未填写时右侧目录按页面归组，仅用于兼容旧资产。
 
 ````markdown
 # 用例说明
@@ -110,6 +111,7 @@ caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校�
   "caseId": "<qa_ui_prepare 返回的 caseId>",
   "project": { "id": "<qa_ui_project 返回的 projectId>", "name": "<项目名称>" },
   "page": "/pms/OperationContract",
+  "modulePath": ["合同管理", "经营合同"],
   "role": "管理员",
   "dataPolicy": "write-unique",
   "tags": ["合同", "新建"],
@@ -161,9 +163,10 @@ caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校�
 | project.id | 是 | 与 qa_ui_project 返回的 projectId 一致 |
 | project.name | 否 | 默认用项目检查返回的名称 |
 | page | 是 | 目标页面路径，含路由 hash |
+| modulePath | 否 | 实际项目导航的层级路径，1-6 段非空字符串，每段不超过 60 字且不含 `/`；右侧测试数据目录按此分组 |
 | role | 是 | 本批用例使用的角色 |
 | dataPolicy | 是 | `read-only`、`write-unique`、`write-disposable`、`no-write` 之一 |
-| tags | 否 | 非空字符串数组，建议 2-4 个模块/业务对象/场景标签 |
+| tags | 否 | 非空字符串数组，建议 2-4 个模块/业务对象/场景标签；只用于搜索，不替代 modulePath |
 | cases[].name | 是 | 与 spec 中 test 标题逐字一致；同文件不重复 |
 | cases[].type | 是 | `functional`、`permission`、`boundary`、`exception`、`regression` |
 | cases[].priority | 是 | `P0`-`P3` |
@@ -178,6 +181,7 @@ caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校�
 逐项确认，未通过先改再 finalize：
 - 每个 expect 有来源，caseDocument 已登记；
 - 元数据块 schema、caseId、project.id 与工具返回一致；
+- modulePath 与实际导航层级一致，未用页面路由或标签代替；
 - cases[].name 与 spec 的 test 标题一致，每条断言都有 text 和 source；
 - 正文用例表与元数据块一致；
 - 「覆盖范围」覆盖全部可见筛选、工具栏按钮和行操作，未覆盖项有原因和授权状态；

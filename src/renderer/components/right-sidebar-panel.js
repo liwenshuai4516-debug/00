@@ -104,6 +104,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let data = null;
   let caseQuery = "";
   const expandedCases = new Set();
+  const collapsedModules = new Set();
   let status = { text: "", error: false };
   let busy = false;
   let currentFile = null;
@@ -633,6 +634,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       data = null;
       caseQuery = "";
       expandedCases.clear();
+      collapsedModules.clear();
       void refreshData();
     });
 
@@ -672,7 +674,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         if (catalog?.lastRun) panel.append(renderRunLine(catalog.lastRun));
         panel.append(element("p", {
           class: "right-panel__empty",
-          text: "暂无标准化用例。使用 qa-ui-record 录制后，会按项目 / 模块 / 用例展示。",
+          text: "暂无标准化用例。使用 qa-ui-record 录制后，会按实际项目模块层级展示。",
         }));
       }
       if (catalog?.legacy?.length) {
@@ -687,6 +689,82 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     content.append(panel);
   }
 
+  // 目录策略覆盖整棵树；旧节点没有 policies 时退回 dataPolicy。
+  function catalogPolicies(modules) {
+    const policies = new Set();
+    const stack = [...modules];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      for (const policy of node.policies ?? []) policies.add(policy);
+      if (node.dataPolicy && node.dataPolicy !== "mixed") policies.add(node.dataPolicy);
+      stack.push(...(node.children ?? []));
+    }
+    return [...policies].filter(Boolean);
+  }
+
+  function moduleCaseCount(node) {
+    return node.caseCount ?? ((node.cases?.length ?? 0) +
+      (node.children ?? []).reduce((total, child) => total + moduleCaseCount(child), 0));
+  }
+
+  function moduleMetaText(node) {
+    const pages = node.pages?.length ? node.pages : node.page ? [node.page] : [];
+    const roles = node.roles?.length ? node.roles : node.role ? [node.role] : [];
+    const pageText = pages.length === 1
+      ? pages[0]
+      : pages.length > 1
+        ? `${pages.length} 个页面`
+        : "";
+    const roleText = roles.length === 1
+      ? roles[0]
+      : roles.length > 1
+        ? `${roles.length} 个角色`
+        : "";
+    return [pageText, roleText].filter(Boolean).join(" · ");
+  }
+
+  function moduleMatchText(node) {
+    return [
+      node.title,
+      ...(node.path ?? []),
+      node.page,
+      node.role,
+      ...(node.pages ?? []),
+      ...(node.roles ?? []),
+      ...(node.tags ?? []),
+    ].join(" ").toLowerCase();
+  }
+
+  function caseMatchText(item) {
+    return [
+      item.name,
+      item.type,
+      item.priority,
+      item.page,
+      item.role,
+      ...(item.assertions ?? []).flatMap((assertion) => [assertion.text, assertion.source]),
+    ].join(" ").toLowerCase();
+  }
+
+  // 命中的父节点保留完整子树；只命中用例时保留其祖先路径。
+  function filterCaseModule(node, needle) {
+    if (moduleMatchText(node).includes(needle)) return node;
+    const cases = (node.cases ?? []).filter((item) => caseMatchText(item).includes(needle));
+    const children = [];
+    for (const child of node.children ?? []) {
+      const filtered = filterCaseModule(child, needle);
+      if (filtered) children.push(filtered);
+    }
+    if (cases.length === 0 && children.length === 0) return null;
+    return {
+      ...node,
+      cases,
+      children,
+      caseCount: cases.length +
+        children.reduce((total, child) => total + moduleCaseCount(child), 0),
+    };
+  }
+
   function renderCaseCatalog(catalog) {
     const container = element("div", { class: "case-catalog" });
     const summary = element("div", { class: "case-catalog__summary" });
@@ -696,15 +774,18 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     );
     summary.append(
       stat(catalog.totals.modules, "模块"),
+      catalog.totals.submodules > 0 ? stat(catalog.totals.submodules, "子模块") : null,
       stat(catalog.totals.cases, "用例"),
       stat(catalog.totals.assertions, "断言"),
     );
-    const policies = [...new Set(catalog.modules.map((module) => module.dataPolicy))];
+    const policies = catalogPolicies(catalog.modules);
     summary.append(element("span", {
       class: "case-catalog__policy",
       text: policies.length === 1
         ? DATA_POLICY_LABELS[policies[0]] ?? policies[0]
-        : "混合数据策略",
+        : policies.length > 1
+          ? "混合数据策略"
+          : "—",
     }));
 
     const search = element("input", {
@@ -718,8 +799,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const paint = () => {
       list.replaceChildren(...renderCaseModules(catalog, caseQuery));
     };
+    let filtering = Boolean(caseQuery.trim());
     search.addEventListener("input", () => {
       caseQuery = search.value;
+      const nextFiltering = Boolean(caseQuery.trim());
+      // 开始搜索时展开所有分支，避免命中结果藏在折叠节点内。
+      if (nextFiltering && !filtering) collapsedModules.clear();
+      filtering = nextFiltering;
       paint();
     });
     paint();
@@ -755,15 +841,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const needle = query.trim().toLowerCase();
     const sections = [];
     for (const module of catalog.modules) {
-      const moduleText = [module.title, module.page, ...module.tags].join(" ").toLowerCase();
-      const moduleHit = !needle || moduleText.includes(needle);
-      const cases = moduleHit
-        ? module.cases
-        : module.cases.filter((item) => [item.name, item.type, item.priority,
-          ...item.assertions.flatMap((assertion) => [assertion.text, assertion.source])]
-          .join(" ").toLowerCase().includes(needle));
-      if (cases.length === 0) continue;
-      sections.push(renderCaseModule(module, cases));
+      const filtered = needle ? filterCaseModule(module, needle) : module;
+      if (filtered) sections.push(renderCaseModule(filtered));
     }
     if (sections.length === 0) {
       sections.push(element("p", {
@@ -774,27 +853,60 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     return sections;
   }
 
-  function renderCaseModule(module, cases) {
-    const section = element("section", { class: "case-module" });
-    const header = element("div", { class: "case-module__head" },
-      element("div", { class: "case-module__title" },
-        element("span", { class: "case-module__name", text: module.title }),
-        element("span", {
-          class: "case-module__page",
-          text: module.role ? `${module.page} · ${module.role}` : module.page,
-        }),
-      ),
-      element("span", { class: "case-module__count", text: `${cases.length} 条` }),
+  function renderCaseModule(module) {
+    const depth = Number.isInteger(module.depth) ? module.depth : 0;
+    const cases = module.cases ?? [];
+    const children = module.children ?? [];
+    const key = module.key ?? [...(module.path ?? [module.title])].join("\u001f");
+    const expanded = !collapsedModules.has(key);
+    const section = element("section", {
+      class: `case-module${depth > 0 ? " case-module--nested" : ""}`,
+      dataset: { depth: String(depth) },
+    });
+
+    const header = element("button", {
+      type: "button",
+      class: "case-module__head",
+      "aria-expanded": String(expanded),
+    });
+    const title = element("div", { class: "case-module__title" },
+      element("span", { class: "case-module__name", text: module.title }),
+    );
+    const meta = moduleMetaText(module);
+    if (meta) title.append(element("span", { class: "case-module__page", text: meta }));
+    header.append(
+      element("span", { class: "case-module__chevron", "aria-hidden": "true", text: "›" }),
+      title,
+      element("span", { class: "case-module__count", text: `${moduleCaseCount(module)} 条` }),
     );
     section.append(header);
-    if (module.tags.length > 0) {
-      section.append(element("div", { class: "case-module__tags" },
+
+    const body = element("div", { class: "case-module__body" });
+    body.hidden = !expanded;
+    if ((module.tags ?? []).length > 0) {
+      body.append(element("div", { class: "case-module__tags" },
         module.tags.slice(0, 4).map((tag) => element("span", { class: "case-tag", text: tag })),
       ));
     }
-    const list = element("div", { class: "case-module__cases" });
-    for (const item of cases) list.append(renderCaseCard(module, item));
-    section.append(list);
+    if (cases.length > 0) {
+      const list = element("div", { class: "case-module__cases" });
+      for (const item of cases) list.append(renderCaseCard(module, item));
+      body.append(list);
+    }
+    if (children.length > 0) {
+      const group = element("div", { class: "case-module__children" });
+      for (const child of children) group.append(renderCaseModule(child));
+      body.append(group);
+    }
+    section.append(body);
+
+    header.addEventListener("click", () => {
+      const open = body.hidden;
+      body.hidden = !open;
+      header.setAttribute("aria-expanded", String(open));
+      if (open) collapsedModules.delete(key);
+      else collapsedModules.add(key);
+    });
     return section;
   }
 
@@ -828,9 +940,16 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
     const detail = element("div", { class: "case-card__body" });
     detail.hidden = !expanded;
+    const modulePath = (module.path ?? [module.title]).join(" / ");
+    const casePage = item.page ?? module.page ?? "";
+    const caseRole = item.role ?? module.role ?? "";
     detail.append(element("p", {
       class: "case-card__context",
-      text: `模块 ${module.title} · 页面 ${module.page}${module.role ? ` · 角色 ${module.role}` : ""}`,
+      text: [
+        `模块 ${modulePath}`,
+        casePage ? `页面 ${casePage}` : "",
+        caseRole ? `角色 ${caseRole}` : "",
+      ].filter(Boolean).join(" · "),
     }));
     detail.append(element("p", {
       class: "case-card__result",

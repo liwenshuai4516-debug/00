@@ -39,7 +39,7 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 
 项目目录和测试存储目录分别处理：目标项目可登记其他工作目录，本次产物仍写当前会话工作区。新脚本使用 `qa/data/ui/cases/项目名称__页面路径__短摘要.spec.cjs`，同名重复录制自动增加版本；路由 hash 纳入路径命名，查询参数保留在任务 URL、不作为目录名。中文及文件长度做路径处理，旧资产不会被覆盖。
 
-qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。用例说明还必须包含 `qa-ui-case/v1` 元数据块（schema、caseId、project.id、page、role、dataPolicy、cases[].assertions），工具校验后把 caseMeta、caseCount、assertionCount 写入 .asset.json；缺失或字段不合规拒绝登记。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
+qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。用例说明还必须包含 `qa-ui-case/v1` 元数据块（schema、caseId、project.id、page、modulePath、role、dataPolicy、cases[].assertions），工具校验后把 caseMeta、caseCount、assertionCount 写入 .asset.json；缺失或字段不合规拒绝登记。`modulePath` 是可选的 1-6 段实际导航层级（如 `["合同管理", "经营合同"]`），右侧测试数据目录按此分组；缺省时按页面归组，仅用于兼容旧资产。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
 
 自动登录默认识别唯一的账号、密码及登录按钮，可用 selectors.account/password/submit/authenticated 提供实际页面定位器；应优先提供明确的登录后角色或页面标识。默认检查目标路由可达且登录表单消失，不足以证明角色权限，录制前仍需通过页面核验。自动登录同 origin 内执行一次，验证码/MFA、跨域认证、无法确定的表单或失败会保留可见窗口并返回具体受阻原因，不重复提交。用户解决后 complete 即可交接；本次已授权的自动流程不再次询问私有状态保存。纯手动 start/complete 保留原确认方式。
 
@@ -54,7 +54,7 @@ qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业�
 ## 批次产物与判断
 
 新项目资产在 `qa/data/ui/cases/`，旧资产仍在 `qa/ui/cases/`，录制日志在 `qa/ui/recordings/<id>/`；每次回放写独立的 `qa/ui/runs/<id>/`，独占标记禁止同一任务重复执行。
-每个新资产由 `<caseId>.spec.cjs`、`<caseId>.md` 和 `<caseId>.asset.json` 组成；`.asset.json` 的 caseMeta（用例类型、优先级、标签、断言来源）用于后续分类管理，脚本 SHA-256 用于回放前校验。
+每个新资产由 `<caseId>.spec.cjs`、`<caseId>.md` 和 `<caseId>.asset.json` 组成；`.asset.json` 的 caseMeta（模块层级、用例类型、优先级、标签、断言来源）用于后续分类管理，脚本 SHA-256 用于回放前校验。
 
 | 产物 | 内容 |
 | --- | --- |

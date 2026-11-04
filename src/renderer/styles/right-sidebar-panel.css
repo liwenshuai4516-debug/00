@@ -539,7 +539,7 @@
   line-height: 1.5;
 }
 
-/* ---------- 测试数据目录：项目 → 模块 → 用例 → 断言 ---------- */
+/* ---------- 测试数据目录：项目 → 模块 → 子模块 → 用例 → 断言 ---------- */
 
 .case-catalog {
   display: flex;
@@ -612,18 +612,54 @@
   background: var(--surface);
 }
 
+.case-module--nested {
+  margin-left: 2px;
+  padding-left: 8px;
+  border: 0;
+  border-left: 2px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
 .case-module__head {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+  width: 100%;
   padding: 10px 12px;
+  border: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.case-module__head:hover {
+  background: var(--hover);
+}
+
+.case-module__head:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.case-module__chevron {
+  flex: none;
+  margin-top: 1px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.case-module__head[aria-expanded="true"] .case-module__chevron {
+  transform: rotate(90deg);
 }
 
 .case-module__title {
   display: flex;
   min-width: 0;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
 }
@@ -647,11 +683,44 @@
   white-space: nowrap;
 }
 
+.case-module__body {
+  min-width: 0;
+}
+
+.case-module__children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 8px 6px 10px;
+}
+
 .case-module__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   padding: 8px 12px 0;
+}
+
+.case-module--nested > .case-module__head {
+  padding: 7px 8px;
+  border-bottom: 0;
+}
+
+.case-module--nested > .case-module__head .case-module__name {
+  font-size: 11.5px;
+}
+
+.case-module--nested .case-module__tags {
+  padding: 6px 8px 0 0;
+}
+
+.case-module--nested .case-card__head {
+  padding: 8px;
+}
+
+.case-module--nested .case-card__body {
+  padding-right: 8px;
+  padding-left: 8px;
 }
 
 .case-tag {

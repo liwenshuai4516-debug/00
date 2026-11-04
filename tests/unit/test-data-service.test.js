@@ -101,6 +101,7 @@ test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
 
   const result = await service.list(project.id);
   assert.equal(result.catalog.totals.modules, 1);
+  assert.equal(result.catalog.totals.submodules, 0);
   assert.equal(result.catalog.totals.cases, 2);
   assert.equal(result.catalog.totals.assertions, 3);
   assert.equal(result.catalog.totals.legacy, 1);
@@ -109,6 +110,7 @@ test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
   const module = result.catalog.modules[0];
   assert.equal(module.title, "合同管理");
   assert.equal(module.page, "/pms/Contract");
+  assert.deepEqual(module.path, ["合同管理"]);
   assert.deepEqual(module.tags, ["合同管理", "列表"]);
   assert.deepEqual(module.cases.map((item) => item.name), ["T2 权限拒绝", "T1 列表可见"]);
   assert.equal(module.cases[0].priority, "P0");
@@ -126,6 +128,80 @@ test("按 qa-ui-case 元数据归组模块、用例与断言", async (t) => {
   assert.equal(result.catalog.lastRun.total, 2);
   assert.equal(result.catalog.lastRun.passed, 1);
   assert.equal(result.catalog.lastRun.failed, 1);
+});
+
+test("modulePath 构建多级目录并合并同路径用例", async (t) => {
+  const { service, project, dataRoot, workspace } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  const assertion = (text) => [{ id: "A1", kind: "business", text, source: "页面基线" }];
+  async function writeAsset(name, modulePath, page, entries) {
+    await writeFile(path.join(cases, `${name}.asset.json`), JSON.stringify({
+      caseId: name,
+      recordedAt: "2026-11-04T06:48:43.222Z",
+      caseMeta: {
+        schema: "qa-ui-case/v1",
+        caseId: name,
+        project: { id: "pms", name: "项目管理系统" },
+        page,
+        modulePath,
+        role: "管理员",
+        dataPolicy: "read-only",
+        tags: ["合同管理", "列表"],
+        cases: entries,
+      },
+    }));
+  }
+  await writeAsset("经营合同", ["合同管理", "经营合同"], "/pms/OperationContract", [
+    { name: "T2 经营合同查询", type: "functional", priority: "P1", assertions: assertion("查询结果") },
+  ]);
+  await writeAsset("经营合同详情", ["合同管理", "经营合同"], "/pms/OperationContract/Detail", [
+    { name: "T3 经营合同详情", type: "functional", priority: "P1", assertions: assertion("详情可见") },
+  ]);
+  await writeAsset("采购合同", ["合同管理", "采购合同"], "/pms/PurchaseContract", [
+    { name: "T1 采购合同列表", type: "functional", priority: "P2", assertions: assertion("列表可见") },
+  ]);
+  const runDir = path.join(workspace, "qa", "ui", "runs", "run-2");
+  await mkdir(runDir, { recursive: true });
+  await writeFile(path.join(runDir, "summary.json"), JSON.stringify({
+    runId: "run-2",
+    status: "failed",
+    finishedAt: "2026-11-04T06:52:00.000Z",
+    tests: [
+      { file: "经营合同.spec.cjs", title: "经营合同.spec.cjs > 合同 > T2 经营合同查询", status: "passed", durationMs: 5 },
+      { file: "采购合同.spec.cjs", title: "采购合同.spec.cjs > 合同 > T1 采购合同列表", status: "failed", durationMs: 7 },
+    ],
+  }));
+
+  const { catalog } = await service.list(project.id);
+  assert.equal(catalog.totals.modules, 1);
+  assert.equal(catalog.totals.submodules, 2);
+  assert.equal(catalog.totals.cases, 3);
+  assert.equal(catalog.totals.assertions, 3);
+
+  const root = catalog.modules[0];
+  assert.equal(root.title, "合同管理");
+  assert.deepEqual(root.path, ["合同管理"]);
+  assert.equal(root.depth, 0);
+  assert.equal(root.caseCount, 3);
+  assert.equal(root.page, "");
+  assert.deepEqual(root.children.map((node) => node.title), ["采购合同", "经营合同"]);
+
+  const operation = root.children.find((node) => node.title === "经营合同");
+  assert.deepEqual(operation.path, ["合同管理", "经营合同"]);
+  assert.equal(operation.depth, 1);
+  assert.equal(operation.caseCount, 2);
+  assert.deepEqual(operation.pages, ["/pms/OperationContract", "/pms/OperationContract/Detail"]);
+  assert.equal(operation.page, "");
+  assert.deepEqual(operation.cases.map((item) => item.name), ["T2 经营合同查询", "T3 经营合同详情"]);
+  assert.equal(operation.cases[0].page, "/pms/OperationContract");
+  assert.equal(operation.cases[0].lastResult.status, "passed");
+  assert.equal(operation.cases[1].role, "管理员");
+
+  const purchase = root.children.find((node) => node.title === "采购合同");
+  assert.equal(purchase.caseCount, 1);
+  assert.equal(purchase.page, "/pms/PurchaseContract");
+  assert.equal(purchase.cases[0].lastResult.status, "failed");
+  assert.equal(catalog.lastRun.runId, "run-2");
 });
 
 test("删除单个文件并保留其他测试数据", async (t) => {
@@ -172,7 +248,7 @@ test("没有 qa/data、未知项目或无效编号明确返回/报错", async (t
       modules: [],
       legacy: [],
       truncated: false,
-      totals: { modules: 0, cases: 0, assertions: 0, legacy: 0 },
+      totals: { modules: 0, submodules: 0, cases: 0, assertions: 0, legacy: 0 },
       lastRun: null,
     },
   });

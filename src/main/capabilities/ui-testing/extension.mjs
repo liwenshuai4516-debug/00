@@ -18,6 +18,8 @@ const caseTypes = new Set(["functional", "permission", "boundary", "exception", 
 const casePriorities = new Set(["P0", "P1", "P2", "P3"]);
 const caseDataPolicies = new Set(["read-only", "write-unique", "write-disposable", "no-write"]);
 const assertionKinds = new Set(["business", "guard"]);
+const modulePathMaxDepth = 6;
+const modulePathSegmentMax = 60;
 const hasText = (value) => typeof value === "string" && value.trim().length > 0;
 
 // 用例说明同时是人读文档和后续分类的索引来源，登记前固定字段与取值，避免只有自然语言。
@@ -37,6 +39,21 @@ function parseCaseMetadata(document, project, caseId) {
   if (!caseDataPolicies.has(meta.dataPolicy)) throw new Error("用例说明 dataPolicy 必须是 read-only、write-unique、write-disposable 或 no-write。");
   if (meta.tags !== undefined && (!Array.isArray(meta.tags) || meta.tags.some((tag) => !hasText(tag)))) {
     throw new Error("用例说明 tags 必须是非空字符串数组。");
+  }
+  if (meta.modulePath !== undefined) {
+    if (
+      !Array.isArray(meta.modulePath) ||
+      meta.modulePath.length < 1 ||
+      meta.modulePath.length > modulePathMaxDepth ||
+      meta.modulePath.some(
+        (segment) =>
+          !hasText(segment) ||
+          segment.trim().length > modulePathSegmentMax ||
+          segment.includes("/"),
+      )
+    ) {
+      throw new Error(`用例说明 modulePath 必须是 1-${modulePathMaxDepth} 段非空字符串，每段不超过 ${modulePathSegmentMax} 字且不含 /。`);
+    }
   }
   if (!Array.isArray(meta.cases) || !meta.cases.length) throw new Error("用例说明必须包含至少一个 case。");
   const names = new Set();
@@ -64,6 +81,7 @@ function parseCaseMetadata(document, project, caseId) {
     page: meta.page,
     role: meta.role,
     dataPolicy: meta.dataPolicy,
+    modulePath: meta.modulePath?.map((segment) => segment.trim()) ?? undefined,
     tags: meta.tags ?? [],
     cases: meta.cases,
     caseCount: meta.cases.length,

@@ -7,6 +7,8 @@ const MAX_CASE_ASSETS = 200;
 const MAX_ASSET_BYTES = 512 * 1024;
 const MAX_RUNS = 50;
 const MAX_SUMMARY_BYTES = 1024 * 1024;
+const MAX_MODULE_DEPTH = 6;
+const MAX_MODULE_TITLE = 60;
 const CASE_TYPES = new Set(["functional", "permission", "boundary", "exception", "regression"]);
 const PRIORITIES = new Set(["P0", "P1", "P2", "P3"]);
 const DATA_POLICIES = new Set(["read-only", "write-unique", "write-disposable", "no-write"]);
@@ -17,7 +19,7 @@ function emptyCatalog() {
     modules: [],
     legacy: [],
     truncated: false,
-    totals: { modules: 0, cases: 0, assertions: 0, legacy: 0 },
+    totals: { modules: 0, submodules: 0, cases: 0, assertions: 0, legacy: 0 },
     lastRun: null,
   };
 }
@@ -38,6 +40,63 @@ function legacyEntry(item) {
     size: item.size,
     modifiedAt: item.modifiedAt,
   };
+}
+
+// 目录层级只取显式 modulePath；旧资产缺少该字段时由 buildCatalog 按页面兼容。
+function readModulePath(caseMeta) {
+  if (!Array.isArray(caseMeta?.modulePath)) return [];
+  return caseMeta.modulePath
+    .map((segment) => text(segment, MAX_MODULE_TITLE))
+    .filter(Boolean)
+    .slice(0, MAX_MODULE_DEPTH);
+}
+
+function finalizeModule(node) {
+  node.children.sort(
+    (first, second) =>
+      first.title.localeCompare(second.title, "zh-CN") ||
+      first.key.localeCompare(second.key),
+  );
+  node.cases.sort(
+    (first, second) =>
+      PRIORITY_ORDER[first.priority] - PRIORITY_ORDER[second.priority] ||
+      first.name.localeCompare(second.name, "zh-CN"),
+  );
+  for (const child of node.children) finalizeModule(child);
+
+  node.caseCount =
+    node.cases.length +
+    node.children.reduce((total, child) => total + child.caseCount, 0);
+  node.assertionCount =
+    node.cases.reduce((total, item) => total + item.assertions.length, 0) +
+    node.children.reduce((total, child) => total + child.assertionCount, 0);
+  node.pages = [...node.pages].sort((first, second) => first.localeCompare(second, "zh-CN"));
+  node.roles = [...node.roles].sort((first, second) => first.localeCompare(second, "zh-CN"));
+  node.tags = [...node.tags];
+  node.policies = [...node.policies];
+  node.page = node.pages.length === 1 ? node.pages[0] : "";
+  node.role = node.roles.length === 1 ? node.roles[0] : "";
+  if (node.policies.length === 1) node.dataPolicy = node.policies[0];
+  else if (node.policies.length > 1) node.dataPolicy = "mixed";
+  else node.dataPolicy = "";
+}
+
+function pruneEmptyModules(node) {
+  node.children = node.children.filter((child) => {
+    pruneEmptyModules(child);
+    return child.caseCount > 0;
+  });
+}
+
+function countModules(modules) {
+  let total = 0;
+  const stack = [...modules];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    total += 1;
+    stack.push(...node.children);
+  }
+  return total;
 }
 
 function isOutside(relative) {
@@ -217,20 +276,27 @@ function createTestDataService(projectStore) {
     };
   }
 
-  async function applyRunResults(catalog, workspace) {
-    const { latest, byCase } = await readRunResults(workspace);
-    for (const module of catalog.modules) {
+  function applyRunResultsToModules(modules, byCase) {
+    for (const module of modules) {
       for (const item of module.cases) {
         item.lastResult = byCase.get(`${item.caseId}::${item.name}`) ?? null;
       }
+      applyRunResultsToModules(module.children, byCase);
     }
+  }
+
+  async function applyRunResults(catalog, workspace) {
+    const { latest, byCase } = await readRunResults(workspace);
+    applyRunResultsToModules(catalog.modules, byCase);
     catalog.lastRun = latest;
   }
 
-  // qa-ui-case 元数据是分类索引：按页面归为模块，模块内列出用例与断言；旧资产单独计数。
+  // qa-ui-case 元数据是分类索引：modulePath 对应实际项目目录层级；旧资产按页面归组。
   async function buildCatalog(root, assets) {
-    const modules = new Map();
+    const nodes = new Map();
+    const roots = [];
     const legacy = [];
+
     for (const item of assets.slice(0, MAX_CASE_ASSETS)) {
       if (item.size > MAX_ASSET_BYTES) {
         legacy.push(legacyEntry(item));
@@ -254,23 +320,45 @@ function createTestDataService(projectStore) {
       }
 
       const page = text(caseMeta.page, 300) || "未标注页面";
+      const role = text(caseMeta.role, 80);
       const tags = Array.isArray(caseMeta.tags)
         ? caseMeta.tags.map((tag) => text(tag, 40)).filter(Boolean).slice(0, 8)
         : [];
-      if (!modules.has(page)) {
-        modules.set(page, {
-          key: page,
-          page,
-          title: tags[0] || page,
-          role: text(caseMeta.role, 80),
-          dataPolicy: DATA_POLICIES.has(caseMeta.dataPolicy) ? caseMeta.dataPolicy : "read-only",
-          tags: new Set(),
-          cases: [],
-        });
+      const dataPolicy = DATA_POLICIES.has(caseMeta.dataPolicy) ? caseMeta.dataPolicy : "read-only";
+      const modulePath = readModulePath(caseMeta);
+      const explicitPath = modulePath.length > 0;
+      const title = explicitPath ? modulePath[modulePath.length - 1] : tags[0] || page;
+      const idPath = explicitPath ? modulePath : [page];
+
+      let module = null;
+      for (let index = 0; index < idPath.length; index += 1) {
+        const prefix = idPath.slice(0, index + 1);
+        const key = explicitPath ? prefix.join("\u001f") : `page:${page}`;
+        let node = nodes.get(key);
+        if (!node) {
+          node = {
+            key,
+            path: explicitPath ? prefix : [title],
+            title: explicitPath ? prefix[prefix.length - 1] : title,
+            depth: explicitPath ? index : 0,
+            cases: [],
+            children: [],
+            pages: new Set(),
+            roles: new Set(),
+            tags: new Set(),
+            policies: new Set(),
+          };
+          nodes.set(key, node);
+          if (module) module.children.push(node);
+          else roots.push(node);
+        }
+        module = node;
       }
-      const module = modules.get(page);
+
       for (const tag of tags) module.tags.add(tag);
-      if (!module.role) module.role = text(caseMeta.role, 80);
+      module.pages.add(page);
+      if (role) module.roles.add(role);
+      module.policies.add(dataPolicy);
 
       const caseId = safeId(caseMeta.caseId);
       const recordedAt = text(metadata.recordedAt, 40);
@@ -295,37 +383,36 @@ function createTestDataService(projectStore) {
           assetPath: item.path,
           specPath: caseId ? `ui/cases/${caseId}.spec.cjs` : "",
           documentPath: caseId ? `ui/cases/${caseId}.md` : "",
+          page,
+          role,
           recordedAt,
           modifiedAt: item.modifiedAt,
         });
       }
     }
 
-    const result = [...modules.values()]
-      .filter((module) => module.cases.length > 0)
-      .map((module) => ({
-        ...module,
-        tags: [...module.tags],
-        cases: module.cases.sort(
-          (first, second) =>
-            PRIORITY_ORDER[first.priority] - PRIORITY_ORDER[second.priority] ||
-            first.name.localeCompare(second.name, "zh-CN"),
-        ),
-      }))
-      .sort((first, second) => first.title.localeCompare(second.title, "zh-CN"));
-    const cases = result.reduce((total, module) => total + module.cases.length, 0);
+    for (const node of roots) finalizeModule(node);
+    const modules = roots.filter((node) => {
+      pruneEmptyModules(node);
+      return node.caseCount > 0;
+    });
+    modules.sort(
+      (first, second) =>
+        first.title.localeCompare(second.title, "zh-CN") ||
+        first.key.localeCompare(second.key),
+    );
+    const cases = modules.reduce((total, module) => total + module.caseCount, 0);
+    const assertions = modules.reduce((total, module) => total + module.assertionCount, 0);
+    const totalModules = countModules(modules);
     return {
-      modules: result,
+      modules,
       legacy,
       truncated: assets.length > MAX_CASE_ASSETS,
       totals: {
-        modules: result.length,
+        modules: modules.length,
+        submodules: Math.max(0, totalModules - modules.length),
         cases,
-        assertions: result.reduce(
-          (total, module) =>
-            total + module.cases.reduce((sum, item) => sum + item.assertions.length, 0),
-          0,
-        ),
+        assertions,
         legacy: legacy.length,
       },
     };

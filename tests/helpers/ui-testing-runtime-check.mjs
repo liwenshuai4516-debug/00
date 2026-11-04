@@ -151,6 +151,7 @@ test("button", async ({ page }) => {
       caseId: prepared.caseId,
       project: { id: "fixture-project", name: "项目管理系统" },
       page: "/",
+      modulePath: ["夹具", "开始按钮"],
       role: "操作员",
       dataPolicy: "no-write",
       tags: ["fixture"],
@@ -161,6 +162,16 @@ test("button", async ({ page }) => {
         assertions: [{ id: "A1", kind: "business", text: "按钮文字变为已完成", source: "本次临时夹具要求" }],
       }],
     };
+    await fs.writeFile(prepared.caseDocument, [
+      "# 开始按钮",
+      "",
+      "```json qa-ui-case",
+      JSON.stringify({ ...caseMetadata, modulePath: ["合同管理/经营合同"] }, null, 2),
+      "```",
+    ].join("\n"));
+    await assert.rejects(finalizeTool.execute("finalize-invalid-module", {
+      projectRef: project.projectRef, caseId: prepared.caseId,
+    }), /modulePath/);
     await fs.writeFile(prepared.caseDocument, [
       "# 开始按钮",
       "",
@@ -176,6 +187,7 @@ test("button", async ({ page }) => {
     ].join("\n"));
     const finalized = (await finalizeTool.execute("finalize", { projectRef: project.projectRef, caseId: prepared.caseId })).details;
     assert.equal(finalized.status, "recorded-and-syntax-checked");
+    assert.deepEqual(finalized.caseMeta.modulePath, ["夹具", "开始按钮"]);
     assert.equal(finalized.caseMeta.caseCount, 1);
     assert.equal(finalized.caseMeta.assertionCount, 1);
     const originalSource = await fs.readFile(prepared.caseFile, "utf8");
