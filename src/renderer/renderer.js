@@ -6,6 +6,7 @@ import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel, formatContextUsage } from "./components/session-info-panel.js";
 import { createContextUsage } from "./components/context-usage.js";
 import { createMessageScroll } from "./components/message-scroll.js";
+import { createSendQueue } from "./components/send-queue.js";
 import { createTodoDock } from "./components/todo-dock.js";
 import { createSessionList } from "./components/session-list.js";
 import { createUnsentSendPanel } from "./components/unsent-send-panel.js";
@@ -39,6 +40,7 @@ for (const template of TASK_TEMPLATES) {
 
 // 页面忙碌与输入就绪分别管理，保存确认不能解除其他操作的忙碌状态。
 let extensionUiPanel;
+let sendQueueView = null;
 let pageBusy = true;
 let pageGenerating = false;
 
@@ -136,6 +138,30 @@ const composerPersistence = createComposerPersistence(
     extensionUiPanel?.setSession(state.sessionId);
   },
 );
+
+// 生成中的提交进入待发送队列；本轮结束后按顺序自动发送。
+sendQueueView = createSendQueue(document.getElementById("send-queue"), {
+  onEdit(text) {
+    if (input.value.trim() !== "") {
+      setRequestStatus("请先清空输入框再编辑待发送内容。");
+      return;
+    }
+    input.value = text;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+  },
+  onSendNext: () => drainSendQueue(),
+});
+
+function drainSendQueue() {
+  if (pageBusy || closing || archiveSyncPending) return;
+  const item = sendQueueView?.takeFirst();
+  if (!item) return;
+  // 复用正常发送链路：写入输入框后按原入口提交，草稿保存与校验不另走一套。
+  input.value = item.text;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  form.requestSubmit(sendButton);
+}
 
 extensionUiPanel = createExtensionUi(window.agent, input, {
   canEdit: () => composerState.loaded && !composing && !closing && !input.readOnly,
@@ -578,6 +604,7 @@ function setBusy(busy, generating = false) {
   pageBusy = busy;
   pageGenerating = generating;
   const blocked = busy || closing || archiveSyncPending;
+  sendQueueView?.setBusy(blocked);
   // 关闭冻结与原操作忙碌分别保存；原 finally 不能提前解除关闭冻结。
   proposalPanelElement.disabled = blocked;
   modelSelector.setBusy(blocked);
@@ -603,6 +630,8 @@ function setBusy(busy, generating = false) {
 // 用历史消息替换当前页面内容。
 function showHistory(history) {
   proposalPanel.clear();
+  // 待发送队列只属于当前会话，切换后不把旧内容发到新会话。
+  sendQueueView?.clear();
   messages.replaceChildren();
 
   // 切换会话后恢复跟随最新消息。
@@ -1301,7 +1330,9 @@ input.addEventListener("keydown", (event) => {
   event.preventDefault();
 
   // 长按 Enter 或当前不可发送时，不重复提交。
-  if (event.repeat || sendButton.disabled) return;
+  if (event.repeat) return;
+  // 生成中允许提交到待发送队列；其他禁用原因仍然拦截。
+  if (sendButton.disabled && !pageBusy) return;
 
   // 键盘与发送按钮共用 submit，统一处理校验和请求状态。
   form.requestSubmit(sendButton);
@@ -1310,7 +1341,27 @@ input.addEventListener("keydown", (event) => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  if (!input.value.trim() || sendButton.disabled) return;
+  const submitted = input.value.trim();
+  if (!submitted) return;
+
+  // 生成中提交：进入待发送队列，本轮结束后自动发送，不打断当前请求。
+  if (pageBusy && !closing) {
+    if (parseHostCommand(submitted)) {
+      setRequestStatus("生成中，内置命令请等待本轮结束。");
+      return;
+    }
+    // 生成中 pendingSend 指向当前请求，不能据此拒绝排队；只要求输入已加载且无错误。
+    if (!composerState.loaded || composerState.error || archiveSyncPending) {
+      return;
+    }
+    sendQueueView.add(submitted);
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    setRequestStatus("已加入待发送队列，本轮结束后自动发送。");
+    return;
+  }
+
+  if (sendButton.disabled) return;
 
   // 内置命令由页面执行，不进入模型对话；资源命令仍走发送链路。
   const hostCommand = parseHostCommand(input.value);
@@ -1338,6 +1389,7 @@ form.addEventListener("submit", async (event) => {
 
   // 模型请求和随后刷新历史列表是两个不同阶段。
   let requestReturned = false;
+  let drainAfter = false;
   let inputSettled = false;
   let replyElement;
   let reply = "";
@@ -1453,6 +1505,8 @@ form.addEventListener("submit", async (event) => {
       revision: ticket.revision,
     });
     outputTrace?.finish(result);
+    // 停止或结果未确认时不自动发送队列，交由用户手动继续。
+    drainAfter = !result.stopped && result.outcome !== "unconfirmed";
     // 已返回的请求与随后页面刷新分别处理，输入补保存失败不恢复已发送原文。
     requestReturned = true;
     await composerPersistence.finishSend(ticket, result);
@@ -1523,6 +1577,7 @@ form.addEventListener("submit", async (event) => {
     await refreshUnsentSessions();
     setBusy(false);
     input.focus();
+    if (drainAfter) window.setTimeout(drainSendQueue, 0);
   }
 });
 
@@ -1541,6 +1596,7 @@ async function startNewChat() {
     messages.replaceChildren();
     messageScroll.followLatest();
     todoDock.clear();
+    sendQueueView?.clear();
     proposalPanel.clear();
     // 新会话尚未发送消息时，可能还没有历史列表项。
     sessionList.setActive("");
