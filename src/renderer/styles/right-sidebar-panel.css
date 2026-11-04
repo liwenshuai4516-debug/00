@@ -1,5 +1,5 @@
 /* ==========================================================================
-   右侧边栏内容：工作台卡片、项目环境、测试数据。
+   右侧边栏内容：工作台卡片、项目环境、测试数据、文件预览。
    只使用项目语义颜色，参考 DSH 的卡片层级和留白。
    ========================================================================== */
 
@@ -590,4 +590,50 @@
 
 .right-panel-confirm__actions [data-confirm]:hover:not(:disabled) {
   background: color-mix(in srgb, var(--error-border) 10%, transparent);
+}
+
+/* 文件预览：元信息一行，Markdown 沿用正文排版，其他文件按等宽文本展示。 */
+.right-panel--file {
+  min-height: 0;
+}
+
+.right-panel__file-meta {
+  margin: 6px 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.right-panel__file {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  tab-size: 2;
+  user-select: text;
+}
+
+.right-panel__markdown {
+  min-width: 0;
+  padding-bottom: 24px;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.right-panel__file:focus-visible,
+.right-panel__markdown a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.right-panel__markdown a {
+  color: var(--focus);
 }

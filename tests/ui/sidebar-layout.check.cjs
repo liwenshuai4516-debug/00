@@ -67,6 +67,10 @@ async function main() {
       if (projectIndex >= 0) projects.splice(projectIndex, 1);
       return { id: removed.id, name: removed.name };
     }
+    if (name === "readPreviewFile") {
+      if (args[0] === "docs/missing.md") throw Error("文件不存在或不可读。");
+      return { path: args[0], size: 48, content: "# 需求文档\n\n- **本地预览**\n" };
+    }
     if (name === "listTestData") {
       return args[0] === "a"
         ? { available: true, truncated: false, items: testData.map((item) => ({ ...item })) }
@@ -286,6 +290,19 @@ async function main() {
     await wait(`document.querySelectorAll('.right-panel__card').length===2&&document.querySelectorAll('.right-panel__card-meta')[1].textContent==='2 个文件'`);
     if (process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     await check("右侧栏工作台显示 logo 与两张功能卡片", `document.querySelector('.right-panel__logo')!==null&&[...document.querySelectorAll('.right-panel__card-title')].map(e=>e.textContent).join(',')==='项目环境,测试数据'&&document.querySelectorAll('.right-panel__card-meta')[0].textContent==='2 个'`);
+
+    // 文件预览：页面事件打开侧栏的文件视图，Markdown 走正文清理链路。
+    await run(`document.dispatchEvent(new CustomEvent('open-file-preview',{detail:{path:'docs/需求.md'}}))`);
+    await wait(`document.querySelector('.right-panel__markdown')!==null`);
+    await check("本地路径打开文件预览并渲染 Markdown", `document.querySelector('.right-panel__nav-title').textContent==='需求.md'&&document.querySelector('.right-panel__file-meta').textContent.includes('docs/需求.md')&&document.querySelector('.right-panel__markdown strong')!==null&&document.querySelector('.right-panel__markdown').textContent.includes('本地预览')`);
+    await run(`document.dispatchEvent(new CustomEvent('session-changed'))`);
+    await wait(`document.querySelector('.right-panel__hero')!==null`);
+    await check("切换会话关闭旧工作目录的文件预览", `document.querySelector('.right-panel--file')===null`);
+    await run(`document.dispatchEvent(new CustomEvent('open-file-preview',{detail:{path:'docs/missing.md'}}))`);
+    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('文件不存在')`);
+    await check("预览失败显示主进程错误且不伪装内容", `document.querySelector('.right-panel__status').dataset.error===''&&document.querySelector('.right-panel__markdown')===null`);
+    await click('.right-panel__nav .right-sidebar__icon-button');
+    await wait(`document.querySelector('.right-panel__hero')!==null`);
     await click('.right-panel__card');
     await wait(`document.querySelectorAll('.right-panel__env').length===2`);
     await check("项目环境列出地址、账号和密码状态", `document.querySelector('.right-panel__env-url').textContent==='https://demo.invalid'&&document.querySelector('.right-panel__env-badge').textContent==='密码已配置'&&document.querySelector('.right-panel__env-meta').textContent==='账号：demo'`);

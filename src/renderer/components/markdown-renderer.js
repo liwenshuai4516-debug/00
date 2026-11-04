@@ -11,6 +11,17 @@ function escapeHtml(text) {
     .replaceAll("'", "&#39;");
 }
 
+// 只把工作目录内的本地路径做成预览入口；外部地址和页面锚点仍按文字展示。
+function localPreviewPath(href) {
+  if (typeof href !== "string") return null;
+  const value = href.trim();
+  if (value === "" || value.startsWith("#") || value.startsWith("//")) return null;
+  // 允许 Windows 盘符（C:\\path）；其他协议一律视为外部地址。
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^[a-z]:[\\/]/i.test(value)) return null;
+  const path = value.split(/[?#]/)[0];
+  return path === "" ? null : path;
+}
+
 const markdown = new Marked({
   async: false,
   gfm: true,
@@ -19,9 +30,12 @@ const markdown = new Marked({
     html({ text }) {
       return escapeHtml(text);
     },
-    // 首步只展示链接文字和地址，不触发页面跳转。
+    // 本地路径生成本地预览入口；外部链接只展示文字和地址，不触发跳转。
     link({ tokens, href }) {
-      return `${this.parser.parseInline(tokens)}（${escapeHtml(href)}）`;
+      const text = this.parser.parseInline(tokens);
+      const path = localPreviewPath(href);
+      if (path) return `<a href="#" data-file-path="${escapeHtml(path)}">${text}</a>`;
+      return `${text}（${escapeHtml(href)}）`;
     },
     // 图片说明按文字展示，不自动请求外部图片。
     image({ text }) {
@@ -38,9 +52,11 @@ export function renderMarkdown(element, text) {
       "p", "br", "strong", "em", "del", "blockquote",
       "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6",
       "pre", "code", "hr", "table", "thead", "tbody", "tr", "th", "td",
+      "a",
     ],
-    ALLOWED_ATTR: ["class", "start", "align"],
-    ALLOW_DATA_ATTR: false,
+    ALLOWED_ATTR: ["class", "start", "align", "href", "data-file-path"],
+    // 只有本模块生成的链接带 data 属性；Markdown 中的原始 HTML 已按文字转义。
+    ALLOW_DATA_ATTR: true,
     ALLOW_ARIA_ATTR: false,
   });
 

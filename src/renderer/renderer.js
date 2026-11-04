@@ -445,6 +445,18 @@ const messageScroll = createMessageScroll(
 );
 // 任务清单来自 todo_write 的工具结果，切换会话时随历史重建。
 const todoDock = createTodoDock(document.getElementById("todo-dock"));
+
+// Markdown 里的本地路径链接不跳转页面，交给右侧栏预览。
+messages.addEventListener("click", (event) => {
+  const link = event.target instanceof Element
+    ? event.target.closest("a[data-file-path]")
+    : null;
+  if (!link) return;
+  event.preventDefault();
+  document.dispatchEvent(new CustomEvent("open-file-preview", {
+    detail: { path: link.dataset.filePath },
+  }));
+});
 const sessionName = document.getElementById("session-name");
 const renameButton = document.getElementById("rename-button");
 
@@ -598,6 +610,8 @@ function showHistory(history) {
 
   appendOutputHistory(messages, history, () => messageScroll.update());
   todoDock.showHistory(history);
+  // 右侧栏据此关闭上一个工作目录的文件预览。
+  document.dispatchEvent(new CustomEvent("session-changed"));
   messageScroll.update();
 }
 // 获取历史列表，并标记当前正在使用的会话。

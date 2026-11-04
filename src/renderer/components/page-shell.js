@@ -48,7 +48,7 @@ const rightSidebarPanel = createRightSidebarPanel({
   confirmDialog: document.getElementById("right-sidebar-confirm-dialog"),
 });
 
-createRightSidebar({
+const rightSidebar = createRightSidebar({
   sidebar: document.getElementById("app-right-sidebar"),
   toggle: document.getElementById("right-sidebar-toggle"),
   close: document.getElementById("right-sidebar-close"),
@@ -56,6 +56,17 @@ createRightSidebar({
   collapseLeft: (options) => sidebarShell.collapse(options),
   onOpen: () => rightSidebarPanel.open(),
 });
+
+// Markdown 中的本地路径由页面事件打开；侧栏已收起时先展开。
+document.addEventListener("open-file-preview", (event) => {
+  const filePath = event.detail?.path;
+  if (typeof filePath !== "string" || filePath === "") return;
+  if (!rightSidebar.isOpen()) rightSidebar.open();
+  void rightSidebarPanel.openFile(filePath);
+});
+
+// 会话切换后关闭旧工作目录的文件预览，避免把上一个项目的文件留在侧栏。
+document.addEventListener("session-changed", () => rightSidebarPanel.resetFileView());
 
 searchToggle.addEventListener("click", () => setSearch(searchField.hidden));
 

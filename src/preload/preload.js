@@ -117,6 +117,13 @@ contextBridge.exposeInMainWorld("agent", {
   // 页面只能传会话编号，不能指定主进程读取的文件路径。
   previewSession: (sessionId) =>
     ipcRenderer.invoke("agent:preview-session", sessionId),
+  // 只提交相对或绝对路径；解析、边界与大小校验都在主进程完成。
+  readPreviewFile: (filePath) => {
+    if (typeof filePath !== "string" || !filePath || filePath.length > 1024) {
+      throw new Error("文件路径无效。");
+    }
+    return ipcRenderer.invoke("agent:read-preview-file", filePath);
+  },
 
   // 获取当前会话的 ID，用于在列表中标记当前对话。
   currentSession: () => ipcRenderer.invoke("agent:current-session"),

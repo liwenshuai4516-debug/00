@@ -1,5 +1,7 @@
-// 右侧栏内容：工作台卡片、项目环境 CRUD 与 qa/data 测试数据清理。
+// 右侧栏内容：工作台卡片、项目环境 CRUD、qa/data 测试数据清理与文件预览。
 // 内容只通过受限 IPC 读写；密码不会从主进程回填到页面。
+import { renderMarkdown } from "./markdown-renderer.js";
+
 const SIZE_UNITS = ["B", "KB", "MB", "GB"];
 
 const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -65,6 +67,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let data = null;
   let status = { text: "", error: false };
   let busy = false;
+  let currentFile = null;
+  let currentFilePath = "";
 
   function api() {
     if (!window.agent?.listProjectEnvironments) {
@@ -117,6 +121,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (view === "environments") renderEnvironments();
     else if (view === "form") renderEnvironmentForm();
     else if (view === "data") renderTestData();
+    else if (view === "file") renderFile();
     else renderHome();
   }
 
@@ -697,7 +702,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   async function open() {
-    view = "home";
+    // 从 header 重新打开时保留正在查看的文件，避免把预览切回工作台。
+    if (view !== "file") view = "home";
     editingId = null;
     setStatus("");
     busy = true;
@@ -713,5 +719,77 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
   }
 
-  return { open, refresh: open };
+  // Markdown 里的本地路径链接经页面事件进入这里；路径解析与边界在主进程完成。
+  async function openFile(filePath) {
+    view = "file";
+    currentFilePath = typeof filePath === "string" ? filePath : "";
+    currentFile = null;
+    busy = true;
+    setStatus("正在读取文件…");
+    render();
+
+    try {
+      const read = window.agent?.readPreviewFile;
+      if (typeof read !== "function") throw new Error("页面接口尚未就绪，请稍后重试。");
+      const result = await read(currentFilePath);
+      if (!result || typeof result.content !== "string") throw new Error("文件内容不可用。");
+      currentFile = result;
+      if (typeof result.path === "string" && result.path !== "") currentFilePath = result.path;
+      setStatus("");
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  function renderFile() {
+    const name = currentFilePath.split("/").filter(Boolean).pop() || "文件预览";
+    setNav(name, () => go("home"), [
+      iconButton("重新读取", "refresh", () => void openFile(currentFilePath), busy),
+    ]);
+
+    const panel = element("div", { class: "right-panel right-panel--file" });
+    panel.append(statusLine());
+    if (currentFile) {
+      panel.append(element("p", {
+        class: "right-panel__file-meta",
+        text: `${currentFile.path} · ${formatSize(currentFile.size)}`,
+      }));
+      if (/\.(md|markdown)$/i.test(currentFile.path)) {
+        const article = element("div", { class: "markdown-body right-panel__markdown" });
+        try {
+          renderMarkdown(article, currentFile.content);
+        } catch {
+          // 排版失败仍展示原文，不中断预览。
+          article.classList.remove("markdown-body");
+          article.textContent = currentFile.content;
+        }
+        // 文档之间的本地链接继续在同一个预览视图里跳转。
+        article.addEventListener("click", (event) => {
+          const link = event.target instanceof Element ? event.target.closest("a[data-file-path]") : null;
+          if (!link) return;
+          event.preventDefault();
+          void openFile(link.dataset.filePath);
+        });
+        panel.append(article);
+      } else {
+        panel.append(element("pre", {
+          class: "right-panel__file",
+          tabindex: "0",
+          text: currentFile.content,
+        }));
+      }
+    }
+    body.append(panel);
+  }
+
+  // 切换会话后旧路径可能不再属于当前工作目录，回到工作台而不是继续展示旧内容。
+  function resetFileView() {
+    if (view !== "file") return;
+    go("home");
+  }
+
+  return { open, refresh: open, openFile, resetFileView };
 }

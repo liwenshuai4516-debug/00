@@ -244,6 +244,14 @@ async function main() {
       dock.clear();
       check(dockHost.hidden, '清空隐藏任务栏');
       dockHost.remove();
+      const linkTrace = createOutputTrace(host);
+      linkTrace.accept({type:'message_start',message:msg([])});
+      linkTrace.accept({type:'message_end',message:msg([{type:'text',text:'[本地文档](docs/a.md) 与 [外部](https://example.com) 以及 [锚点](#x)'}])});
+      await paint();
+      check(host.querySelector('a[data-file-path="docs/a.md"]')!==null, '本地路径生成预览入口');
+      check(host.querySelector('a[data-file-path="docs/a.md"]').getAttribute('href')==='#', '预览入口不跳转页面');
+      check(linkTrace.root.textContent.includes('外部（https://example.com）'), '外部链接仍按文字展示');
+      linkTrace.dispose();
       try {
         await paint();
         check(host.querySelector('.output-trace>summary').textContent.includes('正在准备请求'), '首个模型事件前展示等待状态');

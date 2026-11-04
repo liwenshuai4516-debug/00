@@ -83,6 +83,13 @@ function registerAgentIpc(
   // 当前会话由主进程决定，页面不需要传入会话编号。
   ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
 
+  // 页面预览只读工作目录内的文本文件；不占用空闲互斥，生成期间也可查看。
+  const { createFilePreviewReader } = require("../services/file-preview-service.js");
+  const readPreviewFile = createFilePreviewReader(
+    async () => (await sessionService.getSessionInfo()).workspaceDir,
+  );
+  ipcMain.handle("agent:read-preview-file", (_event, filePath) => readPreviewFile(filePath));
+
   // 异常后的状态核对必须等生成结束，读取期间阻止新的发送与会话操作。
   ipcMain.handle("agent:inspect-composer-send", (_event, sessionId) => {
     return runIdleOperation(() => composerDraftService.inspectSend(sessionId));
