@@ -202,15 +202,15 @@ async function main() {
   await check("窄窗口恢复成功才关闭侧栏，失败保持入口",async () => {
     win.setContentSize(375,760); await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
     await click("#sidebar-toggle"); flags.restore=true; await open("b"); await idle();
-    assert.equal(await js('document.getElementById("app-sidebar").hidden'),false);
+    assert.equal(await js('document.getElementById("app-sidebar").dataset.collapsed'),"false");
     await open("b"); await idle();
-    assert.equal(await js('document.getElementById("app-sidebar").hidden'),true);
+    assert.equal(await js('document.getElementById("app-sidebar").dataset.collapsed'),"true");
     assert.equal(await js('document.activeElement.id'),"message-input");
   });
   for(const width of [1120,760,375]) {
     await check(`${width}宽度实际页面无横向溢出`,async () => {
       win.setContentSize(width,820); await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
-      if(await js('document.getElementById("app-sidebar").hidden')) await click("#sidebar-toggle");
+      if(await js('document.getElementById("app-sidebar").dataset.collapsed')==="true") await click("#sidebar-toggle");
       await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
       assert.equal(await js('document.documentElement.scrollWidth <= innerWidth + 1'),true);
       await fs.writeFile(path.join(temporary,`page-${width}.png`),(await win.webContents.capturePage()).toPNG());
@@ -218,7 +218,7 @@ async function main() {
   }
   await check("生成中禁用未发送入口，停止后恢复并刷新",async () => {
     // 窄窗口先返回聊天，发送仅使用模拟回调，不请求模型。
-    if(!await js('document.getElementById("app-sidebar").hidden')) await click("#sidebar-close");
+    if(await js('document.getElementById("app-sidebar").dataset.collapsed')==="false") await click("#sidebar-toggle");
     const gate=Promise.withResolvers(); flags.sendGate=gate;
     await edit("模拟发送原文"); await click("#send-button");
     await until('!document.getElementById("stop-button").disabled');

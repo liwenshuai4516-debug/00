@@ -1,0 +1,344 @@
+/* ==========================================================================
+   侧栏外壳
+   几何：展开 264–420（默认 280），收起 56。
+   动效：外层宽度 300ms 收缩 + 内层 150ms 冻结淡出；150ms 后轨道内容 150ms 滑入。
+   配色全部映射项目语义变量，深色与樱粉主题共用。
+   ========================================================================== */
+
+.sidebar {
+  --sidebar-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* 轨道滑动 300ms；内容淡出 150ms（与 sidebar-shell.js 的 SETTLE_MS 一致）。 */
+  --sidebar-slide: 300ms;
+  --sidebar-fade: 150ms;
+  /* 指针离开 2s 后由 JS 切成 transparent。 */
+  --sidebar-scrollbar-thumb: color-mix(in srgb, var(--muted) 40%, transparent);
+
+  flex: none;
+  width: var(--sidebar-width);
+  transition: width var(--sidebar-slide) var(--sidebar-ease);
+}
+
+/* 拖拽时不要过渡，否则跟手会滞后一帧。 */
+.sidebar--dragging {
+  transition: none;
+  user-select: none;
+  cursor: col-resize;
+}
+
+.sidebar__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: var(--sidebar-inner-width, var(--sidebar-width));
+  gap: 0;
+  box-sizing: border-box;
+}
+
+/* ---------- 顶部：品牌 + 折叠按钮 ---------- */
+
+.sidebar__logo {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 60px;
+  margin-bottom: 4px;
+  padding: 8px 0 8px 4px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.sidebar__brand {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar__top-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---------- 新会话入口 ---------- */
+
+.sidebar__new {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  margin: 0 2px 12px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+}
+
+.sidebar__new:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.sidebar__action-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 主体：宽内容与轨道内容互斥 ---------- */
+
+.sidebar__wide {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.sidebar__wide .search-field {
+  flex: none;
+}
+
+.sidebar__wide .sidebar-conversations {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar__rail {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding-top: 4px;
+}
+
+.sidebar--rail .sidebar__rail {
+  display: flex;
+}
+
+.sidebar__rail-action {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.sidebar__rail-action:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+/* ---------- 底部：两种状态都保留设置入口 ---------- */
+
+.sidebar-footer {
+  flex: none;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--sidebar-divider);
+}
+
+.sidebar-footer .sidebar-action {
+  width: 100%;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.sidebar-footer .sidebar-action:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+/* ---------- 收起态：56px 轨道 ---------- */
+
+.sidebar--rail .sidebar__inner {
+  padding: 18px 10px 6px;
+}
+
+.sidebar--rail .sidebar__logo {
+  justify-content: flex-start;
+  height: 36px;
+  margin-bottom: 12px;
+  padding: 0;
+  overflow: visible;
+}
+
+.sidebar--rail .sidebar__brand,
+.sidebar--rail #session-search-toggle,
+.sidebar--rail .sidebar__action-label {
+  display: none;
+}
+
+.sidebar--rail .sidebar__top-actions {
+  gap: 0;
+}
+
+.sidebar--rail .sidebar__toggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.sidebar--rail .sidebar__new {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  margin: 0 0 12px;
+  padding: 0;
+  border-color: transparent;
+  background: none;
+}
+
+.sidebar--rail .sidebar__new:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.sidebar--rail .sidebar-footer .sidebar-action {
+  width: 36px;
+  padding: 0;
+  margin-inline: auto;
+  justify-content: center;
+}
+
+/* ---------- 动效 ---------- */
+
+/* 收起：内层保持展开宽度，整块淡出；外层同时在变窄，于是只是被裁掉。 */
+.sidebar--fading .sidebar__inner {
+  opacity: 0;
+  transition: opacity var(--sidebar-fade) var(--sidebar-ease);
+}
+
+/* settle 后进入轨道：顶部控件、新会话、主体一起从栏外滑入。 */
+.sidebar--rail-in .sidebar__toggle,
+.sidebar--rail-in .sidebar__new,
+.sidebar--rail-in .sidebar__rail,
+.sidebar--rail-in .sidebar-footer {
+  animation: sidebar-rail-in var(--sidebar-fade) var(--sidebar-ease) backwards;
+}
+
+/* 底部固定入口只淡入，不做横向位移。 */
+.sidebar--rail-in .sidebar-footer {
+  animation-name: sidebar-fade-in;
+}
+
+/* 展开：宽内容淡入（轨道内容则立即卸载）。 */
+.sidebar--expanding .sidebar__brand,
+.sidebar--expanding .sidebar__new {
+  animation: sidebar-wide-in 200ms var(--sidebar-ease);
+}
+
+@keyframes sidebar-rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(49px);
+  }
+}
+
+@keyframes sidebar-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sidebar-wide-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- 滚动条：只是指针可供性，离开就隐藏 ---------- */
+
+.sidebar--quiet {
+  --sidebar-scrollbar-thumb: transparent;
+}
+
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
+  scrollbar-gutter: stable;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--sidebar-scrollbar-thumb);
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 拖拽分隔条 ---------- */
+
+.sidebar__resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 11;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar__resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0;
+  transition: opacity 120ms var(--sidebar-ease);
+}
+
+.sidebar__resize:hover::after,
+.sidebar__resize:focus-visible::after {
+  opacity: 1;
+}
+
+.sidebar__resize:focus-visible {
+  outline: none;
+}
+
+.sidebar--rail .sidebar__resize {
+  display: none;
+}
+
+/* ---------- 减少动态效果 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar__inner,
+  .sidebar--fading .sidebar__inner,
+  .sidebar--rail-in .sidebar__toggle,
+  .sidebar--rail-in .sidebar__new,
+  .sidebar--rail-in .sidebar__rail,
+  .sidebar--rail-in .sidebar-footer,
+  .sidebar--expanding .sidebar__brand,
+  .sidebar--expanding .sidebar__new {
+    transition: none;
+    animation: none;
+  }
+}

@@ -63,8 +63,6 @@ async function main() {
     await run(`(async()=>{
       const {createSettingsPanel}=await import('./components/settings/settings-panel.js');
       window.busy=false;
-      document.querySelector('#app-sidebar').hidden=false;
-      document.querySelector('.app-shell').classList.remove('sidebar-closed');
       const api={...window.agent, readModelConfiguration:async()=>({modelsPath:'/temporary/models.json'}),getSessionInfo:async()=>({provider:'fixture',modelId:'fixture'})};
       window.settings=createSettingsPanel(document.querySelector('#model-settings-dialog'),document.querySelector('#model-settings-button'),api,value=>{window.busy=value;window.settings.setBusy(value)},async()=>{},text=>{window.inserted=text});
       window.settings.setBusy(false);document.querySelector('#model-settings-button').click();document.querySelector('#settings-resources-tab').click();

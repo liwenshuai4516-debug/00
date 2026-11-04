@@ -225,9 +225,9 @@ async function main() {
     for (const width of [1120, 760, 375]) {
       await check(`宽度${width}无横向溢出，窄窗置顶保留侧栏`, async () => {
         win.setSize(width, 820); await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
-        if (await js(`document.getElementById('app-sidebar').hidden`)) await click("#sidebar-toggle");
+        if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='true'`)) await click("#sidebar-toggle");
         await pin("b"); await idle();
-        assert.equal(await js(`document.getElementById('app-sidebar').hidden`), false);
+        assert.equal(await js(`document.getElementById('app-sidebar').dataset.collapsed`), "false");
         assert.equal(await js(`document.documentElement.scrollWidth<=innerWidth&&document.getElementById('app-sidebar').scrollWidth<=document.getElementById('app-sidebar').clientWidth+1`), true);
         await click(`${row("b")} .session-actions-toggle`);
         assert.equal(await js(`document.querySelector('${row("b")} .session-actions-panel').hidden`), false);
@@ -240,12 +240,12 @@ async function main() {
       flags.openFail = true;
       await click('.session-open[data-session-id="b"]'); await idle(); flags.openFail = false;
       assert.equal(current, "a");
-      assert.equal(await js(`document.getElementById('app-sidebar').hidden`), false);
+      assert.equal(await js(`document.getElementById('app-sidebar').dataset.collapsed`), "false");
       assert.equal(await js(`document.getElementById('message-input').value`), "生成中后来输入");
     });
     await check("窄窗打开会话才收起侧栏", async () => {
       await click('.session-open[data-session-id="b"]'); await idle();
-      assert.equal(current, "b"); assert.equal(await js(`document.getElementById('app-sidebar').hidden`), true);
+      assert.equal(current, "b"); assert.equal(await js(`document.getElementById('app-sidebar').dataset.collapsed`), "true");
     });
     assert.deepEqual(errors, []);
     await fs.writeFile(path.join(temporary, "report.json"), JSON.stringify({ passed, count: passed.length }, null, 2));

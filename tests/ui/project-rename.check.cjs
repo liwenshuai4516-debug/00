@@ -192,17 +192,17 @@ async function main() {
     for (const width of [1120, 760, 375]) {
       await check(`${width}宽度表单、按钮与侧栏无横向溢出`, async () => {
         win.setSize(width, 820); await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
-        if (width <= 760) await click('#sidebar-toggle');
+        if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='true'`)) await click('#sidebar-toggle');
         await open(); await input("很长的项目名称".repeat(5));
         await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
         assert.equal(await js(`document.documentElement.scrollWidth<=innerWidth&&[document.querySelector('${dialog}'),document.getElementById('app-sidebar'),document.getElementById('session-list')].every(e=>e.scrollWidth<=e.clientWidth+1)&&document.querySelector('${dialog}').getBoundingClientRect().right<=innerWidth`), true);
         await fs.writeFile(path.join(temporary, `rename-${width}.png`), (await win.webContents.capturePage()).toPNG());
         await click(`${dialog} [data-cancel]`);
-        if (width <= 760) await click('#sidebar-close');
+        if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='false'`)) await click('#sidebar-toggle');
       });
     }
     await check("保存名称期间关闭先等原操作，再补存聊天输入并确认", async () => {
-      if (await js(`document.getElementById('app-sidebar').hidden`)) await click('#sidebar-toggle');
+      if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='true'`)) await click('#sidebar-toggle');
       await open(); await input("关闭前名称");
       const gate = flags.gate = Promise.withResolvers();
       await save(); await until(`document.querySelector('${dialog} [type=submit]').disabled`);

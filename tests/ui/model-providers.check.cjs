@@ -115,7 +115,6 @@ async function main() {
       const {createSettingsPanel}=await import('./components/settings/settings-panel.js');
       const {createModelSelector}=await import('./components/model-selector.js');
       window.busy=false;
-      document.querySelector("#app-sidebar").hidden=false;
       const setBusy=value=>{window.busy=value;window.settings.setBusy(value);window.models.setBusy(value)};
       window.models=createModelSelector(document.querySelector('#model-selector'),window.agent,setBusy,async()=>{});
       window.settings=createSettingsPanel(document.querySelector('#model-settings-dialog'),document.querySelector('#model-settings-button'),window.agent,setBusy,()=>window.models.refresh(),()=>{});

@@ -1,32 +1,20 @@
+import {
+  createSidebarShell,
+  SIDEBAR_AUTO_COLLAPSE_BELOW,
+} from "./sidebar-shell.js";
+
 // 只管理页面展示，不调用 window.agent，不改变业务状态。
-const shell = document.querySelector(".app-shell");
 const sidebar = document.getElementById("app-sidebar");
 const sidebarToggle = document.getElementById("sidebar-toggle");
-const sidebarClose = document.getElementById("sidebar-close");
-const narrowWindow = window.matchMedia("(max-width: 760px)");
-
-function setSidebar(open) {
-  sidebar.hidden = !open;
-  shell.classList.toggle("sidebar-closed", !open);
-  sidebarToggle.setAttribute("aria-expanded", String(open));
-  sidebarToggle.setAttribute("aria-label", open ? "收起侧栏" : "展开侧栏");
-}
-
-setSidebar(!narrowWindow.matches);
-sidebarToggle.addEventListener("click", () => {
-  const open = sidebar.hidden;
-  setSidebar(open);
-  if (open && narrowWindow.matches) sidebarClose.focus();
-});
-sidebarClose.addEventListener("click", () => {
-  setSidebar(false);
-  sidebarToggle.focus();
-});
+const narrowWindow = window.matchMedia(
+  `(max-width: ${SIDEBAR_AUTO_COLLAPSE_BELOW - 1}px)`,
+);
 
 const searchToggle = document.getElementById("session-search-toggle");
 const searchField = document.getElementById("session-search-field");
 const sessionSearch = document.getElementById("session-search");
-function setSearch(open) {
+
+function setSearch(open, { focus = true } = {}) {
   searchField.hidden = !open;
   searchToggle.setAttribute("aria-expanded", String(open));
   searchToggle.setAttribute("aria-label", open ? "收起对话搜索" : "搜索对话");
@@ -34,27 +22,32 @@ function setSearch(open) {
   if (open) {
     const recent = document.querySelector(".recent-sessions");
     if (recent) recent.open = true;
-    sessionSearch.focus();
+    if (focus) sessionSearch.focus();
+    return;
   }
-  else {
-    // 收起时一并移除筛选，避免列表在没有可见关键词时仍被过滤。
-    sessionSearch.value = "";
-    sessionSearch.dispatchEvent(new Event("input", { bubbles: true }));
-    searchToggle.focus();
-  }
+  // 收起时一并移除筛选，避免列表在没有可见关键词时仍被过滤。
+  sessionSearch.value = "";
+  sessionSearch.dispatchEvent(new Event("input", { bubbles: true }));
+  if (focus) searchToggle.focus();
 }
-searchToggle.addEventListener("click", () => setSearch(searchField.hidden));
-narrowWindow.addEventListener("change", () => {
-  // 窗口跨越断点时，避免焦点停在已经隐藏的区域。
-  const focused = document.activeElement;
-  setSidebar(!narrowWindow.matches);
-  if (narrowWindow.matches && sidebar.contains(focused)) sidebarToggle.focus();
+
+const sidebarShell = createSidebarShell({
+  sidebar,
+  toggle: sidebarToggle,
+  // 收起会隐藏宽内容，先关闭搜索，避免焦点留在不可见输入框里。
+  onCollapse: () => {
+    if (!searchField.hidden) setSearch(false, { focus: false });
+  },
 });
 
+searchToggle.addEventListener("click", () => setSearch(searchField.hidden));
+
 // 业务确认项目已打开后再收起侧栏；失败时保留项目区的错误提示。
-document.addEventListener("project-opened", () => {
-  if (narrowWindow.matches) setSidebar(false);
-});
+function collapseForNarrow() {
+  if (narrowWindow.matches) sidebarShell.collapse();
+}
+
+document.addEventListener("project-opened", collapseForNarrow);
 
 const sessionList = document.getElementById("session-list");
 const title = document.getElementById("conversation-title");
@@ -73,12 +66,10 @@ new MutationObserver(refreshTitle).observe(sessionList, {
 refreshTitle();
 
 // 只在业务确认打开成功后收起；行内置顶操作和打开失败均保留侧栏。
-document.addEventListener("session-opened", () => {
-  if (narrowWindow.matches) setSidebar(false);
-});
+document.addEventListener("session-opened", collapseForNarrow);
 document.getElementById("new-chat-button").addEventListener("click", () => {
-  if (narrowWindow.matches) {
-    setSidebar(false);
+  if (narrowWindow.matches && !sidebarShell.isCollapsed()) {
+    sidebarShell.collapse();
     sidebarToggle.focus();
   }
 });
@@ -119,12 +110,11 @@ document.addEventListener("keydown", (event) => {
     const containedFocus = menu.contains(document.activeElement);
     menu.open = false;
     if (containedFocus) menu.querySelector("summary").focus();
-  } else if (narrowWindow.matches && !sidebar.hidden) {
-    setSidebar(false);
+  } else if (narrowWindow.matches && !sidebarShell.isCollapsed()) {
+    event.preventDefault();
+    sidebarShell.collapse();
     sidebarToggle.focus();
   }
 });
 // 只在业务确认恢复成功后收起窄窗口侧栏，失败时保留重试入口。
-document.addEventListener("unsent-session-opened", () => {
-  if (narrowWindow.matches) setSidebar(false);
-});
+document.addEventListener("unsent-session-opened", collapseForNarrow);

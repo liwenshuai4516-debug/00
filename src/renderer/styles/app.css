@@ -70,22 +70,22 @@ label {
   color: var(--muted);
 }
 
-/* 外壳占满窗口，各区域分别管理滚动。 */
+/* 外壳占满窗口，各区域分别管理滚动。侧栏宽度由自身控制，轨道态也保留列。 */
 .app-shell {
   height: 100dvh;
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .sidebar {
+  position: relative;
+  width: var(--sidebar-width);
   min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
+  overflow: hidden;
   background: var(--sidebar);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: var(--space);
 }
 
 .sidebar h2 {
@@ -98,7 +98,7 @@ label {
   min-width: 0;
 }
 
-.sidebar > * {
+.sidebar__inner > * {
   flex-shrink: 0;
 }
 
@@ -244,18 +244,8 @@ summary {
   background: var(--muted);
 }
 
-/* 窄窗口将侧栏移到上方，避免挤压聊天正文。 */
+/* 窄窗口继续保留侧栏轨道列，聊天正文自行收缩。 */
 @media (max-width: 640px) {
-  .app-shell {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 28vh) minmax(0, 1fr);
-  }
-
-  .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
   .chat-header {
     padding: 12px;
   }

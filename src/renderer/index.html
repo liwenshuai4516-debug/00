@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="./styles/settings.css" />
   <link rel="stylesheet" href="./styles/pi-resources.css" />
   <link rel="stylesheet" href="./styles/output-trace.css" />
+  <link rel="stylesheet" href="./styles/sidebar-shell.css" />
   <link rel="stylesheet" href="./styles/themes/sakura.css" />
   <script type="module" src="./theme/theme-preference.js" blocking="render"></script>
 
@@ -47,6 +48,10 @@
       <symbol id="icon-folder" viewBox="0 0 24 24">
         <path d="M3 8h18M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
       </symbol>
+      <symbol id="icon-history" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
+      </symbol>
       <symbol id="icon-more" viewBox="0 0 24 24">
         <circle cx="5" cy="12" r="1" />
         <circle cx="12" cy="12" r="1" />
@@ -69,74 +74,101 @@
     </defs>
   </svg>
 
-  <div class="app-shell sidebar-closed">
-    <aside id="app-sidebar" class="sidebar" aria-label="会话管理" hidden>
-      <div class="sidebar-brand">
-        <h2>闪电31</h2>
-        <div class="sidebar-top-actions">
-          <button id="session-search-toggle" class="icon-button" type="button" aria-label="搜索对话" title="搜索对话"
-            aria-controls="session-search-field" aria-expanded="false">
+  <div class="app-shell">
+    <aside id="app-sidebar" class="sidebar sidebar--quiet" aria-label="会话管理">
+      <div class="sidebar__inner">
+        <div class="sidebar__logo">
+          <div class="sidebar__brand">
+            <h2>闪电31</h2>
+          </div>
+          <div class="sidebar__top-actions">
+            <button id="session-search-toggle" class="icon-button" type="button" aria-label="搜索对话" title="搜索对话"
+              aria-controls="session-search-field" aria-expanded="false">
+              <svg class="icon" aria-hidden="true">
+                <use href="#icon-search" />
+              </svg>
+            </button>
+            <button id="sidebar-toggle" class="icon-button sidebar__toggle" type="button" aria-label="收起侧栏"
+              aria-controls="app-sidebar" aria-expanded="true" title="收起侧栏">
+              <svg class="icon" aria-hidden="true">
+                <use href="#icon-sidebar" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <button id="new-chat-button" class="sidebar-action sidebar__new" type="button" aria-label="新建对话">
+          <svg class="icon" aria-hidden="true">
+            <use href="#icon-new" />
+          </svg>
+          <span class="sidebar__action-label">新建对话</span>
+        </button>
+
+        <div class="sidebar__wide">
+          <label id="session-search-field" class="search-field" for="session-search" hidden>
+            <span class="sr-only">搜索对话</span>
+            <svg class="icon" aria-hidden="true">
+              <use href="#icon-search" />
+            </svg>
+            <input id="session-search" type="search" autocomplete="off" placeholder="搜索对话"
+              aria-controls="session-list" />
+          </label>
+
+          <div class="sidebar-conversations sidebar-scroll">
+            <section id="project-panel" class="project-panel" aria-labelledby="project-list-title" aria-busy="false">
+              <div class="project-panel-heading">
+                <h3 id="project-list-title" class="sidebar-section-title">项目</h3>
+                <button id="add-project-button" class="icon-button" type="button" aria-label="添加项目" title="添加项目"
+                  disabled>
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#icon-plus" />
+                  </svg>
+                </button>
+              </div>
+              <p class="sr-only" role="status" aria-atomic="true">正在读取项目……</p>
+              <button id="reload-projects-button" type="button" hidden>重新读取项目</button>
+            </section>
+
+            <nav id="session-list" class="session-list" tabindex="-1" aria-label="历史对话" aria-busy="false"></nav>
+          </div>
+        </div>
+
+        <!-- 收起后只保留轨道图标；点击图标统一展开侧栏，不直接执行对应业务。 -->
+        <div class="sidebar__rail" hidden>
+          <button type="button" class="sidebar__rail-action" data-sidebar-expand aria-label="展开侧栏：搜索对话"
+            title="搜索对话">
             <svg class="icon" aria-hidden="true">
               <use href="#icon-search" />
             </svg>
           </button>
-          <button id="sidebar-close" class="icon-button" type="button" aria-label="收起侧栏">
+          <button type="button" class="sidebar__rail-action" data-sidebar-expand aria-label="展开侧栏：项目" title="项目">
             <svg class="icon" aria-hidden="true">
-              <use href="#icon-sidebar" />
+              <use href="#icon-folder" />
+            </svg>
+          </button>
+          <button type="button" class="sidebar__rail-action" data-sidebar-expand aria-label="展开侧栏：最近对话"
+            title="最近对话">
+            <svg class="icon" aria-hidden="true">
+              <use href="#icon-history" />
             </svg>
           </button>
         </div>
-      </div>
-      <button id="new-chat-button" class="sidebar-action" type="button">
-        <svg class="icon" aria-hidden="true">
-          <use href="#icon-new" />
-        </svg>
-        新建对话
-      </button>
-      <label id="session-search-field" class="search-field" for="session-search" hidden>
-        <span class="sr-only">搜索对话</span>
-        <svg class="icon" aria-hidden="true">
-          <use href="#icon-search" />
-        </svg>
-        <input id="session-search" type="search" autocomplete="off" placeholder="搜索对话" aria-controls="session-list" />
-      </label>
 
-      <div class="sidebar-conversations">
-        <section id="project-panel" class="project-panel" aria-labelledby="project-list-title" aria-busy="false">
-          <div class="project-panel-heading">
-            <h3 id="project-list-title" class="sidebar-section-title">项目</h3>
-            <button id="add-project-button" class="icon-button" type="button" aria-label="添加项目" title="添加项目" disabled>
-              <svg class="icon" aria-hidden="true">
-                <use href="#icon-plus" />
-              </svg>
-            </button>
-          </div>
-          <p class="sr-only" role="status" aria-atomic="true">正在读取项目……</p>
-          <button id="reload-projects-button" type="button" hidden>重新读取项目</button>
-        </section>
-
-        <nav id="session-list" class="session-list" tabindex="-1" aria-label="历史对话" aria-busy="false"></nav>
+        <div class="sidebar-footer">
+          <button id="model-settings-button" class="sidebar-action" type="button" disabled aria-label="设置">
+            <svg class="icon" aria-hidden="true">
+              <use href="#icon-settings" />
+            </svg>
+            <span class="sidebar__action-label">设置</span>
+          </button>
+        </div>
       </div>
-
-      <div class="sidebar-footer">
-        <button id="model-settings-button" class="sidebar-action" type="button" disabled>
-          <svg class="icon" aria-hidden="true">
-            <use href="#icon-settings" />
-          </svg>
-          设置
-        </button>
-      </div>
+      <div class="sidebar__resize" role="separator" aria-orientation="vertical" aria-label="调整侧边栏宽度"
+        aria-valuenow="280" aria-valuemin="264" aria-valuemax="420" tabindex="0"></div>
     </aside>
 
     <main class="chat-main">
       <header class="chat-header">
         <div class="conversation-heading">
-          <button id="sidebar-toggle" class="icon-button" type="button" aria-label="展开侧栏" aria-controls="app-sidebar"
-            aria-expanded="false">
-            <svg class="icon" aria-hidden="true">
-              <use href="#icon-sidebar" />
-            </svg>
-          </button>
           <svg class="icon heading-folder" aria-hidden="true">
             <use href="#icon-folder" />
           </svg>

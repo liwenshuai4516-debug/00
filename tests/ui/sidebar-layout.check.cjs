@@ -111,9 +111,9 @@ async function main() {
     await check("窄窗口设置内容不横向溢出", `document.querySelector('.settings-content').scrollWidth<=document.querySelector('.settings-content').clientWidth+1&&document.getElementById('model-settings-dialog').getBoundingClientRect().width<=innerWidth`);
     await click("#model-settings-dialog [data-close]");
     win.setSize(1120, 820);
-    await wait(`innerWidth>760&&!document.getElementById('app-sidebar').hidden`);
+    await wait(`innerWidth>1024&&document.getElementById('app-sidebar').dataset.collapsed==='false'`);
     await check("移除上方已添加项目卡片，标题右侧只保留加号", `!document.querySelector('.registered-project-list')&&document.getElementById('project-list-title').textContent==='项目'&&document.querySelector('#add-project-button use').getAttribute('href')==='#icon-plus'&&document.querySelectorAll('#add-project-button').length===1`);
-    await check("搜索默认收起，顶部图标有标签与展开状态", `document.getElementById('session-search-field').hidden&&document.getElementById('session-search-toggle').closest('.sidebar-brand')!==null&&document.getElementById('session-search-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('session-search-toggle').getAttribute('aria-label')==='搜索对话'`);
+    await check("搜索默认收起，顶部图标有标签与展开状态", `document.getElementById('session-search-field').hidden&&document.getElementById('session-search-toggle').closest('.sidebar__top-actions')!==null&&document.getElementById('session-search-toggle').getAttribute('aria-expanded')==='false'&&document.getElementById('session-search-toggle').getAttribute('aria-label')==='搜索对话'`);
     await check("项目对话按登记目录归组，空项目保留，无项目对话在最后的最近中", `document.querySelectorAll('.session-group').length===3&&document.querySelector('.session-group-name').textContent==='演示项目'&&document.querySelectorAll('.session-project-open').length===2&&document.querySelectorAll('.session-open').length===3&&document.querySelector('#session-list > details:last-of-type').classList.contains('recent-sessions')&&document.querySelector('.recent-sessions .session-open').dataset.sessionId==='old1'`);
     sessions.push({ id: "old2", title: "独立对话", workspaceDir: "/history/other", updatedAt: 8 });
     await click(".session-project-open"); await idle();
@@ -135,7 +135,7 @@ async function main() {
     await run(`document.getElementById('session-search').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,bubbles:true}))`);
     await check("输入法Escape不关闭搜索", `!document.getElementById('session-search-field').hidden`);
     await run(`document.getElementById('session-search').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))`);
-    await check("Escape先关闭搜索并保留侧栏", `document.getElementById('session-search-field').hidden&&!document.getElementById('app-sidebar').hidden&&document.activeElement.id==='session-search-toggle'`);
+    await check("Escape先关闭搜索并保留侧栏", `document.getElementById('session-search-field').hidden&&document.getElementById('app-sidebar').dataset.collapsed==='false'&&document.activeElement.id==='session-search-toggle'`);
     const addCount = calls.filter(c => c[0] === "addProject").length;
     addMode = "hold";await click("#add-project-button");await wait(`document.getElementById('add-project-button').disabled`);
     await click("#add-project-button");
@@ -184,12 +184,32 @@ async function main() {
     for (const width of [1400, 900, 390]) {
       win.setSize(width, 820);
       await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
-      if (await run(`document.getElementById('app-sidebar').hidden`)) await click("#sidebar-toggle");
+      if (await run(`document.getElementById('app-sidebar').dataset.collapsed==='true'`)) await click("#sidebar-toggle");
+      await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
       await check(`窗口${width}侧栏布局无横向溢出，加号在标题右侧`, `document.documentElement.scrollWidth<=innerWidth&&document.getElementById('app-sidebar').scrollWidth<=document.getElementById('app-sidebar').clientWidth+1&&document.getElementById('add-project-button').getBoundingClientRect().left>document.getElementById('project-list-title').getBoundingClientRect().right`);
     }
-    // 窄窗口打开项目成功后回到聊天；正常搜索关闭不抢侧栏。
+    // 窄窗口验证键盘改宽、56px 轨道和图标展开。
+    await run(`document.querySelector('.sidebar__resize').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}))`);
+    await check("键盘可调整侧栏宽度并同步无障碍数值", `document.getElementById('app-sidebar').style.width==='296px'&&document.querySelector('.sidebar__resize').getAttribute('aria-valuenow')==='296'`);
+    await run(`new Promise(r=>setTimeout(r,250))`);
+    await check("宽度写入本地偏好", `JSON.parse(localStorage.getItem('agent-client:sidebar')).width===296`);
+    await click("#sidebar-toggle");
+    await run(`new Promise(r=>setTimeout(r,400))`);
+    await check("收起后保留56px轨道并隐藏宽内容", `Math.round(document.getElementById('app-sidebar').getBoundingClientRect().width)===56&&!document.querySelector('.sidebar__rail').hidden&&document.querySelector('.sidebar__wide').hidden`);
+    await click(".sidebar__rail [data-sidebar-expand]");
+    await run(`new Promise(r=>setTimeout(r,400))`);
+    await check("点击轨道图标展开侧栏", `document.getElementById('app-sidebar').dataset.collapsed==='false'&&!document.querySelector('.sidebar__wide').hidden&&document.getElementById('app-sidebar').scrollWidth<=document.getElementById('app-sidebar').clientWidth+1`);
+    await check("轨道图标展开后焦点回到折叠按钮", `document.activeElement.id==='sidebar-toggle'`);
+    // 收起时若焦点在宽内容里，应回到仍然可见的折叠按钮。
+    await run(`document.querySelector('.session-group summary').focus()`);
+    await click("#sidebar-toggle");
+    await run(`new Promise(r=>setTimeout(r,400))`);
+    await check("收起后焦点回到折叠按钮", `document.activeElement.id==='sidebar-toggle'`);
+    await click(".sidebar__rail [data-sidebar-expand]");
+    await run(`new Promise(r=>setTimeout(r,400))`);
+    // 窄窗口打开项目成功后回到轨道；正常搜索关闭不抢侧栏。
     await click(".session-project-open");await idle();
-    await check("窄窗口项目打开后返回聊天", `document.getElementById('app-sidebar').hidden`);
+    await check("窄窗口项目打开后返回轨道", `document.getElementById('app-sidebar').dataset.collapsed==='true'`);
     win.setSize(1120, 820);await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     await run(`document.getElementById('message-input').value='测试生成';document.getElementById('message-input').dispatchEvent(new Event('input'));document.getElementById('message-form').requestSubmit(document.getElementById('send-button'))`);
     await wait(`!document.getElementById('stop-button').disabled`);

@@ -239,7 +239,7 @@ async function main() {
     for (const width of [1120, 760, 375]) {
       await check(`归档视图${width}宽度无溢出，恢复保持侧栏`, async () => {
         win.setSize(width, 820); await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
-        if (await js(`document.getElementById('app-sidebar').hidden`)) await click('#sidebar-toggle');
+        if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='true'`)) await click('#sidebar-toggle');
         await view(true);
         await js(`document.documentElement.dataset.theme=${JSON.stringify(width === 760 ? 'sakura' : 'dark')}`);
         await click(`${row("a")} .session-actions-toggle`);
@@ -248,7 +248,7 @@ async function main() {
         await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
         await fs.writeFile(path.join(temporary, `archive-${width}.png`), (await win.webContents.capturePage()).toPNG());
         await click(`${row("a")} .session-pin-action`); await idle();
-        assert.equal(await js(`document.getElementById('app-sidebar').hidden`), false);
+        assert.equal(await js(`document.getElementById('app-sidebar').dataset.collapsed`), "false");
         assert.equal(await js(`document.getElementById('model-settings-dialog').open && document.activeElement.closest('#archive-session-list')!==null`), true);
         await view(false); await archive("a"); await idle();
       });

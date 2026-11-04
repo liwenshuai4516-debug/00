@@ -240,7 +240,7 @@ async function main() {
     for (const width of [1120, 760, 375]) {
       await check(`${width}宽度入口和详情可见、无横向溢出`, async () => {
         win.setSize(width, 820); await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
-        if (!await js(`document.getElementById('app-sidebar').hidden`) && width <= 760) await click('#sidebar-close');
+        if (await js(`document.getElementById('app-sidebar').dataset.collapsed==='false'`) && width <= 760) await click('#sidebar-toggle');
         usage.set(current, estimate(78)); await refresh();
         await js(`document.getElementById('context-usage-toggle').focus()`);
         await openDetails();
