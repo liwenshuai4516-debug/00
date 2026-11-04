@@ -33,6 +33,8 @@ function createSessionService(
 ) {
   let sessionPromise;
   let activeCompaction;
+  // 旧会话的 session_shutdown / 设置 flush 可能较慢；新会话先返回，后续替换和退出前等待清理。
+  let pendingCleanup = Promise.resolve();
 
   // 只保留一个当前会话；已离开的会话仅保存小型元数据快照。
   let observedSession;
@@ -55,6 +57,24 @@ function createSessionService(
       source: origin === "history" || hasConversation ? "history" : "empty",
       model: { provider: session.model?.provider, modelId: session.model?.id },
     };
+  }
+
+  async function waitForCleanup() {
+    await pendingCleanup;
+  }
+
+  function scheduleCleanup(session, reason, targetSessionFile) {
+    if (!session) return;
+    const started = performance.now();
+    pendingCleanup = closePiSession(session, reason, targetSessionFile)
+      .then(() => {
+        const elapsed = Math.round(performance.now() - started);
+        if (elapsed >= 500) console.info(`[新建对话] 后台清理旧会话：${elapsed} ms`);
+      })
+      .catch((error) => {
+        // 清理失败不能回滚已经替换的新会话；只记录诊断，不输出配置或会话内容。
+        console.error("旧会话清理失败。", error);
+      });
   }
 
   function observeSession(session) {
@@ -562,6 +582,7 @@ function createSessionService(
 
   // 归档当前会话时先准备候选，状态写入成功才替换并释放原会话。
   async function setSessionArchived(sessionId, archived) {
+    await waitForCleanup();
     if (!sessionStateStore) throw new Error("尚未配置会话状态存储。");
     if (typeof sessionId !== "string" || !sessionId.trim()) {
       throw new Error("请选择历史对话。");
@@ -693,6 +714,7 @@ function createSessionService(
 
   // 只由后续IPC互斥入口调用；页面只给编号，不给快照、目录或模型。
   async function restoreUnsentSession(sessionId) {
+    await waitForCleanup();
     if (!sessionStateStore) throw new Error("尚未配置会话状态存储。");
     const recovery = await sessionStateStore.load(sessionId);
     if (!recovery) throw new Error("未找到该会话的输入状态，请刷新列表。");
@@ -788,6 +810,7 @@ function createSessionService(
   }
 
   async function openSession(sessionId) {
+    await waitForCleanup();
     const sessions = await readSessions();
     const selected = sessions.find((session) => session.id === sessionId);
 
@@ -810,21 +833,20 @@ function createSessionService(
   }
 
   async function newChat() {
+    await waitForCleanup();
     const started = performance.now();
     const previousSession = sessionPromise ? await sessionPromise : undefined;
 
     const nextSession = await createSession();
     const created = performance.now();
     sessionPromise = Promise.resolve(observeSession(nextSession));
-    await closePiSession(previousSession, "new", nextSession.sessionFile);
-    const closed = performance.now();
+
+    // 新会话已经可切换；旧会话的扩展清理和设置保存在后台完成。
+    scheduleCleanup(previousSession, "new", nextSession.sessionFile);
 
     // 只记录慢步骤和耗时，不输出目录、配置或会话内容。
     if (created - started >= 500) {
       console.info(`[新建对话] 创建 Pi 会话：${Math.round(created - started)} ms`);
-    }
-    if (closed - created >= 500) {
-      console.info(`[新建对话] 关闭旧会话：${Math.round(closed - created)} ms`);
     }
 
     // 返回实际创建的编号，供页面关联该会话的输入草稿。
@@ -832,6 +854,7 @@ function createSessionService(
   }
   // 后续只由 IPC 的互斥入口调用，避免与生成或保存交叉执行。
   async function switchWorkspace(workspaceDir) {
+    await waitForCleanup();
     if (typeof saveWorkspaceDir !== "function") {
       throw new Error("尚未配置工作目录保存方法。");
     }
@@ -871,6 +894,7 @@ function createSessionService(
 
   // 打开已登记项目时恢复最近活动；由 IPC 互斥入口调用。
   async function openWorkspace(workspaceDir) {
+    await waitForCleanup();
     if (typeof saveWorkspaceDir !== "function") {
       throw new Error("尚未配置工作目录保存方法。");
     }
@@ -935,10 +959,12 @@ function createSessionService(
   }
 
   async function closeSession() {
+    await waitForCleanup();
     const session = sessionPromise ? await sessionPromise.catch(() => undefined) : undefined;
     await closePiSession(session);
     sessionPromise = undefined;
     observedSession = undefined;
+    pendingCleanup = Promise.resolve();
   }
 
   return {

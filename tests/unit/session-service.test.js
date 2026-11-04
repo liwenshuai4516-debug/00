@@ -101,6 +101,10 @@ test("新建成功后切换会话并释放原会话", async () => {
 
   assert.equal(await service.getSession(), next);
   assert.equal(await service.currentSession(), "next");
+  // 旧会话清理在后台完成；等待它结束再断言资源释放。
+  for (let i = 0; i < 50 && disposeCalls === 0; i += 1) {
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
   assert.equal(disposeCalls, 1);
 });
 

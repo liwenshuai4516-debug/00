@@ -71,6 +71,10 @@ test("新建会话重新读取目录，成功后才释放原会话", async () =>
 
   assert.equal(await service.newChat(), "next");
   assert.equal(await service.getSession(), next);
+  // 新会话先返回，原会话清理在后台完成。
+  for (let i = 0; i < 50 && !original.disposed; i += 1) {
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
   assert.equal(original.disposed, true);
   assert.deepEqual(calls, [
     ["unused", false, undefined, workspace],

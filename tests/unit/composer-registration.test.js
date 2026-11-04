@@ -92,6 +92,10 @@ test("切到 B 后延迟保存 A，仍使用 A 最后实际来源与模型", asy
   await s.sessions.newChat();
   await s.composer.loadCurrentDraft();
   const second = s.agents[1];
+  // 新会话已可用，旧实例在后台清理；等待释放后再检查冻结登记。
+  for (let i = 0; i < 50 && !s.first.disposed; i += 1) {
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
   assert.equal(s.first.disposed, true);
   // 已离开的会话应只保留小型快照，不能让旧实例变化影响 B 或已冻结的登记。
   s.first.model.id = "disposed-object-change";
