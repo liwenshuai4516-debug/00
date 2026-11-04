@@ -113,6 +113,19 @@ function changeStat(name, args) {
 
 const MAX_CARD_LINES = 200;
 
+// 最终回复下方展示 SDK 记录的耗时与 token；缺失的字段不补零，也不参与估算。
+function usageLine(info) {
+  if (!info) return "";
+  const usage = info.usage;
+  const tokens = usage && usage.totalTokens !== undefined
+    ? `${usage.totalTokens} tokens（输入 ${usage.input ?? "未知"} / 输出 ${usage.output ?? "未知"}）`
+    : "";
+  return [
+    info.durationMs !== undefined ? `${duration(info.durationMs)}（SDK）` : "",
+    tokens,
+  ].filter(Boolean).join(" · ");
+}
+
 // 退出码优先用结构化结果；历史记录只保存结果文本，从 Pi 追加的结束语读取。
 function exitCodeOf(call) {
   if (Number.isInteger(call.exitCode)) return call.exitCode;
@@ -315,10 +328,19 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
       const text = textContent(current.blocks);
       if (text && !current.body) current.body = appendMessage(root, "assistant", "");
       if (current.body) {
-        current.body.parentElement.hidden = !text;
+        const article = current.body.parentElement;
+        article.hidden = !text;
         // 未完成的消息保留流式标记，样式据此显示光标。
-        current.body.parentElement.dataset.streaming = String(!current.completed && !historical);
+        article.dataset.streaming = String(!current.completed && !historical);
         updateAssistantMessage(current.body, text);
+        if (!current.footer) {
+          current.footer = element("p", "message-usage");
+          article.append(current.footer);
+        }
+        const usage = usageLine(current.info);
+        current.footer.textContent = usage;
+        // 只有实时最终回复显示用量；过程区与历史恢复以既有元信息行为准。
+        current.footer.hidden = usage === "" || current.inProcess === true || historical;
         if (current !== message || current.hasToolCalls) placeInProcess(current);
       }
       current.renderTiming();
@@ -342,6 +364,9 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
 
   // Pi 没有“最终回复”内容类型；后续响应出现时，将前一段说明归入过程。
   function placeInProcess(current) {
+    // 过程内已有耗时与 token 的元信息行，用量页脚只留给外部最终回复。
+    current.inProcess = true;
+    if (current.footer) current.footer.hidden = true;
     const next = current.firstTool?.node;
     current.turn.body.insertBefore(current.body.parentElement, next?.parentElement === current.turn.body ? next : null);
   }

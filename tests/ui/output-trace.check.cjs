@@ -155,6 +155,10 @@ async function main() {
     assert.match(await js(`document.querySelector('.trace-events-body').textContent`), /auto_retry_start/);
     assert.equal(await js(`document.querySelectorAll('.output-run>[data-role="assistant"]').length`), 1);
     assert.match(await js(`document.querySelector('.output-run>[data-role="assistant"]').textContent`), /检查完成/);
+    // 最终回复下方展示 SDK 的耗时与 token，未知字段不显示为零。
+    assert.match(await js(`document.querySelector('.output-run>[data-role="assistant"] .message-usage').textContent`), /^42 ms（SDK） · 30 tokens（输入 20 \/ 输出 10）$/);
+    // 过程内的助手消息已有元信息行，不再重复用量页脚。
+    assert.equal(await js(`document.querySelectorAll('.output-trace .message-usage:not([hidden])').length`), 0);
     assert.match(await js(`document.querySelector('.output-trace').textContent`), /先读取技能与参考资料/);
     assert.equal(await js(`document.querySelectorAll('.chat-message[data-streaming="true"]').length`), 0);
     // 工具行展示目标路径，代码块带语言标签与复制入口。
@@ -186,6 +190,7 @@ async function main() {
     console.log("通过：完整页面实时展开、收尾折叠仅保留最终正文，原生流、并行/嵌套工具、重试、复制与窄窗");
     win.reload(); await until(`document.querySelector('.output-trace>summary')?.textContent.includes('历史恢复')`); await idle();
     assert.match(await bodyText(), /2 条响应记录 · 历史恢复/);
+    assert.equal(await js(`document.querySelectorAll('.output-run .message-usage:not([hidden])').length`), 0);
     // 历史里的 todo_write 结果重建任务栏，默认折叠。
     assert.equal(await js(`document.getElementById('todo-dock').hidden`), false);
     assert.equal(await js(`document.querySelector('.todo-dock-progress').textContent`), "1 已完成 · 1 进行中 · 1 待处理");

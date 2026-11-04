@@ -327,3 +327,11 @@
 @media (prefers-reduced-motion: reduce) {
   .chat-message[data-streaming="true"] .markdown-body::after { animation: none; }
 }
+
+/* 最终回复下方的用量行：只展示 SDK 记录的耗时与 token。 */
+.message-usage {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
