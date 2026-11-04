@@ -142,7 +142,7 @@ export function createUiTestingExtension(runtime) {
     pi.registerTool({
       name: "qa_ui_login",
       label: "可见窗口登录与清理",
-      description: "auto 根据 projectRef 由后端读取已配置凭据，判断登录需要并尝试一次自动登录；仅验证码等异常返回人工处理。start/complete 保留手动方式，cancel 清理。凭据不返回模型。",
+      description: "auto 根据 projectRef 由后端读取已配置凭据，判断登录需要并尝试一次自动登录；仅验证码等异常返回人工处理。start/complete 为手动方式，complete 默认保存私有临时登录态，cancel 清理。凭据不返回模型。",
       executionMode: "sequential",
       parameters: Type.Object({
         action: Type.Union([Type.Literal("auto"), Type.Literal("start"), Type.Literal("complete"), Type.Literal("cancel")]),
@@ -161,7 +161,6 @@ export function createUiTestingExtension(runtime) {
           const credentials = await readCredentials(runtime, project);
           const entry = await openLogin(runtime, project.targetUrl, signal);
           entry.projectRef = params.projectRef;
-          entry.automatic = true;
           project.autoLoginAttempted = true;
           const loginId = randomUUID();
           logins.set(loginId, entry);
@@ -204,11 +203,7 @@ export function createUiTestingExtension(runtime) {
           return result({ loginId: params.loginId, status: "deleted" });
         }
         if (entry.status !== "open") throw new Error("登录态已交接，不能重复保存。");
-        if (!entry.automatic && (!ctx.hasUI || !await ctx.ui.confirm("本次 UI 测试登录态", "是否将当前登录态保存到本机私有临时文件，用于本次录制及一个回放批次，并在回放结束或会话关闭时删除？", { signal }))) {
-          await entry.cleanup();
-          logins.delete(params.loginId);
-          return result({ status: "cancelled", cleanup: "deleted" });
-        }
+        // UI 测试期间默认允许交接手动登录态；仍只写入 0600 临时目录，并按批次或会话关闭清理。
         try {
           await entry.save(signal);
         } catch (error) {

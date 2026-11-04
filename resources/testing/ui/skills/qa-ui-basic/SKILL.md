@@ -60,9 +60,9 @@ businessDataStatus=not-validated 表示宿主只检查了目录及项目配置�
 自动工具打开独立可见窗口，检查目标页面和登录表单；需要时用配置凭据尝试一次登录并验证。不需要登录返回 not-required，成功保存私有状态返回 saved；这两种状态才继续。
 默认验证目标路径可达且登录表单消失；该检查不能代替真实角色和权限断言。录制开始前通过页面内容确认用户要求的角色、目标模块及前置数据。
 
-manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登录失败才让用户处理现有可见窗口，不重复自动提交。成功后使用返回 loginId 调用 complete；已授权的自动流程不再重复询问临时状态保存。
+manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登录失败才让用户处理现有可见窗口，不重复自动提交。成功后使用返回 loginId 调用 complete；自动与手动流程都默认保存私有临时状态，不再逐次询问。
 项目配置缺失时明确指出缺少的字段，用户在本机配置中补齐，不要求在聊天中发送密码。终止时 action=cancel、loginId。
-保留 start/complete 的纯手动方式；纯手动入口仍使用原有保存确认。
+保留 start/complete 的纯手动方式；complete 默认保存私有临时登录态，回放结束或会话关闭时清理。
 
 登录期间无 trace、截图或生成日志。私有状态支持 cookie/localStorage/IndexedDB，限定目标 origin，不覆盖 sessionStorage、跨域 SSO 或过期身份。一次私有状态可交给本次多份录制，只能绑定一个回放批次。
 

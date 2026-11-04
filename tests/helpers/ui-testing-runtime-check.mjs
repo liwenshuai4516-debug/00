@@ -325,8 +325,8 @@ if (scenario === "login-batch") {
       catch (error) { return { ...error, code: error.code }; }
     },
   });
-  let consent = true;
-  const ctx = { cwd: workspace, hasUI: true, ui: { async confirm() { return consent; } } };
+  let confirmCalls = 0;
+  const ctx = { cwd: workspace, hasUI: true, ui: { async confirm() { confirmCalls += 1; return false; } } };
   const call = async (name, params) => (await tools.get(name).execute("fixture", params,
     new AbortController().signal, undefined, ctx)).details;
   const server = http.createServer((request, response) => {
@@ -344,13 +344,12 @@ if (scenario === "login-batch") {
   const authDirs = async () => (await fs.readdir(base)).filter((name) => name.startsWith("qa-ui-auth-"));
   try {
     await assert.rejects(call("qa_ui_login", { action: "start", targetUrl: "http://user:password@127.0.0.1/" }), /不能包含/);
-    const rejected = await call("qa_ui_login", { action: "start", targetUrl });
-    consent = false;
-    assert.equal((await call("qa_ui_login", { action: "complete", loginId: rejected.loginId })).cleanup, "deleted");
+    const cancelledLogin = await call("qa_ui_login", { action: "start", targetUrl });
+    assert.equal((await call("qa_ui_login", { action: "cancel", loginId: cancelledLogin.loginId })).status, "deleted");
     assert.deepEqual(await authDirs(), []);
-    consent = true;
     const login = await call("qa_ui_login", { action: "start", targetUrl });
     assert.equal((await call("qa_ui_login", { action: "complete", loginId: login.loginId })).status, "saved");
+    assert.equal(confirmCalls, 0, "手动登录完成后默认保存，不弹确认");
     const privateDir = path.join(base, (await authDirs())[0]);
     const authFile = path.join(privateDir, "state.json");
     assert.equal((await fs.stat(privateDir)).mode & 0o777, 0o700);

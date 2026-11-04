@@ -69,7 +69,7 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 
 qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。用例说明还必须包含 `qa-ui-case/v1` 元数据块（schema、caseId、project.id、page、modulePath、role、dataPolicy、cases[].assertions），工具校验后把 caseMeta、caseCount、assertionCount 写入 .asset.json；缺失或字段不合规拒绝登记。`modulePath` 是可选的 1-6 段实际导航层级（如 `["合同管理", "经营合同"]`），右侧测试数据目录按此分组；缺省时按页面归组，仅用于兼容旧资产。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
 
-自动登录默认识别唯一的账号、密码及登录按钮，可用 selectors.account/password/submit/authenticated 提供实际页面定位器；应优先提供明确的登录后角色或页面标识。默认检查目标路由可达且登录表单消失，不足以证明角色权限，录制前仍需通过页面核验。自动登录同 origin 内执行一次，验证码/MFA、跨域认证、无法确定的表单或失败会保留可见窗口并返回具体受阻原因，不重复提交。用户解决后 complete 即可交接；本次已授权的自动流程不再次询问私有状态保存。纯手动 start/complete 保留原确认方式。
+自动登录默认识别唯一的账号、密码及登录按钮，可用 selectors.account/password/submit/authenticated 提供实际页面定位器；应优先提供明确的登录后角色或页面标识。默认检查目标路由可达且登录表单消失，不足以证明角色权限，录制前仍需通过页面核验。自动登录同 origin 内执行一次，验证码/MFA、跨域认证、无法确定的表单或失败会保留可见窗口并返回具体受阻原因，不重复提交。用户解决后 complete 即可交接；自动与手动流程都默认保存私有临时登录态，不再逐次确认，回放结束或会话关闭时删除。
 
 旧资产可省略 projectRef，沿用 qa/ui/cases 的单文件或多文件入口，不做迁移。本次新录制流程必须走项目检查和资产登记。一个脚本可以有多个 test，同一页面的多份脚本可用 caseIds 组成批次，不能与 caseId 同时提供。
 
