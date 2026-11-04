@@ -28,8 +28,8 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | 1. 工作区检查 | 使用当前会话 cwd，真实路径、目录边界与写入探针通过后准备 qa/data；没有工作区则先选择，不自动用安装目录 |
 | 2. 项目和前置数据检查 | qa_ui_project 将 URL、可选 projectId/projectName 与本机配置比对，只返回脱敏项目上下文；Agent 核验相关业务输入、初态、角色和预期来源 |
 | 3. 判断登录 | qa_ui_login(action=auto, projectRef) 检查表单，按需使用配置凭据登录一次；公开页面返回 not-required，认证成功返回 saved，异常返回 manual-required |
-| 4. 真实录制 | qa_ui_prepare(mode=record, projectRef, targetUrl) 继承该项目登录态；按 qa-ui-record 现场快照、操作、逐步骤断言、生成日志及写脚本，结束关闭页面 |
-| 5. 整理与持久化 | Agent 按 qa-ui-record 的断言来源、定位器、数据隔离和等待方式整理独立 test，生成含断言的用例列表与 qa-ui-case 元数据稿；qa_ui_finalize 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
+| 4. 真实录制 | 先按 qa-ui-record 盘点查询项、工具栏按钮、行操作与展开收起控件并形成覆盖矩阵；qa_ui_prepare(mode=record, projectRef, targetUrl) 继承该项目登录态；现场快照、操作、逐步骤断言、生成日志及写脚本，结束关闭页面 |
+| 5. 整理与持久化 | Agent 按 qa-ui-record 的断言来源、定位器、数据隔离和等待方式整理独立 test，生成含断言的用例列表、覆盖范围与 qa-ui-case 元数据稿；qa_ui_finalize 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
 | 6. 独立回放 | qa_ui_prepare(mode=run, projectRef, targetUrl, caseId) 验证资产登记哈希，执行返回命令；在新浏览器上下文回放，并清理私有登录态 |
 | 7. 输出结果 | 原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
 

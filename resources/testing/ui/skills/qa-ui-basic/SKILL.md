@@ -40,8 +40,8 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 
 ## 4. 执行真实录制
 
-加载并遵循 qa-ui-record 技能（与本源文件同级的 ../qa-ui-record/SKILL.md；未加载时先读取），按它完成录制、现场断言和脚本整理。
-本步骤保留流程约束：调用 qa_ui_prepare（mode=record、projectRef、targetUrl），默认不手填 caseId；使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir；结束调用 browser_close。
+加载并遵循 qa-ui-record 技能（与本源文件同级的 ../qa-ui-record/SKILL.md；未加载时先读取），按它完成功能面盘点、录制、现场断言和脚本整理。
+本步骤保留流程约束：先盘点查询项、工具栏按钮、行操作和展开收起控件并形成覆盖矩阵，再调用 qa_ui_prepare（mode=record、projectRef、targetUrl）；默认不手填 caseId；使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir；结束调用 browser_close。未授权写操作列入未覆盖，不静默跳过。
 录制必须现场验证预期：每个业务步骤后用 browser_verify_* 验证，generator_read_log 核对动作与断言，generator_write_test 只写日志有证据的步骤与断言。
 脚本质量按 qa-ui-record 的断言来源、定位器、数据隔离、等待方式执行；仅用实际登记的官方 desktop-playwright-test 工具，未出现时停止。
 
