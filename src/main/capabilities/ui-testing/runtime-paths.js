@@ -25,6 +25,7 @@ function resolveUiTestingRuntime(app, projectRoot) {
     runner: path.join(directory, "run.cjs"),
     skill: path.join(directory, "skills/qa-ui-basic/SKILL.md"),
     recordSkill: path.join(directory, "skills/qa-ui-record/SKILL.md"),
+    executeSkill: path.join(directory, "skills/qa-ui-execute/SKILL.md"),
   };
 }
 

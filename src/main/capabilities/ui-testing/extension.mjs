@@ -274,7 +274,7 @@ export function createUiTestingExtension(runtime) {
 
     // 使用官方资源发现事件提供随客户端分发的技能。
     pi.on("resources_discover", () => ({
-      skillPaths: [runtime.skill, runtime.recordSkill],
+      skillPaths: [runtime.skill, runtime.recordSkill, runtime.executeSkill],
     }));
 
     // 保存官方生成日志原文，不自行制造录制步骤。

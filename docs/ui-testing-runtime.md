@@ -15,6 +15,8 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/playwright.config.cjs` | 单 worker、零重试、报告和证据策略 |
 | `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步流程、项目/登录/回放/报告的操作约定 |
 | `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
+| `resources/testing/ui/skills/qa-ui-execute/SKILL.md` | 按 caseId 单项/批量/定时执行，不录制、不改脚本 |
+| `resources/testing/ui/execute.cjs` | 独立执行 CLI：读配置、无头登录、校验资产、生成批次并调用 `run.cjs` |
 | `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
 
 ## 录制工具与 MCP 模式
@@ -28,6 +30,20 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 已有 `*.seed.spec.cjs` 的 caseId 不能再次用于 record（prepare 会以“同名 case 已存在”拒绝）；中断后请用新的 caseId 重新 prepare，旧种子和空录制目录仅作中间产物保留，不能据此 finalize。
 
 通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui`；发布读取 `process.resourcesPath/testing/ui`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
+
+## 独立执行 skill（2026-11-04）
+
+`qa-ui-execute` 只执行已登记用例，不加载录制、盘点和 finalize 流程：
+
+```bash
+resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB
+```
+
+- 未传 `--url` 时从所选用例推导目标地址；同项目多个目标时显式传 `--url`
+- 默认按项目配置无头自动登录；验证码/MFA/租户无法自动选择时传 `--storage-state`
+- 校验 `projectId`、`targetUrl` 和 spec 哈希，生成独立 `qa/ui/runs/execute-*` 批次，调用 `run.cjs`
+- 最后一行 JSON 输出 `status`、`summaryFile`、`testCount`、`counts`；退出码 0 才表示全部通过
+- 适合 cron/launchd 直接调用，不经过 Agent/MCP；登录态由批次清理，失败不自动重试
 
 ## 当前七步流程（2026-11-04）
 

@@ -40,6 +40,7 @@ if (scenario === "resources") {
       assert.equal(session.getAllTools().filter((tool) => tool.name === "qa_ui_prepare").length, expected);
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-basic").length, expected);
       assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-record").length, expected);
+      assert.equal(session.resourceLoader.getSkills().skills.filter((skill) => skill.name === "qa-ui-execute").length, expected);
       assert.deepEqual(diagnostics, []);
     } finally {
       await lifecycle.closePiSession(session);
