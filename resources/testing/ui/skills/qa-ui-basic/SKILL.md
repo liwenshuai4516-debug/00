@@ -40,27 +40,17 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 
 ## 4. 执行真实录制
 
-调用 qa_ui_prepare：mode=record、projectRef、targetUrl，默认不手填 caseId；需要可见录制窗口传 headed=true。
-使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir。caseFileName 是官方写脚本工具要求的工作目录相对路径，caseFile 为绝对路径。
-工具会继承本次项目登录状态，未判断登录、工作区切换或地址冲突会阻止准备。
-
-仅用当前会话实际登记的官方 desktop-playwright-test 工具；未出现时按文末表停止，不自建脚本或改用其他工具：
-1. generator_setup_page：plan 逐步写「动作 → 可观察预期 → 数据来源」；project=chromium；seedFile=返回值。
-2. browser_snapshot 取 ref 后执行 browser_click（element、target=ref、intent）、browser_type（text）、browser_fill_form（fields，含 name/type/value）、browser_press_key（key）、browser_select_option（values）、browser_wait_for（text/time，只等明确条件）。intent 用该步动作原文；DOM 变化或 ref 失效后重新 snapshot。
-3. 每个业务步骤后立即用 browser_verify_text_visible、browser_verify_element_visible、browser_verify_value 验证预期（按 schema 传 text、role+accessibleName、type+element+target+value）；验证不通过先查数据、前置状态和步骤，不先录完再补断言。
-4. generator_read_log（无参数），逐条核对动作与断言都已入日志；日志没有的业务预期先现场验证，确实无法验证的写明需求来源和未验证原因。宿主保存真实官方日志。
-5. generator_write_test：fileName=caseFileName，code 为 CommonJS 脚本，只写日志中有证据的步骤与断言。
-6. 成功或失败均调用 browser_close，关闭失败如实报告。
+加载并遵循 qa-ui-record 技能（与本源文件同级的 ../qa-ui-record/SKILL.md；未加载时先读取），按它完成录制、现场断言和脚本整理。
+本步骤保留流程约束：调用 qa_ui_prepare（mode=record、projectRef、targetUrl），默认不手填 caseId；使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir；结束调用 browser_close。
+录制必须现场验证预期：每个业务步骤后用 browser_verify_* 验证，generator_read_log 核对动作与断言，generator_write_test 只写日志有证据的步骤与断言。
+脚本质量按 qa-ui-record 的断言来源、定位器、数据隔离、等待方式执行；仅用实际登记的官方 desktop-playwright-test 工具，未出现时停止。
 
 ## 5. 整理脚本并持久化
 
-整理已保存脚本：两空格缩进；test 名称写「业务动作 + 预期结果」；定位器优先 getByRole/getByLabel/getByText 加业务名称，不得依赖临时 ref，样式类仅在无法用角色/标签定位时使用并注明原因，nth 仅限同角色重复控件；每个 test 自建初态，写入类数据用唯一值并登记清理；业务预期写成显式 expect 并注明用户/需求/声明/基线来源。禁止 waitForTimeout、条件断言和 try/catch 吞错。可在一个文件中保存多个独立 test；不依赖录制窗口或前一个 test 的残留状态。
-观察不自动升级为需求。不为通过而改预期、删断言或跳过测试。不写入密码或私有登录状态。
-保存 caseDocument：项目、页面、角色、前置条件、测试输入引用、真实步骤、日志路径及每项断言来源。只记录本次明确归属的数据清理动作。
+按 qa-ui-record 整理脚本与 caseDocument，再调用 qa_ui_finalize，提供 projectRef、caseId。工具要求本次真实生成日志、非空脚本与用例说明，检查语法和密码误写，保存 .asset.json 版本及来源索引；它不替 Agent 格式化，也不批准业务正确性。
+仅 recorded-and-syntax-checked 才进入回放。修改脚本后重新 finalize；准备回放后再改脚本则重新准备批次。
 
 文件命名由工具生成“项目名称__页面路径__短摘要.spec.cjs”；路由 hash 纳入页面路径，同名重复录制自动追加版本，禁止覆盖旧资产。不要自行重命名到准备路径之外。
-完成整理后调用 qa_ui_finalize，提供 projectRef、caseId。工具要求本次真实生成日志、非空脚本与用例说明，检查语法和密码误写，保存 .asset.json 版本及来源索引。它不替 Agent 格式化，也不批准业务正确性。
-仅 recorded-and-syntax-checked 才进入回放。修改脚本后重新 finalize；准备回放后再改脚本则重新准备批次。
 
 ## 6. 独立回放
 
@@ -88,7 +78,6 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 | qa_ui_login 返回 manual-required | 🔴 用户在现有可见窗口完成验证码/MFA，成功后 complete(loginId) | 用户放弃或仍失败：cancel(loginId) 并停止本次录制，不重复 auto |
 | 内置运行环境缺失，或 qa_ui_* / 官方录制工具未登记 | 报告缺失路径或 verify 原始报错 | 停止；不自行安装依赖、不改用其他工具、不声称已录制 |
 | qa_ui_prepare 拒绝（未登录、地址不一致、同名资产、登录态失效） | 按错误重查项目或登录，或换 caseId | 不覆盖或迁移旧资产，不跳过检查强行录制 |
-| generator_* / browser_* 调用失败 | 重读 browser_snapshot 后重试一次，保留原始错误 | 无有效 generator_read_log 不得 finalize，按未完成报告 |
 | qa_ui_finalize 拒绝（缺日志、语法、密码、说明为空） | 修正脚本或说明后重新 finalize | 未 recorded-and-syntax-checked 不得进入回放 |
 | 回放超时、被终止或报告缺失 | 读 summary 判 incomplete，列出缺失项与残留 | 不自动重放同一命令，不把未完成记为通过 |
 | 清理失败或状态未知 | 记录 cleanup 状态并披露残留 | 不宣称已删除、不判批次通过 |

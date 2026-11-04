@@ -13,22 +13,23 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/login.cjs` | 独立可见 Chromium、登录判断/自动登录/人工接管、私有 storageState 导出 |
 | `resources/testing/ui/run.cjs` | 批次执行、取消、清理、摘要与清单 |
 | `resources/testing/ui/playwright.config.cjs` | 单 worker、零重试、报告和证据策略 |
-| `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 录制、断言来源及批次交付操作约定 |
+| `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 七步流程、项目/登录/回放/报告的操作约定 |
+| `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
 | `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
 
 通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui`；发布读取 `process.resourcesPath/testing/ui`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
 
 ## 当前七步流程（2026-11-04）
 
-在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期。这个 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
+在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理细则由同目录注册的 `/skill:qa-ui-record` 提供。这两个 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
 
 | 步骤 | 实际行为与完成条件 |
 | --- | --- |
 | 1. 工作区检查 | 使用当前会话 cwd，真实路径、目录边界与写入探针通过后准备 qa/data；没有工作区则先选择，不自动用安装目录 |
 | 2. 项目和前置数据检查 | qa_ui_project 将 URL、可选 projectId/projectName 与本机配置比对，只返回脱敏项目上下文；Agent 核验相关业务输入、初态、角色和预期来源 |
 | 3. 判断登录 | qa_ui_login(action=auto, projectRef) 检查表单，按需使用配置凭据登录一次；公开页面返回 not-required，认证成功返回 saved，异常返回 manual-required |
-| 4. 真实录制 | qa_ui_prepare(mode=record, projectRef, targetUrl) 继承该项目登录态；真实官方 MCP 快照、操作、生成日志及写脚本，结束关闭页面 |
-| 5. 整理与持久化 | Agent 根据日志整理稳定定位器、独立 test 和业务断言，保存用例说明；qa_ui_finalize 检查语法、真实日志、说明及密码误写，并保存 .asset.json |
+| 4. 真实录制 | qa_ui_prepare(mode=record, projectRef, targetUrl) 继承该项目登录态；按 qa-ui-record 现场快照、操作、逐步骤断言、生成日志及写脚本，结束关闭页面 |
+| 5. 整理与持久化 | Agent 按 qa-ui-record 的断言来源、定位器、数据隔离和等待方式整理独立 test，保存用例说明；qa_ui_finalize 检查语法、真实日志、说明及密码误写，并保存 .asset.json |
 | 6. 独立回放 | qa_ui_prepare(mode=run, projectRef, targetUrl, caseId) 验证资产登记哈希，执行返回命令；在新浏览器上下文回放，并清理私有登录态 |
 | 7. 输出结果 | 原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
 
