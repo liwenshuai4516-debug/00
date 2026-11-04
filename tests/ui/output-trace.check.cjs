@@ -128,6 +128,9 @@ async function main() {
     assert.equal(await js(`document.querySelector('.trace-turn').open&&document.querySelector('.trace-thinking').open`), true);
     assert.match(await js(`document.querySelector('.output-trace>summary').textContent`), /正在调用 read、bash · 用时/);
     assert.equal(await js(`document.querySelectorAll('.trace-tool').length`), 3);
+    // 运行事件默认折叠，内容仍保留在页面里。
+    assert.equal(await js(`document.querySelector('.trace-events').open`), false);
+    assert.match(await js(`document.querySelector('.trace-events>summary').textContent`), /^运行事件（\d+）$/);
     assert.equal(await js(`document.querySelectorAll('.trace-tool[data-tool-call-id="c1"] .trace-tool[data-tool-call-id="child"]').length`), 1);
     assert.doesNotMatch(await bodyText(), /临时正文|结束块正文|临时思考/);
     assert.match(await bodyText(), /读取技能文件|显式展开/);
@@ -149,6 +152,7 @@ async function main() {
     assert.match(await js(`document.querySelector('.output-trace>summary').textContent`), /处理已结束 · 用时 .* · 2 turn/);
     assert.equal(await js(`document.querySelector('.output-trace').open`), false);
     assert.equal(await js(`document.querySelectorAll('.output-trace details[open]').length`), 0);
+    assert.match(await js(`document.querySelector('.trace-events-body').textContent`), /auto_retry_start/);
     assert.equal(await js(`document.querySelectorAll('.output-run>[data-role="assistant"]').length`), 1);
     assert.match(await js(`document.querySelector('.output-run>[data-role="assistant"]').textContent`), /检查完成/);
     assert.match(await js(`document.querySelector('.output-trace').textContent`), /先读取技能与参考资料/);

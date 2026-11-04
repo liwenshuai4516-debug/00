@@ -76,6 +76,23 @@
   line-height: 1.6;
 }
 
+/* 运行事件收进折叠区，展开后仍是旁注样式。 */
+.output-trace .trace-events {
+  margin-top: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.output-trace .trace-events > summary {
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.output-trace .trace-events-body {
+  padding-bottom: 4px;
+}
+
 /* 生命周期事件是旁注，视觉上弱于思考与工具行。 */
 .output-trace .trace-event {
   margin: 4px 0;

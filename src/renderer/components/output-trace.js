@@ -252,8 +252,21 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     if (frame === undefined) frame = requestAnimationFrame(flush);
   }
 
+  // 运行事件是诊断信息，收进折叠区，不打断回复与工具行的阅读。
+  let events;
   function lifecycle(type, label) {
-    trace.body.append(element("p", "trace-event", `${type} · ${label}`));
+    if (!events) {
+      const node = element("details", "trace-events");
+      const summary = element("summary");
+      const body = element("div", "trace-events-body");
+      node.append(summary, body);
+      events = { node, summary, body, count: 0 };
+    }
+    events.count += 1;
+    events.body.append(element("p", "trace-event", `${type} · ${label}`));
+    events.summary.textContent = `运行事件（${events.count}）`;
+    // 始终保持在其他内容之后，事件到达顺序不影响位置。
+    trace.body.append(events.node);
   }
 
   function startTurn() {

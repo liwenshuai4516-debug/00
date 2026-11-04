@@ -49,7 +49,7 @@ Pi 没有单独的 trace 对象或“skill 执行成功”事件。本功能是�
 
 | 原生内容 | 桌面行为 |
 | --- | --- |
-| `agent_start` / `agent_end` | 记录本次底层运行开始、结束；`willRetry` 时继续等待，不提前宣布请求结束 |
+| `agent_start` / `agent_end` | 记录本次底层运行开始、结束；`willRetry` 时继续等待，不提前宣布请求结束。运行事件收进折叠的「运行事件（N）」区，默认不打断正文阅读 |
 | `agent_settled` | 标记“处理已结束”或“已停止”，冻结用时并收起过程；表示没有后续自动处理，不代表业务成功。发送结果未确认时优先显示未确认 |
 | `turn_start` / `turn_end` | 实时 turn 编号与状态；一个 turn 是一次助手响应及其产生的工具执行 |
 | text / thinking 增量 | 按 `contentIndex` 关联，按帧合并页面更新；块结束值替换增量，`message_end.message` 替换整个响应 |
