@@ -98,6 +98,11 @@ export async function createPiAgent(
   }
 
   recordStage("目录与会话状态");
+  // 完全权限同时信任项目资源；只影响本次会话的加载决定，不写入 ProjectTrustStore。
+  const permissionMode = resourceOptions?.permissionController?.currentMode?.({
+    sessionId: sessionManager.getSessionId?.(),
+    workspace: workspaceRoot,
+  }) ?? "ask";
   const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
     await createPiResources({
       cwd: workspaceRoot,
@@ -106,6 +111,7 @@ export async function createPiAgent(
       onDiagnostics: resourceOptions?.onDiagnostics,
       uiTestingRuntime: resourceOptions?.uiTestingRuntime,
       permissionController: resourceOptions?.permissionController,
+      permissionMode,
     });
   recordStage("资源与扩展发现（含项目信任）");
 

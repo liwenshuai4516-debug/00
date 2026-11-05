@@ -76,6 +76,31 @@
   margin-top: 12px;
 }
 
+.permission-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0 4px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.permission-scope select {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--page);
+  color: var(--text);
+  font: inherit;
+}
+
+.permission-scope select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .permission-options {
   display: flex;
   flex-direction: column;

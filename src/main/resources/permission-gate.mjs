@@ -113,18 +113,31 @@ export function permissionPromptText(mode) {
 
 export function createPermissionExtension(controller) {
   return (pi) => {
+    // 权限按会话/项目解析；读取实际 sessionId 与工作区，避免页面或旧全局模式误判。
+    function permissionContext(ctx) {
+      let sessionId = "";
+      try {
+        sessionId = ctx?.sessionManager?.getSessionId?.() ?? "";
+      } catch {
+        sessionId = "";
+      }
+      const workspace = typeof ctx?.cwd === "string" ? ctx.cwd : "";
+      return { sessionId, workspace };
+    }
+
     // 每次用户提交前刷新系统提示词，使模式切换在下一轮立即对模型可见。
-    pi.on("before_agent_start", (event) => {
+    pi.on("before_agent_start", (event, ctx) => {
       const options = event?.systemPromptOptions;
       if (!options || typeof options !== "object") return;
       if (!options.sections || typeof options.sections !== "object") options.sections = {};
       options.sections[PERMISSION_SECTION] = permissionPromptText(
-        controller?.currentMode?.() ?? "ask",
+        controller?.currentMode?.(permissionContext(ctx)) ?? "ask",
       );
     });
 
     pi.on("tool_call", async (event, ctx) => {
-      const mode = controller?.currentMode?.() ?? "ask";
+      const context = permissionContext(ctx);
+      const mode = controller?.currentMode?.(context) ?? "ask";
       if (mode === "full-access") return undefined;
       if (isReadOnly(pi, event.toolName)) return undefined;
 
@@ -155,7 +168,7 @@ export function createPermissionExtension(controller) {
         return { block: true, reason: `用户未批准 ${event.toolName}。` };
       }
       // 确认期间权限可能已被调整；再次读取，避免已切换为只读后仍执行。
-      if ((controller?.currentMode?.() ?? "ask") === "read-only") {
+      if ((controller?.currentMode?.(context) ?? "ask") === "read-only") {
         return { block: true, reason: `当前权限为「只读」，已阻止 ${event.toolName}。` };
       }
       return undefined;

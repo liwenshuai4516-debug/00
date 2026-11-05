@@ -5,6 +5,7 @@ async function loadExtension(initialMode = "ask") {
   const { createPermissionExtension } = await import("../../src/main/resources/permission-gate.mjs");
   const handlers = {};
   const state = { mode: initialMode };
+  const calls = [];
   const tools = [
     { name: "read", annotations: { readOnlyHint: true } },
     { name: "bash" },
@@ -16,8 +17,10 @@ async function loadExtension(initialMode = "ask") {
     on(event, handler) { handlers[event] = handler; },
     getAllTools() { return tools; },
   };
-  createPermissionExtension({ currentMode: () => state.mode })(pi);
-  return { handlers, handler: handlers.tool_call, state };
+  createPermissionExtension({
+    currentMode(context) { calls.push(context); return state.mode; },
+  })(pi);
+  return { calls, handlers, handler: handlers.tool_call, state };
 }
 
 test("每次确认下读工具直接执行，写工具需要确认", async () => {
@@ -97,19 +100,35 @@ test("每次确认下浏览器观察工具不弹窗，点击类操作仍需确�
 test("系统提示词按当前模式注入，模式切换后下一轮立即更新", async () => {
   const { handlers, state } = await loadExtension("full-access");
   const event = { systemPromptOptions: { sections: {} } };
-  handlers.before_agent_start(event);
+  const ctx = { cwd: "/workspace", sessionManager: { getSessionId: () => "session-a" } };
+  handlers.before_agent_start(event, ctx);
   const section = event.systemPromptOptions.sections["app-permission"];
   assert.match(section, /完全权限/);
   assert.match(section, /视为已授权/);
   assert.match(section, /不要逐项询问/);
 
   state.mode = "read-only";
-  handlers.before_agent_start(event);
+  handlers.before_agent_start(event, ctx);
   assert.match(event.systemPromptOptions.sections["app-permission"], /只读/);
   assert.match(event.systemPromptOptions.sections["app-permission"], /不要尝试/);
 
   state.mode = "ask";
-  handlers.before_agent_start(event);
+  handlers.before_agent_start(event, ctx);
   assert.match(event.systemPromptOptions.sections["app-permission"], /每次确认/);
   assert.match(event.systemPromptOptions.sections["app-permission"], /逐次弹窗确认/);
+});
+
+test("门禁把当前会话与工作区传给按会话/项目解析", async () => {
+  const { calls, handler, handlers } = await loadExtension("read-only");
+  const ctx = {
+    hasUI: false,
+    cwd: "/workspace/project-a",
+    sessionManager: { getSessionId: () => "session-a" },
+    ui: {},
+  };
+  const event = { systemPromptOptions: { sections: {} } };
+  handlers.before_agent_start(event, ctx);
+  await handler({ toolName: "bash", input: {} }, ctx);
+  assert.deepEqual(calls.at(-1), { sessionId: "session-a", workspace: "/workspace/project-a" });
+  assert.match(event.systemPromptOptions.sections["app-permission"], /只读/);
 });

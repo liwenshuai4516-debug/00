@@ -16,6 +16,17 @@ function registerAgentIpc(
 ) {
   let operationPending = false;
 
+  // 权限按当前实际会话与工作区解析，不接受页面传入的会话编号或路径。
+  async function currentPermissionContext() {
+    try {
+      const sessionId = await sessionService.currentSession();
+      const info = await sessionService.getSessionInfo();
+      return { sessionId, workspace: info.workspaceDir };
+    } catch {
+      return {};
+    }
+  }
+
   // 在进入异步操作之前占用状态，防止切换、审阅和保存交叉执行。
   function runIdleOperation(operation) {
     if (chatService.isBusy() || operationPending) {
@@ -85,9 +96,14 @@ function registerAgentIpc(
   ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
   // 只读的本地估算；用户展开上下文详情时才调用，不参与发送或压缩决策。
   ipcMain.handle("agent:read-context-breakdown", () => sessionService.getContextBreakdown());
-  ipcMain.handle("agent:read-permission-settings", () => permissionService.settings());
-  ipcMain.handle("agent:save-permission-settings", (_event, mode) =>
-    runIdleOperation(() => permissionService.save(mode)),
+  ipcMain.handle("agent:read-permission-settings", async () =>
+    permissionService.settings(await currentPermissionContext()),
+  );
+  ipcMain.handle("agent:save-permission-settings", (_event, mode, scope) =>
+    runIdleOperation(async () => {
+      const context = await currentPermissionContext();
+      return permissionService.save({ mode, scope, ...context });
+    }),
   );
 
   // 页面预览只读工作目录内的文本文件；不占用空闲互斥，生成期间也可查看。

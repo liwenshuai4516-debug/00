@@ -216,7 +216,8 @@ contextBridge.exposeInMainWorld("agent", {
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
   readContextBreakdown: () => ipcRenderer.invoke("agent:read-context-breakdown"),
   readPermissionSettings: () => ipcRenderer.invoke("agent:read-permission-settings"),
-  savePermissionSettings: mode => ipcRenderer.invoke("agent:save-permission-settings", mode),
+  savePermissionSettings: (mode, scope) =>
+    ipcRenderer.invoke("agent:save-permission-settings", mode, scope),
 
   // 只核对已登记的会话，不接收目录或页面提供的草稿状态。
   inspectComposerSend: (sessionId) =>

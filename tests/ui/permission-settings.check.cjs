@@ -24,6 +24,14 @@ async function main() {
   <p id="general-settings-intro">通用设置</p>
   <section class="model-panel-card permission-settings" id="panel">
     <div class="model-card-heading"><h3>权限控制</h3><span class="model-badge" data-permission-state>读取中</span></div>
+    <label class="permission-scope">应用范围
+      <select data-permission-scope aria-label="权限应用范围">
+        <option value="session">仅当前会话</option>
+        <option value="workspace">当前项目所有会话</option>
+        <option value="default">新会话默认</option>
+      </select>
+    </label>
+    <p class="permission-note" data-permission-scope-note>权限来源：读取中。</p>
     <div class="permission-options" data-permission-options role="radiogroup" aria-label="权限模式"></div>
     <p class="permission-warning" data-permission-warning hidden>完全权限会跳过所有确认。</p>
     <p class="permission-note">不是操作系统沙箱。</p>
@@ -33,23 +41,20 @@ async function main() {
 <script type="module">
   import { createPermissionSettings } from "${componentUrl}";
   let mode = "ask";
+  let scope = "session";
+  let defaultMode = "ask";
   const calls = [];
+  const options = () => [
+    { id: "ask", label: "每次确认", description: "写入和命令每次确认。" },
+    { id: "read-only", label: "只读", description: "阻止写入和命令。" },
+    { id: "full-access", label: "完全权限", description: "全部直接执行。", risk: true },
+  ];
   const api = {
-    readPermissionSettings: async () => ({
-      mode,
-      options: [
-        { id: "ask", label: "每次确认", description: "写入和命令每次确认。" },
-        { id: "read-only", label: "只读", description: "阻止写入和命令。" },
-        { id: "full-access", label: "完全权限", description: "全部直接执行。", risk: true },
-      ],
-    }),
-    savePermissionSettings: async (next) => {
-      calls.push(next); mode = next;
-      return { mode, options: [
-        { id: "ask", label: "每次确认", description: "写入和命令每次确认。" },
-        { id: "read-only", label: "只读", description: "阻止写入和命令。" },
-        { id: "full-access", label: "完全权限", description: "全部直接执行。", risk: true },
-      ] };
+    readPermissionSettings: async () => ({ mode, scope, defaultMode, options: options() }),
+    savePermissionSettings: async (next, nextScope) => {
+      calls.push([next, nextScope]);
+      mode = next; scope = nextScope;
+      return { mode, scope, defaultMode, options: options() };
     },
   };
   window.apiCalls = calls;
@@ -70,21 +75,24 @@ async function main() {
     const check = async (label, expression) => { assert.ok(await run(expression), label); passed += 1; console.log(`PASS ${label}`); };
     await wait("window.__ready===true");
     await run("window.component.setBusy(false)");
-    await check("默认每次确认并展示三个模式", `document.querySelectorAll('[data-permission-options] .permission-option').length===3&&document.querySelector('input[value="ask"]').checked&&document.querySelector('[data-permission-state]').textContent==='每次确认'&&document.querySelector('[data-permission-warning]').hidden`);
+    await check("默认每次确认并展示三个模式", `document.querySelectorAll('[data-permission-options] .permission-option').length===3&&document.querySelector('input[value="ask"]').checked&&document.querySelector('[data-permission-state]').textContent==='每次确认'&&document.querySelector('[data-permission-warning]').hidden&&document.querySelector('[data-permission-scope]').value==='session'&&document.querySelector('[data-permission-scope-note]').textContent.includes('仅当前会话')`);
     if (process.env.PERMISSION_SETTINGS_SCREENSHOT_PATH) {
       await fs.writeFile(process.env.PERMISSION_SETTINGS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
     await run(`(()=>{const input=document.querySelector('input[value="read-only"]');input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await run(`new Promise((resolve)=>setTimeout(resolve,200))`);
     await wait("!window.busy&&document.querySelector('[data-permission-state]').textContent==='只读'");
-    await check("保存只读模式并提示立即生效", `window.apiCalls.at(-1)==='read-only'&&document.querySelector('[data-permission-status]').textContent.includes('只读')&&document.querySelector('[data-permission-warning]').hidden`);
+    await check("保存只读模式并提示立即生效", `window.apiCalls.at(-1)[0]==='read-only'&&window.apiCalls.at(-1)[1]==='session'&&document.querySelector('[data-permission-status]').textContent.includes('只读')&&document.querySelector('[data-permission-warning]').hidden`);
+    await run(`(()=>{const select=document.querySelector('[data-permission-scope]');select.value='workspace';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait("!window.busy&&document.querySelector('[data-permission-scope-note]').textContent.includes('当前项目所有会话')");
+    await check("切换项目范围保存并提示来源", `window.apiCalls.at(-1)[1]==='workspace'&&document.querySelector('[data-permission-status]').textContent.includes('当前项目所有会话')`);
     await run(`(()=>{const input=document.querySelector('input[value="full-access"]');input.checked=true;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     await wait("!window.busy&&document.querySelector('[data-permission-state]').textContent==='完全权限'");
-    await check("完全权限显示高风险提示", `window.apiCalls.at(-1)==='full-access'&&document.querySelector('[data-permission-state]').dataset.state==='warn'&&!document.querySelector('[data-permission-warning]').hidden&&document.querySelector('.permission-option__risk').textContent==='高风险'`);
+    await check("完全权限显示高风险提示", `window.apiCalls.at(-1)[0]==='full-access'&&document.querySelector('[data-permission-state]').dataset.state==='warn'&&!document.querySelector('[data-permission-warning]').hidden&&document.querySelector('.permission-option__risk').textContent==='高风险'`);
     await run("window.component.setBusy(true)");
-    await check("忙碌时禁用所有模式", `[...document.querySelectorAll('[data-permission-options] input')].every((input)=>input.disabled)`);
+    await check("忙碌时禁用所有模式", `[...document.querySelectorAll('[data-permission-options] input')].every((input)=>input.disabled)&&document.querySelector('[data-permission-scope]').disabled`);
     await run("window.component.setBusy(false)");
-    await check("空闲后恢复选择", `[...document.querySelectorAll('[data-permission-options] input')].every((input)=>!input.disabled)`);
+    await check("空闲后恢复选择", `[...document.querySelectorAll('[data-permission-options] input')].every((input)=>!input.disabled)&&!document.querySelector('[data-permission-scope]').disabled`);
     await fs.writeFile("/tmp/permission-settings.png", (await win.webContents.capturePage()).toPNG());
     console.log(`权限设置页面 ${passed} 项检查通过。`);
   } finally {

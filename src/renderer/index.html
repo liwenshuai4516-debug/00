@@ -483,6 +483,14 @@
           <span class="model-badge" data-permission-state>读取中</span>
         </div>
         <p>控制模型发起的工具调用。读取、搜索类工具直接执行；写入、命令、登录和录制等工具按模式处理。</p>
+        <label class="permission-scope">应用范围
+          <select data-permission-scope aria-label="权限应用范围">
+            <option value="session">仅当前会话</option>
+            <option value="workspace">当前项目所有会话</option>
+            <option value="default">新会话默认</option>
+          </select>
+        </label>
+        <p class="permission-note" data-permission-scope-note>权限来源：读取中。</p>
         <div class="permission-options" data-permission-options role="radiogroup" aria-label="权限模式"></div>
         <p class="permission-warning" data-permission-warning hidden>完全权限会跳过所有工具确认，包括命令和文件写入。只在明确信任当前任务时使用。</p>
         <p class="permission-note">这是应用层的工具调用门禁，不是操作系统沙箱。扩展、子进程和工具本身仍使用应用进程的系统权限。</p>
