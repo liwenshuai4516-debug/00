@@ -13,7 +13,11 @@ test("实际启动入口每次开窗均装守卫，退出中阻止新窗口，�
   let quitting = false;
   const quitGuard = { isQuitting: () => quitting, cancelQuit() { quitting = false; } };
   class BrowserWindow {
-    constructor() { calls.push(["window", this]); }
+    constructor() {
+      calls.push(["window", this]);
+      // 开窗时会安装 webview 策略；这里只保留事件挂载点。
+      this.webContents = { on() {} };
+    }
     loadFile(filename) { calls.push(["load", this, filename]); }
   }
   const factories = {

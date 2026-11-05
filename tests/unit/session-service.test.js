@@ -108,7 +108,7 @@ test("新建成功后切换会话并释放原会话", async () => {
   assert.equal(disposeCalls, 1);
 });
 
-test("默认创建路径在缺少模型配置时返回明确错误", () => {
+test("默认创建路径在缺少工作目录时返回明确错误", () => {
   const servicePath = require.resolve(
     "../../src/main/services/session-service.js",
   );
@@ -122,7 +122,7 @@ test("默认创建路径在缺少模型配置时返回明确错误", () => {
       const service = createSessionService(process.argv[1]);
 
       await assert.rejects(service.getSession(), {
-        message: "请在 .env 中配置 PI_PROVIDER 和 PI_MODEL。",
+        message: "请在 .env 中将 AGENT_WORKSPACE_DIR 配置为绝对路径。",
       });
     }
 
@@ -132,12 +132,13 @@ test("默认创建路径在缺少模型配置时返回明确错误", () => {
     });
   `;
 
-  // 不加载 .env，并明确清空模型配置，确保不会发送模型请求。
+  // 不加载 .env，并明确清空工作目录与模型配置，确保不会发送模型请求。
   execFileSync(process.execPath, ["-e", script, sessionDir], {
     env: {
       ...process.env,
       PI_PROVIDER: "",
       PI_MODEL: "",
+      AGENT_WORKSPACE_DIR: "",
     },
     encoding: "utf8",
   });

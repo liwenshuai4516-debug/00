@@ -216,7 +216,14 @@ test("官方 npm 与 Git 卸载仅处理所选范围的安装和配置", async t
 test("单项停用使用官方精确排除，不影响同包技能、模板和独立技能文件", async t => {
   const { SettingsManager, DefaultResourceLoader } = await import("@mariozechner/pi-coding-agent");
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-disable-skill-"));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  // 隔离个人技能目录，避免本机 ~/.agents/skills 混入固定期望。
+  const previousHome = process.env.HOME;
+  process.env.HOME = root;
+  t.after(async () => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    await fs.rm(root, { recursive: true, force: true });
+  });
   const cwd = path.join(root, "workspace"), agentDir = path.join(root, "agent"), packageDir = path.join(root, "package");
   await fs.mkdir(cwd);
   for (const [directory, name] of [[path.join(packageDir, "skills/first"), "first"], [path.join(packageDir, "skills/second"), "second"], [path.join(agentDir, "skills/standalone"), "standalone"], [path.join(cwd, ".pi/skills/project-only"), "project-only"], [path.join(cwd, ".agents/skills/agents-only"), "agents-only"]]) {

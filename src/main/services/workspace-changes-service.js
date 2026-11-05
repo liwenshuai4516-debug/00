@@ -182,17 +182,25 @@ function createWorkspaceChangesService(options = {}) {
   }
 
   // 临时 index 以仓库 index 为种子，新对象写入临时目录，仓库对象库只读挂接。
-  async function snapshot(rec) {
-    if (!rec.repo) return null;
-    const env = gitEnv(rec.repo);
-    const added = await execGit(["add", "-A", "--ignore-errors"], {
+  async function addWorktree(rec, env) {
+    const run = () => execGit(["add", "-A", "--ignore-errors"], {
       cwd: rec.repo.root,
       env,
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: GIT_OUTPUT_LIMIT,
     });
-    // 不可读文件会让 add 返回 1；接受该结果，后续 write-tree 仍可建立基线。
-    if (!added.ok && added.code !== 1) return null;
+    const first = await run();
+    // 不可读文件会让 add 返回 1；split index 等情况可能直接失败，删掉临时 index 后重建一次。
+    if (first.ok || first.code === 1) return true;
+    await rm(rec.repo.index, { force: true }).catch(() => {});
+    const retry = await run();
+    return retry.ok || retry.code === 1;
+  }
+
+  async function snapshot(rec) {
+    if (!rec.repo) return null;
+    const env = gitEnv(rec.repo);
+    if (!(await addWorktree(rec, env))) return null;
     const tree = await execGit(["write-tree"], {
       cwd: rec.repo.root,
       env,

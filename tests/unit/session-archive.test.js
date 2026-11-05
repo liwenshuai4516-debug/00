@@ -172,12 +172,14 @@ test("默认与实际启动工厂均把归档过滤交给真实Pi初始化，不
       // 按实际启动工厂注入宿主依赖，所有状态仍保存在临时目录。
       const factory = new Function(
         "app", "modelSettingsService", "require", "dialog", "promptSettingsStore", "sessionStateStore", "extensionUi",
+        "resolveUiTestingRuntime", "projectRoot", "permissionService", "workspaceChanges",
         "return (" + body + ");",
       )(
         { whenReady: async () => {}, quit() {} }, undefined,
         require("node:module").createRequire(${JSON.stringify(root + "/src/main/bootstrap.js")}),
         { showMessageBox: async () => ({ response: 0, checkboxChecked: false }) },
         { read: async () => ({ version: 1, revision: 0, testAgentPrompt: "隔离测试提示词" }) }, store, {},
+        () => undefined, ${JSON.stringify(root)}, { currentMode: () => "ask" }, undefined,
       );
       const configured = createSessionService(dir, factory, () => workspace, async () => {}, store);
       assert.equal((await configured.getSession(true)).sessionId, "b");

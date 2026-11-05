@@ -268,12 +268,14 @@ test("实际启动工厂按官方供应商恢复同名模型与输入", async (t
       const store = createSessionStateStore(path.join(base, "state"));
       const factory = new Function(
         "app", "require", "dialog", "promptSettingsStore", "sessionStateStore", "extensionUi",
+        "resolveUiTestingRuntime", "projectRoot", "permissionService", "workspaceChanges",
         "return (" + factorySource + ");",
       )(
         { whenReady: async () => { ready += 1; }, quit() {} },
         require("node:module").createRequire(${JSON.stringify(root + "/src/main/bootstrap.js")}),
         { showMessageBox: async () => ({ response: 0, checkboxChecked: false }) },
         { read: async () => ({ version: 1, revision: 0, testAgentPrompt: "隔离测试提示词" }) }, store, {},
+        () => undefined, ${JSON.stringify(root)}, { currentMode: () => "ask" }, undefined,
       );
       await store.registerSession("target", workspace, "empty", { provider: "beta", modelId: "same" });
       await store.saveDraft("target", workspace, "保留输入", 0);
