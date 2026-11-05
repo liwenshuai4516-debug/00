@@ -40,8 +40,8 @@
 .trajectory-view {
   position: absolute;
   inset: 0;
-  overflow-y: auto;
-  padding: 16px 24px 48px;
+  overflow: hidden;
+  padding: 16px 24px 0;
 }
 
 .chat-main[data-view="trajectory"] .composer-area,
@@ -52,16 +52,21 @@
 }
 
 .trajectory {
+  display: flex;
+  flex-direction: column;
   width: min(100%, 1240px);
+  height: 100%;
+  min-height: 0;
   margin: 0 auto;
   color: var(--muted);
   font-size: 12px;
 }
 
+.trajectory > :not(.traj-records) {
+  flex: none;
+}
+
 .traj-toolbar {
-  position: sticky;
-  top: -16px;
-  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -221,8 +226,19 @@
 
 .traj-records {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: 48px;
+}
+
+.traj-records:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 .traj-section,
@@ -421,7 +437,11 @@
 
 @media (max-width: 760px) {
   .trajectory-view {
-    padding: 12px 12px 40px;
+    padding: 12px 12px 0;
+  }
+
+  .traj-records {
+    padding-bottom: 40px;
   }
 
   .traj-toolbar {

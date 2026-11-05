@@ -714,9 +714,9 @@ export function createTrajectoryView(container, options = {}) {
       replayCache.clear();
     }
     container.dataset.sessionId = snapshot.sessionId ?? "";
-    const scrollTop = container.scrollTop;
+    const scrollTop = recordsEl?.scrollTop ?? 0;
     // 实时更新时若用户已在底部，继续跟随最新记录；上翻查看时不打断。
-    const followLatest = container.scrollHeight - container.scrollTop - container.clientHeight <= 48;
+    const followLatest = isAtBottom();
     const focusedSearch = document.activeElement?.matches?.(".traj-search input") === true;
     const selectionStart = focusedSearch ? document.activeElement.selectionStart : null;
     const selectionEnd = focusedSearch ? document.activeElement.selectionEnd : null;
@@ -775,10 +775,13 @@ export function createTrajectoryView(container, options = {}) {
     }
 
     recordsEl = element("div", "traj-records");
+    recordsEl.tabIndex = 0;
+    recordsEl.setAttribute("role", "region");
+    recordsEl.setAttribute("aria-label", "轨迹记录");
     shell.append(recordsEl);
     container.append(shell);
     renderRecords();
-    container.scrollTop = follow || sessionChanged || followLatest ? container.scrollHeight : scrollTop;
+    recordsEl.scrollTop = follow || sessionChanged || followLatest ? recordsEl.scrollHeight : scrollTop;
     if (focusedSearch) {
       const searchInput = container.querySelector(".traj-search input");
       searchInput?.focus();
@@ -788,12 +791,16 @@ export function createTrajectoryView(container, options = {}) {
     }
   }
 
+  function isAtBottom() {
+    return !recordsEl || recordsEl.scrollHeight - recordsEl.scrollTop - recordsEl.clientHeight <= 48;
+  }
+
   return {
     render,
     // 搜索框聚焦（含输入法组词）时不自动重建，避免打断输入；失去焦点后的下一次事件再更新。
     isEditing: () => document.activeElement?.matches?.(".traj-search input") === true,
-    isAtBottom: () => container.scrollHeight - container.scrollTop - container.clientHeight <= 48,
-    scrollToLatest: () => container.scrollTo({ top: container.scrollHeight, behavior: "smooth" }),
+    isAtBottom,
+    scrollToLatest: () => recordsEl?.scrollTo({ top: recordsEl.scrollHeight, behavior: "smooth" }),
     reset: () => render({ sessionId: "", requests: [], hasTimeline: false, totals: {} }),
   };
 }

@@ -671,7 +671,7 @@ function scheduleTrajectoryRender() {
   });
 }
 
-trajectoryElement.addEventListener("scroll", syncTrajectoryLatest, { passive: true });
+trajectoryElement.addEventListener("scroll", syncTrajectoryLatest, { passive: true, capture: true });
 trajectoryLatest.addEventListener("click", () => {
   trajectoryView.scrollToLatest();
 });

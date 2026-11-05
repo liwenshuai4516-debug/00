@@ -161,6 +161,8 @@ async function main() {
 
   try {
     await win.loadFile(path.join(root, "src/renderer/index.html"));
+    // macOS 隐藏窗口缩放时可能返回旧合成帧；显示但不抢焦点，确保截图与测量一致。
+    win.showInactive();
     await idle();
     await until("document.querySelectorAll('.session-open').length >= 1");
 
@@ -220,16 +222,30 @@ async function main() {
     await until("document.querySelectorAll('.traj-record[open]').length >= 1");
     console.log("通过：点击时长轨道定位最近记录");
 
-    // 用较矮窗口确保内容可滚动：上翻后出现回到最新，点击后回到底部并隐藏。
+    // 顶部概览固定，只有下方记录列表滚动；展开长详情也不改变概览位置。
     win.setSize(1000, 560);
     await js("new Promise(r=>setTimeout(r,250))");
-    await js("const view=document.getElementById('trajectory-view');view.scrollTop=0;view.dispatchEvent(new Event('scroll'))");
+    await js("document.querySelectorAll('.traj-record').forEach(node=>{node.open=true})");
+    await js("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))");
+    assert.equal(await js("document.querySelector('.traj-records').scrollHeight > document.querySelector('.traj-records').clientHeight"), true, "记录列表应独立滚动");
+    const headerRects = await js("['.traj-toolbar','.traj-summary','.traj-overview'].map(selector=>{const rect=document.querySelector(selector).getBoundingClientRect();return {top:rect.top,bottom:rect.bottom}})");
+    const firstRecordTop = await js("document.querySelector('.traj-record').getBoundingClientRect().top");
+    await js("document.querySelector('.traj-records').scrollTop=100");
+    await until("document.getElementById('trajectory-latest').hidden === false");
+    assert.ok(await js("document.querySelector('.traj-record').getBoundingClientRect().top") < firstRecordTop, "消息记录应随滚动移动");
+    assert.deepEqual(await js("['.traj-toolbar','.traj-summary','.traj-overview'].map(selector=>{const rect=document.querySelector(selector).getBoundingClientRect();return {top:rect.top,bottom:rect.bottom}})"), headerRects, "滚动列表时顶部工具栏、统计与时间概览应固定");
+    assert.equal(await js("document.getElementById('trajectory-view').scrollTop"), 0);
+    assert.equal(await js("document.querySelector('.traj-records').getBoundingClientRect().top >= document.querySelector('.traj-overview').getBoundingClientRect().bottom"), true, "列表不能覆盖时间概览");
+    await fs.writeFile(path.join(temporary, "trajectory-pinned.png"), (await win.webContents.capturePage()).toPNG());
+
+    // 上翻后出现回到最新，点击后回到底部并隐藏。
+    await js("document.querySelector('.traj-records').scrollTop=0");
     await until("document.getElementById('trajectory-latest').hidden === false");
     await js("document.getElementById('trajectory-latest').click()");
     await until("document.getElementById('trajectory-latest').hidden === true");
     win.setSize(1280, 900);
     await js("new Promise(r=>setTimeout(r,250))");
-    console.log("通过：轨迹跟随最新与回到最新");
+    console.log("通过：顶部时间概览固定、记录独立滚动与回到最新");
 
     // 轮次模式按请求分组。
     await js("[...document.querySelectorAll('.traj-mode')].find(button=>button.textContent==='轮次').click()");
@@ -292,9 +308,51 @@ async function main() {
     console.log("通过：680/375 窄窗无页面级横向溢出");
 
     await fs.writeFile(path.join(temporary, "trajectory.png"), (await win.webContents.capturePage()).toPNG());
+
+    // 长列表下验证重绘后的跟随/阅读位置、键盘滚动及窄窗固定布局。
+    await js(`(async()=>{
+      const { createTrajectoryView } = await import('./components/trajectory-view.js');
+      document.getElementById('trajectory-view').hidden=true;
+      const host=document.createElement('section');
+      host.className='trajectory-view';
+      document.querySelector('.thread-area').append(host);
+      const snapshot={sessionId:'scroll-fixture',hasTimeline:true,totals:{requests:1},requests:[{
+        index:0,userText:'长列表滚动检查',startedAt:1000,endedAt:61000,
+        records:Array.from({length:60},(_,index)=>({id:'scroll-'+index,kind:'tool',toolName:'read',args:{path:'example-'+index+'.js'},result:'示例内容',ts:1000+index*1000,durationMs:500,status:'done'})),
+      }]};
+      const view=createTrajectoryView(host);
+      view.render(snapshot,{follow:true});
+      window.scrollFixture={host,snapshot,view};
+    })()`);
+    assert.equal(await js("window.scrollFixture.view.isAtBottom()"), true);
+    await js("window.scrollFixture.host.querySelector('.traj-records').scrollTop=80;window.scrollFixture.snapshot.requests[0].records.push({...window.scrollFixture.snapshot.requests[0].records[0],id:'scroll-new'});window.scrollFixture.view.render(window.scrollFixture.snapshot)");
+    assert.equal(await js("window.scrollFixture.host.querySelector('.traj-records').scrollTop"), 80, "更新记录不能打断上翻阅读");
+    assert.equal(await js("window.scrollFixture.view.isAtBottom()"), false);
+    await js("window.scrollFixture.view.scrollToLatest()");
+    await until("window.scrollFixture.view.isAtBottom()");
+    await js("window.scrollFixture.snapshot.requests[0].records.push({...window.scrollFixture.snapshot.requests[0].records[0],id:'scroll-last'});window.scrollFixture.view.render(window.scrollFixture.snapshot)");
+    assert.equal(await js("window.scrollFixture.view.isAtBottom()"), true, "底部更新应跟随最新");
+    await js("(()=>{const list=window.scrollFixture.host.querySelector('.traj-records');list.scrollTop=0;list.focus()})()");
+    win.webContents.sendInputEvent({ type: "keyDown", keyCode: "PageDown" });
+    win.webContents.sendInputEvent({ type: "keyUp", keyCode: "PageDown" });
+    await until("window.scrollFixture.host.querySelector('.traj-records').scrollTop > 0");
+    for (const [width, height] of [[1280, 900], [375, 700]]) {
+      win.setSize(width, height);
+      await js("new Promise(r=>setTimeout(r,450))");
+      for (const mode of ["time", "turn", "call"]) {
+        await js(`window.scrollFixture.host.querySelector('[data-mode="${mode}"]').click()`);
+        assert.equal(await js("(()=>{const host=window.scrollFixture.host;const list=host.querySelector('.traj-records');const overview=host.querySelector('.traj-overview');const top=overview.getBoundingClientRect().top;list.scrollTop=list.scrollHeight;return overview.getBoundingClientRect().top===top&&top>=host.getBoundingClientRect().top&&list.clientHeight>0&&list.getBoundingClientRect().top>=overview.getBoundingClientRect().bottom&&host.scrollTop===0})()"), true, `${width} 窗口 ${mode} 模式顶部固定且记录可见`);
+      }
+      await js("window.scrollFixture.host.querySelector('[data-mode=\"time\"]').click();window.scrollFixture.host.querySelector('.traj-records').scrollTop=240");
+      await js("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))");
+      await fs.writeFile(path.join(temporary, `trajectory-pinned-${width}.png`), (await win.webContents.capturePage()).toPNG());
+    }
+    await js("window.scrollFixture.host.remove();delete window.scrollFixture;document.getElementById('trajectory-view').hidden=false");
+    console.log("通过：长列表重绘保持阅读位置、底部跟随、键盘滚动及宽窄窗三种视图固定布局");
     assert.deepEqual(errors, []);
     console.log("通过：对话/轨迹视图与运行轨迹功能");
     console.log(`截图：${path.join(temporary, "trajectory.png")}`);
+    console.log(`固定概览截图：${path.join(temporary, "trajectory-pinned-1280.png")}、${path.join(temporary, "trajectory-pinned-375.png")}`);
   } finally {
     win.destroy();
   }
