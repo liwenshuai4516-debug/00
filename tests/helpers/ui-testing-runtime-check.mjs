@@ -391,9 +391,9 @@ if (scenario === "login-batch") {
     await fs.writeFile(path.join(caseDir, "outcomes.spec.cjs"), `const { test, expect } = require("@playwright/test");
       test("真实失败保留", () => { expect(1).toBe(2); });
       test.skip("不能将跳过记为通过", () => {});`);
-    await assert.rejects(call("qa_ui_prepare", { mode: "run", caseId: "identity", targetUrl: "http://example.invalid", loginId: login.loginId }), /目标站点/);
+    await assert.rejects(call("qa_ui_prepare", { mode: "run", caseId: "identity", targetUrl: "http://example.invalid", loginId: login.loginId }), (error) => /目标站点/.test(error.message) && /qa_ui_project/.test(error.message));
     const batch = await call("qa_ui_prepare", { mode: "run", caseIds: ["identity", "outcomes"], targetUrl: origin, loginId: login.loginId });
-    await assert.rejects(call("qa_ui_prepare", { mode: "run", caseId: "identity", targetUrl: origin, loginId: login.loginId }), /已绑定/);
+    await assert.rejects(call("qa_ui_prepare", { mode: "run", caseId: "identity", targetUrl: origin, loginId: login.loginId }), (error) => /已绑定/.test(error.message) && /新的 projectRef/.test(error.message));
     await assert.rejects(runFile("/bin/bash", ["-c", batch.replayCommand], { cwd: workspace, timeout: 90_000 }), (error) => error.code === 1);
     assert.deepEqual(await authDirs(), []);
     const summary = JSON.parse(await fs.readFile(batch.summaryFile, "utf8"));
@@ -513,7 +513,7 @@ if (scenario === "auto-login") {
     const invalid = await call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef });
     assert.equal(invalid.details.status, "manual-required");
     assert.equal(submissions, 1, "登录失败不自动重试");
-    await assert.rejects(call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef }), /不能重复提交/);
+    await assert.rejects(call("qa_ui_login", { action: "auto", projectRef: invalidProject.projectRef }), (error) => /不能重复提交/.test(error.message) && /qa_ui_project/.test(error.message));
     assert.equal(submissions, 1);
     assert.ok(!JSON.stringify(invalid).includes("fixture-private-password"));
     assert.deepEqual(await fs.readdir(base).then((names) => names.filter((name) => name.startsWith("qa-ui-auth-"))), []);

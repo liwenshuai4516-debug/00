@@ -39,6 +39,7 @@ description: 当用户要录制 UI 用例、回放测试或验收页面时使用
 - 同一输入按同一顺序执行；不得中途静默改范围、删断言、放宽预期或把产品缺陷写成“预期如此”。
 - 业务规则不确定时继续执行并标注假设，不用问卷替代测试。
 - 待确认项只在最终报告集中列出，不在开始或中途列清单阻塞执行。
+- 多步任务维护可见任务清单：每完成一项或进入下一项前调用 todo_write 更新完整列表，不要只在开始时和全部结束后各提交一次。
 
 ## 0. 判断用户意图（进入流程前）
 
@@ -87,11 +88,16 @@ businessDataStatus=not-validated 表示宿主只检查了目录及项目配置�
 auto 默认在后台无头浏览器中检查目标页面和登录表单，需要时用配置凭据尝试一次登录并验证，不打开前端窗口。不需要登录返回 not-required，成功保存私有状态返回 saved；这两种状态才继续。
 默认验证目标路径可达且登录表单消失；该检查不能代替真实角色和权限断言。录制开始前通过页面内容确认用户要求的角色、目标模块及前置数据。
 
-manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登录失败时，默认静默返回、不自动开可见窗口；只有用户明确要求现场接管时才传 `headed=true`（或调用 action=start 手动窗口），成功后用返回 loginId 调用 complete。不重复自动提交；自动与手动流程都默认保存私有临时状态，不再逐次询问。
+manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登录失败时，默认静默返回、不自动开可见窗口。需要现场接管时调用 action=start 打开可见窗口，成功后用返回 loginId 调用 complete；或重新 qa_ui_project 后再 auto headed=true。不要用同一 projectRef 重复 auto。自动与手动流程都默认保存私有临时状态，不再逐次询问。
 项目配置缺失时明确指出缺少的字段，用户在本机配置中补齐，不要求在聊天中发送密码。终止时 action=cancel、loginId。
 保留 start/complete 的纯手动方式；complete 默认保存私有临时登录态，回放结束或会话关闭时清理。
 
 登录期间无 trace、截图或生成日志。私有状态支持 cookie/localStorage/IndexedDB，限定目标 origin，不覆盖 sessionStorage、跨域 SSO 或过期身份。一次私有状态可交给本次多份录制，只能绑定一个回放批次。
+
+登录状态按 projectRef 保存在当前会话内：qa_ui_login(auto) 对每个 projectRef 只尝试一次；saved 可用于多次 record 准备，但一次 qa_ui_prepare(mode=run) 会绑定该登录态，之后不能再用它准备第二个批次。出现以下错误时不要原样重试，改为重新调用 qa_ui_project 获取新的 projectRef，再用新 ref 登录和准备：
+- qa_ui_prepare：登录态已失效、已绑定批次、与目标站点不符；
+- qa_ui_login：本次 projectRef 已尝试过自动登录、登录交接已失效。
+不要把新 loginId 和旧 projectRef 混用；已有 saved 登录态足以继续录制或做一次回放准备时，不要重复 auto。
 
 ## 4. 执行真实录制（仅意图包含录制时）
 
@@ -115,6 +121,7 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 只执行优先用 `qa-ui-execute` 的 `execute.cjs`：一条命令按 caseId 批量/定时回放；需要会话内 MCP 登录态或人工接管时再回本流程 1–3。
 
 录制流程关闭录制页面后调用 qa_ui_prepare：mode=run、projectRef、targetUrl 和刚返回的 caseId；只执行场景改用用户指定的已有 caseId。同一页面的多份脚本可用 caseIds，不能同时传两种参数。
+run 准备会绑定当前登录态；一个登录态只能准备一个回放批次。finalize 只登记资产，不重置登录态；已绑定批次的登录态不能因 finalize 再次使用。回放命令失败后不要重新 prepare 同一 case 来重试；先读 summary 并按报告流程交付。需要新批次时重新走 qa_ui_project → qa_ui_login → qa_ui_prepare。
 该入口检查资产版本登记，继承私有登录状态，生成新 runId。旧资产仍可省略 projectRef 使用原单文件/批次入口；不可借此跳过本次新流程的前置检查。
 
 执行返回 replayCommand，使用 Pi 原生 bash，timeout 可用 660 秒，为 600 秒批次上限留出收尾时间。官方 CLI 单 worker、零重试；不用会关闭报告器的 MCP test_run。
@@ -134,9 +141,10 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 | --- | --- | --- |
 | 无可信 cwd，或工作区不可写 | 🔴 暂停，请用户选择工作区 | 本次结束；不在安装目录、技能目录或聊天提到的其他目录创建文件 |
 | qa_ui_project 报错、多候选等价或名称冲突 | 按返回原因补 projectId/projectName 后重查 | 🔴 仍冲突则请用户确认项目；不猜账号，不按目录名选取 |
-| qa_ui_login 返回 manual-required | 默认静默返回；用户明确要求现场接管时传 headed=true 打开可见窗口，完成后 complete(loginId) | 用户放弃或仍失败：cancel(loginId) 并停止本次录制，不重复 auto |
+| qa_ui_login 返回 manual-required | 默认静默返回；需要现场接管时 action=start 打开可见窗口，完成后 complete(loginId)；或重新 qa_ui_project 后 auto headed=true | 用户放弃或仍失败：cancel(loginId) 并停止本次录制，不重复 auto |
+| qa_ui_login 拒绝重复自动登录（本次 projectRef 已尝试） | 不重复 auto；重新 qa_ui_project 获取新 projectRef，再 auto 或 start/complete | 仍失败则停止并保留原错误 |
 | 内置运行环境缺失，或 qa_ui_* / 官方录制工具未登记 | 先确认当前会话使用内置 MCP（不是 proxy-only 适配器）且已新开会话；报告缺失路径或 verify 原始报错 | 停止；不自行安装依赖、不改用其他工具、不声称已录制 |
-| qa_ui_prepare 拒绝（未登录、地址不一致、同名资产、登录态失效） | 按错误重查项目或登录，或换 caseId | 不覆盖或迁移旧资产，不跳过检查强行录制 |
+| qa_ui_prepare 拒绝（未登录、地址不一致、同名资产、登录态失效/已绑定批次） | 登录态问题：重新 qa_ui_project 获取新 projectRef → qa_ui_login → qa_ui_prepare；地址/资产问题按错误修正；不要用旧 projectRef 重试 | 不覆盖或迁移旧资产，不跳过检查强行录制 |
 | qa_ui_finalize 拒绝（缺日志、语法、密码、说明为空） | 修正脚本或说明后重新 finalize | 未 recorded-and-syntax-checked 不得进入回放 |
 | 权限、账号、造数、字段/金额/日期规则不清 | 测试环境默认放行；账号查用户管理；规则按页面规则继续 | 不暂停；记录假设/待确认，不影响已能执行的用例 |
 | 回放超时、被终止或报告缺失 | 读 summary 判 incomplete，列出缺失项与残留 | 不自动重放同一命令，不把未完成记为通过 |

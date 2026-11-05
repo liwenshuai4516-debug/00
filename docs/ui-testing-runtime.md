@@ -37,7 +37,9 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 
 `projectRef`、登录态引用和官方 MCP 工具都是当前会话的内存状态。会话恢复/切换、扩展 reload 或上下文压缩后，它们会失效；必须重新执行 `qa_ui_project → qa_ui_login → qa_ui_prepare`（新 caseId），不能复用旧 refs 或旧录制日志。录制期间不要使用 `compress` 等上下文压缩/会话替换功能。
 
-自动登录、录制和回放默认无头执行，不打开前端浏览器；只有用户明确要求现场观察时才传 `headed=true`。`qa_ui_login(auto)` 遇到验证码/MFA 默认静默返回 manual-required，不主动弹窗；需要人工接管时由用户要求再开可见窗口。
+登录态按 `projectRef` 管理：`qa_ui_login(auto)` 对每个 `projectRef` 只尝试一次；`saved` 可复用于多次 record 准备，但一次 `qa_ui_prepare(mode=run)` 会绑定该登录态，第二次 run 准备会被拒绝。prepare/login 报登录态失效、已绑定批次或目标站点不符时，不要原样重试；重新 `qa_ui_project` 获取新 `projectRef`，再登录和准备。回放命令失败后不要重新 prepare 同一 case 来重试，先读 summary；需要新批次时重新走完整前置链路。
+
+自动登录、录制和回放默认无头执行，不打开前端浏览器；只有用户明确要求现场观察时才传 `headed=true`。`qa_ui_login(auto)` 遇到验证码/MFA 默认静默返回 manual-required，不主动弹窗；manual-required 后不要用同一 `projectRef` 重复 auto，需要人工接管时用 `start` + `complete`，或重新 `qa_ui_project` 后再 auto headed=true。
 
 已有 `*.seed.spec.cjs` 的 caseId 不能再次用于 record（prepare 会以“同名 case 已存在”拒绝）；中断后请用新的 caseId 重新 prepare，旧种子和空录制目录仅作中间产物保留，不能据此 finalize。
 

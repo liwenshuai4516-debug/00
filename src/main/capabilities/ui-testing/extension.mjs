@@ -8,6 +8,7 @@ import { Type } from "typebox";
 
 const serverName = "desktop-playwright-test";
 const toolPrefix = "mcp__desktop_playwright_test__";
+const loginRecovery = "请重新调用 qa_ui_project 获取新的 projectRef，再执行 qa_ui_login 和 qa_ui_prepare；不要用旧 projectRef 重试。";
 
 function quote(value) {
   return "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
@@ -114,7 +115,7 @@ export function createUiTestingExtension(runtime) {
     pi.registerTool({
       name: "qa_ui_project",
       label: "检查 UI 项目与测试数据目录",
-      description: "按当前会话工作区检查 qa/data，按地址匹配已登记项目。只返回项目名称、地址及配置完整性，不返回账号密码。",
+      description: "按当前会话工作区检查 qa/data，按地址匹配已登记项目。只返回项目名称、地址及配置完整性，不返回账号密码。每次调用返回新的 projectRef，可重置登录尝试状态。",
       executionMode: "sequential",
       parameters: Type.Object({
         targetUrl: Type.String(),
@@ -150,7 +151,7 @@ export function createUiTestingExtension(runtime) {
     pi.registerTool({
       name: "qa_ui_login",
       label: "可见窗口登录与清理",
-      description: "auto 根据 projectRef 由后端读取已配置凭据，判断登录需要并尝试一次自动登录；仅验证码等异常返回人工处理。start/complete 为手动方式，complete 默认保存私有临时登录态，cancel 清理。凭据不返回模型。",
+      description: "auto 根据 projectRef 由后端读取已配置凭据，判断登录需要并尝试一次自动登录；仅验证码等异常返回人工处理。start/complete 为手动方式，complete 默认保存私有临时登录态，cancel 清理。凭据不返回模型。auto 对每个 projectRef 只尝试一次；需要新的登录态时先重新调用 qa_ui_project。saved 登录态可复用于录制，但一次 run 准备会绑定它。",
       executionMode: "sequential",
       parameters: Type.Object({
         action: Type.Union([Type.Literal("auto"), Type.Literal("start"), Type.Literal("complete"), Type.Literal("cancel")]),
@@ -166,7 +167,7 @@ export function createUiTestingExtension(runtime) {
       async execute(_id, params, signal, _update, ctx) {
         if (params.action === "auto") {
           const project = await boundProject(params.projectRef, ctx);
-          if (project.autoLoginAttempted) throw new Error("本次项目已尝试自动登录，请处理现有窗口或重新检查项目，不能重复提交。");
+          if (project.autoLoginAttempted) throw new Error("本次 projectRef 已尝试过自动登录，不能重复提交。需要新的登录态时，请先调用 qa_ui_project 获取新的 projectRef，或用 start/complete 手动登录；已保存的登录态可直接用于录制或一次回放准备。");
           const credentials = await readCredentials(runtime, project);
           const entry = await openLogin(runtime, project.targetUrl, signal, { headed: params.headed === true });
           entry.projectRef = params.projectRef;
@@ -196,7 +197,7 @@ export function createUiTestingExtension(runtime) {
             logins.delete(loginId);
             return result({
               status: "manual-required",
-              reason: `${outcome.reason} 默认静默登录不打开可见窗口；需要人工接管时传 headed=true，或使用 --storage-state。`,
+              reason: `${outcome.reason} 默认静默登录不打开可见窗口；需要人工接管时调用 qa_ui_login action=start 打开可见窗口并 complete，或重新 qa_ui_project 后再 auto headed=true；也可使用 --storage-state。`,
               verification: outcome.verification,
             });
           }
@@ -214,7 +215,7 @@ export function createUiTestingExtension(runtime) {
           return result({ loginId, status: "open", message: "请在可见窗口手动登录，完成后调用 complete。登录过程不录制。" });
         }
         const entry = logins.get(params.loginId);
-        if (!entry) throw new Error("登录交接已失效，请重新登录。");
+        if (!entry) throw new Error("登录交接已失效，请重新调用 qa_ui_project 后重新登录。");
         if (params.action === "cancel") {
           await entry.cleanup();
           logins.delete(params.loginId);
@@ -248,7 +249,7 @@ export function createUiTestingExtension(runtime) {
       async execute(_id, params, signal, _update, ctx) {
         const project = await boundProject(params.projectRef, ctx);
         const recorded = project.recordings.get(params.caseId);
-        if (!recorded) throw new Error("未找到本次真实录制准备记录。");
+        if (!recorded) throw new Error("未找到本次真实录制准备记录。请使用当前 projectRef 在 record 模式成功调用 qa_ui_prepare 后再 finalize；不要复用旧 projectRef 或旧录制日志。");
         const logs = (await readdir(recorded.recordingDir)).filter((name) => /^generator-log-.*\.json$/.test(name));
         if (!logs.length) throw new Error("缺少官方生成日志，不能登记为已录制资产。");
         for (const name of logs) {
@@ -322,7 +323,7 @@ export function createUiTestingExtension(runtime) {
       name: "qa_ui_prepare",
       label: "准备 UI 测试",
       description:
-        "检查客户端内置运行环境，准备 UI 录制或多个已有 case 的独立回放批次，并自动生成摘要、版本及证据清单。录制模式成功返回后才会登记官方 Playwright 页面操作与脚本生成工具（browser_*/generator_*），准备前看不到它们属于正常状态。",
+        "检查客户端内置运行环境，准备 UI 录制或多个已有 case 的独立回放批次，并自动生成摘要、版本及证据清单。录制模式成功返回后才会登记官方 Playwright 页面操作与脚本生成工具（browser_*/generator_*），准备前看不到它们属于正常状态。run 准备会绑定登录态，一个登录态只能对应一个回放批次；再次准备时重新检查项目和登录。",
       promptSnippet: "准备 UI 录制或已有 case 的测试运行环境；录制工具由本工具登记。",
       executionMode: "sequential",
       parameters: Type.Object({
@@ -343,7 +344,7 @@ export function createUiTestingExtension(runtime) {
         const parsedUrl = target(params.targetUrl);
         const project = params.projectRef ? await boundProject(params.projectRef, ctx) : null;
         if (project && target(params.targetUrl).href !== project.targetUrl) throw new Error("输入地址与项目检查结果不一致，请重新检查。");
-        if (project && !project.loginChecked) throw new Error("请先通过 qa_ui_login 判断并处理登录。");
+        if (project && !project.loginChecked) throw new Error("请先通过 qa_ui_login 判断并处理登录；若上一登录态已失效或绑定批次，请重新调用 qa_ui_project 获取新的 projectRef 后再登录。");
         let defaultCaseId = project?.assetName;
         if (project && mode === "record" && !params.caseId && [".spec.cjs", ".seed.spec.cjs", ".md"].some((suffix) => existsSync(path.join(project.caseDir, defaultCaseId + suffix)))) {
           defaultCaseId += `__${Date.now()}-${randomUUID().slice(0, 6)}`;
@@ -370,8 +371,25 @@ export function createUiTestingExtension(runtime) {
         }
         const loginId = params.loginId ?? project?.loginId;
         const login = loginId ? logins.get(loginId) : null;
-        if (loginId && (!login || login.status !== "saved" || !existsSync(login.file) || login.origin !== parsedUrl.origin)) {
-          throw new Error("登录态已失效、已绑定批次或与目标站点不符，请重新登录。");
+        if (loginId) {
+          if (!login) {
+            throw new Error(`登录态已失效（未找到登录记录）。${loginRecovery}`);
+          }
+          if (login.status === "bound") {
+            throw new Error(`登录态已绑定一个回放批次，不能复用。${loginRecovery}`);
+          }
+          if (login.status === "open") {
+            throw new Error("登录态尚未完成保存。请先调用 qa_ui_login action=complete 完成当前手动登录。");
+          }
+          if (login.status !== "saved") {
+            throw new Error(`登录态已失效（当前状态不可用）。${loginRecovery}`);
+          }
+          if (!existsSync(login.file)) {
+            throw new Error(`登录态文件已清理。${loginRecovery}`);
+          }
+          if (login.origin !== parsedUrl.origin) {
+            throw new Error("登录态与目标站点不符。请重新调用 qa_ui_project 核对 targetUrl，再用新的 projectRef 重新登录；不要复用旧登录态。");
+          }
         }
 
         for (const key of ["node", "testCli", "config", "verify", "skill", "runner", "login"]) {

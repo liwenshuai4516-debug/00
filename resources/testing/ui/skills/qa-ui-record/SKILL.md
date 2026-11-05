@@ -55,12 +55,13 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 
 - 登录、录制、回放默认使用无头浏览器，不打开前端浏览器或可见窗口。
 - `qa_ui_prepare` 的 `headed` 默认不传；只有用户明确要求“看着执行/调试页面”时才传 `headed=true`。
-- `qa_ui_login(auto)` 默认静默；需要人工验证码/MFA 时，先返回 manual-required，再按用户要求决定是否开可见窗口，不主动弹窗。
+- `qa_ui_login(auto)` 默认静默；验证码/MFA 返回 manual-required 后不要重复 auto；需要现场接管时用 action=start + complete，或重新 qa_ui_project 后再 auto headed=true，不主动弹窗。
 - 录制和回放的证据仍写入日志/报告，不以“没看到窗口”为由跳过断言。
 
 ## 1. 准备录制
 
 调用 qa_ui_prepare：mode=record、projectRef、targetUrl；默认无头，不要传 headed=true（仅用户明确要求观察页面时例外）。调用前必须已有 qa_ui_login 的 saved 或 not-required 结果。
+prepare 报登录态已失效、已绑定批次或与目标站点不符时，不要重复 prepare 或 auto；先重新调用 qa_ui_project，再用返回的新 projectRef 登录，最后 prepare。saved 登录态可复用于多次 record 准备，但一次 run 准备会绑定它。
 使用返回的 caseId、seedFile、caseFileName、caseDocument、caseFile 和 recordingDir；默认不手填 caseId，不覆盖同名资产。
 官方 desktop-playwright-test 工具（browser_* / generator_*）由 qa_ui_prepare 成功返回后才登记，准备前工具清单里没有它们属于正常状态，不能据此提前停止。prepare 后确认 `mcp__desktop_playwright_test__*` 已出现；仍未出现时才停止并报告，不自建脚本或改用其他工具。全局 `-builtin:mcp`、`pi-mcp-adapter` 会被宿主在本会话过滤，不能据此判定 MCP 不可用。
 不要用 pi-playwright、pi-chrome 等其他浏览器技能/CLI 替代本流程；它们使用不同的 Playwright 与浏览器版本，不会产生可 finalize 的 generator 日志。录制期间避免上下文压缩或会话替换；会话恢复/切换、扩展 reload 或压缩后，projectRef、MCP 工具和录制日志会失效，必须从 qa_ui_project → qa_ui_login → qa_ui_prepare（新 caseId）重新开始，不能复用旧 refs。
@@ -119,6 +120,7 @@ caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校�
 元数据块就是后续管理/分类用的元数据稿；正文用例表是从它展开的人读版本，两者必须一致。
 `modulePath` 按被测系统实际左侧导航/菜单的层级填写（如 `["合同管理", "经营合同"]`），同一功能下的多份脚本保持同一路径；不要用页面路由、场景标签或猜测的层级代替。未填写时右侧目录按页面归组，仅用于兼容旧资产。
 未调用 qa_ui_finalize 登记时，右侧栏「测试数据」不会显示该用例；只写 caseDocument、脚本草稿或 `qa/design` 设计稿都不能报告为“已生成用例”。
+qa_ui_finalize 只登记资产，不重置 projectRef/登录态；若登录态已绑定批次，之后的 run 准备仍需重新 qa_ui_project → qa_ui_login → qa_ui_prepare。
 
 ````markdown
 # 用例说明

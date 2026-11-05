@@ -1,5 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const path = require("node:path");
 
 test("基础提示词声明数据边界与凭据处理", async () => {
   const { AGENT_SYSTEM_PROMPT } = await import("../../src/main/prompts/agent-system-prompt.mjs");
@@ -7,6 +9,7 @@ test("基础提示词声明数据边界与凭据处理", async () => {
   assert.match(AGENT_SYSTEM_PROMPT, /账号、密码、令牌、cookie/);
   assert.match(AGENT_SYSTEM_PROMPT, /不主动读取 \.env/);
   assert.match(AGENT_SYSTEM_PROMPT, /内置登录工具/);
+  assert.match(AGENT_SYSTEM_PROMPT, /不原样重试同一调用/);
   assert.ok(AGENT_SYSTEM_PROMPT.length < 16000);
 });
 
@@ -22,4 +25,13 @@ test("测试职责与覆盖矩阵、报告状态及动态工具流程对齐", as
   assert.doesNotMatch(TEST_AGENT_PROMPT, /用例结论只有四态/);
   assert.doesNotMatch(TEST_AGENT_PROMPT, /单轮降级/);
   assert.ok(TEST_AGENT_PROMPT.length < 16000);
+});
+
+test("UI 流程技能说明登录态失效后的恢复顺序", async () => {
+  const skill = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-basic/SKILL.md"), "utf8");
+  assert.match(skill, /qa_ui_login\(auto\) 对每个 projectRef 只尝试一次/);
+  assert.match(skill, /一次 qa_ui_prepare\(mode=run\) 会绑定该登录态/);
+  assert.match(skill, /重新调用 qa_ui_project 获取新的 projectRef/);
+  assert.match(skill, /finalize 只登记资产/);
+  assert.match(skill, /不要重新 prepare 同一 case 来重试/);
 });
