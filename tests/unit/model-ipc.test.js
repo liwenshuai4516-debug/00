@@ -13,6 +13,7 @@ test("官方配置入口不转发路径；写入、重读、默认与思考强�
     deleteModel: (...args) => { calls.push(["delete", ...args]); return { providerId: "demo", modelId: "m", action: "deleted" }; },
     saveProvider: input => { calls.push(["saveProvider", input]); return { providerId: input.providerId, action: "created" }; },
     deleteProvider: providerId => { calls.push(["deleteProvider", providerId]); return { providerId, modelCount: 0, action: "deleted" }; },
+    discoverModels: input => { calls.push(["discover", input]); return { models: [] }; },
   }, {
     reloadModels: (...args) => calls.push(["reload", ...args]),
     setDefaultModel: (...args) => calls.push(["default", ...args]),
@@ -40,11 +41,14 @@ test("官方配置入口不转发路径；写入、重读、默认与思考强�
   const provider = { providerId: "demo2", provider: { name: "Demo" } };
   assert.deepEqual(await call("save-provider", provider), { providerId: "demo2", action: "created" });
   assert.deepEqual(await call("delete-provider", "demo2"), { providerId: "demo2", modelCount: 0, action: "deleted" });
+  const discovery = { baseUrl: "https://example.com/v1", api: "openai-completions" };
+  assert.deepEqual(await call("discover-models", discovery), { models: [] });
   assert.deepEqual(calls, [
     ["save", saved], ["reload"],
     ["delete", "demo", "m"], ["reload"],
     ["saveProvider", provider], ["reload"],
     ["deleteProvider", "demo2"], ["reload"],
+    ["discover", discovery],
   ]);
 
   locked = true;

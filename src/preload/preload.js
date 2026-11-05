@@ -78,7 +78,7 @@ contextBridge.exposeInMainWorld("agent", {
     },
   }),
   deleteModel: (providerId, modelId) => ipcRenderer.invoke("agent:delete-model", providerId, modelId),
-  // 提供商层只提交名称与地址/协议；模型列表和凭据字段由主进程保留。
+  // 提供商保存可携带整表模型与一次性密钥；页面从不读取已存密钥原文。
   saveProvider: input => ipcRenderer.invoke("agent:save-provider", {
     providerId: input?.providerId,
     provider: {
@@ -86,8 +86,32 @@ contextBridge.exposeInMainWorld("agent", {
       baseUrl: input?.provider?.baseUrl,
       api: input?.provider?.api,
     },
+    apiKey: input?.apiKey,
+    clearApiKey: input?.clearApiKey === true,
+    models: Array.isArray(input?.models)
+      ? input.models.map(model => ({
+          id: model?.id,
+          name: model?.name,
+          api: model?.api,
+          baseUrl: model?.baseUrl,
+          reasoning: model?.reasoning,
+          contextWindow: model?.contextWindow,
+          maxTokens: model?.maxTokens,
+          input: model?.input,
+          cost: model?.cost,
+          thinkingLevels: model?.thinkingLevels,
+          thinkingFormat: model?.thinkingFormat,
+          extra: model?.extra,
+        }))
+      : undefined,
   }),
   deleteProvider: providerId => ipcRenderer.invoke("agent:delete-provider", providerId),
+  discoverModels: input => ipcRenderer.invoke("agent:discover-models", {
+    providerId: input?.providerId,
+    baseUrl: input?.baseUrl,
+    api: input?.api,
+    apiKey: input?.apiKey,
+  }),
   setDefaultModel: (provider, modelId) => ipcRenderer.invoke("agent:set-default-model", provider, modelId),
   setThinkingLevel: level => ipcRenderer.invoke("agent:set-thinking-level", level),
   // 可选输入版本用于消费已保存的原文；没有版本时沿用原调用。

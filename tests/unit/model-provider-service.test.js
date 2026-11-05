@@ -66,7 +66,7 @@ test("读取目录不返回密钥与请求头，并给出页面可用的选项�
   assert.equal(demo.models[0].contextWindow, 128000);
   assert.equal(demo.models[1].reasoning, true);
   const serialized = JSON.stringify(catalog);
-  assert.ok(!serialized.includes("DEMO_KEY"));
+  assert.ok(!serialized.includes("$DEMO_KEY"));
   assert.ok(!serialized.includes("never-return"));
   assert.ok(!serialized.includes("Bearer secret"));
   assert.ok(catalog.options.api.includes("openai-completions"));
@@ -224,4 +224,97 @@ test("提供商层校验失败不写文件，删除只移除目标区块", async
     models: [{ id: "other-1" }],
   });
   await assert.rejects(service.deleteProvider("demo"), /不在 models.json 中/);
+});
+
+test("提供商保存可写入只写密钥与整表模型，目录只返回认证状态", async t => {
+  const { service, read } = await setup(t);
+  await service.saveProvider({
+    providerId: "demo",
+    provider: { name: "演示供应商", baseUrl: "https://api.example.com/v1", api: "openai-completions" },
+    apiKey: "sk-test-value",
+    models: [
+      { id: "demo-small", name: "Demo Small", input: ["text"], contextWindow: 64000 },
+      { id: "demo-new", name: "Demo New", input: ["text", "image"], reasoning: true, thinkingLevels: ["off", "high"] },
+    ],
+  });
+
+  const document = await read();
+  assert.equal(document.providers.demo.apiKey, "sk-test-value");
+  assert.deepEqual(document.providers.demo.models.map(model => model.id), ["demo-small", "demo-new"]);
+  // 既有模型未涉及的字段仍保留。
+  assert.deepEqual(document.providers.demo.models[0].headers, { Authorization: "Bearer secret" });
+  assert.equal(document.providers.demo.models[0].customField, "keep-me");
+
+  const catalog = await service.readCatalog();
+  const demo = catalog.providers.find(provider => provider.id === "demo");
+  assert.equal(demo.credential, "configured");
+  assert.equal(demo.credentialDetail, "models.json 已配置 apiKey");
+  assert.ok(!JSON.stringify(catalog).includes("sk-test-value"));
+
+  await service.saveProvider({ providerId: "demo", provider: { name: "演示供应商" }, clearApiKey: true });
+  assert.equal((await read()).providers.demo.apiKey, undefined);
+  assert.equal((await service.readCatalog()).providers.find(provider => provider.id === "demo").credential, "unknown");
+});
+
+test("环境变量引用只报告可用性，不解析出密钥原文", async t => {
+  const { service, read } = await setup(t);
+  await service.saveProvider({ providerId: "demo", provider: {}, apiKey: "$TEST_MODEL_KEY" });
+  assert.equal((await read()).providers.demo.apiKey, "$TEST_MODEL_KEY");
+  const before = (await service.readCatalog()).providers.find(provider => provider.id === "demo");
+  assert.equal(before.credential, "environment-missing");
+
+  process.env.TEST_MODEL_KEY = "env-secret-value";
+  t.after(() => { delete process.env.TEST_MODEL_KEY; });
+  const after = (await service.readCatalog()).providers.find(provider => provider.id === "demo");
+  assert.equal(after.credential, "environment");
+  assert.ok(!JSON.stringify(after).includes("env-secret-value"));
+});
+
+test("模型发现支持 OpenAI 与 Anthropic 兼容目录，不返回密钥", async t => {
+  const http = require("node:http");
+  const seen = [];
+  const server = http.createServer((request, response) => {
+    seen.push({ url: request.url, headers: request.headers });
+    response.setHeader("content-type", "application/json");
+    if (request.url === "/v1/models") {
+      response.end(JSON.stringify({ data: [{ id: "demo-1", name: "Demo One" }, { id: "demo-2" }] }));
+      return;
+    }
+    if (request.url === "/models") {
+      response.end(JSON.stringify({ data: [{ id: "openai-1", name: "OpenAI One" }] }));
+      return;
+    }
+    response.statusCode = 404;
+    response.end("{}");
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const { port } = server.address();
+  const { service } = await setup(t);
+
+  const openai = await service.discoverModels({
+    baseUrl: `http://127.0.0.1:${port}`,
+    api: "openai-completions",
+    apiKey: "sk-discover",
+  });
+  assert.deepEqual(openai.models, [{ id: "openai-1", name: "OpenAI One" }]);
+  assert.equal(seen[0].url, "/models");
+  assert.equal(seen[0].headers.authorization, "Bearer sk-discover");
+
+  const anthropic = await service.discoverModels({
+    baseUrl: `http://127.0.0.1:${port}`,
+    api: "anthropic-messages",
+    apiKey: "anthropic-key",
+  });
+  assert.deepEqual(anthropic.models.map(model => model.id), ["demo-1", "demo-2"]);
+  assert.equal(seen[1].url, "/v1/models");
+  assert.equal(seen[1].headers["x-api-key"], "anthropic-key");
+  assert.equal(seen[1].headers["anthropic-version"], "2023-06-01");
+  assert.ok(!JSON.stringify(openai).includes("sk-discover"));
+
+  await assert.rejects(
+    service.discoverModels({ baseUrl: `http://127.0.0.1:${port}`, api: "google-generative-ai" }),
+    /不支持自动发现/,
+  );
+  await assert.rejects(service.discoverModels({ baseUrl: "ftp://example.com", api: "openai-completions" }), /Base URL/);
 });

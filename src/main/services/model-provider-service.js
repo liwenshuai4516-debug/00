@@ -118,6 +118,27 @@ function createModelProviderService(
     };
   }
 
+  function credentialOf(source) {
+    const key = typeof source?.apiKey === "string" ? source.apiKey.trim() : "";
+    if (!key) {
+      return {
+        hasApiKey: false,
+        credential: "unknown",
+        credentialDetail: "models.json 未配置 apiKey；环境变量或 auth.json 仍可能提供认证",
+      };
+    }
+    if (key.startsWith("$")) {
+      const name = key.slice(1);
+      const resolved = name.length > 0 && typeof process.env[name] === "string" && process.env[name] !== "";
+      return {
+        hasApiKey: true,
+        credential: resolved ? "environment" : "environment-missing",
+        credentialDetail: resolved ? `使用环境变量 ${name}` : `环境变量 ${name} 未设置`,
+      };
+    }
+    return { hasApiKey: true, credential: "configured", credentialDetail: "models.json 已配置 apiKey" };
+  }
+
   async function readCatalog() {
     const { file, document } = await readDocument();
     const providers = Object.entries(document.providers).map(([id, block]) => {
@@ -128,8 +149,8 @@ function createModelProviderService(
         name: typeof source.name === "string" ? source.name : "",
         baseUrl: typeof source.baseUrl === "string" ? source.baseUrl : "",
         api: typeof source.api === "string" ? source.api : "",
-        // 只说明是否已配置认证，不回传密钥或请求头内容。
-        hasApiKey: typeof source.apiKey === "string" && source.apiKey.length > 0,
+        // 只说明认证来源与是否可用，不回传密钥或请求头内容。
+        ...credentialOf(source),
         models: models.map(publicModel),
       };
     });
@@ -319,7 +340,34 @@ function createModelProviderService(
       if (value) provider[field] = value;
       else delete provider[field];
     }
-    if (!Array.isArray(provider.models)) provider.models = [];
+
+    if (typeof input?.apiKey === "string") {
+      const key = input.apiKey.trim();
+      if (key.length > 500 || /[\r\n\0]/.test(key)) {
+        throw new Error("API 密钥不能包含换行或空字符，且不能超过 500 个字符。");
+      }
+      if (key) provider.apiKey = key;
+      else if (input.clearApiKey === true) delete provider.apiKey;
+    } else if (input?.clearApiKey === true) {
+      delete provider.apiKey;
+    }
+
+    if (Array.isArray(input?.models)) {
+      const previous = new Map(
+        (Array.isArray(existing?.models) ? existing.models : [])
+          .filter((model) => isPlainObject(model) && typeof model.id === "string")
+          .map((model) => [model.id, model]),
+      );
+      const seen = new Set();
+      provider.models = input.models.map((source) => {
+        const id = readText(source?.id, "模型编号", { required: true, max: 200 });
+        if (seen.has(id)) throw new Error(`模型编号重复：${id}。`);
+        seen.add(id);
+        return mergeModel(previous.get(id) ?? {}, source);
+      });
+    } else if (!Array.isArray(provider.models)) {
+      provider.models = [];
+    }
     document.providers[providerId] = provider;
 
     await writeDocument(file, document);
@@ -345,6 +393,73 @@ function createModelProviderService(
     return { modelsPath: file, providerId: id, modelCount, action: "deleted" };
   }
 
+  // 模型发现只支持当前桌面已接入的三类协议；密钥只在主进程中用于本次请求，不回传。
+  async function discoverModels(input) {
+    const baseUrl = readText(input?.baseUrl, "供应商 Base URL", { required: true, max: 500 });
+    if (!/^https?:\/\//i.test(baseUrl)) throw new Error("供应商 Base URL 需要以 http:// 或 https:// 开头。");
+    const api = readText(input?.api, "供应商接口协议", { required: true, max: 60 });
+    if (!["openai-completions", "openai-responses", "anthropic-messages"].includes(api)) {
+      throw new Error("当前协议不支持自动发现模型，请手动填写模型编号。");
+    }
+
+    let key = readText(input?.apiKey, "API 密钥", { max: 500 });
+    if (!key && typeof input?.providerId === "string" && input.providerId.trim()) {
+      const { document } = await readDocument();
+      const block = document.providers[input.providerId.trim()];
+      key = typeof block?.apiKey === "string" ? block.apiKey.trim() : "";
+    }
+    if (key.startsWith("$")) key = process.env[key.slice(1)] ?? "";
+
+    let base;
+    try {
+      base = new URL(baseUrl);
+    } catch {
+      throw new Error("供应商 Base URL 无效。");
+    }
+    if (base.username || base.password) throw new Error("供应商地址不能包含账号或密码。");
+    const path = base.pathname.replace(/\/+$/, "");
+    const suffix = api === "anthropic-messages"
+      ? (path.endsWith("/v1") ? "/models" : "/v1/models")
+      : "/models";
+    base.pathname = `${path}${suffix}` || "/models";
+
+    const headers = { accept: "application/json" };
+    if (api === "anthropic-messages") {
+      if (key) headers["x-api-key"] = key;
+      headers["anthropic-version"] = "2023-06-01";
+    } else if (key) {
+      headers.authorization = `Bearer ${key}`;
+    }
+
+    let response;
+    try {
+      response = await fetch(base, { headers, signal: AbortSignal.timeout(15000) });
+    } catch (error) {
+      throw new Error(`无法连接模型目录：${error.message}`);
+    }
+    if (!response.ok) throw new Error(`模型目录请求失败：HTTP ${response.status}。`);
+    let payload;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new Error("模型目录返回的不是有效 JSON。");
+    }
+    const list = Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.models) ? payload.models : [];
+    if (!Array.isArray(list)) throw new Error("模型目录格式无效。");
+    const seen = new Set();
+    const models = [];
+    for (const item of list) {
+      const id = readText(item?.id, "模型编号", { max: 200 });
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      models.push({ id, name: readText(item?.name ?? item?.display_name, "显示名称", { max: 200 }) });
+      if (models.length >= 200) break;
+    }
+    return { models };
+  }
+
   async function openConfiguration() {
     const { modelsPath } = await readConfiguration();
     await mkdir(path.dirname(modelsPath), { recursive: true });
@@ -358,7 +473,7 @@ function createModelProviderService(
     if (error) throw new Error("无法打开 models.json，请使用文本编辑器打开所示路径。");
   }
 
-  return { readConfiguration, readCatalog, saveModel, deleteModel, saveProvider, deleteProvider, openConfiguration };
+  return { readConfiguration, readCatalog, saveModel, deleteModel, saveProvider, deleteProvider, discoverModels, openConfiguration };
 }
 
 module.exports = { createModelProviderService };

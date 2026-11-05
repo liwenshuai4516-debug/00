@@ -45,6 +45,8 @@ test("读取当前供应商模型目录，只返回页面需要的字段，支�
   const expected = {
     provider: "deepseek",
     modelId: "deepseek-flash",
+    thinkingLevel: "",
+    thinkingLevels: [],
     defaultProvider: "deepseek",
     defaultModel: "deepseek-v4-pro",
     models: [
@@ -89,6 +91,8 @@ test("尚未选择模型时仍可列出已配置模型供首次选择", async ()
   assert.deepEqual(await service.listModels(), {
     provider: "",
     modelId: "",
+    thinkingLevel: "",
+    thinkingLevels: [],
     defaultProvider: "",
     defaultModel: "",
     models: [],

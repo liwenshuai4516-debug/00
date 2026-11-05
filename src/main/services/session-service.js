@@ -329,6 +329,9 @@ function createSessionService(
     return {
       provider: model?.provider ?? "",
       modelId: model?.id ?? "",
+      // 思考档位与当前模型一起返回，composer 菜单无需再读一次会话信息。
+      thinkingLevel: typeof session.thinkingLevel === "string" ? session.thinkingLevel : "",
+      thinkingLevels: session.getAvailableThinkingLevels?.() ?? [],
       ...(session.desktopRestoreWarning ? { warning: session.desktopRestoreWarning } : {}),
       // 新对话采用的官方默认选择，只用于页面标记，不改变当前会话。
       defaultProvider: settings?.getDefaultProvider?.() ?? "",

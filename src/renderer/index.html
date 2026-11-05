@@ -306,11 +306,26 @@
             </div>
             <div class="composer-trail">
               <div id="model-selector" class="model-selector" aria-busy="false">
-                <label for="model-select" class="sr-only">当前对话模型</label>
-                <select id="model-select" aria-describedby="model-status" disabled>
+                <select id="model-select" class="sr-only" aria-hidden="true" tabindex="-1" disabled>
                   <option value="">正在读取模型……</option>
                 </select>
-                <button type="button" hidden>重新读取</button>
+                <button id="model-trigger" class="model-trigger" type="button" aria-haspopup="listbox"
+                  aria-expanded="false" disabled>
+                  <span class="model-trigger__name" data-model-trigger-name>模型</span>
+                  <span class="model-trigger__effort" data-model-trigger-effort></span>
+                  <span class="model-trigger__chevron" aria-hidden="true">⌄</span>
+                </button>
+                <div id="model-menu" class="model-menu" hidden>
+                  <div class="model-menu__search">
+                    <input id="model-search" type="search" placeholder="搜索模型" aria-label="搜索模型" autocomplete="off" />
+                  </div>
+                  <div id="model-menu-list" class="model-menu__list" role="listbox" aria-label="选择模型"></div>
+                  <div id="model-effort" class="model-effort" hidden>
+                    <p class="model-effort__title">思考强度</p>
+                    <div id="model-effort-list" class="model-effort__list" role="group" aria-label="思考强度"></div>
+                  </div>
+                </div>
+                <button type="button" data-retry hidden>重新读取</button>
                 <p id="model-status" role="status" aria-atomic="true">正在读取当前模型……</p>
               </div>
               <div id="context-usage" class="context-usage">
@@ -434,236 +449,31 @@
       </div>
     </header>
     <section id="settings-model-panel" class="model-providers settings-content" role="tabpanel" aria-labelledby="settings-model-tab">
-      <p id="model-settings-intro">模型来自 Pi 官方的 models.json。可在此新增/编辑提供商与模型；密钥仍由环境变量、auth.json 或 models.json 提供，页面不回填。</p>
-      <div class="model-overview">
-        <section class="model-panel-card">
-          <div class="model-card-heading">
-            <h3>当前对话</h3>
-            <span class="model-badge" data-model-state>读取中</span>
-          </div>
-          <p class="model-current-name" data-current-model-name>正在读取模型……</p>
-          <div class="model-current-tags" data-current-tags></div>
-          <p class="model-current-id"><code data-current-model></code></p>
-          <dl class="model-facts">
-            <div>
-              <dt>供应商</dt>
-              <dd data-current-provider>—</dd>
-            </div>
-            <div>
-              <dt>上下文</dt>
-              <dd data-current-context>正在读取……</dd>
-            </div>
-            <div>
-              <dt>默认模型</dt>
-              <dd data-default-model>—</dd>
-            </div>
-          </dl>
-          <div class="model-field">
-            <label for="model-thinking-level">思考强度</label>
-            <div class="model-thinking-row">
-              <select id="model-thinking-level" disabled></select>
-              <button type="button" data-enable-thinking hidden>开启</button>
-            </div>
-            <small data-thinking-hint></small>
-          </div>
-          <div class="model-provider-actions">
-            <button type="button" data-default-model-button disabled>设为新对话默认</button>
-          </div>
-          <small class="model-note">默认值写入 Pi 的 settings.json；已有对话保持各自选择。</small>
-        </section>
-        <section class="model-panel-card">
-          <div class="model-card-heading">
-            <h3>可用模型</h3>
-            <div class="model-card-tools">
-              <span class="model-badge" data-model-count></span>
-              <button type="button" class="model-primary-button" data-add-provider disabled>新增提供商</button>
-              <button type="button" class="model-secondary-button" data-add-model disabled>新增模型</button>
-            </div>
-          </div>
-          <p class="model-warning" data-models-warning hidden></p>
-          <div class="model-catalog" data-model-catalog></div>
-          <p class="model-empty" data-models-empty hidden></p>
-        </section>
+      <p id="model-settings-intro">模型来自 Pi 官方的 models.json。按提供商维护端点、认证与模型列表；密钥只写不回填，环境变量与 auth.json 仍可提供认证。</p>
+      <div class="model-provider-toolbar">
+        <div class="model-provider-summary">
+          <span class="model-badge" data-model-state>读取中</span>
+          <span class="model-current-name" data-current-model-name>正在读取模型……</span>
+          <span class="model-badge" data-default-model-label></span>
+        </div>
+        <button type="button" class="model-primary-button" data-add-provider disabled>添加模型提供商</button>
       </div>
-      <section class="model-panel-card model-editor" data-model-editor hidden>
-        <div class="model-card-heading">
-          <h3 data-editor-title>新增模型</h3>
-          <span class="model-badge" data-editor-hint>写入 Pi 官方 models.json</span>
-        </div>
-        <form data-model-form autocomplete="off" novalidate>
-          <div class="model-form-grid">
-            <label class="model-form-field">
-              <span>供应商</span>
-              <select data-field="providerId"></select>
-            </label>
-            <label class="model-form-field" data-provider-id-field hidden>
-              <span>供应商编号</span>
-              <input data-field="providerNewId" placeholder="my-provider" spellcheck="false" />
-            </label>
-            <label class="model-form-field">
-              <span>供应商名称</span>
-              <input data-field="providerName" placeholder="可选，仅用于显示" />
-            </label>
-            <label class="model-form-field">
-              <span>供应商 Base URL</span>
-              <input data-field="providerBaseUrl" placeholder="https://api.example.com/v1" spellcheck="false" />
-            </label>
-            <label class="model-form-field">
-              <span>供应商接口协议</span>
-              <select data-field="providerApi"></select>
-            </label>
-            <label class="model-form-field">
-              <span>模型编号</span>
-              <input data-field="id" placeholder="deepseek-flash" spellcheck="false" required />
-            </label>
-            <label class="model-form-field">
-              <span>显示名称</span>
-              <input data-field="name" placeholder="DeepSeek V4.1 Flash" />
-            </label>
-            <label class="model-form-field">
-              <span>模型接口协议</span>
-              <select data-field="api"></select>
-            </label>
-            <div class="model-form-field">
-              <span>输入类型</span>
-              <div class="model-check-row">
-                <label><input type="checkbox" data-field="inputText" checked /> 文本</label>
-                <label><input type="checkbox" data-field="inputImage" /> 图片</label>
-              </div>
-            </div>
-            <label class="model-form-field">
-              <span>上下文窗口（tokens）</span>
-              <input data-field="contextWindow" type="number" min="1" step="1" placeholder="128000" />
-            </label>
-            <label class="model-form-field">
-              <span>最大输出（tokens）</span>
-              <input data-field="maxTokens" type="number" min="1" step="1" placeholder="16384" />
-            </label>
-          </div>
-          <fieldset class="model-form-section">
-            <legend>思考强度</legend>
-            <label class="model-switch">
-              <input type="checkbox" data-field="reasoning" />
-              <span>该模型支持思考强度（reasoning）</span>
-            </label>
-            <div class="model-thinking-levels" data-thinking-levels></div>
-            <label class="model-form-field">
-              <span>思考协议（compat.thinkingFormat）</span>
-              <select data-field="thinkingFormat">
-                <option value="">不设置，沿用供应商与内置默认</option>
-                <option value="openai">openai</option>
-                <option value="openrouter">openrouter</option>
-                <option value="deepseek">deepseek</option>
-                <option value="together">together</option>
-                <option value="baseten">baseten</option>
-                <option value="zai">zai</option>
-                <option value="qwen">qwen</option>
-                <option value="chat-template">chat-template</option>
-                <option value="qwen-chat-template">qwen-chat-template</option>
-                <option value="string-thinking">string-thinking</option>
-                <option value="ant-ling">ant-ling</option>
-              </select>
-            </label>
-            <small>勾选后写入 thinkingLevelMap；xhigh、max 只有显式勾选才可用。DeepSeek 等兼容接口需配合对应思考协议。</small>
-          </fieldset>
-          <fieldset class="model-form-section">
-            <legend>计费（元 / 百万 tokens）</legend>
-            <div class="model-form-grid">
-              <label class="model-form-field">
-                <span>输入</span>
-                <input data-field="costInput" type="number" min="0" step="0.0001" placeholder="0" />
-              </label>
-              <label class="model-form-field">
-                <span>输出</span>
-                <input data-field="costOutput" type="number" min="0" step="0.0001" placeholder="0" />
-              </label>
-              <label class="model-form-field">
-                <span>缓存读取</span>
-                <input data-field="costCacheRead" type="number" min="0" step="0.0001" placeholder="0" />
-              </label>
-              <label class="model-form-field">
-                <span>缓存写入</span>
-                <input data-field="costCacheWrite" type="number" min="0" step="0.0001" placeholder="0" />
-              </label>
-            </div>
-          </fieldset>
-          <details class="model-form-section">
-            <summary>高级字段（JSON）</summary>
-            <p>与 models.json 同名，留空表示不写入：inputLimits、samplingParams、samplingParamsByThinkingLevel、promptCache。</p>
-            <div class="model-advanced-grid">
-              <label class="model-form-field">
-                <span>inputLimits</span>
-                <textarea data-field="extraInputLimits" rows="3" spellcheck="false" placeholder="{ }"></textarea>
-              </label>
-              <label class="model-form-field">
-                <span>samplingParams</span>
-                <textarea data-field="extraSamplingParams" rows="3" spellcheck="false" placeholder="{ }"></textarea>
-              </label>
-              <label class="model-form-field">
-                <span>samplingParamsByThinkingLevel</span>
-                <textarea data-field="extraSamplingByLevel" rows="3" spellcheck="false" placeholder="{ }"></textarea>
-              </label>
-              <label class="model-form-field">
-                <span>promptCache</span>
-                <textarea data-field="extraPromptCache" rows="3" spellcheck="false" placeholder="{ }"></textarea>
-              </label>
-            </div>
-          </details>
-          <div class="model-form-actions">
-            <button type="submit" class="model-primary-button">保存模型</button>
-            <button type="button" data-cancel-edit>取消</button>
-            <span class="model-form-status" data-editor-status role="status" aria-atomic="true"></span>
-          </div>
-        </form>
-      </section>
-      <section class="model-panel-card model-editor" data-provider-editor hidden>
-        <div class="model-card-heading">
-          <h3 data-provider-editor-title>新增提供商</h3>
-          <span class="model-badge" data-provider-editor-hint>写入 Pi 官方 models.json</span>
-        </div>
-        <form data-provider-form autocomplete="off" novalidate>
-          <div class="model-form-grid">
-            <label class="model-form-field">
-              <span>供应商编号</span>
-              <input data-provider-field="providerId" placeholder="my-provider" spellcheck="false" required />
-            </label>
-            <label class="model-form-field">
-              <span>供应商名称</span>
-              <input data-provider-field="name" placeholder="可选，仅用于显示" />
-            </label>
-            <label class="model-form-field">
-              <span>供应商 Base URL</span>
-              <input data-provider-field="baseUrl" placeholder="https://api.example.com/v1" spellcheck="false" />
-            </label>
-            <label class="model-form-field">
-              <span>供应商接口协议</span>
-              <select data-provider-field="api"></select>
-            </label>
-          </div>
-          <p class="model-note">供应商编号是 models.json 的 providers 键，保存后不可改名；模型列表、apiKey 与 headers 原样保留。密钥仍由环境变量、auth.json 或 models.json 提供。</p>
-          <div class="model-form-actions">
-            <button type="submit" class="model-primary-button">保存提供商</button>
-            <button type="button" data-provider-cancel>取消</button>
-            <button type="button" class="model-danger-button" data-provider-delete hidden>删除提供商</button>
-            <span class="model-form-status" data-provider-editor-status role="status" aria-atomic="true"></span>
-          </div>
-        </form>
-      </section>
-      <section class="model-panel-card">
-        <div class="model-card-heading">
-          <h3>配置文件</h3>
-          <span class="model-badge">Pi 官方目录</span>
-        </div>
+      <p class="model-warning" data-models-warning hidden></p>
+      <div class="model-provider-list" data-provider-list></div>
+      <p class="model-empty" data-models-empty hidden></p>
+      <section class="model-provider-editor" data-provider-editor hidden></section>
+      <details class="model-config-footer">
+        <summary>配置文件与重新读取</summary>
         <div class="model-config-path">
           <code data-models-path>models.json</code>
           <button type="button" data-copy-models-path disabled>复制路径</button>
         </div>
-        <p>在文本编辑器中保存配置，然后重新读取。认证沿用 Pi 的环境变量、auth.json 或 models.json，不在页面回填密钥。</p>
+        <p>模型与凭据仍保存在 Pi 官方 models.json；密钥不会回填到页面。认证也可来自环境变量或 auth.json。</p>
         <div class="model-provider-actions">
           <button type="button" data-open-models disabled>打开 models.json</button>
           <button type="button" data-reload-models disabled>重新读取模型</button>
         </div>
-        <details>
+        <details class="model-config-example">
           <summary>兼容接口配置示例</summary>
           <pre tabindex="0" aria-label="models.json 配置示例">{
   "providers": {
@@ -675,10 +485,9 @@
     }
   }
 }</pre>
-          <p>将地址、模型编号和环境变量名替换为实际值。models.json 同样支持 headers、modelOverrides 等官方字段。Provider 扩展放入 Pi 资源目录，修改后在聊天中执行 /reload。</p>
         </details>
-      </section>
-      <p data-provider-status role="status" aria-atomic="true"></p>
+      </details>
+      <p class="model-form-status" data-provider-status role="status" aria-atomic="true"></p>
     </section>
     <section id="settings-theme-panel" class="theme-settings" data-theme-panel role="tabpanel"
       aria-labelledby="settings-theme-tab" hidden>

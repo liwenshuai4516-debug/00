@@ -33,6 +33,9 @@ function registerModelIpc(ipcMain, providers, sessions, runIdleOperation) {
     runIdleOperation(async () => reloadAfterWrite(await providers.deleteProvider(providerId))),
   );
 
+  // 只读探测远端模型目录；结果不落盘，密钥只在主进程用于本次请求。
+  ipcMain.handle("agent:discover-models", (_event, input) => providers.discoverModels(input));
+
   // 只接受供应商与模型编号，实际使用哪份配置由主进程解析。
   ipcMain.handle("agent:set-default-model", (_event, provider, modelId) =>
     runIdleOperation(() =>

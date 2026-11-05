@@ -265,7 +265,7 @@ async function main() {
       "返回模型设置保留节点，模型页面跟随樱粉",
       `document.querySelector('#settings-model-panel')===window.originalPanel && getComputedStyle(document.querySelector('#model-settings-dialog')).backgroundColor==='rgb(253, 242, 245)' && getComputedStyle(document.querySelector('[data-models-path]')).color==='rgb(125, 85, 97)'`,
     );
-    await click("[data-default-model-button]");
+    await run(`document.querySelector('[data-provider-list] .model-row [data-action="default"]').click()`);
     await wait(`document.querySelector('#settings-theme-tab').disabled`);
     await check(
       "模型操作期间分类和主题选择共用忙碌保护",
