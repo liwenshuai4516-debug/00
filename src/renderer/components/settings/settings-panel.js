@@ -1,4 +1,5 @@
 import { createModelProviders } from "./model-providers.js";
+import { createPermissionSettings } from "./permission-settings.js";
 import { createThemeSettings } from "../theme/theme-settings.js";
 import { createPiResourcesPanel } from "./pi-resources.js";
 import { createPromptSettings } from "./prompt-settings.js";
@@ -14,6 +15,11 @@ export function createSettingsPanel(
   const resources = createPiResourcesPanel(dialog, api, setPageBusy, insertText);
   const prompts = createPromptSettings(dialog, api, setPageBusy);
   const models = createModelProviders(dialog.querySelector("#settings-model-panel"), api, setPageBusy, refreshModels);
+  const permissions = createPermissionSettings(
+    dialog.querySelector("#settings-general-panel"),
+    api,
+    setPageBusy,
+  );
   const appearance = createThemeSettings(
     dialog.querySelector("[data-theme-panel]"),
   );
@@ -32,6 +38,7 @@ export function createSettingsPanel(
       panel.hidden = panel.id !== tab.getAttribute("aria-controls");
     heading.textContent = tab.textContent;
     const descriptions = {
+      general: "general-settings-intro",
       model: "model-settings-intro",
       theme: "theme-settings-intro",
       archive: "archive-settings-intro",
@@ -45,6 +52,8 @@ export function createSettingsPanel(
     );
     if (tab.dataset.settingsTab === "model") void models.show();
     else models.hide();
+    if (tab.dataset.settingsTab === "general") void permissions.show();
+    else permissions.hide();
     if (tab.dataset.settingsTab === "prompt") prompts.show();
     if (tab.dataset.settingsTab === "resources") void resources.show();
     else resources.hide();
@@ -74,6 +83,7 @@ export function createSettingsPanel(
   function close() {
     if (busy || prompts.isSaving() || resources.isSaving()) return;
     models.hide();
+    permissions.hide();
     dialog.close();
     openButton.focus();
   }
@@ -92,6 +102,7 @@ export function createSettingsPanel(
       openButton.disabled = value;
       dialog.querySelector("[data-close]").disabled = value;
       models.setBusy(value);
+      permissions.setBusy(value);
       appearance.setBusy(value);
       prompts.setBusy(value);
       resources.setBusy(value);

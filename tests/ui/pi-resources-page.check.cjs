@@ -68,7 +68,7 @@ async function main() {
       window.settings.setBusy(false);document.querySelector('#model-settings-button').click();document.querySelector('#settings-resources-tab').click();
     })()`);
     await wait(ready);
-    await check("默认展示技能卡片和真实数量，资源分类不干扰设置导航", `document.querySelectorAll('.pi-resource-card').length===5&&document.querySelector('[data-pi-kind=skills]').getAttribute('aria-pressed')==='true'&&document.querySelector('[data-pi-count=skills]').textContent==='4'&&document.querySelectorAll('.settings-categories [role=tab]').length===5`);
+    await check("默认展示技能卡片和真实数量，资源分类不干扰设置导航", `document.querySelectorAll('.pi-resource-card').length===5&&document.querySelector('[data-pi-kind=skills]').getAttribute('aria-pressed')==='true'&&document.querySelector('[data-pi-count=skills]').textContent==='4'&&document.querySelectorAll('.settings-categories [role=tab]').length===6`);
     await check("工作目录和项目信任独立显示，不占用操作状态", `document.querySelector('[data-pi-cwd]').textContent==='/workspace/需求与测试项目'&&document.querySelector('[data-pi-trust]').textContent==='项目资源已信任'&&document.querySelector('[data-pi-status]').textContent===''`);
     await check("英文技能和模板描述显示中文，执行命令保留原名", `document.querySelector('[data-pi-items=skills]').textContent.includes('帮助编程智能体')&&document.querySelector('[data-pi-items=prompts]').textContent.includes('反复审查和修复')&&document.querySelector('[data-pi-command="/skill:qa-api-test"]')!==null`);
     await check("技能标题和操作名称使用中文，实际命令保留技能标识", `[...document.querySelectorAll('[data-pi-items=skills] h4')].map(title=>title.textContent).join('|')==='需求评审|测试用例设计|接口测试|界面测试'&&document.querySelector('[data-pi-command="/skill:qa-requirement-review"]').getAttribute('aria-label')==='使用技能：需求评审'`);

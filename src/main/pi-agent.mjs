@@ -105,6 +105,7 @@ export async function createPiAgent(
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
       uiTestingRuntime: resourceOptions?.uiTestingRuntime,
+      permissionController: resourceOptions?.permissionController,
     });
   recordStage("资源与扩展发现（含项目信任）");
 

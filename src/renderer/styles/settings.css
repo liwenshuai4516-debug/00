@@ -66,3 +66,107 @@
 .extension-widgets { flex: 0 0 auto; padding: 0 16px; max-height: 160px; overflow: auto; }
 .extension-widgets:empty, .extension-notices:empty { display: none; }
 .extension-notices { max-height: 100px; overflow: auto; padding: 8px 16px; }
+
+/* ---------- 通用设置：权限控制 ---------- */
+.general-settings {
+  max-width: 720px;
+}
+
+.permission-settings {
+  margin-top: 12px;
+}
+
+.permission-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.permission-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--page);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.permission-option:hover {
+  border-color: color-mix(in srgb, var(--focus) 22%, var(--border));
+}
+
+.permission-option:has(input:checked) {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  background: color-mix(in srgb, var(--focus) 7%, var(--page));
+}
+
+.permission-option:has(input:disabled) {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.permission-option input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 2px 0 0;
+  accent-color: var(--focus);
+}
+
+.permission-option__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.permission-option__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.permission-option__risk {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--error-border) 45%, var(--border));
+  border-radius: 999px;
+  color: var(--error-border);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.permission-option__description {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.permission-warning {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--error-border) 35%, var(--border));
+  border-radius: 8px;
+  color: var(--error-border);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.permission-warning[hidden] {
+  display: none;
+}
+
+.permission-note {
+  margin: 10px 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}

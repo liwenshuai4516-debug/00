@@ -21,6 +21,7 @@ const {
   shell,
 } = require("electron");
 const { createModelProviderService } = require("./services/model-provider-service.js");
+const { createPermissionService } = require("./services/permission-service.js");
 const path = require("node:path");
 const { loadEnvFile } = require("node:process");
 const { createSessionService } = require("./services/session-service.js");
@@ -60,6 +61,9 @@ try {
 }
 
 const modelProviderService = createModelProviderService(file => shell.openPath(file));
+const permissionService = createPermissionService(
+  path.join(app.getPath("userData"), "permission-settings.json"),
+);
 
 const { createExtensionUiBridge } = require("./resources/extension-ui-bridge.js");
 const extensionUi = createExtensionUiBridge();
@@ -88,6 +92,7 @@ async function createConfiguredAgent(
       cancelUi: extensionUi.cancelSession,
       cancelPendingUi: extensionUi.cancelPending,
       uiTestingRuntime: resolveUiTestingRuntime(app, projectRoot),
+      permissionController: permissionService,
     },
   );
 }
@@ -223,6 +228,7 @@ registerAgentIpc(
   composerDraftService,
   modelProviderService,
   promptSettingsStore,
+  permissionService,
 );
 
 const quitGuard = registerAppQuitGuard(app, BrowserWindow);

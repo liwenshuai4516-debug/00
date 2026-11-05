@@ -11,6 +11,7 @@ function registerAgentIpc(
   composerDraftService,
   modelProviderService,
     promptSettingsStore,
+  permissionService,
 
 ) {
   let operationPending = false;
@@ -84,6 +85,10 @@ function registerAgentIpc(
   ipcMain.handle("agent:session-info", () => sessionService.getSessionInfo());
   // 只读的本地估算；用户展开上下文详情时才调用，不参与发送或压缩决策。
   ipcMain.handle("agent:read-context-breakdown", () => sessionService.getContextBreakdown());
+  ipcMain.handle("agent:read-permission-settings", () => permissionService.settings());
+  ipcMain.handle("agent:save-permission-settings", (_event, mode) =>
+    runIdleOperation(() => permissionService.save(mode)),
+  );
 
   // 页面预览只读工作目录内的文本文件；不占用空闲互斥，生成期间也可查看。
   const { createFilePreviewReader } = require("../services/file-preview-service.js");

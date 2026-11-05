@@ -124,6 +124,21 @@ async function main() {
         return { ...promptSettings };
       },
     },
+    {
+      settings: async () => ({
+        mode: "ask",
+        options: [
+          { id: "ask", label: "每次确认", description: "写入和命令每次确认。" },
+          { id: "read-only", label: "只读", description: "阻止写入和命令。" },
+          { id: "full-access", label: "完全权限", description: "全部直接执行。", risk: true },
+        ],
+      }),
+      save: async (mode) => ({ mode, options: [
+        { id: "ask", label: "每次确认", description: "写入和命令每次确认。" },
+        { id: "read-only", label: "只读", description: "阻止写入和命令。" },
+        { id: "full-access", label: "完全权限", description: "全部直接执行。", risk: true },
+      ] }),
+    },
   );
 
   let win;
@@ -187,8 +202,8 @@ async function main() {
     createWindow();
     await load();
     await check(
-      "提供三个任务模板，未选择时不可插入",
-      `document.querySelector('#task-template-select').options.length===4 && document.querySelector('#task-template-insert').disabled`,
+      "提供四个任务模板，未选择时不可插入",
+      `document.querySelector('#task-template-select').options.length===5 && document.querySelector('#task-template-insert').disabled`,
     );
     const beforeMessages = await run(
       `document.querySelectorAll('.chat-message').length`,
@@ -240,8 +255,15 @@ async function main() {
     await open();
     await check(
       "主题与模型管理位于同级设置分类",
-      `document.querySelectorAll('[role=tablist] [role=tab]').length===5 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'`,
+      `document.querySelectorAll('[role=tablist] [role=tab]').length===6 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true' && !document.querySelector('#settings-general-tab').matches('[aria-selected=true]')`,
     );
+    await click("#settings-general-tab");
+    await wait(`document.querySelectorAll('[data-permission-options] .permission-option').length===3`);
+    await check(
+      "通用设置打开权限控制并读取默认模式",
+      `!document.querySelector('#settings-general-panel').hidden && document.querySelector('#settings-model-panel').hidden && document.querySelector('[data-permission-state]').textContent==='每次确认'`,
+    );
+    await click("#settings-model-tab");
     await run(
       `window.originalMessage=document.querySelector('.chat-message');window.originalPanel=document.querySelector('#settings-model-panel');undefined;`,
     );

@@ -9,6 +9,7 @@ import {
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { createUiTestingExtension } from "../capabilities/ui-testing/extension.mjs";
+import { createPermissionExtension } from "./permission-gate.mjs";
 
 // SDK 没有导出 CLI 的信任决策函数；按公开事件契约接上宿主交互。
 async function resolveTrust({
@@ -106,6 +107,7 @@ export async function createPiResources({
   askProjectTrust,
   onDiagnostics,
   uiTestingRuntime,
+  permissionController,
 }) {
   // 与内置 MCP 等扩展统一使用官方目录；环境变量仍可覆盖其位置。
   const agentDir = getAgentDir();
@@ -148,6 +150,16 @@ export async function createPiResources({
             {
               name: "desktop-ui-testing",
               factory: createUiTestingExtension(uiTestingRuntime),
+              builtin: true,
+              replaceable: true,
+            },
+          ]
+        : []),
+      ...(permissionController
+        ? [
+            {
+              name: "desktop-permission-gate",
+              factory: createPermissionExtension(permissionController),
               builtin: true,
               replaceable: true,
             },
