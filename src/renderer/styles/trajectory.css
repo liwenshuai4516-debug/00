@@ -186,6 +186,7 @@
 .traj-overview__track {
   position: relative;
   height: 10px;
+  cursor: pointer;
   border-radius: 4px;
   background: color-mix(in srgb, var(--border) 55%, transparent);
 }

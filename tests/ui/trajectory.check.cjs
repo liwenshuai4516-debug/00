@@ -203,17 +203,27 @@ async function main() {
     // 点击时长条定位到对应记录并高亮。
     const targetId = await js("document.querySelector('.traj-bar--model').dataset.recordId");
     await js(`document.querySelector('.traj-bar--model').click()`);
-    await until(`document.querySelector('[data-record-id="' + ${JSON.stringify(targetId)} + '"]')?.open`);
-    assert.equal(await js(`document.querySelector('[data-record-id="' + ${JSON.stringify(targetId)} + '"]').classList.contains('traj-record--focus')`), true);
+    await until(`document.querySelector('.traj-record[data-record-id="' + ${JSON.stringify(targetId)} + '"]')?.open`);
+    assert.equal(await js(`document.querySelector('.traj-record[data-record-id="' + ${JSON.stringify(targetId)} + '"]').classList.contains('traj-record--focus')`), true);
     console.log("通过：点击时长条定位到记录");
 
-    // 上翻后出现回到最新，点击后回到底部并隐藏。
+    // 点击轨道空白处定位横坐标最近的记录。
+    await js("[...document.querySelectorAll('.traj-record[open]')].forEach(node=>{node.open=false})");
+    await js("(()=>{const track=document.querySelector('.traj-overview__track');const rect=track.getBoundingClientRect();track.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:rect.left+rect.width*0.7,clientY:rect.top+rect.height/2}));})()");
+    await until("document.querySelectorAll('.traj-record[open]').length >= 1");
+    console.log("通过：点击时长轨道定位最近记录");
+
+    // 用较矮窗口确保内容可滚动：上翻后出现回到最新，点击后回到底部并隐藏。
+    win.setSize(1000, 560);
+    await js("new Promise(r=>setTimeout(r,250))");
     await js("const view=document.getElementById('trajectory-view');view.scrollTop=0;view.dispatchEvent(new Event('scroll'))");
     await js("new Promise(r=>setTimeout(r,120))");
     assert.equal(await js("document.getElementById('trajectory-latest').hidden"), false);
     await js("document.getElementById('trajectory-latest').click()");
     await js("new Promise(r=>setTimeout(r,900))");
     assert.equal(await js("document.getElementById('trajectory-latest').hidden"), true);
+    win.setSize(1280, 900);
+    await js("new Promise(r=>setTimeout(r,250))");
     console.log("通过：轨迹跟随最新与回到最新");
 
     // 轮次模式按请求分组。

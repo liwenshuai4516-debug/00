@@ -562,7 +562,7 @@ export function createTrajectoryView(container, options = {}) {
       query = "";
       render();
     }
-    const node = container.querySelector(`[data-record-id="${id}"]`);
+    const node = container.querySelector(`.traj-record[data-record-id="${id}"]`);
     if (!node) return;
     node.open = true;
     expanded.add(id);
@@ -627,6 +627,27 @@ export function createTrajectoryView(container, options = {}) {
         }
         track.append(node);
       }
+      // 点击轨道空白处也定位到横坐标最近的可定位记录。
+      track.addEventListener("click", (event) => {
+        if (event.target instanceof Element && event.target.closest(".traj-bar")) return;
+        const rect = track.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+        const time = min + ratio * span;
+        let nearest = null;
+        let distance = Infinity;
+        for (const bar of bars) {
+          if (!bar.record) continue;
+          const gap = time < bar.start ? bar.start - time
+            : time > bar.end ? time - bar.end
+              : 0;
+          if (gap < distance) {
+            nearest = bar;
+            distance = gap;
+          }
+        }
+        if (nearest?.record) focusRecord(nearest.record.id);
+      });
       row.append(track);
       box.append(row);
     }
