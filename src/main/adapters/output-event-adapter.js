@@ -29,9 +29,40 @@ function contentBlocks(content) {
   });
 }
 
+// 回放命令的最后一行 JSON 可能被展示截断；在完整结果里先取出 summaryFile，供轨迹按需读取。
+function summaryFileFromContent(content) {
+  const text = typeof content === "string"
+    ? content
+    : (content ?? []).filter(block => block?.type === "text").map(block => block.text).join("");
+  if (typeof text !== "string" || !text.includes("\"summaryFile\"")) return undefined;
+  for (const line of text.split("\n").reverse()) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) continue;
+    try {
+      const value = JSON.parse(trimmed);
+      if (typeof value?.summaryFile === "string" && value.summaryFile.trim() !== "" && value.summaryFile.length <= 2048) {
+        return value.summaryFile;
+      }
+    } catch {
+      // 继续检查其他行。
+    }
+  }
+  const match = /"summaryFile"\s*:\s*("(?:\\.|[^"\\])*")/.exec(text);
+  if (match) {
+    try {
+      const value = JSON.parse(match[1]);
+      if (typeof value === "string" && value.length <= 2048) return value;
+    } catch {
+      // 忽略转义无效的路径。
+    }
+  }
+  return undefined;
+}
+
 // 工具结果里只取渲染卡片需要的标量字段，避免把 details/structuredContent 整体送到页面。
-function toolResultExtras(details, structured, toolName) {
-  const extras = {};
+function toolResultExtras(details, structured, toolName, content) {
+  const summaryFile = summaryFileFromContent(content);
+  const extras = summaryFile ? { summaryFile } : {};
   if (details && typeof details === "object") {
     if (typeof details.diff === "string") extras.diff = details.diff;
     if (typeof details.fullOutputPath === "string") extras.fullOutputPath = details.fullOutputPath;
@@ -65,7 +96,7 @@ function outputMessage(message) {
     role: "toolResult", toolCallId: message.toolCallId, toolName: message.toolName,
     content: contentBlocks(message.content), isError: message.isError,
     // 历史消息只保存 details；bash 的退出码在旧记录里只能从结果文本读取。
-    ...toolResultExtras(message.details, undefined, message.toolName),
+    ...toolResultExtras(message.details, undefined, message.toolName, message.content),
     durationMs: message.durationMs,
     ...(timestampOf(message) !== undefined ? { ts: timestampOf(message) } : {}),
     nestedCalls: message.nestedCalls && {
@@ -164,7 +195,7 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
       };
       if (result) projected.result = {
         content: contentBlocks(result.content),
-        ...toolResultExtras(result.details, result.structuredContent, event.toolName),
+        ...toolResultExtras(result.details, result.structuredContent, event.toolName, result.content),
       };
       if (event.type === "tool_execution_end") {
         projected.isError = event.isError;
@@ -182,4 +213,4 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
   };
 }
 
-module.exports = { contentBlocks, outputMessage, skillForRead, timestampOf, createOutputEventAdapter };
+module.exports = { contentBlocks, outputMessage, skillForRead, timestampOf, summaryFileFromContent, createOutputEventAdapter };

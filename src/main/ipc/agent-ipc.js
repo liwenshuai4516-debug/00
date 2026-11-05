@@ -133,6 +133,13 @@ function registerAgentIpc(
     return workspaceChanges?.diff(requestId, index) ?? null;
   });
 
+  // 回放统计只读当前工作区 qa/{ui,api}/runs 下的 summary.json。
+  const { createReplayStatsReader } = require("../services/replay-stats-service.js");
+  const readReplayStats = createReplayStatsReader(
+    async () => (await sessionService.getSessionInfo()).workspaceDir,
+  );
+  ipcMain.handle("agent:read-replay-stats", (_event, summaryFile) => readReplayStats(summaryFile));
+
   // 文件树同样只读，按目录按需列出一层。
   const { createWorkspaceTreeReader } = require("../services/workspace-tree-service.js");
   const listWorkspaceDirectory = createWorkspaceTreeReader(

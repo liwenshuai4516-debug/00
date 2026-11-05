@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { mkdtempSync, mkdirSync } = require("node:fs");
+const { mkdtempSync, mkdirSync, writeFileSync } = require("node:fs");
 const { app, BrowserWindow, ipcMain } = require("electron");
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
 const { toHistory } = require("../../src/main/adapters/message-adapter.js");
@@ -17,6 +17,21 @@ const root = path.resolve(__dirname, "../..");
 
 const base = Date.now() - 10 * 60 * 1000;
 const iso = (offset) => new Date(base + offset).toISOString();
+const workspace = mkdtempSync(path.join(temporary, "workspace-"));
+const runDir = path.join(workspace, "qa", "ui", "runs", "run-1");
+mkdirSync(runDir, { recursive: true });
+const summaryFile = path.join(runDir, "summary.json");
+writeFileSync(summaryFile, JSON.stringify({
+  status: "failed",
+  durationMs: 1200,
+  testCount: 2,
+  counts: { total: 2, passed: 1, failed: 1 },
+  problems: ["截图缺失"],
+  tests: [
+    { title: "创建合同", status: "passed", durationMs: 400 },
+    { title: "审批合同", status: "failed", durationMs: 800, errors: [{ message: "断言失败：状态错误" }] },
+  ],
+}));
 const raw = [
   { role: "user", timestamp: iso(0), content: "改一下 a.js" },
   {
@@ -37,6 +52,16 @@ const raw = [
     stopReason: "stop", usage: { input: 200, output: 30, totalTokens: 230 },
     content: [{ type: "text", text: "已修改并通过 `npm test`。" }],
   },
+  {
+    role: "assistant", timestamp: iso(1300), durationMs: 700, provider: "mock", model: "offline",
+    stopReason: "toolUse", usage: { input: 120, output: 10, totalTokens: 130 },
+    content: [{ type: "toolCall", id: "call-2", name: "bash", arguments: { command: "resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project demo --all" } }],
+  },
+  {
+    role: "toolResult", timestamp: iso(2100), durationMs: 1200, toolCallId: "call-2", toolName: "bash",
+    content: [{ type: "text", text: `回放完成\n${"日志行\n".repeat(1200)}${JSON.stringify({ status: "failed", summaryFile, testCount: 2, counts: { total: 2, passed: 1, failed: 1 } })}` }],
+    isError: false,
+  },
   { role: "user", timestamp: iso(3000), content: "再跑一次测试" },
   {
     role: "assistant", timestamp: iso(3010), durationMs: 600, provider: "mock", model: "offline",
@@ -53,8 +78,8 @@ const draft = (id) => drafts.get(id) ?? { sessionId: id, text: "", revision: 0 }
 const session = {
   loadHistory: async () => history,
   currentSession: async () => current,
-  getSessionInfo: async () => ({ sessionId: current, workspaceDir: "/demo", provider: "mock", modelId: "offline", contextUsage: null }),
-  listSessions: async () => [{ id: "a", title: "轨迹验收", workspaceDir: "/demo", updatedAt: 1 }],
+  getSessionInfo: async () => ({ sessionId: current, workspaceDir: workspace, provider: "mock", modelId: "offline", contextUsage: null }),
+  listSessions: async () => [{ id: "a", title: "轨迹验收", workspaceDir: workspace, updatedAt: 1 }],
   listUnsentSessions: async () => [],
   listModels: async () => ({ provider: "mock", modelId: "offline", models: [{ provider: "mock", id: "offline", name: "offline" }] }),
   newChat: async () => current,
@@ -147,7 +172,7 @@ async function main() {
     assert.equal(await js("document.querySelectorAll('.traj-overview__row').length"), 3);
     assert.ok(await js("document.querySelectorAll('.traj-bar').length") >= 4);
     assert.match(await js("document.querySelector('.traj-summary').textContent"), /2 轮/);
-    assert.match(await js("document.querySelector('.traj-summary').textContent"), /660 tokens/);
+    assert.match(await js("document.querySelector('.traj-summary').textContent"), /790 tokens/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /我先读取文件/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /read · a\.js/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /1\.2 秒/);
@@ -157,20 +182,57 @@ async function main() {
       await fs.writeFile(process.env.TRAJECTORY_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
 
+    // 回放记录展开后读取逐测试统计。
+    const replayId = await js("document.querySelector('.traj-record__replay-tag')?.closest('details')?.dataset.recordId");
+    assert.ok(replayId, "未识别回放记录");
+    await js(`document.querySelector('[data-record-id="' + ${JSON.stringify(replayId)} + '"] summary').click()`);
+    await until("document.querySelector('.traj-replay__table')");
+    assert.match(await js("document.querySelector('.traj-replay__summary').textContent"), /2 用例 · 1 通过 · 1 失败/);
+    assert.equal(await js("document.querySelectorAll('.traj-replay__table tbody tr').length"), 2);
+    assert.match(await js("document.querySelector('.traj-replay__table').textContent"), /创建合同/);
+    assert.match(await js("document.querySelector('.traj-replay__table').textContent"), /审批合同/);
+    assert.match(await js("document.querySelector('.traj-replay__table').textContent"), /400 ms/);
+    assert.match(await js("document.querySelector('.traj-replay__table').textContent"), /断言失败：状态错误/);
+    console.log("通过：回放逐测试耗时与错误");
+    if (process.env.TRAJECTORY_REPLAY_SCREENSHOT_PATH) {
+      await js("document.querySelector('.traj-replay').scrollIntoView({block:'center'})");
+      await js("new Promise(r=>setTimeout(r,300))");
+      await fs.writeFile(process.env.TRAJECTORY_REPLAY_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+
+    // 点击时长条定位到对应记录并高亮。
+    const targetId = await js("document.querySelector('.traj-bar--model').dataset.recordId");
+    await js(`document.querySelector('.traj-bar--model').click()`);
+    await until(`document.querySelector('[data-record-id="' + ${JSON.stringify(targetId)} + '"]')?.open`);
+    assert.equal(await js(`document.querySelector('[data-record-id="' + ${JSON.stringify(targetId)} + '"]').classList.contains('traj-record--focus')`), true);
+    console.log("通过：点击时长条定位到记录");
+
+    // 上翻后出现回到最新，点击后回到底部并隐藏。
+    await js("const view=document.getElementById('trajectory-view');view.scrollTop=0;view.dispatchEvent(new Event('scroll'))");
+    await js("new Promise(r=>setTimeout(r,120))");
+    assert.equal(await js("document.getElementById('trajectory-latest').hidden"), false);
+    await js("document.getElementById('trajectory-latest').click()");
+    await js("new Promise(r=>setTimeout(r,900))");
+    assert.equal(await js("document.getElementById('trajectory-latest').hidden"), true);
+    console.log("通过：轨迹跟随最新与回到最新");
+
     // 轮次模式按请求分组。
     await js("[...document.querySelectorAll('.traj-mode')].find(button=>button.textContent==='轮次').click()");
     assert.equal(await js("document.querySelectorAll('.traj-turn').length"), 2);
+    assert.equal(await js("document.querySelectorAll('.traj-turn[open]').length"), 1);
     assert.match(await js("document.querySelector('.traj-turn').textContent"), /改一下 a\.js/);
     if (process.env.TRAJECTORY_TURN_SCREENSHOT_PATH) {
+      await js("[...document.querySelectorAll('.traj-record[open]')].forEach(node=>{node.open=false})");
       await js("new Promise(r=>setTimeout(r,400))");
       await fs.writeFile(process.env.TRAJECTORY_TURN_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
 
     // 调用模式只列工具。
     await js("[...document.querySelectorAll('.traj-mode')].find(button=>button.textContent==='调用').click()");
-    assert.equal(await js("document.querySelectorAll('.traj-record[data-kind=\"tool\"]').length"), 1);
+    assert.equal(await js("document.querySelectorAll('.traj-record[data-kind=\"tool\"]').length"), 2);
     assert.equal(await js("document.querySelectorAll('.traj-record[data-kind=\"assistant\"]').length"), 0);
     if (process.env.TRAJECTORY_CALL_SCREENSHOT_PATH) {
+      await js("[...document.querySelectorAll('.traj-record[open]')].forEach(node=>{node.open=false})");
       await js("new Promise(r=>setTimeout(r,400))");
       await fs.writeFile(process.env.TRAJECTORY_CALL_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
@@ -198,6 +260,7 @@ async function main() {
     await until("document.querySelectorAll('.traj-request').length === 3");
     assert.match(await js("document.querySelector('.traj-records').textContent"), /新的实时回复/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /新的请求/);
+    assert.equal(await js("document.getElementById('trajectory-latest').hidden"), true);
     console.log("通过：实时请求进入轨迹");
 
     // 窄窗不出现页面级横向溢出，轨迹仍可切换与滚动。

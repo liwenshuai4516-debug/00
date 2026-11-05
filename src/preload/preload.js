@@ -172,6 +172,13 @@ contextBridge.exposeInMainWorld("agent", {
     if (!Number.isInteger(index) || index < 0) throw new Error("改动文件编号无效。");
     return ipcRenderer.invoke("agent:read-workspace-change-diff", requestId, index);
   },
+  // 回放摘要只提交工具输出里的路径；是否属于当前工作区由主进程校验。
+  readReplayStats: (summaryFile) => {
+    if (typeof summaryFile !== "string" || !summaryFile || summaryFile.length > 2048) {
+      throw new Error("回放摘要路径无效。");
+    }
+    return ipcRenderer.invoke("agent:read-replay-stats", summaryFile);
+  },
   // 只提交相对或绝对路径；解析、边界与大小校验都在主进程完成。
   readPreviewFile: (filePath) => {
     if (typeof filePath !== "string" || !filePath || filePath.length > 1024) {

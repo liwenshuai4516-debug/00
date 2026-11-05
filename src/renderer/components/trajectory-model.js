@@ -152,6 +152,9 @@ export function createTrajectoryModel() {
       parentToolCallId: output?.parentToolCallId,
       nestedCalls: output?.nestedCalls,
       status: "done",
+      summaryFile: typeof output?.summaryFile === "string"
+        ? output.summaryFile
+        : (typeof output?.result?.summaryFile === "string" ? output.result.summaryFile : undefined),
       ts,
       durationMs,
     });
@@ -186,6 +189,9 @@ export function createTrajectoryModel() {
     existing.isError = output?.isError === true;
     existing.durationMs = Number.isFinite(output?.durationMs) ? output.durationMs : undefined;
     existing.nestedCalls = output?.nestedCalls;
+    existing.summaryFile = typeof output?.summaryFile === "string"
+      ? output.summaryFile
+      : (typeof output?.result?.summaryFile === "string" ? output.result.summaryFile : existing.summaryFile);
     existing.status = "done";
     const request = requests[existing.requestIndex];
     if (request) {

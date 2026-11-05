@@ -143,3 +143,13 @@ test("生成中插话只使用活动请求的会话，未生成时拒绝", async
   await pending;
   await assert.rejects(() => service.steer("结束后"), /当前没有正在生成的回复/);
 });
+
+test("回放摘要路径从完整工具结果提取，不受展示截断影响", () => {
+  const text = `${"日志行\n".repeat(1200)}{"summaryFile":"/work/qa/ui/runs/run-1/summary.json","status":"passed"}`;
+  const output = outputMessage({
+    role: "toolResult", toolCallId: "c", toolName: "bash", isError: false,
+    content: [{ type: "text", text }],
+  });
+  assert.equal(output.summaryFile, "/work/qa/ui/runs/run-1/summary.json");
+  assert.equal(output.content[0].text.length > 4000, true);
+});

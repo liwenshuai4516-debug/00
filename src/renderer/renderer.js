@@ -649,7 +649,13 @@ const turnRail = createTurnRail(messages, document.getElementById("turn-rail"));
 const chatMain = document.querySelector(".chat-main");
 const trajectoryElement = document.getElementById("trajectory-view");
 const trajectoryModel = createTrajectoryModel();
-const trajectoryView = createTrajectoryView(trajectoryElement);
+const trajectoryView = createTrajectoryView(trajectoryElement, {
+  loadReplaySummary: (summaryFile) => window.agent.readReplayStats(summaryFile),
+});
+const trajectoryLatest = document.getElementById("trajectory-latest");
+function syncTrajectoryLatest() {
+  trajectoryLatest.hidden = chatView !== "trajectory" || trajectoryView.isAtBottom();
+}
 const chatTabs = [...document.querySelectorAll(".conversation-tabs [role=\"tab\"]")];
 let chatView = "conversation";
 let trajectoryFrame;
@@ -658,9 +664,17 @@ function scheduleTrajectoryRender() {
   if (chatView !== "trajectory" || trajectoryFrame || trajectoryView.isEditing()) return;
   trajectoryFrame = requestAnimationFrame(() => {
     trajectoryFrame = undefined;
-    if (chatView === "trajectory") trajectoryView.render(trajectoryModel.snapshot());
+    if (chatView === "trajectory") {
+      trajectoryView.render(trajectoryModel.snapshot());
+      syncTrajectoryLatest();
+    }
   });
 }
+
+trajectoryElement.addEventListener("scroll", syncTrajectoryLatest, { passive: true });
+trajectoryLatest.addEventListener("click", () => {
+  trajectoryView.scrollToLatest();
+});
 
 function setChatView(next, { focus = false } = {}) {
   const view = next === "trajectory" ? "trajectory" : "conversation";
@@ -675,8 +689,11 @@ function setChatView(next, { focus = false } = {}) {
     if (selected && focus) tab.focus();
   }
   if (view === "trajectory") {
-    trajectoryView.render(trajectoryModel.snapshot());
+    // 打开轨迹时停在最新记录，随后由上翻暂停跟随时再显示「回到最新」。
+    trajectoryView.render(trajectoryModel.snapshot(), { follow: true });
+    syncTrajectoryLatest();
   } else {
+    trajectoryLatest.hidden = true;
     // 回到对话时重新测量滚动位置，避免隐藏期间高度变化导致跟丢。
     requestAnimationFrame(() => messageScroll.update());
   }

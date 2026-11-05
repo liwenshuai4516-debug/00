@@ -444,3 +444,192 @@
     display: none;
   }
 }
+
+/* 回到最新：仅在轨迹视图且上翻时出现。 */
+#trajectory-latest {
+  position: absolute;
+  right: 24px;
+  bottom: 16px;
+  z-index: 2;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  box-shadow: 0 4px 16px var(--menu-shadow);
+  cursor: pointer;
+}
+
+#trajectory-latest:hover {
+  background: var(--hover);
+}
+
+#trajectory-latest:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 时长条可点击定位到记录。 */
+.traj-bar {
+  min-width: 3px;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+}
+
+.traj-bar::before {
+  content: "";
+  position: absolute;
+  inset: -5px -3px;
+}
+
+.traj-bar:hover {
+  filter: brightness(1.25);
+}
+
+.traj-bar:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.traj-record--focus {
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+  border-radius: 6px;
+}
+
+/* 回放逐测试统计。 */
+.traj-record__replay-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--focus) 18%, transparent);
+  color: var(--focus);
+  font-size: 10px;
+  line-height: 17px;
+}
+
+.traj-raw {
+  margin-top: 8px;
+}
+
+.traj-raw > summary {
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.traj-replay {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.traj-replay__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.traj-replay__title {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.traj-replay__meta,
+.traj-replay__summary {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.traj-replay__summary {
+  margin: 4px 0;
+}
+
+.traj-replay__scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.traj-replay__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.traj-replay__table th,
+.traj-replay__table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  text-align: left;
+}
+
+.traj-replay__table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.traj-replay__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.traj-replay__name {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+}
+
+.traj-replay__table tr[data-status="passed"] .traj-replay__status {
+  color: light-dark(#1a7f37, #63c27f);
+}
+
+.traj-replay__table tr[data-status="failed"] .traj-replay__status {
+  color: light-dark(#b42318, #f09595);
+}
+
+.traj-replay__duration {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.traj-replay__error {
+  max-width: 300px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+}
+
+.traj-replay__problems {
+  margin-top: 6px;
+}
+
+.traj-replay__retry {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  #trajectory-latest {
+    right: 12px;
+    bottom: 12px;
+  }
+
+  .traj-replay__name,
+  .traj-replay__error {
+    max-width: 160px;
+  }
+}

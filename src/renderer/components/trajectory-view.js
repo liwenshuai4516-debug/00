@@ -64,6 +64,74 @@ function toolTarget(args) {
   return "";
 }
 
+function replayInfo(record) {
+  if (record?.kind !== "tool") return null;
+  if (typeof record.summaryFile === "string" && record.summaryFile.trim() !== "") {
+    return { summaryFile: record.summaryFile, status: "", testCount: undefined, counts: undefined };
+  }
+  if (typeof record.result !== "string") return null;
+  const lines = record.result.split("\n").reverse();
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) continue;
+    try {
+      const value = JSON.parse(trimmed);
+      if (typeof value?.summaryFile === "string" && value.summaryFile.trim() !== "") {
+        return {
+          summaryFile: value.summaryFile,
+          status: typeof value.status === "string" ? value.status : "",
+          testCount: Number.isInteger(value.testCount) ? value.testCount : undefined,
+          counts: value.counts && typeof value.counts === "object" ? value.counts : undefined,
+        };
+      }
+    } catch {
+      // 不是回放结果行，继续检查上一行。
+    }
+  }
+  // 少数回放器把结果 JSON 包装在日志行里；只提取路径，不猜测其他字段。
+  const match = /"summaryFile"\s*:\s*("(?:\\.|[^"\\])*")/.exec(record.result);
+  if (match) {
+    try {
+      const summaryFile = JSON.parse(match[1]);
+      if (typeof summaryFile === "string" && summaryFile.trim() !== "") {
+        return { summaryFile, status: "", testCount: undefined, counts: undefined };
+      }
+    } catch {
+      // 路径转义无效时不展示回放统计。
+    }
+  }
+  return null;
+}
+
+function replayCountsText(info) {
+  const total = Number(info?.counts?.total ?? info?.testCount);
+  const passed = Number(info?.counts?.passed);
+  const failed = Number(info?.counts?.failed);
+  if (!Number.isInteger(total) || total < 0) return "";
+  const parts = [`${total} 用例`];
+  if (Number.isInteger(passed)) parts.push(`${passed} 通过`);
+  if (Number.isInteger(failed) && failed > 0) parts.push(`${failed} 失败`);
+  return parts.join(" · ");
+}
+
+const REPLAY_STATUS_LABELS = {
+  passed: "通过",
+  failed: "失败",
+  skipped: "跳过",
+  flaky: "波动",
+  timedOut: "超时",
+  interrupted: "中断",
+  cancelled: "取消",
+  "not-run": "未运行",
+  incomplete: "不完整",
+  cancelled: "已取消",
+  unknown: "未知",
+};
+
+function replayStatusLabel(status) {
+  return REPLAY_STATUS_LABELS[status] ?? "未知";
+}
+
 function recordTitle(record) {
   if (record.kind === "tool") {
     const target = toolTarget(record.args);
@@ -125,14 +193,16 @@ function preBlock(text, className = "traj-code") {
   return element("pre", className, text === "" || text === undefined ? "（空）" : text);
 }
 
-function renderRecord(record, { open, onToggle }) {
+function renderRecord(record, { open, onToggle, replay, renderReplay }) {
   const details = element("details", "traj-record");
   details.dataset.kind = record.kind;
+  details.dataset.recordId = record.id;
   details.open = open;
-  details.addEventListener("toggle", () => onToggle(record.id, details.open));
+  details.addEventListener("toggle", () => onToggle(record, details.open));
 
   const summary = element("summary", "traj-record__head");
   summary.append(element("span", "traj-record__badge", badgeText(record.kind)));
+  if (replay) summary.append(element("span", "traj-record__replay-tag", "回放"));
   summary.append(element("span", "traj-record__title", recordTitle(record)));
   if (record.kind === "tool") {
     const previewText = firstLine(record.result ?? "");
@@ -185,13 +255,24 @@ function renderRecord(record, { open, onToggle }) {
     if (record.skill) {
       body.append(element("p", "traj-note", `技能：${record.skill.name}${record.skill.source ? `（${record.skill.source}）` : ""}`));
     }
-    const argsTitle = element("p", "traj-section-title", "参数");
-    body.append(argsTitle, preBlock(JSON.stringify(record.args ?? "未记录", null, 2).slice(0, MAX_TEXT)));
-    body.append(element("p", "traj-section-title", "结果"));
-    body.append(preBlock((record.result ?? "").slice(0, MAX_TEXT)));
-    if (Array.isArray(record.nestedCalls?.calls) && record.nestedCalls.calls.length > 0) {
-      body.append(element("p", "traj-note", `嵌套调用 ${record.nestedCalls.calls.length} 次${record.nestedCalls.complete === false ? "（记录不完整）" : ""}。`));
+    if (replay) {
+      const replayBox = element("div", "traj-replay");
+      replayBox.dataset.replayFor = record.id;
+      body.append(replayBox);
+      renderReplay?.(replayBox, record, replay, open);
     }
+    const raw = element("details", "traj-raw");
+    // 回放记录先展示逐测试统计，原始日志默认收起，避免长输出淹没结果。
+    raw.open = !replay;
+    raw.append(element("summary", "", "参数与原始结果"));
+    const argsTitle = element("p", "traj-section-title", "参数");
+    raw.append(argsTitle, preBlock(JSON.stringify(record.args ?? "未记录", null, 2).slice(0, MAX_TEXT)));
+    raw.append(element("p", "traj-section-title", "结果"));
+    raw.append(preBlock((record.result ?? "").slice(0, MAX_TEXT)));
+    if (Array.isArray(record.nestedCalls?.calls) && record.nestedCalls.calls.length > 0) {
+      raw.append(element("p", "traj-note", `嵌套调用 ${record.nestedCalls.calls.length} 次${record.nestedCalls.complete === false ? "（记录不完整）" : ""}。`));
+    }
+    body.append(raw);
   } else {
     body.append(preBlock(record.text ?? ""));
   }
@@ -200,7 +281,7 @@ function renderRecord(record, { open, onToggle }) {
   return details;
 }
 
-export function createTrajectoryView(container) {
+export function createTrajectoryView(container, options = {}) {
   let snapshot = { sessionId: "", requests: [], hasTimeline: false, totals: {} };
   let mode = "time";
   let query = "";
@@ -208,10 +289,146 @@ export function createTrajectoryView(container) {
   let recordsEl = null;
   let rendered = 0;
   const expanded = new Set();
+  const replayCache = new Map();
+  const loadReplaySummary = typeof options.loadReplaySummary === "function"
+    ? options.loadReplaySummary
+    : null;
 
-  function toggleRecord(id, open) {
-    if (open) expanded.add(id);
-    else expanded.delete(id);
+  function toggleRecord(record, open) {
+    if (open) {
+      expanded.add(record.id);
+      if (replayInfo(record)) void loadReplay(record);
+    } else {
+      expanded.delete(record.id);
+    }
+  }
+
+  function findRecord(id) {
+    for (const request of snapshot.requests) {
+      for (const record of request.records) {
+        if (record.id === id) return record;
+      }
+    }
+    return null;
+  }
+
+  function updateReplayBoxes(record) {
+    const info = replayInfo(record);
+    if (!info) return;
+    for (const box of container.querySelectorAll(`[data-replay-for="${record.id}"]`)) {
+      renderReplayBox(box, record, info, replayCache.get(record.id));
+    }
+  }
+
+  function loadReplay(record) {
+    const info = replayInfo(record);
+    if (!info || !loadReplaySummary) return;
+    const current = replayCache.get(record.id);
+    if (current) return;
+    const sessionId = snapshot.sessionId;
+    replayCache.set(record.id, { status: "loading" });
+    updateReplayBoxes(record);
+    Promise.resolve()
+      .then(() => loadReplaySummary(info.summaryFile))
+      .then((data) => {
+        if (snapshot.sessionId !== sessionId) return;
+        replayCache.set(record.id, { status: "ready", data });
+        updateReplayBoxes(record);
+      })
+      .catch((error) => {
+        if (snapshot.sessionId !== sessionId) return;
+        replayCache.set(record.id, { status: "error", error });
+        updateReplayBoxes(record);
+      });
+  }
+
+  function renderReplayBox(box, record, info, state) {
+    box.replaceChildren();
+    const head = element("div", "traj-replay__head");
+    head.append(element("span", "traj-replay__title", "回放逐测试结果"));
+    const countsText = replayCountsText(state?.data?.counts ? { counts: state.data.counts, testCount: state.data.counts.total } : info);
+    if (countsText) head.append(element("span", "traj-replay__meta", countsText));
+    box.append(head);
+
+    if (!loadReplaySummary) {
+      box.append(element("p", "traj-note", "当前页面未接入回放统计接口。"));
+      return;
+    }
+    if (!state) {
+      box.append(element("p", "traj-note", "展开时读取逐测试耗时与错误。"));
+      return;
+    }
+    if (state.status === "loading") {
+      box.append(element("p", "traj-note", "正在读取回放结果…"));
+      return;
+    }
+    if (state.status === "error") {
+      box.append(element("p", "traj-note", `回放结果不可用：${clip(state.error?.message ?? "读取失败", 160)}`));
+      const retry = element("button", "traj-replay__retry", "重新读取");
+      retry.type = "button";
+      retry.addEventListener("click", () => {
+        replayCache.delete(record.id);
+        void loadReplay(record);
+      });
+      box.append(retry);
+      return;
+    }
+
+    const data = state.data;
+    const summary = element("p", "traj-replay__summary");
+    const parts = [
+      `总状态：${replayStatusLabel(data.status)}`,
+      `${data.counts.total} 用例`,
+      `${data.counts.passed} 通过`,
+      `${data.counts.failed} 失败`,
+    ];
+    if (data.counts.skipped > 0) parts.push(`${data.counts.skipped} 跳过`);
+    summary.textContent = parts.join(" · ");
+    box.append(summary);
+    if (Number.isFinite(data.durationMs)) {
+      box.append(element("p", "traj-note", `批次耗时 ${formatDuration(data.durationMs)}`));
+    }
+
+    if (!Array.isArray(data.tests) || data.tests.length === 0) {
+      box.append(element("p", "traj-note", "摘要没有逐测试结果。"));
+    } else {
+      const table = element("table", "traj-replay__table");
+      const thead = element("thead");
+      const headRow = element("tr");
+      for (const label of ["用例", "状态", "耗时", "错误"]) headRow.append(element("th", "", label));
+      thead.append(headRow);
+      const tbody = element("tbody");
+      for (const test of data.tests) {
+        const row = element("tr");
+        row.dataset.status = test.status;
+        const title = element("td", "traj-replay__name", test.title);
+        title.title = test.title;
+        row.append(title);
+        row.append(element("td", "traj-replay__status", replayStatusLabel(test.status)));
+        row.append(element("td", "traj-replay__duration", Number.isFinite(test.durationMs) ? formatDuration(test.durationMs) : "—"));
+        const error = element("td", "traj-replay__error", test.error || "");
+        error.title = test.error || "";
+        row.append(error);
+        tbody.append(row);
+      }
+      table.append(thead, tbody);
+      const wrap = element("div", "traj-replay__scroll");
+      wrap.append(table);
+      box.append(wrap);
+    }
+
+    if (Array.isArray(data.problems) && data.problems.length > 0) {
+      const problems = element("details", "traj-replay__problems");
+      problems.append(element("summary", "", `问题 ${data.problems.length} 项`));
+      for (const problem of data.problems) problems.append(element("p", "traj-note", problem));
+      box.append(problems);
+    }
+  }
+
+  function renderReplayInto(box, record, info, open) {
+    const state = replayCache.get(record.id);
+    renderReplayBox(box, record, info, state);
+    if (open && !state) void loadReplay(record);
   }
 
   function requestHeader(request, { collapsible = false } = {}) {
@@ -255,6 +472,8 @@ export function createTrajectoryView(container) {
           section.append(renderRecord(record, {
             open: expanded.has(record.id),
             onToggle: toggleRecord,
+            replay: replayInfo(record),
+            renderReplay: renderReplayInto,
           }));
         }
         recordsEl.append(section);
@@ -277,6 +496,8 @@ export function createTrajectoryView(container) {
         details.append(renderRecord(record, {
           open: expanded.has(record.id),
           onToggle: toggleRecord,
+          replay: replayInfo(record),
+          renderReplay: renderReplayInto,
         }));
       }
       recordsEl.append(details);
@@ -297,6 +518,8 @@ export function createTrajectoryView(container) {
         section.append(renderRecord(record, {
           open: expanded.has(record.id),
           onToggle: toggleRecord,
+          replay: replayInfo(record),
+          renderReplay: renderReplayInto,
         }));
       }
       recordsEl.append(section);
@@ -331,6 +554,24 @@ export function createTrajectoryView(container) {
       });
   }
 
+  function focusRecord(id) {
+    const record = findRecord(id);
+    if (!record) return;
+    if (mode !== "time" || query !== "") {
+      mode = "time";
+      query = "";
+      render();
+    }
+    const node = container.querySelector(`[data-record-id="${id}"]`);
+    if (!node) return;
+    node.open = true;
+    expanded.add(id);
+    if (replayInfo(record)) void loadReplay(record);
+    node.scrollIntoView({ block: "center", behavior: "smooth" });
+    node.classList.add("traj-record--focus");
+    window.setTimeout(() => node.classList.remove("traj-record--focus"), 1600);
+  }
+
   function renderOverview() {
     const assistant = barsFor(snapshot.requests.flatMap((request) => request.records), "assistant");
     const tools = barsFor(snapshot.requests.flatMap((request) => request.records), "tool");
@@ -339,7 +580,7 @@ export function createTrajectoryView(container) {
       const first = request.records.find((record) => record.kind !== "user" && Number.isFinite(record.ts));
       const end = first?.ts ?? request.endedAt;
       if (!Number.isFinite(end) || end <= request.startedAt) return [];
-      return [{ start: request.startedAt, end, label: `第 ${request.index + 1} 轮输入/等待` }];
+      return [{ start: request.startedAt, end, label: `第 ${request.index + 1} 轮输入/等待`, record: request.records[0] }];
     });
     const all = [...waits, ...assistant, ...tools].filter((bar) => Number.isFinite(bar.end) && bar.end > bar.start);
     if (all.length === 0) return null;
@@ -372,10 +613,18 @@ export function createTrajectoryView(container) {
       row.append(element("span", "traj-overview__label", label));
       const track = element("div", "traj-overview__track");
       for (const bar of bars) {
-        const node = element("span", `traj-bar traj-bar--${kind}`);
+        const node = element(bar.record ? "button" : "span", `traj-bar traj-bar--${kind}`);
+        if (bar.record) {
+          node.type = "button";
+          node.dataset.recordId = bar.record.id;
+        }
         node.style.left = `${((bar.start - min) / span) * 100}%`;
         node.style.width = `${Math.max(0.4, ((bar.end - bar.start) / span) * 100)}%`;
         node.title = `${bar.label} · ${clock(bar.start)} · ${formatDuration(bar.end - bar.start)}`;
+        if (bar.record) {
+          node.setAttribute("aria-label", `定位到 ${bar.label}，耗时 ${formatDuration(bar.end - bar.start)}`);
+          node.addEventListener("click", () => focusRecord(bar.record.id));
+        }
         track.append(node);
       }
       row.append(track);
@@ -388,12 +637,14 @@ export function createTrajectoryView(container) {
     return box;
   }
 
-  function render(next) {
+  function render(next, { follow = false } = {}) {
     if (next && typeof next === "object") snapshot = next;
     const previousSession = container.dataset.sessionId ?? "";
-    if (previousSession !== snapshot.sessionId) {
+    const sessionChanged = previousSession !== snapshot.sessionId;
+    if (sessionChanged) {
       expanded.clear();
       query = "";
+      replayCache.clear();
     }
     container.dataset.sessionId = snapshot.sessionId ?? "";
     const scrollTop = container.scrollTop;
@@ -460,7 +711,7 @@ export function createTrajectoryView(container) {
     shell.append(recordsEl);
     container.append(shell);
     renderRecords();
-    container.scrollTop = followLatest ? container.scrollHeight : scrollTop;
+    container.scrollTop = follow || sessionChanged || followLatest ? container.scrollHeight : scrollTop;
     if (focusedSearch) {
       const searchInput = container.querySelector(".traj-search input");
       searchInput?.focus();
@@ -474,6 +725,8 @@ export function createTrajectoryView(container) {
     render,
     // 搜索框聚焦（含输入法组词）时不自动重建，避免打断输入；失去焦点后的下一次事件再更新。
     isEditing: () => document.activeElement?.matches?.(".traj-search input") === true,
+    isAtBottom: () => container.scrollHeight - container.scrollTop - container.clientHeight <= 48,
+    scrollToLatest: () => container.scrollTo({ top: container.scrollHeight, behavior: "smooth" }),
     reset: () => render({ sessionId: "", requests: [], hasTimeline: false, totals: {} }),
   };
 }
