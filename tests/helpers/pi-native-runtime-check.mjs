@@ -34,7 +34,8 @@ if (scenario === "resources") {
   await put(path.join(linked, "SKILL.md"), skill("linked"));
   await put(path.join(linked, "assets", "data.json"), '{"ok":true}');
   await fs.symlink(linked, path.join(agentDir, "skills", "linked"));
-  await put(path.join(workspace, ".pi", "skills", "project", "SKILL.md"), skill("project"));
+  await put(path.join(workspace, ".pi", "skills", "project", "SKILL.md"), skill("project", "PROJECT_SKILL_BODY"));
+  await put(path.join(workspace, ".pi", "skills", "project", "references", "ref.md"), "PROJECT_REF_MARKER");
   await put(path.join(repo, ".agents", "skills", "ancestor", "SKILL.md"), skill("ancestor"));
   await put(path.join(base, ".agents", "skills", "outside-repo", "SKILL.md"), skill("outside-repo"));
   await put(path.join(agentDir, "skills", "warning", "SKILL.md"), skill("InvalidName"));
@@ -64,9 +65,19 @@ if (scenario === "resources") {
       assert.ok(!prompt.includes("<name>outside-repo</name>"));
       assert.equal(prompt.includes("<name>project</name>"), trusted);
       assert.equal(prompt.includes("<name>ancestor</name>"), trusted);
-      for (const name of ["qa-case-design", "qa-requirement-review", "qa-skill-smoke"]) {
-        assert.equal(session.resourceLoader.getSkills().skills.filter(item => item.name === name).length, trusted ? 1 : 0);
-        assert.equal(prompt.includes(`<name>${name}</name>`), trusted && name !== "qa-skill-smoke");
+      // 项目技能以当前 .pi/skills 为准，不把技能清单写死；只核对是否按信任加载并进入提示词。
+      const projectSkillDir = path.join(workspace, ".pi", "skills");
+      const projectSkills = session.resourceLoader.getSkills().skills.filter((item) => {
+        const relative = path.relative(projectSkillDir, path.resolve(item.filePath));
+        return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+      });
+      if (trusted) {
+        assert.ok(projectSkills.length >= 1, "项目技能未加载");
+        for (const item of projectSkills) {
+          assert.ok(prompt.includes(`<name>${item.name}</name>`), item.name);
+        }
+      } else {
+        assert.equal(projectSkills.length, 0);
       }
       assert.ok(prompt.includes("PROJECT_CONTEXT"));
       assert.equal(prompt.includes("PROJECT_SYSTEM"), trusted);
@@ -95,18 +106,17 @@ if (scenario === "resources") {
       await session.prompt("/skill:collision");
       assert.match(JSON.stringify(captured), trusted ? /PROJECT_COLLISION/ : /USER_COLLISION/);
       if (trusted) {
-        for (const [name, marker] of [["qa-case-design", "case-format.md"], ["qa-requirement-review", "checklist.md"], ["qa-skill-smoke", "PI_SKILL_SMOKE_OK"]]) {
-          await session.prompt(`/skill:${name} PROJECT_SKILL_ARGUMENT`);
-          assert.ok(JSON.stringify(captured).includes(marker));
-          assert.match(JSON.stringify(captured), /PROJECT_SKILL_ARGUMENT/);
-        }
-        for (const [name, file, marker] of [["qa-case-design", "case-format.md", "来源"], ["qa-requirement-review", "checklist.md", "边界值"]]) {
-          const result = await read.execute(name, { path: path.join(workspace, ".pi", "skills", name, "references", file) });
-          assert.ok(JSON.stringify(result.content).includes(marker));
-        }
-        await fs.appendFile(path.join(workspace, ".pi/skills/qa-case-design/SKILL.md"), "\nPROJECT_SKILL_RELOADED\n");
+        // 用测试自己写入的项目技能验证展开、参考文件读取与重载，不依赖仓库技能内容。
+        await session.prompt("/skill:project PROJECT_SKILL_ARGUMENT");
+        assert.match(JSON.stringify(captured), /PROJECT_SKILL_BODY/);
+        assert.match(JSON.stringify(captured), /PROJECT_SKILL_ARGUMENT/);
+        const reference = await read.execute("project", {
+          path: path.join(workspace, ".pi", "skills", "project", "references", "ref.md"),
+        });
+        assert.match(JSON.stringify(reference.content), /PROJECT_REF_MARKER/);
+        await fs.appendFile(path.join(workspace, ".pi/skills/project/SKILL.md"), "\nPROJECT_SKILL_RELOADED\n");
         await session.desktopReloadResources();
-        await session.prompt("/skill:qa-case-design");
+        await session.prompt("/skill:project");
         assert.match(JSON.stringify(captured), /PROJECT_SKILL_RELOADED/);
         await session.prompt("/review one two");
         assert.match(JSON.stringify(captured), /REVIEW one one two/);
