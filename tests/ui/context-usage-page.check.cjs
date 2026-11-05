@@ -121,7 +121,7 @@ async function main() {
     await check("启动只读一次信息，菜单与常驻入口同源，展示原文安全", async () => {
       assert.equal(calls.filter(c => c[0] === "info").length, 1);
       assert.equal(await label(), "上下文约 32.0%");
-      await openDetails(); assert.match(await js(`document.querySelector('#context-usage [data-usage]').textContent`), /3,200 \/ 10,000/);
+      await openDetails(); assert.match(await js(`document.querySelector('#context-usage [data-usage]').textContent`), /上下文已用 32.0% · 3.2K \/ 10K/);
       await until(`!document.querySelector('#context-usage [data-breakdown]').hidden`);
       assert.equal(await js(`document.querySelectorAll('#context-usage [data-breakdown-row]').length`), 3);
       assert.equal(await js(`document.querySelector('[data-breakdown-row="system"] [data-breakdown-tokens]').textContent`), "960");

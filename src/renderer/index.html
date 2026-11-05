@@ -332,9 +332,10 @@
                 <button id="context-usage-toggle" type="button" aria-controls="context-usage-details" aria-expanded="false"><span class="context-usage__ring" aria-hidden="true"></span><span class="context-usage__label" data-usage-label>上下文读取中…</span></button>
                 <section id="context-usage-details" class="context-usage-details" aria-labelledby="context-usage-title"
                   hidden>
-                  <h2 id="context-usage-title">上下文用量</h2>
-                  <p data-usage></p>
-                  <div class="context-breakdown" data-breakdown hidden>
+                  <h2 id="context-usage-title" class="sr-only">上下文用量</h2>
+                  <p class="context-usage-summary" data-usage></p>
+                  <div class="context-breakdown" data-breakdown hidden
+                    title="本地启发式估算，不是提供方计费或精确分词；技能目录计入系统提示词，技能正文与工具结果计入消息。">
                     <div class="context-breakdown__bar" data-breakdown-bar role="img" aria-label="上下文构成"></div>
                     <ul class="context-breakdown__rows">
                       <li data-breakdown-row="system">
@@ -356,14 +357,12 @@
                         <span class="context-breakdown__percent" data-breakdown-percent></span>
                       </li>
                     </ul>
-                    <p class="context-breakdown__note">本地启发式估算，不是提供方计费或精确分词；技能目录计入系统提示词，技能正文与工具结果计入消息。</p>
                   </div>
                   <p class="context-breakdown__status" data-breakdown-status hidden></p>
-                  <p>这是当前模型上下文的估算，不代表费用、账号配额或全部原始历史。</p>
-                  <p>整理会调用模型生成摘要，保留原始历史；仅在你点击后执行。</p>
                   <div class="context-usage-actions">
-                    <button data-refresh type="button">重新读取</button>
-                    <button data-compact type="button" disabled>整理上下文</button>
+                    <button data-refresh type="button" title="只重新读取估算，不调用模型">重新读取</button>
+                    <button data-compact type="button" disabled
+                      title="整理会调用模型生成摘要，保留原始历史；仅在你点击后执行">整理上下文</button>
                   </div>
                 </section>
                 <span class="sr-only" role="status" aria-atomic="true" data-announcement></span>

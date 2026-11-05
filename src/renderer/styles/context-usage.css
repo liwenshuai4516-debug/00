@@ -175,7 +175,7 @@
 
 .context-breakdown__rows li {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -243,5 +243,51 @@
 
   .context-breakdown__percent {
     display: none;
+  }
+}
+
+/* 对话详情保持 DSH 式紧凑：一行总量、构成条与三段行；解释放在 title/无障碍名称。 */
+.context-usage-details {
+  width: min(340px, calc(100vw - 32px));
+  padding: 14px;
+}
+
+.context-usage-summary {
+  margin: 0 0 10px !important;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: normal !important;
+}
+
+.context-usage-details .context-breakdown {
+  margin: 0;
+  padding: 10px;
+}
+
+.context-breakdown__rows li {
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+}
+
+.context-breakdown__percent {
+  display: none;
+}
+
+.context-usage-actions {
+  margin-top: 10px;
+}
+
+.context-usage-actions button {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+@media (max-width: 560px) {
+  .context-usage-details {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
   }
 }

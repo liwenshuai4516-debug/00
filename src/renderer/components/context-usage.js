@@ -30,7 +30,14 @@ export function createContextUsage(element, { onRefresh, onCompact, loadBreakdow
   let breakdownRequest = 0;
 
   function formatTokenCount(value) {
-    return Number.isFinite(value) ? value.toLocaleString("zh-CN") : "—";
+    if (!Number.isFinite(value)) return "—";
+    if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(value % 1_000_000 ? 1 : 0))}M`;
+    if (value >= 1000) return `${Number((value / 1000).toFixed(value % 1000 ? 1 : 0))}K`;
+    return String(value);
+  }
+
+  function compactUsage(usage) {
+    return `上下文已用 ${usage.percent.toFixed(1)}% · ${formatTokenCount(usage.tokens)} / ${formatTokenCount(usage.contextWindow)}`;
   }
 
   function drawBreakdown() {
@@ -158,7 +165,8 @@ export function createContextUsage(element, { onRefresh, onCompact, loadBreakdow
     toggle.title = text;
     toggle.disabled = frozen;
     element.dataset.level = level;
-    usageText.textContent = text;
+    // 面板保持紧凑：数字行只放百分比与 tokens；解释和阈值提示留在悬停/无障碍文案。
+    usageText.textContent = known ? compactUsage(usage) : text;
     // 只有一个温和播报区域，不在两个信息位置重复宣读。
     if (announcement.textContent !== label) announcement.textContent = label;
     refresh.disabled = busy || state.status === "loading";
