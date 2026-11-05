@@ -17,7 +17,7 @@ const MODES = [
   {
     id: "full-access",
     label: "完全权限",
-    description: "所有工具直接执行，不再确认。只在明确信任当前任务时使用。",
+    description: "所有工具直接执行，不再确认；模型提示词同步为已授权，不再按未授权只做只读。只在明确信任当前任务时使用。",
     risk: true,
   },
 ];
