@@ -264,13 +264,32 @@ function matchingBrace(source, start) {
 }
 
 // 删除 spec 中与用例名对应的 test 块；找不到时返回 null，调用方必须在写入前中止。
-function removeSpecTest(source, caseName) {
-  let index = -1;
+function normalizeSpecTitle(value) {
+  return String(value)
+    .replace(/^T\d+\s*/i, "")
+    .replace(/[与和及]/g, "")
+    .replace(/[\s:：,，、。；;！!？?\-—→>（）()【】\[\]"'“”‘’]/g, "")
+    .toLowerCase();
+}
+
+function specTestEntries(source) {
+  const entries = [];
   for (const quote of ['"', "'", "`"]) {
-    index = source.indexOf(`test(${quote}${caseName}${quote}`, index + 1);
-    if (index >= 0) break;
+    const prefix = `test(${quote}`;
+    let index = -1;
+    while ((index = source.indexOf(prefix, index + 1)) >= 0) {
+      const titleStart = index + prefix.length;
+      const titleEnd = source.indexOf(quote, titleStart);
+      if (titleEnd < 0) break;
+      const title = source.slice(titleStart, titleEnd);
+      if (!title.includes("\n")) entries.push({ index, title });
+      index = titleEnd;
+    }
   }
-  if (index < 0) return null;
+  return entries.sort((first, second) => first.index - second.index);
+}
+
+function removeTestAt(source, index) {
   const arrow = source.indexOf("=>", index);
   if (arrow < 0) return null;
   const brace = source.indexOf("{", arrow);
@@ -285,6 +304,26 @@ function removeSpecTest(source, caseName) {
   const lineStart = source.lastIndexOf("\n", index) + 1;
   return source.slice(0, lineStart) + source.slice(after);
 }
+
+function removeSpecTest(source, caseName) {
+  let exact = -1;
+  for (const quote of ['"', "'", "`"]) {
+    exact = source.indexOf(`test(${quote}${caseName}${quote}`, exact + 1);
+    if (exact >= 0) break;
+  }
+  if (exact >= 0) return removeTestAt(source, exact);
+
+  const target = normalizeSpecTitle(caseName);
+  if (target.length < 4) return null;
+  const candidates = specTestEntries(source).filter((entry) => {
+    const normalized = normalizeSpecTitle(entry.title);
+    return normalized.length >= 4
+      && (normalized === target || normalized.startsWith(target) || target.startsWith(normalized));
+  });
+  if (candidates.length !== 1) return null;
+  return removeTestAt(source, candidates[0].index);
+}
+
 function replaceAssertionTableRow(document, caseName, assertions) {
   const summary = assertions
     .map((assertion) => `${assertion.id} ${assertion.kind === "guard" ? "前置" : "业务"}：${assertion.text}${assertion.source ? `（${assertion.source}）` : ""}`)

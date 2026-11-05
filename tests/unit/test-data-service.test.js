@@ -294,6 +294,58 @@ test("删除单条用例同步脚本、资产和说明，最后一条删除资�
   await assert.rejects(access(path.join(cases, "批量.md")), /ENOENT/);
 });
 
+test("删除用例容忍元数据标题与脚本标题的前缀、标点差异", async (t) => {
+  const { service, project, dataRoot } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  const assetPath = "ui/cases/差异.asset.json";
+  const caseMeta = {
+    schema: "qa-ui-case/v1",
+    caseId: "差异",
+    project: { id: "pms", name: "项目管理系统" },
+    page: "/pms/ProcurementContract",
+    role: "管理员",
+    dataPolicy: "read-only",
+    tags: [],
+    cases: [
+      {
+        name: "T1 发起页必填项与审批流随归属部门解锁、附件上传、取消返回",
+        type: "functional",
+        priority: "P1",
+        steps: ["打开发起页"],
+        assertions: [{ id: "A1", kind: "business", text: "必填项可见", source: "页面基线" }],
+      },
+      {
+        name: "T2 保留用例",
+        type: "functional",
+        priority: "P2",
+        steps: ["打开列表"],
+        assertions: [{ id: "A1", kind: "business", text: "列表可见", source: "页面基线" }],
+      },
+    ],
+    caseCount: 2,
+    assertionCount: 2,
+  };
+  const specPath = path.join(cases, "差异.spec.cjs");
+  await writeFile(specPath, [
+    'const { test } = require("@playwright/test");',
+    'test("发起页：必填项、审批流随归属部门解锁、附件上传、取消返回列表", async ({ page }) => { await page.goto("/"); });',
+    'test("T2 保留用例", async ({ page }) => { await page.goto("/"); });',
+    "",
+  ].join("\n"));
+  await writeFile(path.join(cases, "差异.asset.json"), JSON.stringify({ caseId: "差异", sha256: "old", caseMeta }, null, 2));
+
+  const result = await service.deleteCases(project.id, [{
+    assetPath,
+    caseName: "T1 发起页必填项与审批流随归属部门解锁、附件上传、取消返回",
+  }]);
+  assert.equal(result.deleted.length, 1);
+  const spec = await readFile(specPath, "utf8");
+  assert.doesNotMatch(spec, /发起页：必填项/);
+  assert.match(spec, /T2 保留用例/);
+  const asset = JSON.parse(await readFile(path.join(cases, "差异.asset.json"), "utf8"));
+  assert.deepEqual(asset.caseMeta.cases.map((item) => item.name), ["T2 保留用例"]);
+});
+
 test("删除单个文件并保留其他测试数据", async (t) => {
   const { service, project, dataRoot } = await setup(t);
   const result = await service.remove(project.id, "ui/cases/demo.spec.cjs");
