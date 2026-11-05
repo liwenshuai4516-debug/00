@@ -178,7 +178,7 @@ async function main() {
     await check("切换设置分类后迟到资源响应不覆盖当前界面", `!document.querySelector('#settings-theme-panel').hidden&&document.querySelector('#settings-resources-panel').hidden&&document.querySelector('#model-settings-title').textContent==='主题'`);
     // 直接运行页面的命令菜单代码，核对中文检索与原始命令插入的衔接。
     const rendererSource = await fs.readFile(path.join(renderer, "renderer.js"), "utf8");
-    const menuSource = rendererSource.slice(rendererSource.indexOf("const slashMenu ="), rendererSource.indexOf("// 解析内置命令"));
+    const menuSource = rendererSource.slice(rendererSource.indexOf("const slashMenu ="), rendererSource.indexOf("// 拖入文件只把路径插入输入框"));
     await click('[data-close]');
     await run(`(async()=>{
       const {getPiSkillName,translatePiDescription}=await import('./components/settings/pi-resource-translations.js');
