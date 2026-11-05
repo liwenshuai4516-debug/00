@@ -80,6 +80,10 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return testData.updateSteps(projectId, assetPath, caseName, steps);
   }
 
+  function updateTestCaseMarks(projectId, items, changes) {
+    return testData.updateCaseMarks(projectId, items, changes);
+  }
+
   function deleteTestCases(projectId, items) {
     return testData.deleteCases(projectId, items);
   }
@@ -109,6 +113,7 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     deleteTestData,
     updateTestCaseAssertions,
     updateTestCaseSteps,
+    updateTestCaseMarks,
     deleteTestCases,
     listTestReports,
     getTestReport,

@@ -30,7 +30,7 @@
 
 ## 本项目实际可用字段
 
-以下字段来自 `qa-ui-case/v1` 与报告匹配逻辑，样式只使用这些字段：
+以下字段来自 `qa-ui-case/v1`、报告匹配逻辑与用例标记状态文件，样式只使用这些字段：
 
 | 字段 | 来源 | 当前用途 |
 | --- | --- | --- |
@@ -41,6 +41,7 @@
 | `assertions[]` | `cases[].assertions` | `id`、`kind`（业务/前置）、`text`、`source` |
 | `page`、`role` | 用例或模块 | 页面、角色 |
 | `lastResult` | 运行摘要匹配 | 状态、耗时、完成时间 |
+| `workflow`、`markedAt` | `.case-state.json` | 人工流程标记与标记时间 |
 | `assetPath`、`specPath`、`documentPath` | 资产 | 资产、脚本、说明路径 |
 | `recordedAt` | 资产 | 录制时间 |
 | 模块 `path`、`tags`、`policies`、`caseCount` | 目录构建 | 模块层级、标签、数据策略、条数 |
@@ -70,7 +71,8 @@
 - 离线页面检查：`node_modules/.bin/electron --no-sandbox --disable-gpu tests/ui/test-data-catalog.check.cjs`，28 项通过，覆盖摘要、模块层级、折叠、搜索、步骤/断言编辑、最近状态、单条与批量删除、横向溢出。
 - 单元测试：`node --test tests/unit/test-data-service.test.js`，覆盖目录构建、字段归一化、编辑与删除保护。
 - 截图使用临时夹具数据，不包含真实业务数据。
-- 未做：用例级标签、前置条件、独立预期结果、附件预览、按状态筛选、执行历史；这些需要扩展 `qa-ui-case/v1` 或新增主进程接口，不在本轮样式优化内。
+- 未做：用例级标签、前置条件、独立预期结果、附件预览、执行历史；这些需要扩展 `qa-ui-case/v1` 或新增主进程接口，不在本轮样式优化内。
+- 后续补充：流程标记、按状态筛选和条件复测已实现，见 [用例标记与条件复测](case-marks-retest.md)；用例级标签、附件预览和执行历史仍未做。
 
 ## 参考
 

@@ -119,6 +119,7 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 ## 6. 独立回放（仅意图包含回放/执行时；只录制在步骤 5 结束）
 
 只执行优先用 `qa-ui-execute` 的 `execute.cjs`：一条命令按 caseId 批量/定时回放；需要会话内 MCP 登录态或人工接管时再回本流程 1–3。
+条件复测按测试数据面板的流程标记和分组提示执行，使用 `--cases` + `--grep` 精确到单条 test，不用 `--all` 代替，也不运行未列出的测试；全量复测才使用 `--all`。两种范围不会同时执行。通过的条件复测用例由面板刷新后的运行结果自动转为“复测通过”，不手工改 summary 或标记。
 
 录制流程关闭录制页面后调用 qa_ui_prepare：mode=run、projectRef、targetUrl 和刚返回的 caseId；只执行场景改用用户指定的已有 caseId。同一页面的多份脚本可用 caseIds，不能同时传两种参数。
 run 准备会绑定当前登录态；一个登录态只能准备一个回放批次。finalize 只登记资产，不重置登录态；已绑定批次的登录态不能因 finalize 再次使用。回放命令失败后不要重新 prepare 同一 case 来重试；先读 summary 并按报告流程交付。需要新批次时重新走 qa_ui_project → qa_ui_login → qa_ui_prepare。

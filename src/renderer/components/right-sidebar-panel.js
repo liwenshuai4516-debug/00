@@ -1077,7 +1077,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       let index = 1;
       for (const [caseId, items] of groups) {
         const pattern = items
-          .map((item) => `(?:^| > )${escapeRegExp(item.name)}$`)
+          .map((item) => `.*\\s${escapeRegExp(item.name)}$`)
           .join("|");
         lines.push(`${index}. caseId ${caseId}：${items.map((item) => item.name).join("；")}`);
         lines.push(`   参数：--project ${selectedId} --cases ${caseId} --grep ${shellQuote(pattern)}`);

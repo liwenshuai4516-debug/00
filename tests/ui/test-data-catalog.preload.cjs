@@ -45,6 +45,8 @@ const catalog = {
               page: "/pms/OperationContract",
               role: "管理员",
               recordedAt: "2026-11-04T06:48:43.222Z",
+              workflow: "pending",
+              markedAt: "2026-11-04T06:52:00.000Z",
               lastResult: { status: "failed", durationMs: 12, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
             },
             {
@@ -160,6 +162,20 @@ contextBridge.exposeInMainWorld("agent", {
       assertions: currentCatalog.modules.reduce((sum, module) => sum + countAssertions(module), 0),
     };
     return { deleted: items, removedAssets: [] };
+  },
+  updateTestCaseMarks: async (_projectId, items, changes) => {
+    const keys = new Set(items.map((item) => `${item.assetPath}\u001f${item.caseName}`));
+    const apply = (node) => {
+      for (const item of node.cases ?? []) {
+        if (keys.has(`${item.assetPath}\u001f${item.name}`)) {
+          item.workflow = changes.workflow === "none" ? "none" : changes.workflow;
+          item.markedAt = "2026-11-05T07:00:00.000Z";
+        }
+      }
+      for (const child of node.children ?? []) apply(child);
+    };
+    for (const module of currentCatalog.modules) apply(module);
+    return { workflow: changes.workflow, cases: items };
   },
   updateTestCaseSteps: async (_projectId, assetPath, caseName, steps) => {
     const findCase = (node) => {

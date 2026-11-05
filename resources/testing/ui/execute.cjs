@@ -26,6 +26,7 @@ function usage() {
     "  --config <文件>        项目配置文件，默认 config/projects.local.json",
     "  --storage-state <文件>  复用已有登录态；不传则用配置凭据无头登录",
     "  --tenant <名称>        登录后租户名称，默认 项目管理",
+    "  --grep <正则>          只运行标题匹配的测试（单条用例复测用）",
     "  --headed               登录窗口可见（调试用）",
     "  --help                 显示帮助",
     "",
@@ -47,12 +48,17 @@ function parseArgs(argv) {
     else if (arg === "--config") options.config = argv[++index];
     else if (arg === "--storage-state") options.storageState = argv[++index];
     else if (arg === "--tenant") options.tenant = argv[++index];
+    else if (arg === "--grep") options.grep = argv[++index];
     else throw new Error(`未知参数：${arg}`);
   }
   if (options.help) return options;
   if (!options.project) throw new Error("缺少 --project。");
   if (!options.all && !options.cases) throw new Error("缺少 --cases 或 --all。");
   if (options.all && options.cases) throw new Error("--cases 与 --all 不能同时使用。");
+  if (options.all && options.grep) throw new Error("--all 与 --grep 不能同时使用；条件复测用 --cases，全量复测用 --all。");
+  if (options.grep !== undefined && (typeof options.grep !== "string" || !options.grep.trim())) {
+    throw new Error("--grep 不能为空。");
+  }
   return options;
 }
 
@@ -221,6 +227,7 @@ async function main() {
       caseFiles: cases.caseFiles,
       assetFiles: cases.assetFiles,
       caseHashes: cases.caseHashes,
+      grep: options.grep?.trim() || null,
       targetUrl: projectInfo.targetUrl,
       config: runtime.config,
       testCli: runtime.testCli,

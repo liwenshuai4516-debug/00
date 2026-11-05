@@ -407,6 +407,19 @@ if (scenario === "login-batch") {
     assert.ok(summary.tests.every((test) => test.attachments.every((attachment) => attachment.name !== "trace")));
     assert.deepEqual(summary.problems, []);
     assert.ok(summary.versions.files.every((file) => file.sha256 === file.afterSha256));
+    // 单条复测：grep 只运行匹配的测试标题，不能把整份脚本其他用例一起执行。
+    const grepBatch = await call("qa_ui_prepare", {
+      mode: "run",
+      caseIds: ["outcomes"],
+      targetUrl: origin,
+      grep: ".*\\s真实失败保留$",
+    });
+    await assert.rejects(runFile("/bin/bash", ["-c", grepBatch.replayCommand], { cwd: workspace, timeout: 90_000 }), (error) => error.code === 1);
+    const grepSummary = JSON.parse(await fs.readFile(grepBatch.summaryFile, "utf8"));
+    assert.equal(grepSummary.testCount, 1);
+    assert.equal(grepSummary.tests.length, 1);
+    assert.match(grepSummary.tests[0].title, /真实失败保留/);
+    assert.deepEqual(grepSummary.counts, { failed: 1 });
     const manifest = JSON.parse(await fs.readFile(batch.manifestFile, "utf8"));
     assert.ok(manifest.files.some((file) => file.path === "summary.md"));
     assert.ok(manifest.files.some((file) => file.path === "results.json"));

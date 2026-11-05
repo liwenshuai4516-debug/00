@@ -32,6 +32,9 @@ async function setup(t) {
 
 test("解析执行参数并拒绝冲突的 case 选择", () => {
   assert.deepEqual(parseArgs(["--project", "pms", "--cases", "a,b"]).cases, "a,b");
+  assert.deepEqual(parseArgs(["--project", "pms", "--cases", "a", "--grep", "T1"]).grep, "T1");
+  assert.throws(() => parseArgs(["--project", "pms", "--cases", "a", "--grep", ""]), /--grep 不能为空/);
+  assert.throws(() => parseArgs(["--project", "pms", "--all", "--grep", "T1"]), /--all 与 --grep 不能同时使用/);
   assert.throws(() => parseArgs(["--project", "pms", "--cases", "a", "--all"]), /不能同时使用/);
   assert.throws(() => parseArgs(["--project", "pms"]), /缺少 --cases 或 --all/);
 });

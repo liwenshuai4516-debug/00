@@ -48,6 +48,10 @@ async function main() {
       confirmDialog: document.getElementById("confirm"),
     });
     window.__panel = panel;
+    document.addEventListener("insert-composer-text", (event) => {
+      window.__insertedPrompt = event.detail?.text ?? "";
+      if (event.detail) event.detail.accepted = true;
+    });
     panel.open()
       .then(() => { window.__ready = true; })
       .catch((error) => { window.__error = String(error); });
@@ -132,6 +136,25 @@ async function main() {
     await check("顶部显示最近运行结果", `document.querySelector('.case-run').textContent==='失败'&&document.querySelector('.case-run').dataset.status==='failed'&&document.querySelector('.case-catalog__run-text').textContent.includes('2/3 通过')`);
     await check("用例行显示最近状态", `[...document.querySelectorAll('.case-card__status')].map((node)=>node.textContent).join(',')==='失败,通过,通过'`);
     await check("未标准化资产有提示", `document.querySelector('.right-panel__note').textContent.includes('1 个资产未包含')&&document.querySelectorAll('.right-panel__file').length===0`);
+    await check("用例筛选与执行范围控件可用", `document.querySelector('.case-filter__workflow').value==='all'&&[...document.querySelector('.case-filter__workflow').options].some((option)=>option.textContent.includes('待复测'))&&document.querySelector('.case-filter__mode').value==='retest'&&document.querySelector('.case-filter__run').textContent==='生成执行提示'`);
+    await run(`(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');const select=card.querySelector('.case-card__workflow');select.value='retest';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('用例标记已保存')`);
+    await check("单条用例可保存待复测标记", `(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');return card.querySelector('.case-mark')?.textContent==='待复测'&&card.querySelector('.case-card__workflow').value==='retest';})()`);
+    await run(`(()=>{const select=document.querySelector('.case-filter__workflow');select.value='retest';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait(`document.querySelectorAll('.case-card').length===1`);
+    await check("按待复测筛选只显示目标用例", `document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空'`);
+    await run(`(()=>{const select=document.querySelector('.case-filter__workflow');select.value='all';select.dispatchEvent(new Event('change',{bubbles:true}));window.__insertedPrompt='';})()`);
+    await wait(`document.querySelectorAll('.case-card').length===3`);
+    await run(`document.querySelector('.case-filter__run').click()`);
+    await wait(`window.__insertedPrompt.includes('--grep')`);
+    await check("条件复测提示包含精确测试标题和 caseId", `window.__insertedPrompt.includes('--project a --cases 合同')&&window.__insertedPrompt.includes('--grep')&&window.__insertedPrompt.includes('T2 权限拒绝时列表为空')&&window.__insertedPrompt.includes('不要扩展到其他用例')`);
+    await run(`(()=>{const select=document.querySelector('.case-filter__mode');select.value='full';select.dispatchEvent(new Event('change',{bubbles:true}));window.__insertedPrompt='';})()`);
+    await wait(`document.querySelector('.case-filter__mode').value==='full'`);
+    await run(`document.querySelector('.case-filter__run').click()`);
+    await wait(`window.__insertedPrompt.includes('--all')`);
+    await check("全量复测提示使用 --all 且与条件复测互斥", `window.__insertedPrompt.includes('--project a --all')&&!window.__insertedPrompt.includes('--grep')&&window.__insertedPrompt.includes('全量 UI 复测')`);
+    await run(`(()=>{const select=document.querySelector('.case-filter__mode');select.value='retest';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    await wait(`document.querySelector('.case-filter__mode').value==='retest'`);
     await check("面板没有横向溢出", `document.getElementById('body').scrollWidth<=document.getElementById('body').clientWidth`);
 
     await run(`(()=>{const input=document.querySelector('.case-catalog__search');input.value='空态';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);

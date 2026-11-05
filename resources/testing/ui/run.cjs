@@ -79,9 +79,13 @@ async function run(taskFile) {
     const stdout = createWriteStream(path.join(task.runDir, "stdout.log"));
     const stderr = createWriteStream(path.join(task.runDir, "stderr.log"));
     const filters = task.caseFiles.map((file) => file.split(path.sep).join("/").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$");
+    const testArgs = [task.testCli, "test", ...filters, "--config", task.config, "--project=chromium"];
+    if (typeof task.grep === "string" && task.grep.trim()) {
+      testArgs.push("--grep", task.grep);
+    }
     try {
       exitCode = await new Promise((resolve, reject) => {
-        child = spawn(process.execPath, [task.testCli, "test", ...filters, "--config", task.config, "--project=chromium"], {
+        child = spawn(process.execPath, testArgs, {
           cwd: task.workspace,
           env: {
             ...process.env, NODE_PATH: task.modules, PLAYWRIGHT_BROWSERS_PATH: task.browsers,

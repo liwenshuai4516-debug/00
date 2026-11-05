@@ -323,12 +323,13 @@ export function createUiTestingExtension(runtime) {
       name: "qa_ui_prepare",
       label: "准备 UI 测试",
       description:
-        "检查客户端内置运行环境，准备 UI 录制或多个已有 case 的独立回放批次，并自动生成摘要、版本及证据清单。录制模式成功返回后才会登记官方 Playwright 页面操作与脚本生成工具（browser_*/generator_*），准备前看不到它们属于正常状态。run 准备会绑定登录态，一个登录态只能对应一个回放批次；再次准备时重新检查项目和登录。",
+        "检查客户端内置运行环境，准备 UI 录制或多个已有 case 的独立回放批次，并自动生成摘要、版本及证据清单。录制模式成功返回后才会登记官方 Playwright 页面操作与脚本生成工具（browser_*/generator_*），准备前看不到它们属于正常状态。run 准备会绑定登录态，一个登录态只能对应一个回放批次；再次准备时重新检查项目和登录。run 可传 grep 只运行标题匹配的测试。",
       promptSnippet: "准备 UI 录制或已有 case 的测试运行环境；录制工具由本工具登记。",
       executionMode: "sequential",
       parameters: Type.Object({
         caseId: Type.Optional(Type.String({ minLength: 1, maxLength: 180 })),
         caseIds: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 180 }), { minItems: 1, maxItems: 100 })),
+        grep: Type.Optional(Type.String({ minLength: 1, maxLength: 2000 })),
         loginId: Type.Optional(Type.String()),
         headed: Type.Optional(Type.Boolean()),
         projectRef: Type.Optional(Type.String()),
@@ -341,6 +342,9 @@ export function createUiTestingExtension(runtime) {
 
       async execute(_id, params, signal, _update, ctx) {
         const mode = params.mode ?? "record";
+        if (params.grep !== undefined && (mode !== "run" || !params.grep.trim())) {
+          throw new Error("grep 只用于回放，且不能为空。");
+        }
         const parsedUrl = target(params.targetUrl);
         const project = params.projectRef ? await boundProject(params.projectRef, ctx) : null;
         if (project && target(params.targetUrl).href !== project.targetUrl) throw new Error("输入地址与项目检查结果不一致，请重新检查。");
@@ -518,6 +522,7 @@ export function createUiTestingExtension(runtime) {
           caseIds,
           caseFiles,
           caseHashes,
+          grep: mode === "run" ? params.grep?.trim() || null : null,
           workspace,
           caseDir,
           config: runtime.config,

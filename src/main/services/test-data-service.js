@@ -1,6 +1,6 @@
 const path = require("node:path");
-const { createHash } = require("node:crypto");
-const { readdir, readFile, writeFile, realpath, stat, lstat, unlink } = require("node:fs/promises");
+const { createHash, randomUUID } = require("node:crypto");
+const { readdir, readFile, writeFile, realpath, stat, lstat, unlink, rename } = require("node:fs/promises");
 
 const DATA_SEGMENTS = ["qa", "data"];
 const MAX_FILES = 500;
@@ -14,6 +14,11 @@ const CASE_TYPES = new Set(["functional", "permission", "boundary", "exception",
 const PRIORITIES = new Set(["P0", "P1", "P2", "P3"]);
 const DATA_POLICIES = new Set(["read-only", "write-unique", "write-disposable", "no-write"]);
 const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 };
+const CASE_STATE_FILE = ".case-state.json";
+const CASE_STATE_VERSION = 1;
+const CASE_WORKFLOWS = new Set(["pending", "retest", "verified", "confirmed"]);
+const MAX_CASE_STATE_ENTRIES = 1000;
+const MAX_CASE_STATE_NAME = 300;
 
 function emptyCatalog() {
   return {
@@ -32,6 +37,130 @@ function text(value, max) {
 function safeId(value) {
   const id = text(value, 200);
   return /^[\p{L}\p{N}_-]+$/u.test(id) ? id : "";
+}
+
+function caseStateKey(assetPath, caseName) {
+  return `${assetPath}\u001f${caseName}`;
+}
+
+function caseStateFile(root) {
+  return path.join(root, "ui", "cases", CASE_STATE_FILE);
+}
+
+function normalizeCaseWorkflow(value) {
+  return CASE_WORKFLOWS.has(value) ? value : "none";
+}
+
+function parseCaseState(value) {
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("用例标记文件损坏，请检查 qa/data/ui/cases/.case-state.json。");
+  }
+  if (
+    parsed?.version !== CASE_STATE_VERSION ||
+    !parsed.cases ||
+    typeof parsed.cases !== "object" ||
+    Array.isArray(parsed.cases)
+  ) {
+    throw new Error("用例标记文件格式无效，请检查 qa/data/ui/cases/.case-state.json。");
+  }
+  const cases = {};
+  for (const [key, entry] of Object.entries(parsed.cases)) {
+    if (Object.keys(cases).length >= MAX_CASE_STATE_ENTRIES) break;
+    if (!entry || typeof entry !== "object") continue;
+    const assetPath = text(entry.assetPath, MAX_CASE_STATE_NAME);
+    const caseName = text(entry.caseName, MAX_CASE_STATE_NAME);
+    const workflow = normalizeCaseWorkflow(entry.workflow);
+    if (!assetPath || !caseName || workflow === "none") continue;
+    if (caseStateKey(assetPath, caseName) !== key) continue;
+    if (!/^ui\/cases\/[^/]+\.asset\.json$/.test(assetPath)) continue;
+    cases[key] = {
+      assetPath,
+      caseName,
+      workflow,
+      updatedAt: text(entry.updatedAt, 40),
+    };
+  }
+  return {
+    version: CASE_STATE_VERSION,
+    updatedAt: text(parsed.updatedAt, 40),
+    cases,
+  };
+}
+
+async function readCaseState(root) {
+  try {
+    return parseCaseState(await readFile(caseStateFile(root), "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return { version: CASE_STATE_VERSION, updatedAt: "", cases: {} };
+    }
+    throw error;
+  }
+}
+
+async function writeCaseState(root, cases) {
+  const file = caseStateFile(root);
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  const payload = {
+    version: CASE_STATE_VERSION,
+    updatedAt: new Date().toISOString(),
+    cases,
+  };
+  try {
+    await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { mode: 0o600 });
+    await rename(temporary, file);
+  } finally {
+    await unlink(temporary).catch(() => {});
+  }
+  return payload;
+}
+
+function applyCaseStateToModules(modules, state) {
+  const stack = [...modules];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    for (const item of node.cases ?? []) {
+      const entry = state.cases[caseStateKey(item.assetPath, item.name)];
+      item.workflow = entry?.workflow ?? "none";
+      item.markedAt = entry?.updatedAt ?? null;
+    }
+    stack.push(...(node.children ?? []));
+  }
+}
+
+// 自动转换只处理“待复测/待人工验证”与“复测通过”的明确结果，其他标记保留人工判断。
+function reconcileCaseState(state, modules) {
+  let changed = false;
+  const now = new Date().toISOString();
+  const stack = [...modules];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    for (const item of node.cases ?? []) {
+      const entry = state.cases[caseStateKey(item.assetPath, item.name)];
+      if (!entry || !item.lastResult) continue;
+      const finishedAt = Date.parse(item.lastResult.finishedAt ?? "");
+      const markedAt = Date.parse(entry.updatedAt ?? "");
+      if (!Number.isFinite(finishedAt) || !Number.isFinite(markedAt) || finishedAt <= markedAt) continue;
+      const passed = item.lastResult.status === "passed";
+      const failed = ["failed", "timedOut"].includes(item.lastResult.status);
+      if (passed && ["pending", "retest"].includes(entry.workflow)) {
+        entry.workflow = "verified";
+      } else if (failed && entry.workflow === "verified") {
+        entry.workflow = "pending";
+      } else {
+        continue;
+      }
+      entry.updatedAt = now;
+      item.workflow = entry.workflow;
+      item.markedAt = now;
+      changed = true;
+    }
+    stack.push(...(node.children ?? []));
+  }
+  return changed;
 }
 
 function legacyEntry(item) {
@@ -348,6 +477,14 @@ function replaceAssertionTableRow(document, caseName, assertions) {
 
 // 测试数据只落在项目工作目录的 qa/data；页面只提交相对路径与项目编号。
 function createTestDataService(projectStore) {
+  // 列表读取会顺带落盘自动状态转换；与手动标记串行，避免读旧快照覆盖新标记。
+  let caseStateQueue = Promise.resolve();
+  function runCaseState(operation) {
+    const next = caseStateQueue.then(operation, operation);
+    caseStateQueue = next.then(() => {}, () => {});
+    return next;
+  }
+
   async function resolveRoot(projectId) {
     if (typeof projectId !== "string" || !projectId.trim()) {
       throw new Error("请选择项目环境。");
@@ -431,6 +568,13 @@ function createTestDataService(projectStore) {
 
     const catalog = await buildCatalog(root, assets);
     await applyRunResults(catalog, workspace);
+    await runCaseState(async () => {
+      const caseState = await readCaseState(root);
+      applyCaseStateToModules(catalog.modules, caseState);
+      if (reconcileCaseState(caseState, catalog.modules)) {
+        await writeCaseState(root, caseState.cases);
+      }
+    });
     return {
       available: true,
       truncated: items.length >= MAX_FILES,
@@ -738,6 +882,93 @@ function createTestDataService(projectStore) {
     return updateCase(projectId, assetPath, caseName, { steps });
   }
 
+  async function updateCaseMarks(projectId, items, changes) {
+    if (!Array.isArray(items) || items.length === 0) throw new Error("请选择要标记的用例。");
+    if (items.length > 100) throw new Error("一次最多标记 100 条用例。");
+    const workflow = changes?.workflow;
+    if (workflow !== "none" && !CASE_WORKFLOWS.has(workflow)) throw new Error("用例标记无效。");
+    const resolved = await resolveRoot(projectId);
+    if (resolved === null) throw new Error("测试数据目录不存在。");
+    const { root } = resolved;
+    const groups = new Map();
+    const normalizedItems = [];
+    for (const item of items) {
+      if (typeof item?.assetPath !== "string" || !item.assetPath.trim()) throw new Error("用例资产路径无效。");
+      if (typeof item?.caseName !== "string" || !item.caseName.trim()) throw new Error("用例名称无效。");
+      const normalized = item.assetPath.replaceAll("\\", "/");
+      const segments = normalized.split("/");
+      if (
+        path.posix.isAbsolute(normalized) ||
+        path.win32.isAbsolute(normalized) ||
+        segments.length !== 3 ||
+        segments[0] !== "ui" ||
+        segments[1] !== "cases" ||
+        !segments[2].endsWith(".asset.json") ||
+        segments.some((segment) => !segment || segment === "." || segment === "..")
+      ) {
+        throw new Error("只能标记 qa/data/ui/cases 下的用例。");
+      }
+      const caseName = item.caseName.trim();
+      if (caseName.length > MAX_CASE_STATE_NAME) throw new Error("用例名称过长。");
+      if (!groups.has(normalized)) groups.set(normalized, []);
+      groups.get(normalized).push(caseName);
+      normalizedItems.push({ assetPath: normalized, caseName });
+    }
+
+    // 先确认资产和用例仍存在，避免把标记写到已删除或伪造的路径。
+    for (const [assetPath, names] of groups) {
+      const target = path.join(root, ...assetPath.split("/"));
+      const relative = path.relative(root, target);
+      if (!relative || isOutside(relative)) throw new Error("用例资产路径超出 qa/data。");
+      let link;
+      try {
+        link = await lstat(target);
+      } catch (error) {
+        if (error.code === "ENOENT") throw new Error("用例资产已不存在，请刷新。");
+        throw error;
+      }
+      if (link.isSymbolicLink()) throw new Error("不能标记符号链接中的用例。");
+      if (!link.isFile()) throw new Error("只能标记用例资产文件中的用例。");
+      const real = await realpath(target);
+      if (isOutside(path.relative(root, real))) throw new Error("用例资产路径超出 qa/data。");
+      let metadata;
+      try {
+        metadata = JSON.parse(await readFile(real, "utf8"));
+      } catch {
+        throw new Error("用例资产不是有效 JSON，无法标记用例。");
+      }
+      const caseMeta = metadata?.caseMeta;
+      if (caseMeta?.schema !== "qa-ui-case/v1" || !Array.isArray(caseMeta.cases)) {
+        throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法标记用例。");
+      }
+      const existing = new Set(caseMeta.cases.map((entry) => text(entry?.name, MAX_CASE_STATE_NAME)));
+      for (const name of names) {
+        if (!existing.has(name)) throw new Error(`未找到用例「${name}」，请刷新后重试。`);
+      }
+    }
+
+    const updated = await runCaseState(async () => {
+      const state = await readCaseState(root);
+      const now = new Date().toISOString();
+      const result = [];
+      const seen = new Set();
+      for (const { assetPath, caseName } of normalizedItems) {
+        const key = caseStateKey(assetPath, caseName);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (workflow === "none") delete state.cases[key];
+        else state.cases[key] = { assetPath, caseName, workflow, updatedAt: now };
+        result.push({ assetPath, caseName, workflow });
+      }
+      if (Object.keys(state.cases).length > MAX_CASE_STATE_ENTRIES) {
+        throw new Error("用例标记数量超过上限，请先清理。");
+      }
+      await writeCaseState(root, state.cases);
+      return result;
+    });
+    return { workflow, updatedAt: new Date().toISOString(), cases: updated };
+  }
+
   async function deleteCases(projectId, items) {
     if (!Array.isArray(items) || items.length === 0) throw new Error("请选择要删除的用例。");
     if (items.length > 100) throw new Error("一次最多删除 100 条用例。");
@@ -885,7 +1116,7 @@ function createTestDataService(projectStore) {
     return { deleted, removedAssets };
   }
 
-  return { list, remove, updateAssertions, updateSteps, deleteCases };
+  return { list, remove, updateAssertions, updateSteps, updateCaseMarks, deleteCases };
 }
 
 module.exports = { createTestDataService };

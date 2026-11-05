@@ -866,6 +866,111 @@
   font-size: 10px;
 }
 
+.case-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.case-filter__workflow,
+.case-filter__mode,
+.case-card__workflow,
+.case-bulk__mark {
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 10px;
+}
+
+.case-filter__workflow {
+  flex: 1 1 145px;
+}
+
+.case-filter__mode {
+  flex: 0 1 92px;
+}
+
+.case-filter__run {
+  flex: none;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--focus) 45%, var(--border));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--focus);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.case-filter__run:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--focus) 10%, transparent);
+}
+
+.case-filter__run:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.case-bulk__mark {
+  flex: 0 1 112px;
+}
+
+.case-mark {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.5;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+.case-mark[data-workflow="pending"] {
+  border-color: color-mix(in srgb, var(--error-border) 45%, var(--border));
+  color: var(--error-border);
+}
+
+.case-mark[data-workflow="retest"] {
+  border-color: color-mix(in srgb, var(--focus) 45%, var(--border));
+  color: var(--focus);
+}
+
+.case-mark[data-workflow="verified"] {
+  border-color: color-mix(in srgb, var(--focus) 55%, var(--border));
+  color: var(--focus);
+}
+
+.case-mark[data-workflow="confirmed"] {
+  border-color: color-mix(in srgb, var(--error-border) 55%, var(--border));
+  color: var(--error-border);
+}
+
+.case-card__mark-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.case-card__mark-label {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.case-card__workflow {
+  max-width: 150px;
+}
+
 .case-card__head {
   display: flex;
   flex-direction: column;

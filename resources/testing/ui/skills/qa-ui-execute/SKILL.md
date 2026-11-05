@@ -42,6 +42,7 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目
 | --- | --- |
 | `--project` | 必填，项目编号或名称（读 `config/projects.local.json`） |
 | `--cases` | 逗号分隔的 caseId |
+| `--grep` | 只运行标题匹配的测试；与 `--cases` 配合精确到单条 test，不能替代全量复测 |
 | `--all` | 当前项目、当前目标地址下的全部已登记用例；同项目有多个目标时需配合 `--url` |
 | `--url` | 覆盖目标地址，必须与项目配置同源 |
 | `--storage-state` | 复用已有登录态（文件），适合验证码/MFA/SSO |
@@ -49,6 +50,16 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目
 | `--headed` | 登录窗口可见，仅调试 |
 
 登录默认用项目配置账号密码无头自动登录；不打印凭据。遇到验证码、MFA、跨站登录或租户无法自动选择时，先用 `qa-ui-basic`/应用登录生成 storageState，再传 `--storage-state`。
+
+## 条件复测（精确到单条 test）
+
+测试数据面板的“条件复测”会按脚本分组生成 `--cases` 和 `--grep`。按提示逐组执行：
+
+- `--cases` 选择脚本，`--grep` 只运行标题匹配的测试；多个目标测试在同一脚本时合并为一个正则，不要拆成多次 `--all`。
+- `--grep` 匹配 Playwright 完整标题；面板生成 `.*\s<用例名>$` 形式，调用时保持为单个参数，不要额外展开 `$` 或拆分空格。
+- 条件复测不使用 `--all`，不运行未列出的测试；失败保持原流程标记，不自动重跑。
+- 全量复测使用 `--all`，不要和 `--grep` 或条件复测混用。
+- 最新严格 `passed` 的待复测/待人工验证用例会在面板下次刷新时变为“复测通过”；不要手工改写 summary 或标记。
 
 ## 执行步骤（Agent）
 

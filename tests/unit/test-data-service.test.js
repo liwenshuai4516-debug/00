@@ -534,3 +534,111 @@ test("更新步骤/断言拒绝越界路径、非资产、未知用例和非法�
     /第 2 个执行步骤不能为空/,
   );
 });
+
+function findCatalogCase(modules, name) {
+  const stack = [...modules];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    const found = (node.cases ?? []).find((item) => item.name === name);
+    if (found) return found;
+    stack.push(...(node.children ?? []));
+  }
+  return null;
+}
+
+test("用例流程标记持久化，并在更新结果后自动转换", async (t) => {
+  const { service, project, dataRoot, workspace } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  const assetPath = "ui/cases/state.asset.json";
+  const caseName = "T1 标记测试";
+  await writeFile(path.join(cases, "state.asset.json"), JSON.stringify({
+    caseId: "state",
+    caseMeta: {
+      schema: "qa-ui-case/v1",
+      caseId: "state",
+      project: { id: "pms", name: "项目管理系统" },
+      page: "/pms/State",
+      role: "管理员",
+      dataPolicy: "read-only",
+      cases: [{
+        name: caseName,
+        type: "functional",
+        priority: "P2",
+        steps: ["打开页面"],
+        assertions: [{ id: "A1", kind: "business", text: "页面可见", source: "页面基线" }],
+      }],
+    },
+  }, null, 2));
+
+  const marked = await service.updateCaseMarks(project.id, [{ assetPath, caseName }], { workflow: "retest" });
+  assert.equal(marked.cases[0].workflow, "retest");
+  let catalog = (await service.list(project.id)).catalog;
+  assert.equal(findCatalogCase(catalog.modules, caseName).workflow, "retest");
+  assert.equal(findCatalogCase(catalog.modules, caseName).lastResult, null);
+
+  const passRun = path.join(workspace, "qa", "ui", "runs", "run-mark-pass");
+  await mkdir(passRun, { recursive: true });
+  await writeFile(path.join(passRun, "summary.json"), JSON.stringify({
+    runId: "run-mark-pass",
+    status: "passed",
+    startedAt: new Date(Date.now() + 30_000).toISOString(),
+    finishedAt: new Date(Date.now() + 60_000).toISOString(),
+    tests: [{ file: "state.spec.cjs", title: "state.spec.cjs > T1 标记测试", status: "passed", durationMs: 1 }],
+  }));
+  catalog = (await service.list(project.id)).catalog;
+  assert.equal(findCatalogCase(catalog.modules, caseName).workflow, "verified");
+  const stateAfterPass = JSON.parse(await readFile(path.join(cases, ".case-state.json"), "utf8"));
+  assert.equal(Object.values(stateAfterPass.cases)[0].workflow, "verified");
+
+  const failRun = path.join(workspace, "qa", "ui", "runs", "run-mark-fail");
+  await mkdir(failRun, { recursive: true });
+  await writeFile(path.join(failRun, "summary.json"), JSON.stringify({
+    runId: "run-mark-fail",
+    status: "failed",
+    startedAt: new Date(Date.now() + 90_000).toISOString(),
+    finishedAt: new Date(Date.now() + 120_000).toISOString(),
+    tests: [{ file: "state.spec.cjs", title: "state.spec.cjs > T1 标记测试", status: "failed", durationMs: 1 }],
+  }));
+  catalog = (await service.list(project.id)).catalog;
+  assert.equal(findCatalogCase(catalog.modules, caseName).workflow, "pending");
+});
+
+test("用例标记拒绝越界路径、未知用例和非法状态；损坏状态文件不静默覆盖", async (t) => {
+  const { service, project, dataRoot } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  const caseName = "T1 标记测试";
+  await writeFile(path.join(cases, "state.asset.json"), JSON.stringify({
+    caseId: "state",
+    caseMeta: {
+      schema: "qa-ui-case/v1",
+      caseId: "state",
+      project: { id: "pms", name: "项目管理系统" },
+      page: "/pms/State",
+      role: "管理员",
+      dataPolicy: "read-only",
+      cases: [{
+        name: caseName,
+        type: "functional",
+        priority: "P2",
+        steps: ["打开页面"],
+        assertions: [{ id: "A1", kind: "business", text: "页面可见", source: "页面基线" }],
+      }],
+    },
+  }, null, 2));
+
+  await assert.rejects(
+    service.updateCaseMarks(project.id, [{ assetPath: "../state.asset.json", caseName }], { workflow: "retest" }),
+    /只能标记/,
+  );
+  await assert.rejects(
+    service.updateCaseMarks(project.id, [{ assetPath: "ui/cases/state.asset.json", caseName: "不存在" }], { workflow: "retest" }),
+    /未找到用例/,
+  );
+  await assert.rejects(
+    service.updateCaseMarks(project.id, [{ assetPath: "ui/cases/state.asset.json", caseName }], { workflow: "unknown" }),
+    /用例标记无效/,
+  );
+
+  await writeFile(path.join(cases, ".case-state.json"), "{bad");
+  await assert.rejects(service.list(project.id), /用例标记文件损坏/);
+});
