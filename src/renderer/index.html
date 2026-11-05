@@ -465,7 +465,7 @@
       <h2>设置</h2>
       <nav class="settings-categories" role="tablist" aria-label="设置分类" aria-orientation="vertical">
         <button type="button" id="settings-general-tab" class="settings-category" role="tab" data-settings-tab="general"
-          aria-selected="false" aria-controls="settings-general-panel" tabindex="-1">通用</button>
+          aria-selected="false" aria-controls="settings-general-panel" tabindex="-1">通用设置</button>
         <button type="button" id="settings-model-tab" class="settings-category" role="tab" data-settings-tab="model"
           aria-selected="true" aria-controls="settings-model-panel">模型与供应商</button>
         <button type="button" id="settings-theme-tab" class="settings-category" role="tab" data-settings-tab="theme"
@@ -493,25 +493,30 @@
     <section id="settings-general-panel" class="general-settings settings-content" role="tabpanel"
       aria-labelledby="settings-general-tab" hidden>
       <p id="general-settings-intro">通用设置控制模型可使用的工具范围。权限门禁是应用层确认，不是操作系统沙箱。</p>
-      <section class="model-panel-card permission-settings">
-        <div class="model-card-heading">
-          <h3>权限控制</h3>
-          <span class="model-badge" data-permission-state>读取中</span>
+      <div class="settings-group permission-settings">
+        <div class="settings-row">
+          <div class="settings-row__text">
+            <span class="settings-row__title">权限</span>
+            <span class="settings-row__hint">选择工具调用的确认方式</span>
+          </div>
+          <select class="settings-select" data-permission-mode-select aria-label="权限模式"></select>
         </div>
-        <p>控制模型发起的工具调用。读取、搜索类工具直接执行；写入、命令、登录和录制等工具按模式处理。</p>
-        <label class="permission-scope">应用范围
-          <select data-permission-scope aria-label="权限应用范围">
+        <div class="settings-row">
+          <div class="settings-row__text">
+            <span class="settings-row__title">应用范围</span>
+            <span class="settings-row__hint">当前会话、当前项目或新会话默认</span>
+          </div>
+          <select class="settings-select" data-permission-scope aria-label="权限应用范围">
             <option value="session">仅当前会话</option>
             <option value="workspace">当前项目所有会话</option>
             <option value="default">新会话默认</option>
           </select>
-        </label>
-        <p class="permission-note" data-permission-scope-note>权限来源：读取中。</p>
-        <div class="permission-options" data-permission-options role="radiogroup" aria-label="权限模式"></div>
-        <p class="permission-warning" data-permission-warning hidden>完全权限会跳过所有工具确认，包括命令和文件写入。只在明确信任当前任务时使用。</p>
-        <p class="permission-note">这是应用层的工具调用门禁，不是操作系统沙箱。扩展、子进程和工具本身仍使用应用进程的系统权限。</p>
-        <p class="model-form-status" data-permission-status role="status" aria-atomic="true"></p>
-      </section>
+        </div>
+      </div>
+      <p class="permission-note" data-permission-scope-note>权限来源：读取中。</p>
+      <p class="permission-warning" data-permission-warning hidden>完全权限会跳过所有工具确认，包括命令和文件写入。只在明确信任当前任务时使用。</p>
+      <p class="permission-note">这是应用层的工具调用门禁，不是操作系统沙箱。扩展、子进程和工具本身仍使用应用进程的系统权限。</p>
+      <p class="model-form-status" data-permission-status role="status" aria-atomic="true"></p>
     </section>
     <section id="settings-model-panel" class="model-providers settings-content" role="tabpanel" aria-labelledby="settings-model-tab">
       <p id="model-settings-intro">模型来自 Pi 官方的 models.json。按提供商维护端点、认证与模型列表；密钥只写不回填，环境变量与 auth.json 仍可提供认证。</p>

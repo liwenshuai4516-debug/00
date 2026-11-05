@@ -195,3 +195,108 @@
   font-size: 10px;
   line-height: 1.55;
 }
+
+/* DSH 式紧凑设置行：左侧说明，右侧下拉，不使用大卡片。 */
+.permission-settings {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.settings-row__title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.settings-row__hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-select {
+  flex: none;
+  appearance: none;
+  min-width: 150px;
+  min-height: 36px;
+  padding: 7px 30px 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.settings-select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--focus) 30%, var(--border));
+}
+
+.settings-select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--focus) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.settings-select:disabled {
+  opacity: 0.6;
+}
+
+@media (max-width: 480px) {
+  .settings-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-select {
+    width: 100%;
+  }
+}
+
+/* 覆盖模型设置通用表单规则：权限行是左右布局，下拉不能撑满整行。 */
+.model-settings-dialog .settings-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.model-settings-dialog .settings-select {
+  flex: none;
+  width: auto;
+  min-width: 150px;
+  min-height: 36px;
+  padding: 7px 30px 7px 12px;
+}
+
+@media (max-width: 480px) {
+  .model-settings-dialog .settings-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .model-settings-dialog .settings-select {
+    width: 100%;
+  }
+}

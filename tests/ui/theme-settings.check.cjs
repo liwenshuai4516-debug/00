@@ -261,11 +261,15 @@ async function main() {
       `document.querySelectorAll('[role=tablist] [role=tab]').length===6 && document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true' && !document.querySelector('#settings-general-tab').matches('[aria-selected=true]')`,
     );
     await click("#settings-general-tab");
-    await wait(`document.querySelectorAll('[data-permission-options] .permission-option').length===3`);
+    await wait(`document.querySelectorAll('[data-permission-mode-select] option').length===3`);
     await check(
       "通用设置打开权限控制并读取默认模式",
-      `!document.querySelector('#settings-general-panel').hidden && document.querySelector('#settings-model-panel').hidden && document.querySelector('[data-permission-state]').textContent==='每次确认'`,
+      `!document.querySelector('#settings-general-panel').hidden && document.querySelector('#settings-model-panel').hidden && document.querySelector('[data-permission-mode-select]').value==='ask'`,
     );
+    if (process.env.PERMISSION_SETTINGS_SCREENSHOT_PATH) {
+      await run("new Promise((resolve)=>setTimeout(resolve,120))");
+      await writeFile(process.env.PERMISSION_SETTINGS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
     await click("#settings-model-tab");
     await run(
       `window.originalMessage=document.querySelector('.chat-message');window.originalPanel=document.querySelector('#settings-model-panel');undefined;`,

@@ -39,9 +39,9 @@ DSH 的模型是 `read-only`、`workspace-write`、`full-access`（以及实验 
 - 同一扩展在 `before_agent_start` 写入 `app-permission` 系统提示词段，按当前模式告诉模型：完全权限视为已授权本次任务，不要逐项询问或只做只读；每次确认直接调用工具、由应用弹窗确认；只读不要尝试写操作。模式保存后在下一轮提示词立即生效。
 - `src/main/pi-agent.mjs` 在创建会话时按会话/项目解析权限；`src/main/resources/pi-resources.mjs` 的 `resolveTrust` 在完全权限下直接信任项目资源，不弹项目信任确认，也不写入 `ProjectTrustStore`。
 - `src/main/ipc/agent-ipc.js`、`src/preload/preload.js`：`agent:read-permission-settings` / `agent:save-permission-settings`，主进程从当前实际会话与工作区解析范围，保存走共用空闲互斥。
-- `src/renderer/components/settings/permission-settings.js`：设置页「通用 → 权限控制」提供模式和范围选择；当前生效范围以徽标/说明展示。
+- `src/renderer/components/settings/permission-settings.js`：设置页「通用设置 → 权限控制」提供模式和范围下拉；当前生效范围以说明展示。
 - `src/renderer/components/permission-selector.js`：输入框内的权限选择器，默认保存到当前会话；设置页变更通过 `permission-settings-changed` 事件同步。
-- 设置页新增「通用」分类；模型、主题、归档、提示词、技能与扩展包分类保持不变。
+- 设置页新增「通用设置」分类；模型、主题、归档、提示词、技能与扩展包分类保持不变。
 
 ## 边界
 
@@ -66,6 +66,6 @@ node_modules/.bin/electron --no-sandbox tests/ui/theme-settings.check.cjs
 - 完全权限项目信任：2 项（完全权限不弹信任确认、非完全权限仍按既有流程）。
 - 权限设置页面：6 项（三种模式、会话/项目范围、完全权限风险提示、忙碌禁用）。
 - 权限选择器：5 项（默认状态、菜单、会话保存、设置同步、Escape 关闭）。
-- 主题设置 43 项复跑通过，确认新增「通用」分类、范围选择和输入框选择器没有破坏现有设置页导航与窄窗布局。
+- 主题设置 43 项复跑通过，确认新增「通用设置」分类、范围选择和输入框选择器没有破坏现有设置页导航与窄窗布局。
 
 ![通用设置：权限控制](images/permission-settings.png)
