@@ -3,6 +3,7 @@ import { createPermissionSettings } from "./permission-settings.js";
 import { createThemeSettings } from "../theme/theme-settings.js";
 import { createPiResourcesPanel } from "./pi-resources.js";
 import { createPromptSettings } from "./prompt-settings.js";
+import { bindCodeWorkViewSetting } from "../code-work-view.js";
 
 export function createSettingsPanel(
   dialog,
@@ -23,6 +24,8 @@ export function createSettingsPanel(
   const appearance = createThemeSettings(
     dialog.querySelector("[data-theme-panel]"),
   );
+  // 偏好是页面级开关，不经过主进程配置；初始值在页面加载时读取。
+  bindCodeWorkViewSetting(dialog);
   const tabs = [...dialog.querySelectorAll('[role="tab"]')];
   const panels = [...dialog.querySelectorAll('[role="tabpanel"]')];
   const heading = dialog.querySelector("#model-settings-title");

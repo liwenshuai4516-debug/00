@@ -27,6 +27,9 @@ const { loadEnvFile } = require("node:process");
 const { createSessionService } = require("./services/session-service.js");
 const { createChatService } = require("./services/chat-service.js");
 const {
+  createWorkspaceChangesService,
+} = require("./services/workspace-changes-service.js");
+const {
   createConversationExportService,
 } = require("./services/conversation-export-service.js");
 const {
@@ -93,6 +96,7 @@ async function createConfiguredAgent(
       cancelPendingUi: extensionUi.cancelPending,
       uiTestingRuntime: resolveUiTestingRuntime(app, projectRoot),
       permissionController: permissionService,
+      workspaceChanges,
     },
   );
 }
@@ -138,12 +142,17 @@ const proposalStorage = createProposalStorage(
 
 const proposalStore = createProposalStore(proposalStorage);
 
+// 每轮改动只保留在主进程内存和系统临时目录，不写会话历史。
+const workspaceChanges = createWorkspaceChangesService();
+
 // undefined 表示继续使用默认的 Pi 发送函数。
 const chatService = createChatService(
   sessionService,
   undefined,
   proposalStore,
   sessionStateStore,
+  undefined,
+  workspaceChanges,
 );
 // 文件操作以实际会话为准，不固定使用启动时的环境变量。
 async function getCurrentWorkspaceDir() {
@@ -229,6 +238,7 @@ registerAgentIpc(
   modelProviderService,
   promptSettingsStore,
   permissionService,
+  workspaceChanges,
 );
 
 const quitGuard = registerAppQuitGuard(app, BrowserWindow);
@@ -277,6 +287,7 @@ function createWindow() {
 }
 
 installGuestBrowserPolicy(app);
+app.on("will-quit", () => workspaceChanges.dispose());
 
 app.whenReady().then(() => {
   createWindow();

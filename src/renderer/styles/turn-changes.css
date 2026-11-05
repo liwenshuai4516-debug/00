@@ -1,0 +1,330 @@
+/* 轮末改动卡片与右侧栏审阅；沿用现有主题变量，不引入独立配色。 */
+
+.turn-changes {
+  width: min(100%, var(--content-width));
+  margin: 6px auto 18px;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.turn-changes[hidden] {
+  display: none;
+}
+
+.turn-changes__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.turn-changes__title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.turn-changes__meta {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.turn-changes__files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.turn-changes__file {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.turn-changes__file:hover {
+  background: var(--hover);
+}
+
+.turn-changes__file:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.turn-changes__path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-changes__stat {
+  flex: none;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.turn-changes__more {
+  margin-top: 6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.turn-changes__more:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.turn-changes__more:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* ---------- 设置开关 ---------- */
+
+.code-work-view-settings {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.model-settings-dialog .settings-switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  margin: 0;
+}
+
+.settings-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.settings-switch__track {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 120ms ease;
+  pointer-events: none;
+}
+
+.settings-switch__track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.settings-switch input:checked + .settings-switch__track {
+  background: var(--text);
+}
+
+.settings-switch input:checked + .settings-switch__track::after {
+  transform: translateX(18px);
+  background: var(--page);
+}
+
+.settings-switch input:focus-visible + .settings-switch__track {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.settings-switch input:disabled {
+  cursor: not-allowed;
+}
+
+.settings-switch input:disabled + .settings-switch__track {
+  opacity: 0.5;
+}
+
+/* ---------- 右侧栏：改动列表与差异 ---------- */
+
+.right-panel--changes,
+.right-panel--change {
+  gap: 10px;
+}
+
+.change-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.change-summary__stat {
+  flex: none;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.change-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-file {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.change-file:hover {
+  background: var(--hover);
+}
+
+.change-file:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.change-file__path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.change-file__stat {
+  flex: none;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.change-file__stat[data-kind="binary"],
+.change-file__stat[data-kind="oversized"] {
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.change-diff {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--page);
+  font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.change-hunk {
+  position: sticky;
+  left: 0;
+  padding: 3px 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.change-row {
+  display: grid;
+  grid-template-columns: 40px 40px 16px minmax(0, 1fr);
+  min-width: max-content;
+}
+
+.change-row__num {
+  padding: 0 4px;
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  text-align: right;
+  user-select: none;
+}
+
+.change-row__sign {
+  color: var(--muted);
+  text-align: center;
+  user-select: none;
+}
+
+.change-row__text {
+  padding: 0 10px 0 2px;
+  color: var(--text);
+  white-space: pre;
+}
+
+.change-row[data-kind="add"] {
+  background: var(--added-background);
+}
+
+.change-row[data-kind="add"] .change-row__sign {
+  color: light-dark(#1a7f37, #63c27f);
+}
+
+.change-row[data-kind="remove"] {
+  background: var(--removed-background);
+}
+
+.change-row[data-kind="remove"] .change-row__sign {
+  color: light-dark(#b42318, #f09595);
+}
+
+.change-note {
+  margin: 6px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.change-note[data-error="true"] {
+  color: light-dark(#b42318, #f09595);
+}

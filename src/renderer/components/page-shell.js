@@ -65,6 +65,14 @@ document.addEventListener("open-file-preview", (event) => {
   void rightSidebarPanel.openFile(filePath);
 });
 
+// 轮末改动卡片：展开右侧栏并打开本轮改动；index 为 -1 时显示文件列表。
+document.addEventListener("open-changes-review", (event) => {
+  const detail = event.detail ?? {};
+  if (typeof detail.requestId !== "string" || detail.requestId === "") return;
+  if (!rightSidebar.isOpen()) rightSidebar.open();
+  void rightSidebarPanel.openChanges(detail.requestId, detail.index);
+});
+
 // 输入区工作区入口：展开右侧栏并进入文件浏览。
 document.addEventListener("open-file-browser", () => {
   if (!rightSidebar.isOpen()) rightSidebar.open();

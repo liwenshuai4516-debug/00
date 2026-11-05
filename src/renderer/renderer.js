@@ -10,6 +10,8 @@ import { createMessageScroll } from "./components/message-scroll.js";
 import { createSendQueue } from "./components/send-queue.js";
 import { createFileReferenceMenu } from "./components/file-reference-menu.js";
 import { createTurnRail } from "./components/turn-rail.js";
+import { isCodeWorkViewEnabled } from "./components/code-work-view.js";
+import { createTurnChangesCard } from "./components/turn-changes.js";
 import { createTodoDock } from "./components/todo-dock.js";
 import { createSessionList } from "./components/session-list.js";
 import { createUnsentSendPanel } from "./components/unsent-send-panel.js";
@@ -284,6 +286,32 @@ extensionUiPanel = createExtensionUi(window.agent, input, {
 });
 
 templateSelect.addEventListener("change", renderComposerState);
+
+// 右侧栏生成复测/执行提示；只插入输入框，不自动发送。
+document.addEventListener("insert-composer-text", (event) => {
+  const detail = event.detail ?? {};
+  detail.accepted = false;
+  if (
+    typeof detail.text !== "string" ||
+    !detail.text.trim() ||
+    pageBusy ||
+    closing ||
+    archiveSyncPending ||
+    composing ||
+    !composerState.canSend ||
+    input.readOnly
+  )
+    return;
+  try {
+    composerPersistence.appendTemplate(detail.text);
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    detail.accepted = true;
+  } catch (error) {
+    setRequestStatus(error.message);
+  }
+});
+
 templateInsert.addEventListener("click", () => {
   // 处理点击时再次检查，不能只依赖上一次渲染的按钮状态。
   if (
@@ -772,6 +800,28 @@ function addMessage(role, text) {
   messageScroll.update();
   return body;
 }
+
+// 本轮改动卡片只读取主进程已保存的摘要；关闭偏好或读取失败时不打断对话。
+async function appendTurnChanges(requestId) {
+  if (typeof requestId !== "string" || requestId === "" || !isCodeWorkViewEnabled()) return;
+  try {
+    const summary = await window.agent.readWorkspaceChanges(requestId);
+    const card = createTurnChangesCard(summary);
+    if (!card) return;
+    messages.append(card);
+    messageScroll.update();
+  } catch {
+    // 摘要读取失败只影响卡片，不影响已经结束的回复。
+  }
+}
+
+// 关闭偏好后立即隐藏已有卡片；重新开启只影响之后的新请求。
+document.addEventListener("code-work-view-changed", (event) => {
+  const enabled = event.detail?.enabled !== false;
+  for (const card of document.querySelectorAll(".turn-changes")) {
+    card.hidden = !enabled;
+  }
+});
 
 // 统一更新按钮、模型选择器和历史列表的可用状态。
 
@@ -1913,7 +1963,7 @@ form.addEventListener("submit", async (event) => {
     const result = await window.agent.sendMessage(ticket.text, {
       sessionId: ticket.sessionId,
       revision: ticket.revision,
-    });
+    }, { workspaceChanges: isCodeWorkViewEnabled() });
     outputTrace?.finish(result);
     // 停止或结果未确认时不自动发送队列，交由用户手动继续。
     drainAfter = !result.stopped && result.outcome !== "unconfirmed";
@@ -1938,6 +1988,8 @@ form.addEventListener("submit", async (event) => {
       await modelSelector.refresh();
     }
     if (result.warning) addMessage("status", result.warning);
+    // 扩展替换会话后历史已切换到新对话，旧请求的改动卡片不再放入新页面。
+    if (!result.sessionChanged) await appendTurnChanges(result.changesRequestId);
     await refreshSessions();
   } catch (error) {
     outputTrace?.finish({ outcome: "unconfirmed" });

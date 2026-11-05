@@ -12,7 +12,7 @@ function registerAgentIpc(
   modelProviderService,
     promptSettingsStore,
   permissionService,
-
+  workspaceChanges,
 ) {
   let operationPending = false;
 
@@ -115,6 +115,23 @@ function registerAgentIpc(
     async () => (await sessionService.getSessionInfo()).workspaceDir,
   );
   ipcMain.handle("agent:read-preview-file", (_event, filePath) => readPreviewFile(filePath));
+
+  // 本轮改动只接受主进程发出的编号；路径、会话归属和临时目录均由主进程保存。
+  ipcMain.handle("agent:read-workspace-changes", (_event, requestId) => {
+    if (typeof requestId !== "string" || requestId === "" || requestId.length > 128) {
+      throw new Error("改动编号无效。");
+    }
+    return workspaceChanges?.summary(requestId) ?? null;
+  });
+  ipcMain.handle("agent:read-workspace-change-diff", (_event, requestId, index) => {
+    if (typeof requestId !== "string" || requestId === "" || requestId.length > 128) {
+      throw new Error("改动编号无效。");
+    }
+    if (!Number.isInteger(index) || index < 0 || index > 10000) {
+      throw new Error("改动文件编号无效。");
+    }
+    return workspaceChanges?.diff(requestId, index) ?? null;
+  });
 
   // 文件树同样只读，按目录按需列出一层。
   const { createWorkspaceTreeReader } = require("../services/workspace-tree-service.js");
@@ -267,6 +284,11 @@ function registerAgentIpc(
       projectService.updateTestCaseSteps(projectId, assetPath, caseName, steps),
     );
   });
+  ipcMain.handle("agent:update-test-case-marks", (_event, projectId, items, changes) => {
+    return runIdleOperation(() =>
+      projectService.updateTestCaseMarks(projectId, items, changes),
+    );
+  });
   ipcMain.handle("agent:delete-test-cases", (_event, projectId, items) => {
     return runIdleOperation(() =>
       projectService.deleteTestCases(projectId, items),
@@ -345,7 +367,7 @@ function registerAgentIpc(
     return runIdleOperation(() => proposalApplyService.apply(id));
   });
 
-  ipcMain.handle("agent:send-message", (event, message, draftRequest) => {
+  ipcMain.handle("agent:send-message", (event, message, draftRequest, requestOptions) => {
     // chatService 自己负责拒绝重复生成；这里阻止保存期间发送。
     if (operationPending) {
       throw new Error("请等待当前操作结束后再发送消息。");
@@ -393,6 +415,7 @@ function registerAgentIpc(
       (output) => {
         if (!event.sender.isDestroyed()) event.sender.send("agent:output-event", output);
       },
+      { workspaceChanges: requestOptions?.workspaceChanges === true },
     );
   });
 

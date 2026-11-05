@@ -17,6 +17,7 @@ function createChatService(
   proposalStore = createProposalStore(),
   sessionStateStore,
   loadSteer = loadDefaultSteer,
+  workspaceChanges,
 ) {
   let activeRequest;
 
@@ -32,6 +33,7 @@ function createChatService(
     draftRequest,
     onDraftConsumed = () => {},
     onOutputEvent = () => {},
+    options = {},
   ) {
     if (typeof text !== "string" || !text.trim()) {
       throw new Error("请输入消息内容。");
@@ -61,7 +63,7 @@ function createChatService(
     }
 
     // 在任何异步操作之前占用请求状态，防止重复发送。
-    const request = { stopped: false, session: null };
+    const request = { stopped: false, session: null, changesRequestId: undefined };
     activeRequest = request;
     let consumed;
     let workspaceDir;
@@ -71,6 +73,18 @@ function createChatService(
     try {
       const sendMessage = await loadSender();
       const session = await sessionService.getSession();
+      const requestCwd = session.sessionManager?.getCwd?.() ?? "";
+
+      // 记录本轮改动；关闭代码工作视图时页面不请求，主进程也不拍快照。
+      if (options.workspaceChanges === true && workspaceChanges && requestCwd) {
+        try {
+          const recording = await workspaceChanges.begin(session.sessionId ?? "", requestCwd);
+          request.changesRequestId = recording.id;
+          await recording.ready;
+        } catch {
+          request.changesRequestId = undefined;
+        }
+      }
 
       if (draft) {
         if (session.sessionId !== draft.sessionId) {
@@ -172,6 +186,7 @@ function createChatService(
         // 宿主命令没有模型回复；保留其完成提示，停止状态仍优先。
         ...(!request.stopped && completionStatus ? { completionStatus } : {}),
         ...(registrationWarning ? { warning: registrationWarning } : {}),
+        ...(request.changesRequestId ? { changesRequestId: request.changesRequestId } : {}),
       };
       session.desktopHistoryChanged = false;
       if (!consumed) return result;
@@ -202,8 +217,17 @@ function createChatService(
         draft: consumed,
         error: error.message,
         ...(registrationWarning ? { warning: registrationWarning } : {}),
+        ...(request.changesRequestId ? { changesRequestId: request.changesRequestId } : {}),
       };
     } finally {
+      // 轮末快照必须在返回前完成，页面随后读取的摘要才是本轮的最终状态。
+      if (request.changesRequestId) {
+        try {
+          await workspaceChanges.finish(request.changesRequestId);
+        } catch {
+          // 记录失败不影响已经完成的对话结果。
+        }
+      }
       // 成功、失败或停止后，都允许下一次发送。
       activeRequest = undefined;
     }

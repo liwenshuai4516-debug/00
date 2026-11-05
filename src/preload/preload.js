@@ -115,14 +115,16 @@ contextBridge.exposeInMainWorld("agent", {
   setDefaultModel: (provider, modelId) => ipcRenderer.invoke("agent:set-default-model", provider, modelId),
   setThinkingLevel: level => ipcRenderer.invoke("agent:set-thinking-level", level),
   // 可选输入版本用于消费已保存的原文；没有版本时沿用原调用。
-  sendMessage: (message, draftRequest) => {
+  // options.workspaceChanges 只决定是否记录本轮改动，不改变发送内容。
+  sendMessage: (message, draftRequest, options) => {
+    const requestOptions = { workspaceChanges: options?.workspaceChanges === true };
     if (draftRequest === undefined) {
-      return ipcRenderer.invoke("agent:send-message", message);
+      return ipcRenderer.invoke("agent:send-message", message, undefined, requestOptions);
     }
     return ipcRenderer.invoke("agent:send-message", message, {
       sessionId: draftRequest?.sessionId,
       revision: draftRequest?.revision,
-    });
+    }, requestOptions);
   },
   // 清理当前会话。
   newChat: () => ipcRenderer.invoke("agent:new-chat"),
@@ -156,6 +158,20 @@ contextBridge.exposeInMainWorld("agent", {
   // 页面只能传会话编号，不能指定主进程读取的文件路径。
   previewSession: (sessionId) =>
     ipcRenderer.invoke("agent:preview-session", sessionId),
+  // 本轮改动摘要与差异只接受主进程发出的请求编号。
+  readWorkspaceChanges: (requestId) => {
+    if (typeof requestId !== "string" || !requestId || requestId.length > 128) {
+      throw new Error("改动编号无效。");
+    }
+    return ipcRenderer.invoke("agent:read-workspace-changes", requestId);
+  },
+  readWorkspaceChangeDiff: (requestId, index) => {
+    if (typeof requestId !== "string" || !requestId || requestId.length > 128) {
+      throw new Error("改动编号无效。");
+    }
+    if (!Number.isInteger(index) || index < 0) throw new Error("改动文件编号无效。");
+    return ipcRenderer.invoke("agent:read-workspace-change-diff", requestId, index);
+  },
   // 只提交相对或绝对路径；解析、边界与大小校验都在主进程完成。
   readPreviewFile: (filePath) => {
     if (typeof filePath !== "string" || !filePath || filePath.length > 1024) {
@@ -288,6 +304,8 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke("agent:update-test-case-assertions", projectId, assetPath, caseName, assertions),
   updateTestCaseSteps: (projectId, assetPath, caseName, steps) =>
     ipcRenderer.invoke("agent:update-test-case-steps", projectId, assetPath, caseName, steps),
+  updateTestCaseMarks: (projectId, items, changes) =>
+    ipcRenderer.invoke("agent:update-test-case-marks", projectId, items, changes),
   deleteTestCases: (projectId, items) =>
     ipcRenderer.invoke("agent:delete-test-cases", projectId, items),
 

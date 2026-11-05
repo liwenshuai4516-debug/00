@@ -199,6 +199,9 @@ test("预加载限定发送参数，兼容原调用，返回结果和错误", as
   assert.equal(await agent.sendMessage("  原文 ", {
     sessionId: "a", revision: 1, workspaceDir: "/forged",
   }, "/extra"), result);
+  assert.equal(await agent.sendMessage("  原文 ", undefined, {
+    workspaceChanges: true,
+  }), result);
 
   await agent.sendMessage("原文", null);
   await assert.rejects(
@@ -207,12 +210,13 @@ test("预加载限定发送参数，兼容原调用，返回结果和错误", as
   );
 
   assert.deepEqual(calls, [
-    ["agent:send-message", "  原文 "],
-    ["agent:send-message", "  原文 ", { sessionId: "a", revision: 1 }],
+    ["agent:send-message", "  原文 ", undefined, { workspaceChanges: false }],
+    ["agent:send-message", "  原文 ", { sessionId: "a", revision: 1 }, { workspaceChanges: false }],
+    ["agent:send-message", "  原文 ", undefined, { workspaceChanges: true }],
     ["agent:send-message", "原文", {
       sessionId: undefined, revision: undefined,
-    }],
-    ["agent:send-message", "失败"],
+    }, { workspaceChanges: false }],
+    ["agent:send-message", "失败", undefined, { workspaceChanges: false }],
   ]);
 });
 

@@ -151,8 +151,10 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
   const sessionService = {};
   const stateStore = {};
   const draftService = {};
-  const modelSettingsService = {};
+  const modelProviderService = {};
   const promptSettingsStore = {};
+  const permissionService = {};
+  const workspaceChangesService = {};
   const userData = path.join(os.tmpdir(), "mock-agent-user-data");
   let storageDirectory;
   let draftArguments;
@@ -162,8 +164,9 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
     createExtensionUiBridge: () => ({ register() {}, cancelAll() {}, disconnect() {} }),
     createWorkspaceSettings: () => ({ load() {}, save() {} }),
     createSessionService: () => sessionService,
-    createModelSettingsService: () => modelSettingsService,
+    createModelProviderService: () => modelProviderService,
     createPromptSettingsStore: () => promptSettingsStore,
+    createPermissionService: () => permissionService,
     createSessionStateStore(directory) {
       storageDirectory = directory;
       return stateStore;
@@ -171,6 +174,9 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
     createComposerDraftService(...args) {
       draftArguments = args;
       return draftService;
+    },
+    createWorkspaceChangesService() {
+      return workspaceChangesService;
     },
     registerAgentIpc(...args) {
       ipcArguments = args;
@@ -212,10 +218,12 @@ test("启动入口共享输入状态存储，并将草稿服务传给 IPC", () =
 
   assert.equal(storageDirectory, path.join(userData, "session-state"));
   assert.deepEqual(draftArguments, [sessionService, stateStore]);
-  assert.equal(ipcArguments.length, 11);
+  assert.equal(ipcArguments.length, 13);
   assert.equal(ipcArguments[0], ipcMain);
   assert.equal(ipcArguments[1], sessionService);
   assert.equal(ipcArguments[8], draftService);
-  assert.equal(ipcArguments[9], modelSettingsService);
+  assert.equal(ipcArguments[9], modelProviderService);
   assert.equal(ipcArguments[10], promptSettingsStore);
+  assert.equal(ipcArguments[11], permissionService);
+  assert.equal(ipcArguments[12], workspaceChangesService);
 });

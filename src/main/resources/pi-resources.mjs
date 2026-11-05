@@ -10,6 +10,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { createUiTestingExtension } from "../capabilities/ui-testing/extension.mjs";
 import { createPermissionExtension } from "./permission-gate.mjs";
+import { createWorkspaceChangesExtension } from "./workspace-changes-extension.mjs";
 
 // SDK 没有导出 CLI 的信任决策函数；按公开事件契约接上宿主交互。
 // 完全权限代表用户已信任当前任务，项目资源直接加载；不写 ProjectTrustStore，
@@ -117,6 +118,7 @@ export async function createPiResources({
   uiTestingRuntime,
   permissionController,
   permissionMode,
+  workspaceChanges,
 }) {
   // 与内置 MCP 等扩展统一使用官方目录；环境变量仍可覆盖其位置。
   const agentDir = getAgentDir();
@@ -169,6 +171,16 @@ export async function createPiResources({
             {
               name: "desktop-permission-gate",
               factory: createPermissionExtension(permissionController),
+              builtin: true,
+              replaceable: true,
+            },
+          ]
+        : []),
+      ...(workspaceChanges
+        ? [
+            {
+              name: "desktop-workspace-changes",
+              factory: createWorkspaceChangesExtension(workspaceChanges),
               builtin: true,
               replaceable: true,
             },

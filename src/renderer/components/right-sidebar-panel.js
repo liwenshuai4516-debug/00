@@ -37,6 +37,27 @@ const CASE_STATUS_LABELS = {
   interrupted: "已中断",
   unknown: "未知",
 };
+const CASE_WORKFLOW_LABELS = {
+  pending: "待人工验证",
+  retest: "待复测",
+  verified: "复测通过",
+  confirmed: "确认失败",
+};
+const CASE_WORKFLOW_OPTIONS = [
+  ["none", "无流程标记"],
+  ["pending", "待人工验证"],
+  ["retest", "待复测"],
+  ["verified", "复测通过"],
+  ["confirmed", "确认失败"],
+];
+const CASE_WORKFLOW_FILTERS = [
+  ["all", "全部状态"],
+  ["failed", "最近失败"],
+  ["pending", "待人工验证"],
+  ["retest", "待复测"],
+  ["verified", "复测通过"],
+  ["confirmed", "确认失败"],
+];
 const REPORT_KIND_LABELS = { ui: "UI", api: "接口" };
 const CLEANUP_LABELS = {
   deleted: "已删除",
@@ -85,6 +106,26 @@ function formatDate(value) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function shellQuote(value) {
+  return "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
+}
+
+function caseWorkflow(item) {
+  return item?.workflow ?? "none";
+}
+
+// 条件复测只包含仍失败的用例；确认失败不自动复测，复测通过不重复跑。
+function caseNeedsRetest(item) {
+  const workflow = caseWorkflow(item);
+  if (workflow === "confirmed" || workflow === "verified") return false;
+  if (workflow === "pending" || workflow === "retest") return true;
+  return ["failed", "timedOut"].includes(item?.lastResult?.status);
 }
 
 function reportTitle(report) {
@@ -141,6 +182,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let editingId = null;
   let data = null;
   let caseQuery = "";
+  let caseWorkflowFilter = "all";
+  let caseRunMode = "retest";
   const expandedCases = new Set();
   const selectedCases = new Map();
   let editingAssertions = null;
@@ -156,6 +199,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let currentFile = null;
   let currentFilePath = "";
   let fileOrigin = "home";
+  let changesRequestId = "";
+  let changesSummary = null;
+  let changesDiff = null;
+  let changesIndex = -1;
   let browserUrl = "";
   let browserTitle = "";
   let browserLoading = false;
@@ -244,6 +291,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     else if (view === "reports") renderReports();
     else if (view === "file") renderFile();
     else if (view === "files") renderFiles();
+    else if (view === "changes") renderChanges();
     else if (view === "browser") renderBrowser();
     else renderHome();
   }
@@ -273,6 +321,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (selectedId !== previousSelectedId) {
       data = null;
       caseQuery = "";
+      caseWorkflowFilter = "all";
+      caseRunMode = "retest";
       expandedCases.clear();
       selectedCases.clear();
       editingAssertions = null;
@@ -704,6 +754,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       selectedId = select.value;
       data = null;
       caseQuery = "";
+      caseWorkflowFilter = "all";
+      caseRunMode = "retest";
       expandedCases.clear();
       collapsedModules.clear();
       knownModuleKeys.clear();
@@ -809,6 +861,14 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     ].join(" ").toLowerCase();
   }
 
+  function caseMatchesWorkflow(item) {
+    if (caseWorkflowFilter === "all") return true;
+    if (caseWorkflowFilter === "failed") {
+      return ["failed", "timedOut"].includes(item.lastResult?.status);
+    }
+    return caseWorkflow(item) === caseWorkflowFilter;
+  }
+
   function caseMatchText(item) {
     return [
       item.name,
@@ -816,15 +876,19 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       item.priority,
       item.page,
       item.role,
+      CASE_WORKFLOW_LABELS[caseWorkflow(item)] ?? "",
       ...(item.steps ?? []),
       ...(item.assertions ?? []).flatMap((assertion) => [assertion.text, assertion.source]),
     ].join(" ").toLowerCase();
   }
 
-  // 命中的父节点保留完整子树；只命中用例时保留其祖先路径。
+  // 搜索命中的模块保留其下通过状态筛选的用例；只命中用例时保留祖先路径。
   function filterCaseModule(node, needle) {
-    if (moduleMatchText(node).includes(needle)) return node;
-    const cases = (node.cases ?? []).filter((item) => caseMatchText(item).includes(needle));
+    const filtering = Boolean(needle) || caseWorkflowFilter !== "all";
+    if (!filtering) return node;
+    const moduleHit = Boolean(needle) && moduleMatchText(node).includes(needle);
+    const cases = (node.cases ?? []).filter((item) =>
+      caseMatchesWorkflow(item) && (moduleHit || caseMatchText(item).includes(needle)));
     const children = [];
     for (const child of node.children ?? []) {
       const filtered = filterCaseModule(child, needle);
@@ -881,7 +945,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const search = element("input", {
       type: "search",
       class: "case-catalog__search",
-      placeholder: "搜索用例、断言、模块或标签",
+      placeholder: "搜索用例、断言、模块或流程标记",
       "aria-label": "搜索用例",
       value: caseQuery,
     });
@@ -900,8 +964,132 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
     paint();
 
-    container.append(summary, renderRunLine(catalog.lastRun), search, renderCaseBulkBar(catalog), list);
+    container.append(
+      summary,
+      renderRunLine(catalog.lastRun),
+      search,
+      renderCaseFilters(catalog),
+      renderCaseBulkBar(catalog),
+      list,
+    );
     return container;
+  }
+
+  function caseFilterCounts(catalog) {
+    const all = collectModuleCases(catalog.modules);
+    return {
+      all: all.length,
+      failed: all.filter((item) => ["failed", "timedOut"].includes(item.lastResult?.status)).length,
+      pending: all.filter((item) => caseWorkflow(item) === "pending").length,
+      retest: all.filter((item) => caseWorkflow(item) === "retest").length,
+      verified: all.filter((item) => caseWorkflow(item) === "verified").length,
+      confirmed: all.filter((item) => caseWorkflow(item) === "confirmed").length,
+    };
+  }
+
+  function renderCaseFilters(catalog) {
+    const counts = caseFilterCounts(catalog);
+    const workflow = element("select", {
+      class: "case-filter__workflow",
+      "aria-label": "筛选用例流程状态",
+    });
+    for (const [value, label] of CASE_WORKFLOW_FILTERS) {
+      workflow.append(element("option", {
+        value,
+        text: `${label}（${counts[value] ?? 0}）`,
+        selected: value === caseWorkflowFilter,
+      }));
+    }
+    workflow.addEventListener("change", () => {
+      caseWorkflowFilter = workflow.value;
+      collapsedModules.clear();
+      render();
+    });
+
+    const mode = element("select", {
+      class: "case-filter__mode",
+      "aria-label": "选择执行范围",
+    }, [
+      ["retest", "条件复测"],
+      ["full", "全量复测"],
+    ].map(([value, label]) => element("option", {
+      value,
+      text: label,
+      selected: value === caseRunMode,
+    })));
+    mode.addEventListener("change", () => {
+      caseRunMode = mode.value;
+      render();
+    });
+
+    const run = element("button", {
+      type: "button",
+      class: "case-filter__run",
+      text: "生成执行提示",
+      disabled: busy,
+      title: "生成提示词并插入输入框，不自动发送",
+    });
+    run.addEventListener("click", () => {
+      const prompt = buildCaseRunPrompt(catalog);
+      if (!prompt) {
+        setStatus("没有符合条件的用例。", true);
+        return;
+      }
+      insertComposerText(prompt);
+    });
+
+    return element("div", { class: "case-filters" }, workflow, mode, run);
+  }
+
+  function insertComposerText(promptText) {
+    const detail = { text: promptText, accepted: false };
+    document.dispatchEvent(new CustomEvent("insert-composer-text", { detail }));
+    if (!detail.accepted) {
+      setStatus("当前输入框不可用，无法插入执行提示。", true);
+      return;
+    }
+    setStatus("已插入执行提示，请在输入框确认后发送。");
+  }
+
+  function buildCaseRunPrompt(catalog) {
+    const all = collectModuleCases(catalog.modules);
+    const targets = caseRunMode === "full" ? all : all.filter(caseNeedsRetest);
+    if (targets.length === 0) return "";
+    const groups = new Map();
+    for (const item of targets) {
+      if (!item.caseId) continue;
+      if (!groups.has(item.caseId)) groups.set(item.caseId, []);
+      groups.get(item.caseId).push(item);
+    }
+    if (groups.size === 0) return "";
+
+    const environment = environments.find((item) => item.id === selectedId);
+    const projectName = environment?.name ?? selectedId;
+    const lines = [];
+    if (caseRunMode === "full") {
+      lines.push(`请执行当前项目的全量 UI 复测，共 ${targets.length} 条用例；不要遗漏。`);
+      lines.push(`项目：${projectName}（${selectedId}）`);
+      lines.push(`执行参数：--project ${selectedId} --all（使用 qa-ui-execute 的 execute.cjs）`);
+    } else {
+      lines.push(`请只执行以下条件复测用例，共 ${targets.length} 条；不要扩展到其他用例。`);
+      lines.push(`项目：${projectName}（${selectedId}）`);
+      lines.push("按脚本分组执行，每组只运行列出的测试标题：");
+      let index = 1;
+      for (const [caseId, items] of groups) {
+        const pattern = items
+          .map((item) => `(?:^| > )${escapeRegExp(item.name)}$`)
+          .join("|");
+        lines.push(`${index}. caseId ${caseId}：${items.map((item) => item.name).join("；")}`);
+        lines.push(`   参数：--project ${selectedId} --cases ${caseId} --grep ${shellQuote(pattern)}`);
+        index += 1;
+      }
+    }
+    lines.push("要求：");
+    lines.push("1. 使用 qa-ui-execute 的 execute.cjs 按上述参数逐组执行；条件复测不得改用 --all，也不得运行未列出的测试。");
+    lines.push("2. 每组读取 summary，汇报 status、testCount、counts 和 problems；失败不自动重跑。");
+    lines.push("3. 最新严格 passed 的待复测/待人工验证用例会自动变为「复测通过」；失败保持原标记。不要手工改写报告。");
+    lines.push("4. 认证或环境受阻时保留原始错误并停止该组，不扩大范围。");
+    return lines.join("\n");
   }
 
   function renderRunLine(run) {
@@ -931,7 +1119,9 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const needle = query.trim().toLowerCase();
     const sections = [];
     for (const module of catalog.modules) {
-      const filtered = needle ? filterCaseModule(module, needle) : module;
+      const filtered = needle || caseWorkflowFilter !== "all"
+        ? filterCaseModule(module, needle)
+        : module;
       if (filtered) sections.push(renderCaseModule(filtered));
     }
     if (sections.length === 0) {
@@ -956,7 +1146,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function visibleCaseItems(catalog) {
     const needle = caseQuery.trim().toLowerCase();
-    const roots = needle
+    const roots = needle || caseWorkflowFilter !== "all"
       ? catalog.modules.map((module) => filterCaseModule(module, needle)).filter(Boolean)
       : catalog.modules;
     return collectModuleCases(roots);
@@ -971,10 +1161,14 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (!bar) return;
     const count = bar.querySelector(".case-bulk__count");
     const remove = bar.querySelector(".case-bulk__delete");
+    const mark = bar.querySelector(".case-bulk__mark");
+    const apply = bar.querySelector(".case-bulk__apply");
     const size = selectedCases.size;
     count.textContent = `已选 ${size} 条`;
     remove.disabled = size === 0 || busy;
     remove.textContent = size === 0 ? "删除选中" : `删除选中（${size}）`;
+    if (mark) mark.disabled = size === 0 || busy;
+    if (apply) apply.disabled = size === 0 || busy;
   }
 
   function renderCaseBulkBar(catalog) {
@@ -1003,6 +1197,22 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       },
     });
     const count = element("span", { class: "case-bulk__count", text: `已选 ${selectedCases.size} 条` });
+    const mark = element("select", {
+      class: "case-bulk__mark",
+      "aria-label": "批量设置流程标记",
+      disabled: selectedCases.size === 0 || busy,
+    }, CASE_WORKFLOW_OPTIONS.map(([value, label]) => element("option", {
+      value,
+      text: label,
+      selected: value === "retest",
+    })));
+    const apply = element("button", {
+      type: "button",
+      class: "case-bulk__button case-bulk__apply",
+      text: "应用标记",
+      disabled: selectedCases.size === 0 || busy,
+      onclick: () => void markSelectedCases(mark.value),
+    });
     const remove = element("button", {
       type: "button",
       class: "case-bulk__delete",
@@ -1010,8 +1220,38 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       text: selectedCases.size === 0 ? "删除选中" : `删除选中（${selectedCases.size}）`,
       onclick: () => void deleteSelectedCases(),
     });
-    bar.append(selectAll, clear, count, remove);
+    bar.append(selectAll, clear, count, mark, apply, remove);
     return bar;
+  }
+
+  async function markCases(items, changes) {
+    if (items.length === 0) return;
+    busy = true;
+    setStatus("正在保存用例标记…");
+    render();
+    try {
+      await api().updateTestCaseMarks(
+        selectedId,
+        items.map((item) => ({
+          assetPath: item.assetPath,
+          caseName: item.caseName ?? item.name,
+        })),
+        changes,
+      );
+      await loadData();
+      setStatus("用例标记已保存。");
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  async function markSelectedCases(workflow) {
+    const items = [...selectedCases.values()];
+    if (items.length === 0) return;
+    await markCases(items, { workflow });
   }
 
   async function deleteCaseItems(items, message) {
@@ -1124,9 +1364,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const guardAssertions = item.assertions.filter((assertion) => assertion.kind === "guard");
     const previewAssertion = businessAssertions[0] ?? item.assertions[0] ?? null;
     const status = item.lastResult?.status ?? "not-run";
+    const workflow = caseWorkflow(item);
     const article = element("article", {
       class: "case-card",
-      dataset: { status, selected: String(selected) },
+      dataset: { status, workflow, selected: String(selected) },
     });
     const head = element("button", {
       type: "button",
@@ -1148,10 +1389,16 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         }),
         element("span", { class: "case-card__chevron", "aria-hidden": "true", text: "›" }),
       ),
-      element("span", {
-        class: "case-card__meta",
-        text: `${CASE_TYPE_LABELS[item.type] ?? item.type} · 业务 ${businessAssertions.length} · 前置 ${guardAssertions.length}`,
-      }),
+      element("span", { class: "case-card__meta" },
+        `${CASE_TYPE_LABELS[item.type] ?? item.type} · 业务 ${businessAssertions.length} · 前置 ${guardAssertions.length}`,
+        workflow !== "none"
+          ? element("span", {
+            class: "case-mark",
+            dataset: { workflow },
+            text: CASE_WORKFLOW_LABELS[workflow] ?? workflow,
+          })
+          : null,
+      ),
     );
 
     const preview = element("p", {
@@ -1188,6 +1435,23 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
           ? `最近运行 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}${item.lastResult.durationMs === null ? "" : ` · ${item.lastResult.durationMs} ms`}`
           : "最近运行：未运行",
       }));
+
+      const workflowSelect = element("select", {
+        class: "case-card__workflow",
+        "aria-label": `设置用例「${item.name}」的流程标记`,
+        disabled: busy,
+      }, CASE_WORKFLOW_OPTIONS.map(([value, label]) => element("option", {
+        value,
+        text: label,
+        selected: value === workflow,
+      })));
+      workflowSelect.addEventListener("change", () => {
+        void markCases([item], { workflow: workflowSelect.value });
+      });
+      detail.append(element("div", { class: "case-card__mark-row" },
+        element("span", { class: "case-card__mark-label", text: "流程标记" }),
+        workflowSelect,
+      ));
 
       const steps = item.steps ?? [];
       detail.append(element("div", { class: "case-steps__label", text: `执行步骤 ${steps.length}` }));
@@ -1744,6 +2008,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       selectedId = select.value;
       data = null;
       caseQuery = "";
+      caseWorkflowFilter = "all";
+      caseRunMode = "retest";
       expandedCases.clear();
       selectedCases.clear();
       editingAssertions = null;
@@ -2724,6 +2990,173 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
   }
 
+  // 本轮改动：先读摘要；指定文件时再按需读取该文件的差异。
+  async function openChanges(requestId, index = -1) {
+    if (typeof requestId !== "string" || requestId === "") return;
+    changesRequestId = requestId;
+    changesIndex = Number.isInteger(index) ? index : -1;
+    changesSummary = null;
+    changesDiff = null;
+    view = "changes";
+    busy = true;
+    setStatus("正在读取本轮改动…");
+    render();
+
+    try {
+      const summary = await api().readWorkspaceChanges(requestId);
+      if (!summary || !Array.isArray(summary.files)) {
+        throw new Error("本轮没有可查看的改动。");
+      }
+      changesSummary = summary;
+      if (changesIndex >= 0) {
+        const diff = await api().readWorkspaceChangeDiff(requestId, changesIndex);
+        if (!diff) throw new Error("该文件的差异已不可用。");
+        changesDiff = diff;
+      }
+      setStatus("");
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  function renderChanges() {
+    if (changesIndex >= 0 && changesDiff) {
+      renderChangeDiff();
+      return;
+    }
+    const total = changesSummary?.total ?? 0;
+    setNav("本轮改动", () => go("home"), [
+      iconButton("重新读取", "refresh", () => void openChanges(changesRequestId, changesIndex), busy),
+    ]);
+
+    const panel = element("div", { class: "right-panel right-panel--changes" });
+    panel.append(statusLine());
+    if (!changesSummary) {
+      panel.append(element("p", {
+        class: "right-panel__empty",
+        text: busy ? "正在读取本轮改动…" : "无法读取本轮改动，请重新读取。",
+      }));
+      content.append(panel);
+      return;
+    }
+    let added = 0;
+    let deleted = 0;
+    for (const file of changesSummary.files) {
+      if (file.binary || file.oversized) continue;
+      added += file.added || 0;
+      deleted += file.deleted || 0;
+    }
+    const header = element("div", { class: "change-summary" });
+    header.append(element("span", { text: `${total} 个文件` }));
+    header.append(element("span", { class: "change-summary__stat", text: `+${added} −${deleted}` }));
+    panel.append(header);
+
+    if (changesSummary.files.length === 0) {
+      panel.append(element("p", { class: "right-panel__empty", text: "本轮没有改动文件。" }));
+      content.append(panel);
+      return;
+    }
+
+    const list = element("ul", { class: "change-list" });
+    for (const file of changesSummary.files) {
+      const item = element("li");
+      const button = element("button", {
+        type: "button",
+        class: "change-file",
+        title: `查看 ${file.display} 的差异`,
+      });
+      button.append(element("span", { class: "change-file__path", text: file.display }));
+      const stat = file.binary ? "二进制" : file.oversized ? "过大" : `+${file.added} −${file.deleted}`;
+      const statNode = element("span", { class: "change-file__stat", text: stat });
+      if (file.binary) statNode.dataset.kind = "binary";
+      if (file.oversized) statNode.dataset.kind = "oversized";
+      button.append(statNode);
+      button.addEventListener("click", () => {
+        void openChanges(changesRequestId, file.index);
+      });
+      item.append(button);
+      list.append(item);
+    }
+    panel.append(list);
+    if (changesSummary.truncated) {
+      panel.append(element("p", { class: "change-note", text: `共 ${total} 个文件，仅列出前 ${changesSummary.files.length} 个。` }));
+    }
+    content.append(panel);
+  }
+
+  function renderChangeDiff() {
+    const diff = changesDiff;
+    setNav(diff.display, () => {
+      changesIndex = -1;
+      changesDiff = null;
+      render();
+    }, [
+      iconButton("重新读取", "refresh", () => void openChanges(changesRequestId, changesIndex), busy),
+    ]);
+
+    const panel = element("div", { class: "right-panel right-panel--change" });
+    panel.append(statusLine());
+    const header = element("div", { class: "change-summary" });
+    header.append(element("span", { text: diff.binary || diff.oversized ? "文件对比" : "逐行差异" }));
+    const stat = diff.binary ? "二进制" : diff.oversized ? "过大" : `+${diff.added} −${diff.deleted}`;
+    header.append(element("span", { class: "change-summary__stat", text: stat }));
+    panel.append(header);
+
+    if (diff.kind === "binary") {
+      panel.append(element("p", { class: "change-note", text: "二进制文件，不提供逐行对比。" }));
+    } else if (diff.kind === "oversized") {
+      panel.append(element("p", { class: "change-note", text: "文件超过 2 MiB，不提供逐行对比。" }));
+    } else if (diff.kind === "missing") {
+      panel.append(element("p", { class: "change-note", text: "记录的内容已不可用，可能已经清理。" }));
+    } else if (diff.kind !== "text") {
+      panel.append(element("p", { class: "change-note", text: "无法读取该文件的差异。" }));
+    } else if (diff.coarse) {
+      panel.append(element("p", {
+        class: "change-note",
+        text: `文件较大，已按整文件变化处理：−${diff.deleted} / +${diff.added} 行。`,
+      }));
+    } else if (!Array.isArray(diff.hunks) || diff.hunks.length === 0) {
+      panel.append(element("p", { class: "change-note", text: "内容没有变化。" }));
+    } else {
+      const box = element("div", { class: "change-diff", tabindex: "0", role: "region", "aria-label": "逐行差异，可横向滚动" });
+      const MAX_RENDER_ROWS = 2000;
+      let rendered = 0;
+      let clipped = false;
+      for (const hunk of diff.hunks) {
+        if (rendered >= MAX_RENDER_ROWS) {
+          clipped = true;
+          break;
+        }
+        box.append(element("div", {
+          class: "change-hunk",
+          text: `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@`,
+        }));
+        for (const row of hunk.rows) {
+          if (rendered >= MAX_RENDER_ROWS) {
+            clipped = true;
+            break;
+          }
+          rendered += 1;
+          const line = element("div", { class: "change-row" });
+          line.dataset.kind = row.kind;
+          line.append(element("span", { class: "change-row__num", text: row.oldLine === null ? "" : String(row.oldLine) }));
+          line.append(element("span", { class: "change-row__num", text: row.newLine === null ? "" : String(row.newLine) }));
+          line.append(element("span", { class: "change-row__sign", text: row.kind === "add" ? "+" : row.kind === "remove" ? "−" : "" }));
+          line.append(element("span", { class: "change-row__text", text: row.text === "" ? " " : row.text }));
+          box.append(line);
+        }
+      }
+      panel.append(box);
+      if (clipped || diff.truncated) {
+        panel.append(element("p", { class: "change-note", text: "差异过长，页面仅显示前一部分。" }));
+      }
+    }
+    content.append(panel);
+  }
+
   function renderFiles() {
     setNav("文件", () => go("home"), [
       iconButton("刷新文件树", "refresh", () => void openTree(), busy),
@@ -2815,8 +3248,11 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     treeChildren.clear();
     treeExpanded.clear();
     treeRootEntries = null;
-    if (view === "file" || view === "files") go("home");
+    changesSummary = null;
+    changesDiff = null;
+    changesIndex = -1;
+    if (view === "file" || view === "files" || view === "changes") go("home");
   }
 
-  return { open, refresh: open, openFile, openFiles: openTree, openReports, resetWorkspaceView };
+  return { open, refresh: open, openFile, openFiles: openTree, openReports, openChanges, resetWorkspaceView };
 }

@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="./styles/send-queue.css" />
   <link rel="stylesheet" href="./styles/file-reference.css" />
   <link rel="stylesheet" href="./styles/turn-rail.css" />
+  <link rel="stylesheet" href="./styles/turn-changes.css" />
   <link rel="stylesheet" href="./styles/sidebar-shell.css" />
   <link rel="stylesheet" href="./styles/right-sidebar.css" />
   <link rel="stylesheet" href="./styles/right-sidebar-panel.css" />
@@ -492,7 +493,7 @@
     </header>
     <section id="settings-general-panel" class="general-settings settings-content" role="tabpanel"
       aria-labelledby="settings-general-tab" hidden>
-      <p id="general-settings-intro">通用设置控制模型可使用的工具范围。权限门禁是应用层确认，不是操作系统沙箱。</p>
+      <p id="general-settings-intro">通用设置控制工具权限与代码工作视图。权限门禁是应用层确认，不是操作系统沙箱。</p>
       <div class="settings-group permission-settings">
         <div class="settings-row">
           <div class="settings-row__text">
@@ -516,6 +517,18 @@
       <p class="permission-note" data-permission-scope-note>权限来源：读取中。</p>
       <p class="permission-warning" data-permission-warning hidden>完全权限会跳过所有工具确认，包括命令和文件写入。只在明确信任当前任务时使用。</p>
       <p class="permission-note">这是应用层的工具调用门禁，不是操作系统沙箱。扩展、子进程和工具本身仍使用应用进程的系统权限。</p>
+      <div class="settings-group code-work-view-settings">
+        <div class="settings-row">
+          <div class="settings-row__text">
+            <span class="settings-row__title">代码工作视图</span>
+            <span class="settings-row__hint">开启后，在每轮回复后显示本轮改动，并可在右侧栏查看逐文件差异。</span>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" data-code-work-view aria-label="代码工作视图" />
+            <span class="settings-switch__track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </div>
       <p class="model-form-status" data-permission-status role="status" aria-atomic="true"></p>
     </section>
     <section id="settings-model-panel" class="model-providers settings-content" role="tabpanel" aria-labelledby="settings-model-tab">

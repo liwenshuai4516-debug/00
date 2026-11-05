@@ -112,6 +112,7 @@ export async function createPiAgent(
       uiTestingRuntime: resourceOptions?.uiTestingRuntime,
       permissionController: resourceOptions?.permissionController,
       permissionMode,
+      workspaceChanges: resourceOptions?.workspaceChanges,
     });
   recordStage("资源与扩展发现（含项目信任）");
 
