@@ -29,7 +29,9 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 
 这些工具不是会话启动时就登记的：必须先完成 `qa_ui_login`（saved 或 not-required），再成功调用 `qa_ui_prepare(mode=record)`，`browser_*` / `generator_*` 才会出现。准备前的工具清单里没有它们属于正常状态，不能据此判定工具缺失或直接报 blocked；prepare 已成功返回但工具仍未出现时，才按实际错误停止。
 
-如果 Pi 设置了 `-builtin:mcp` 并安装 `pi-mcp-adapter`，适配器会把运行时注册降级为 proxy-only，不暴露上述直连工具，`qa_ui_finalize` 也会因缺少 `generator-log-*.json` 拒绝登记。带 UI 测试运行时的 SW-QA 会话会在设置读取层过滤该适配器并重新启用内置 MCP；只影响当前应用会话，不改用户的全局 `settings.json`，也不影响其他客户端。
+如果 Pi 设置了 `-builtin:mcp` 并安装 `pi-mcp-adapter`，适配器会把运行时注册降级为 proxy-only，不暴露上述直连工具，`qa_ui_finalize` 也会因缺少 `generator-log-*.json` 拒绝登记。带 UI 测试运行时的 SW-QA 会话会在设置读取层过滤该适配器并重新启用内置 MCP；只影响当前应用会话，不改用户的全局 `settings.json`，也不影响其他客户端。因此全局存在 `-builtin:mcp` 本身不会让本流程失去录制工具；不要据此改用其他浏览器技能。
+
+`pi-playwright`、`pi-chrome` 是独立的用户技能包，使用各自的 Playwright 与浏览器版本（例如 chromium-1247），与内置运行时的 `@playwright/test` 1.64.1 / chromium-1248 不同。它们不能替代或复核本流程，也不会产生可 `qa_ui_finalize` 的官方生成日志；缺少其对应浏览器时应运行该包自己的 setup，或移除该包。
 
 修改后必须**新开会话/重启客户端**，已启动的会话不会重新加载扩展。验证方式是 prepare 后会话工具清单出现上述 `mcp__desktop_playwright_test__*`，或准备后录制目录生成 `generator-log-*.json`。
 

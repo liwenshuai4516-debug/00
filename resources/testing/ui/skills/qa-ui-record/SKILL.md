@@ -61,7 +61,8 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 
 调用 qa_ui_prepare：mode=record、projectRef、targetUrl；默认无头，不要传 headed=true（仅用户明确要求观察页面时例外）。调用前必须已有 qa_ui_login 的 saved 或 not-required 结果。
 使用返回的 caseId、seedFile、caseFileName、caseDocument、caseFile 和 recordingDir；默认不手填 caseId，不覆盖同名资产。
-官方 desktop-playwright-test 工具（browser_* / generator_*）由 qa_ui_prepare 成功返回后才登记，准备前工具清单里没有它们属于正常状态，不能据此提前停止。prepare 后确认 `mcp__desktop_playwright_test__*` 已出现；仍未出现时才停止并报告，不自建脚本或改用其他工具。
+官方 desktop-playwright-test 工具（browser_* / generator_*）由 qa_ui_prepare 成功返回后才登记，准备前工具清单里没有它们属于正常状态，不能据此提前停止。prepare 后确认 `mcp__desktop_playwright_test__*` 已出现；仍未出现时才停止并报告，不自建脚本或改用其他工具。全局 `-builtin:mcp`、`pi-mcp-adapter` 会被宿主在本会话过滤，不能据此判定 MCP 不可用。
+不要用 pi-playwright、pi-chrome 等其他浏览器技能/CLI 替代本流程；它们使用不同的 Playwright 与浏览器版本，不会产生可 finalize 的 generator 日志。录制期间避免上下文压缩或会话替换；工具消失时重新 prepare 新 caseId，不复用旧 refs。
 
 ## 2. 现场录制与验证
 
