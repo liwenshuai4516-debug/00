@@ -98,7 +98,7 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 本步骤保留流程约束：先盘点查询项、工具栏按钮、行操作和展开收起控件并形成覆盖矩阵，再调用 qa_ui_prepare（mode=record、projectRef、targetUrl）；默认不手填 caseId；使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir；结束调用 browser_close。测试环境的写操作按覆盖矩阵执行；仅非测试环境或不可逆外部副作用的操作列入未覆盖，不静默跳过。
 工具按固定顺序出现：`qa_ui_prepare` 成功返回后才会登记 `mcp__desktop_playwright_test__browser_*` / `generator_*`；准备前的工具清单里没有它们属于正常状态，不能据此判定“工具缺失”或直接报 blocked。必须先完成 `qa_ui_login`（saved 或 not-required）并成功调用 `qa_ui_prepare(mode=record)`，再确认这批工具已出现；prepare 已成功返回但工具仍未出现时，才停止并报告实际返回与错误。
 全局 `settings.json` 中的 `-builtin:mcp`、`pi-mcp-adapter` 会被宿主在 UI 测试会话内过滤，不能仅凭该设置判定 MCP 不可用；以 prepare 后的实际工具清单为准。
-本流程不要改用 pi-playwright、pi-chrome 或其他浏览器技能/CLI 替代官方录制：它们使用不同的 Playwright 与浏览器版本，不能产生可 finalize 的 generator 日志。录制期间也不要执行上下文压缩或会话替换（如 compress）；若 MCP 工具因此消失，按工具不可用停止，重新 prepare 新 caseId，不复用旧 refs。
+本流程不要改用 pi-playwright、pi-chrome 或其他浏览器技能/CLI 替代官方录制：它们使用不同的 Playwright 与浏览器版本，不能产生可 finalize 的 generator 日志。录制期间也不要执行上下文压缩或会话替换（如 compress）。会话恢复/切换、扩展 reload 或压缩后，之前的 projectRef、MCP 工具和录制日志会失效；必须从 qa_ui_project → qa_ui_login → qa_ui_prepare（新 caseId）重新开始，不能复用旧 refs。
 录制必须现场验证预期：每个业务步骤后用 browser_verify_* 验证，generator_read_log 核对动作与断言，generator_write_test 只写日志有证据的步骤与断言。
 脚本质量按 qa-ui-assertion 的断言规则和 qa-ui-record 的定位器、数据隔离、等待方式执行；仅用本次 prepare 后实际登记的官方 desktop-playwright-test 工具。
 

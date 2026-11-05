@@ -35,6 +35,8 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 
 修改后必须**新开会话/重启客户端**，已启动的会话不会重新加载扩展。验证方式是 prepare 后会话工具清单出现上述 `mcp__desktop_playwright_test__*`，或准备后录制目录生成 `generator-log-*.json`。
 
+`projectRef`、登录态引用和官方 MCP 工具都是当前会话的内存状态。会话恢复/切换、扩展 reload 或上下文压缩后，它们会失效；必须重新执行 `qa_ui_project → qa_ui_login → qa_ui_prepare`（新 caseId），不能复用旧 refs 或旧录制日志。录制期间不要使用 `compress` 等上下文压缩/会话替换功能。
+
 自动登录、录制和回放默认无头执行，不打开前端浏览器；只有用户明确要求现场观察时才传 `headed=true`。`qa_ui_login(auto)` 遇到验证码/MFA 默认静默返回 manual-required，不主动弹窗；需要人工接管时由用户要求再开可见窗口。
 
 已有 `*.seed.spec.cjs` 的 caseId 不能再次用于 record（prepare 会以“同名 case 已存在”拒绝）；中断后请用新的 caseId 重新 prepare，旧种子和空录制目录仅作中间产物保留，不能据此 finalize。
