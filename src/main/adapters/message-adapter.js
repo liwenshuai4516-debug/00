@@ -36,11 +36,15 @@ function toHistory(messages, { includeTrace = false, parseSkillBlock, skills = [
           message.display === true),
     )
     .map((message) => {
+      // 轨迹视图需要真实时间；普通文本导出不额外携带时间字段。
+      const stamp = includeTrace && Number.isFinite(message.ts) ? { ts: message.ts } : {};
+
       // 压缩摘要没有 content 字段，需要单独读取 summary。
       if (message.role === "compactionSummary") {
         return {
           role: "status",
           text: `上下文整理摘要\n${message.summary}`,
+          ...stamp,
         };
       }
 
@@ -49,6 +53,7 @@ function toHistory(messages, { includeTrace = false, parseSkillBlock, skills = [
         return {
           role: "status",
           text: getText(message.content),
+          ...stamp,
         };
       }
 
@@ -75,11 +80,13 @@ function toHistory(messages, { includeTrace = false, parseSkillBlock, skills = [
         if (expanded) return {
           role: "user", text: `/skill:${expanded.name}${expanded.userMessage ? ` ${expanded.userMessage}` : ""}`,
           skill: { name: expanded.name, path: expanded.location, source: "history" },
+          ...stamp,
         };
       }
       return {
         role: message.role,
         text: getText(message.content),
+        ...(message.role === "user" ? stamp : {}),
       };
     })
     .filter((message) => message.text || message.output);

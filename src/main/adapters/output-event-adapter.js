@@ -46,13 +46,17 @@ function outputMessage(message) {
     role: "assistant", content: contentBlocks(message.content),
     provider: message.provider, model: message.model, usage: message.usage,
     stopReason: message.stopReason, errorMessage: message.errorMessage, durationMs: message.durationMs,
+    // Pi 的 ts 是响应开始时间；轨迹视图用它还原时间轴，缺失时由页面按耗时推算。
+    ...(Number.isFinite(message.ts) ? { ts: message.ts } : {}),
   };
   if (message.role === "toolResult") return {
     role: "toolResult", toolCallId: message.toolCallId, toolName: message.toolName,
     content: contentBlocks(message.content), isError: message.isError,
     // 历史消息只保存 details；bash 的退出码在旧记录里只能从结果文本读取。
     ...toolResultExtras(message.details, undefined, message.toolName),
-    durationMs: message.durationMs, nestedCalls: message.nestedCalls && {
+    durationMs: message.durationMs,
+    ...(Number.isFinite(message.ts) ? { ts: message.ts } : {}),
+    nestedCalls: message.nestedCalls && {
       complete: message.nestedCalls.complete,
       calls: message.nestedCalls.calls.map(call => ({
         id: call.id, name: call.name, arguments: call.arguments,

@@ -12,6 +12,8 @@ import { createFileReferenceMenu } from "./components/file-reference-menu.js";
 import { createTurnRail } from "./components/turn-rail.js";
 import { isCodeWorkViewEnabled } from "./components/code-work-view.js";
 import { createTurnChangesCard } from "./components/turn-changes.js";
+import { createTrajectoryModel } from "./components/trajectory-model.js";
+import { createTrajectoryView } from "./components/trajectory-view.js";
 import { createTodoDock } from "./components/todo-dock.js";
 import { createSessionList } from "./components/session-list.js";
 import { createUnsentSendPanel } from "./components/unsent-send-panel.js";
@@ -643,6 +645,61 @@ const messageScroll = createMessageScroll(
 );
 const turnRail = createTurnRail(messages, document.getElementById("turn-rail"));
 
+// 轨迹与聊天共用一个会话视图；轨迹只读页面投影，不改变发送和 Pi 历史。
+const chatMain = document.querySelector(".chat-main");
+const trajectoryElement = document.getElementById("trajectory-view");
+const trajectoryModel = createTrajectoryModel();
+const trajectoryView = createTrajectoryView(trajectoryElement);
+const chatTabs = [...document.querySelectorAll(".conversation-tabs [role=\"tab\"]")];
+let chatView = "conversation";
+let trajectoryFrame;
+
+function scheduleTrajectoryRender() {
+  if (chatView !== "trajectory" || trajectoryFrame || trajectoryView.isEditing()) return;
+  trajectoryFrame = requestAnimationFrame(() => {
+    trajectoryFrame = undefined;
+    if (chatView === "trajectory") trajectoryView.render(trajectoryModel.snapshot());
+  });
+}
+
+function setChatView(next, { focus = false } = {}) {
+  const view = next === "trajectory" ? "trajectory" : "conversation";
+  chatView = view;
+  chatMain.dataset.view = view;
+  messages.hidden = view === "trajectory";
+  trajectoryElement.hidden = view !== "trajectory";
+  for (const tab of chatTabs) {
+    const selected = tab.id === "trajectory-view-tab" ? view === "trajectory" : view === "conversation";
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    if (selected && focus) tab.focus();
+  }
+  if (view === "trajectory") {
+    trajectoryView.render(trajectoryModel.snapshot());
+  } else {
+    // 回到对话时重新测量滚动位置，避免隐藏期间高度变化导致跟丢。
+    requestAnimationFrame(() => messageScroll.update());
+  }
+}
+
+chatMain.dataset.view = "conversation";
+for (const tab of chatTabs) {
+  tab.addEventListener("click", () => setChatView(tab.id === "trajectory-view-tab" ? "trajectory" : "conversation"));
+  tab.addEventListener("keydown", (event) => {
+    if (event.isComposing) return;
+    const index = chatTabs.indexOf(tab);
+    const next = event.key === "ArrowRight" ? (index + 1) % chatTabs.length
+      : event.key === "ArrowLeft" ? (index + chatTabs.length - 1) % chatTabs.length
+        : event.key === "Home" ? 0
+          : event.key === "End" ? chatTabs.length - 1
+            : null;
+    if (next === null) return;
+    event.preventDefault();
+    const target = chatTabs[next];
+    setChatView(target.id === "trajectory-view-tab" ? "trajectory" : "conversation", { focus: true });
+  });
+}
+
 // 阅读位置按会话保存：切走再回来时恢复，不强制回到最新。
 const readingPositions = new Map();
 let viewSessionId = "";
@@ -875,6 +932,8 @@ function showHistory(history, sessionId = composerState.sessionId) {
   messageScroll.restore(saved ?? { following: true });
   todoDock.showHistory(history);
   turnRail.refresh();
+  trajectoryModel.loadHistory(history, viewSessionId);
+  scheduleTrajectoryRender();
   // 右侧栏据此关闭上一个工作目录的文件预览。
   document.dispatchEvent(new CustomEvent("session-changed"));
   // 历史渲染后布局才稳定，下一帧再校正一次阅读位置。
@@ -1877,6 +1936,8 @@ form.addEventListener("submit", async (event) => {
     if (output.type === "queue_update") return;
     if (output.type === "steer_delivered") {
       // 插话由 Pi 投递到当前轮，页面在此时补真实位置上的用户消息。
+      trajectoryModel.accept(output);
+      scheduleTrajectoryRender();
       sendQueueView?.deliverSteer(output.text);
       if (outputTrace) outputTrace.insertUserMessage(output.text);
       else addMessage("user", output.text);
@@ -1884,6 +1945,8 @@ form.addEventListener("submit", async (event) => {
     }
     nativeOutputReceived = true;
     outputTrace.accept(output);
+    trajectoryModel.accept(output);
+    scheduleTrajectoryRender();
     todoDock.accept(output);
     if (!stopButton.disabled && output.type === "message_update" && output.assistantMessageEvent.type.startsWith("thinking_")) {
       setRequestStatus("模型正在思考……");
@@ -1960,6 +2023,8 @@ form.addEventListener("submit", async (event) => {
     }
   });
   try {
+    trajectoryModel.beginRequest(ticket.text.trim());
+    scheduleTrajectoryRender();
     const result = await window.agent.sendMessage(ticket.text, {
       sessionId: ticket.sessionId,
       revision: ticket.revision,
@@ -2019,6 +2084,8 @@ form.addEventListener("submit", async (event) => {
     unsubscribeStatus();
     unsubscribeConsumed();
     unsubscribeOutput?.();
+    trajectoryModel.endRequest();
+    scheduleTrajectoryRender();
     outputTrace?.finish();
     // 正常结束、停止或失败时，立即展示尚未绘制的最后一段。
     if (replyFrame !== undefined) cancelAnimationFrame(replyFrame);
@@ -2066,6 +2133,9 @@ async function startNewChat() {
     sessionList.setActive("");
 
     await bindComposer(sessionId);
+    // 新会话没有轨迹；清空旧会话的投影，避免标签页残留上一段记录。
+    trajectoryModel.reset(sessionId);
+    scheduleTrajectoryRender();
     setRequestStatus("就绪");
 
     // 新会话已可用，不再等待模型目录、未发送列表等辅助读取。

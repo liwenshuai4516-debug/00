@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="./styles/file-reference.css" />
   <link rel="stylesheet" href="./styles/turn-rail.css" />
   <link rel="stylesheet" href="./styles/turn-changes.css" />
+  <link rel="stylesheet" href="./styles/trajectory.css" />
   <link rel="stylesheet" href="./styles/sidebar-shell.css" />
   <link rel="stylesheet" href="./styles/right-sidebar.css" />
   <link rel="stylesheet" href="./styles/right-sidebar-panel.css" />
@@ -213,6 +214,12 @@
             <use href="#icon-folder" />
           </svg>
           <h1 id="conversation-title">项目助手</h1>
+          <div class="conversation-tabs" role="tablist" aria-label="对话视图">
+            <button id="conversation-view-tab" type="button" role="tab" aria-selected="true"
+              aria-controls="messages">对话</button>
+            <button id="trajectory-view-tab" type="button" role="tab" aria-selected="false" tabindex="-1"
+              aria-controls="trajectory-view">轨迹</button>
+          </div>
         </div>
         <div class="header-actions">
           <button id="cancel-compaction-button" type="button" hidden>取消整理</button>
@@ -252,6 +259,8 @@
 
       <section class="thread-area" aria-label="当前对话">
         <div id="messages" role="log" aria-label="聊天消息" aria-live="polite" tabindex="0"></div>
+        <section id="trajectory-view" class="trajectory-view" role="tabpanel"
+          aria-labelledby="trajectory-view-tab" hidden></section>
         <button id="latest-message-button" type="button" aria-controls="messages" hidden>回到最新消息 ↓</button>
         <nav id="turn-rail" class="turn-rail" aria-label="轮次导航" hidden></nav>
       </section>

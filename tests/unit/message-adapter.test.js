@@ -111,3 +111,20 @@ test("压缩摘要使用状态角色展示，并保留摘要与后续消息的�
   // 展示转换不能改写 Pi 的原始上下文。
   assert.equal(JSON.stringify(messages), before);
 });
+test("追踪历史保留时间戳，普通文本转换不新增时间字段", () => {
+  const messages = [
+    { role: "user", ts: 1000, content: "你好" },
+    {
+      role: "assistant", ts: 1010, durationMs: 5,
+      content: [{ type: "text", text: "回复" }],
+    },
+  ];
+
+  const traced = toHistory(messages, { includeTrace: true });
+  assert.equal(traced[0].ts, 1000);
+  assert.equal(traced[1].output.ts, 1010);
+
+  const plain = toHistory(messages);
+  assert.equal("ts" in plain[0], false);
+  assert.equal("output" in plain[1], false);
+});
