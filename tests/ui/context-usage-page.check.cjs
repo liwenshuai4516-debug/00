@@ -14,7 +14,7 @@ app.on("window-all-closed", () => {});
 const root = path.resolve(__dirname, "../..");
 const flags = {}, calls = [], drafts = new Map(), usage = new Map(), models = new Map(), archived = new Map();
 const draft = id => { if (!drafts.has(id)) drafts.set(id, { sessionId: id, text: "", revision: 0 }); return drafts.get(id); };
-let current = "a", generating = false, sendGate, compactGate, serial = 0;
+let current = "a", generating = false, sendGate, compactGate, emitOutput, serial = 0;
 const estimate = percent => ({ tokens: percent * 100, contextWindow: 10000, percent });
 usage.set("a", estimate(32));
 const history = () => [{ role: "user", text: `消息 ${current}` }];
@@ -79,8 +79,9 @@ const composer = {
 const chat = {
   isBusy: () => generating,
   listProposals: async () => [{ id: `file-${current}` }],
-  async send(text, onText, _tool, _status, request, ack) {
+  async send(text, onText, _tool, _status, request, ack, onOutput) {
     generating = true; sendGate = Promise.withResolvers();
+    emitOutput = output => onOutput({ sessionId: current, requestSessionId: current, ...output });
     const consumed = { sessionId: current, text: "", revision: request.revision + 1, sendId: "send" };
     Object.assign(draft(current), consumed); ack(consumed); onText("模拟回复"); await sendGate.promise;
     generating = false; usage.set(current, estimate(40));
@@ -191,13 +192,42 @@ async function main() {
       assert.match(await js(`document.getElementById('proposal-list').textContent`), /已保存/);
       await js(`document.getElementById('proposal-review-panel').open=false`);
     });
-    await check("生成中显示上次估算、禁用整理和重读，停止后自动更新", async () => {
+    await check("生成中随响应和工具轮次更新，同步详情构成，停止后校准", async () => {
       await click('#send-button'); await until(`!document.getElementById('stop-button').disabled`);
       await openDetails(); assert.match(await label(), /51.0% · 生成中/);
       assert.equal(await js(`document.querySelector('[data-compact]').disabled&&document.querySelector('#context-usage [data-refresh]').disabled`), true);
+      usage.set(current, estimate(60));
+      const before = calls.filter(c => c[0] === "info").length;
+      // 普通流式增量不触发读取；响应开始时 Pi 已有本次输入和系统上下文。
+      for (let i = 0; i < 10; i++) emitOutput({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "增量" } });
+      await js(`new Promise(r=>setTimeout(r,30))`);
+      assert.equal(calls.filter(c => c[0] === "info").length, before);
+      emitOutput({ type: "message_start", message: { role: "assistant", content: [] } });
+      await until(`document.getElementById('context-usage-toggle').textContent.includes('60.0% · 生成中')`);
+      assert.equal(generating, true, "不能等请求结束才更新");
+      assert.match(await js(`document.getElementById('session-info').textContent`), /60.0%/);
+      await until(`document.querySelector('[data-breakdown-row="system"] [data-breakdown-tokens]').textContent==='1.8K'`);
+      usage.set(current, estimate(67));
+      emitOutput({ type: "turn_end", message: { role: "assistant", content: [{ type: "text", text: "工具轮次完成" }] }, toolResults: [] });
+      await until(`document.getElementById('context-usage-toggle').textContent.includes('67.0% · 生成中')`);
+      assert.equal(generating, true);
+      assert.equal(await js(`document.querySelector('#context-usage-details').hidden`), false, "后台更新不关闭详情");
+      win.showInactive();
+      await js(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+      await fs.writeFile(path.join(temporary, "context-generating.png"), (await win.webContents.capturePage()).toPNG());
       await edit("生成中新的输入"); await click('#stop-button'); await idle();
       assert.equal(await label(), "上下文约 40.0%");
       assert.equal(await js(`document.getElementById('message-input').value`), "生成中新的输入");
+    });
+    await check("新会话生成前为零，响应开始后用量即可更新", async () => {
+      usage.set(current, estimate(0)); await refresh();
+      await click('#send-button'); await until(`!document.getElementById('stop-button').disabled`);
+      assert.match(await label(), /0.0% · 生成中/);
+      usage.set(current, estimate(8));
+      emitOutput({ type: "message_start", message: { role: "assistant", content: [] } });
+      await until(`document.getElementById('context-usage-toggle').textContent.includes('8.0% · 生成中')`);
+      await edit("生成中新的输入"); await click('#stop-button'); await idle();
+      assert.equal(await label(), "上下文约 40.0%");
     });
     await check("整理仅主动点击触发，取消后保留输入和文件草稿并刷新未知", async () => {
       const count = await js(`document.querySelectorAll('#proposal-list article').length`);

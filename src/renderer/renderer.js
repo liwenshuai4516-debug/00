@@ -1951,6 +1951,7 @@ form.addEventListener("submit", async (event) => {
   const unsubscribeOutput = window.agent.onOutputEvent?.((output) => {
     if ((output.requestSessionId ?? output.sessionId) !== ticket.sessionId) return;
     if (output.type === "queue_update") return;
+    void sessionInfoPanel.acceptOutput(output);
     if (output.type === "steer_delivered") {
       // 插话由 Pi 投递到当前轮，页面在此时补真实位置上的用户消息。
       trajectoryModel.accept(output);

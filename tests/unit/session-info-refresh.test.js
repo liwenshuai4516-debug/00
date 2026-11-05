@@ -82,3 +82,51 @@ test("页面离开后迟到响应失效，也不再发起新读取", async () =>
   s.panel.dispose(); gate.resolve(info()); await old; await s.panel.refresh();
   assert.equal(calls, 1); assert.equal(s.states.length, count);
 });
+
+test("生成期间按助手和工具轮次边界刷新，合并同批事件且不按文本增量读取", async () => {
+  let calls = 0;
+  let usage = { tokens: 0, percent: 0, contextWindow: 10000 };
+  const s = await setup(async () => { calls++; return info("a", "first", usage); });
+  await s.panel.refresh();
+  const count = s.states.length;
+  usage = { tokens: 3200, percent: 32, contextWindow: 10000 };
+  const event = type => ({ type, sessionId: "a", message: { role: "assistant" } });
+  for (let i = 0; i < 100; i++) s.panel.acceptOutput(event("message_update"));
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  const pending = s.panel.acceptOutput(event("message_start"));
+  s.panel.acceptOutput(event("message_end"));
+  s.panel.acceptOutput(event("turn_end"));
+  await pending;
+  assert.equal(calls, 2);
+  assert.equal(s.states.length, count + 1, "后台更新不闪回 loading");
+  assert.equal(s.states.at(-1).info.contextUsage.tokens, 3200);
+  assert.match(s.element.textContent, /32.0%/);
+  usage = { tokens: 4000, percent: 40, contextWindow: 10000 };
+  await s.panel.acceptOutput(event("turn_end"));
+  assert.equal(calls, 3);
+  assert.equal(s.states.at(-1).info.contextUsage.tokens, 4000);
+});
+
+test("旧请求、切换前排队事件、页面离开及迟到后台读取不覆盖新状态", async () => {
+  let calls = 0;
+  const gate = Promise.withResolvers();
+  const s = await setup(() => ++calls === 1 ? gate.promise : Promise.resolve(info("b", "next")));
+  const old = s.panel.acceptOutput({ type: "turn_end", sessionId: "a" });
+  await Promise.resolve();
+  s.select("b");
+  await s.panel.refresh();
+  gate.resolve(info("a"));
+  await old;
+  assert.equal(s.states.at(-1).info.sessionId, "b");
+  await s.panel.acceptOutput({ type: "turn_end", requestSessionId: "a", sessionId: "b" });
+  assert.equal(calls, 2, "扩展替换后的旧请求不能发起新会话后台读取");
+  const queued = s.panel.acceptOutput({ type: "turn_end", sessionId: "b" });
+  s.panel.invalidate();
+  await queued;
+  assert.equal(calls, 2);
+  const disposed = s.panel.acceptOutput({ type: "turn_end", sessionId: "b" });
+  s.panel.dispose();
+  await disposed;
+  assert.equal(calls, 2);
+});

@@ -22,6 +22,7 @@ export function createSessionInfoPanel(element, readInfo, { readSessionId = () =
   let sequence = 0;
   let disposed = false;
   let dirty = true;
+  let scheduledOutputRefresh;
 
   function loading() {
     element.textContent = "正在读取当前会话信息……";
@@ -34,12 +35,13 @@ export function createSessionInfoPanel(element, readInfo, { readSessionId = () =
     loading();
   }
 
-  async function refresh() {
+  async function refresh({ background = false } = {}) {
     if (disposed) return;
     const token = ++sequence;
     const expectedId = readSessionId();
     dirty = false;
-    loading();
+    // 生成期间按事件重读，保留最近一次展示，避免每个工具轮次闪回“读取中”。
+    if (!background) loading();
 
     try {
       const info = await readInfo();
@@ -70,8 +72,23 @@ export function createSessionInfoPanel(element, readInfo, { readSessionId = () =
     }
   }
 
+  function acceptOutput(output) {
+    if (disposed || (output.requestSessionId ?? output.sessionId) !== readSessionId()) return;
+    const assistantBoundary = ["message_start", "message_end"].includes(output.type) && output.message?.role === "assistant";
+    if (!assistantBoundary && !["turn_end", "compaction_end"].includes(output.type)) return;
+    if (scheduledOutputRefresh) return scheduledOutputRefresh;
+    const token = sequence;
+    // 同一批事件合并一次读取；不按文本增量读取，也不引入定时轮询。
+    scheduledOutputRefresh = Promise.resolve().then(() => {
+      scheduledOutputRefresh = undefined;
+      if (disposed || token !== sequence) return;
+      return refresh({ background: true });
+    });
+    return scheduledOutputRefresh;
+  }
+
   return {
-    refresh, invalidate,
+    refresh, invalidate, acceptOutput,
     refreshIfNeeded() { if (dirty) return refresh(); },
     dispose() { disposed = true; ++sequence; },
   };

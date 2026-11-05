@@ -150,7 +150,7 @@ export function createContextUsage(element, { onRefresh, onCompact, loadBreakdow
       }
       if (generating) {
         label += " · 生成中";
-        text += "\n生成中，显示上次估算；本轮结束后更新。";
+        text += "\n生成中，随响应与工具轮次更新；流式内容尚未写入会话时沿用最近估算。";
       }
     } else if (state.status === "error") {
       label = "上下文读取失败";
@@ -186,7 +186,6 @@ export function createContextUsage(element, { onRefresh, onCompact, loadBreakdow
   refresh.addEventListener("click", async () => {
     if (refresh.disabled) return;
     await onRefresh();
-    if (!details.hidden) await loadBreakdownData();
   });
   compact.addEventListener("click", () => {
     if (compact.disabled) return;
@@ -210,7 +209,7 @@ export function createContextUsage(element, { onRefresh, onCompact, loadBreakdow
   return {
     render(next) {
       const sessionId = next.info?.sessionId ?? null;
-      if (sessionId !== breakdownSessionId) {
+      if (sessionId !== breakdownSessionId || (next.status === "ready" && next.info !== state.info)) {
         breakdownSessionId = sessionId;
         breakdown = null;
         breakdownState = "idle";

@@ -5,6 +5,7 @@ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createPiAgent, sendMessage } from "../../src/main/pi-agent.mjs";
 import adapter from "../../src/main/adapters/message-adapter.js";
 import lifecycle from "../../src/main/resources/pi-session-lifecycle.js";
+import { createSessionInfoPanel } from "../../src/renderer/components/session-info-panel.js";
 
 const base = process.argv[2], workspace = path.join(base, "workspace");
 const skillFile = path.join(workspace, ".pi/skills/demo/SKILL.md");
@@ -53,7 +54,25 @@ session.agent.streamFunction = model => {
 try {
   for (const input of ["请读取技能", "/skill:demo 检查"]) {
     const output = [];
-    await sendMessage(session, input, () => {}, () => {}, () => {}, event => output.push(structuredClone(event)));
+    const contextStates = [], contextReads = [];
+    let generating = true;
+    const panel = createSessionInfoPanel({ textContent: "" }, async () => ({
+      sessionId: session.sessionId, workspaceDir: workspace,
+      provider: session.model.provider, modelId: session.model.id,
+      contextUsage: session.getContextUsage() ?? null,
+    }), {
+      readSessionId: () => session.sessionId,
+      onState: state => contextStates.push({ ...state, generating }),
+    });
+    await sendMessage(session, input, () => {}, () => {}, () => {}, event => {
+      output.push(structuredClone(event));
+      contextReads.push(panel.acceptOutput(event));
+    });
+    generating = false;
+    await Promise.all(contextReads);
+    assert.ok(contextStates.some(state => state.generating && state.status === "ready" && state.info.contextUsage.tokens > 0),
+      "真实 SDK 在生成结束前即可读取已记录的上下文用量");
+    panel.dispose();
     assert.equal(output.filter(event => event.type === "turn_start").length, 2);
     assert.equal(output.filter(event => event.type === "turn_end").length, 2);
     assert.equal(output.at(-1).type, "agent_settled");
