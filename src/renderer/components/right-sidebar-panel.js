@@ -1590,6 +1590,52 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       .join(" · ");
   }
 
+  // 报告可视化只区分三类：通过、失败（含超时/中断）和其他，未知数量并入其他，避免条形图缺段。
+  const REPORT_FAILURE_STATUSES = new Set(["failed", "timedOut", "interrupted"]);
+
+  function reportSegments(report) {
+    const counts = report?.counts ?? {};
+    let passed = 0;
+    let failed = 0;
+    let other = 0;
+    for (const [status, value] of Object.entries(counts)) {
+      if (!Number.isFinite(value) || value <= 0) continue;
+      if (status === "passed") passed += value;
+      else if (REPORT_FAILURE_STATUSES.has(status)) failed += value;
+      else other += value;
+    }
+    const declared = Number.isFinite(report?.testCount) ? report.testCount : null;
+    const known = passed + failed + other;
+    const total = declared === null ? known : Math.max(declared, known);
+    return { total, passed, failed, other: other + Math.max(0, total - known) };
+  }
+
+  function reportPassRate(segments) {
+    return segments.total > 0 ? Math.round((segments.passed / segments.total) * 100) : null;
+  }
+
+  function reportMeter(segments, label, className = "report-meter") {
+    const bar = element("div", {
+      class: className,
+      role: "img",
+      "aria-label": label,
+      dataset: { empty: String(segments.total <= 0) },
+    });
+    for (const [segment, value] of [
+      ["passed", segments.passed],
+      ["failed", segments.failed],
+      ["other", segments.other],
+    ]) {
+      if (!Number.isFinite(value) || value <= 0) continue;
+      bar.append(element("span", {
+        class: "report-meter__segment",
+        dataset: { segment },
+        style: `flex-grow:${value}`,
+      }));
+    }
+    return bar;
+  }
+
   function reportTotals(reports) {
     const totals = {
       total: reports.length,
@@ -1761,17 +1807,25 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function renderReportSummary(totals) {
     const summary = element("div", { class: "report-summary" });
-    const stat = (value, label) => element("span", { class: "report-summary__stat" },
-      element("strong", { text: String(value) }),
-      label,
-    );
-    summary.append(
-      stat(totals.total, "份报告"),
-      stat(totals.passed, "通过"),
-      stat(totals.failed, "失败"),
+    const stat = (value, label, status) => element("span", {
+      class: "report-summary__stat",
+      dataset: { status },
+    },
+    element("strong", { text: String(value) }),
+    element("span", { class: "report-summary__label", text: label }),
     );
     const other = (totals.incomplete ?? 0) + (totals.cancelled ?? 0);
-    if (other > 0) summary.append(stat(other, "其他"));
+    summary.append(element("div", { class: "report-summary__head" },
+      stat(totals.total, "份报告", "total"),
+      stat(totals.passed, "通过", "passed"),
+      stat(totals.failed, "失败", "failed"),
+      other > 0 ? stat(other, "其他", "other") : null,
+    ));
+    summary.append(reportMeter(
+      { total: totals.total, passed: totals.passed, failed: totals.failed, other },
+      `报告 ${totals.total} 份：通过 ${totals.passed}，失败 ${totals.failed}${other > 0 ? `，其他 ${other}` : ""}`,
+      "report-summary__meter report-meter",
+    ));
     return summary;
   }
 
@@ -1834,12 +1888,21 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       }),
       element("span", { class: "report-card__chevron", "aria-hidden": "true", text: "›" }),
     );
+    const segments = reportSegments(report);
     const meta = [
       formatTime(report.finishedAt),
       report.testCount == null ? "用例数未知" : `${report.testCount} 例`,
       reportCountsText(report.counts),
     ].filter(Boolean).join(" · ");
-    head.append(line, element("span", { class: "report-card__meta", text: meta }));
+    head.append(
+      line,
+      element("span", { class: "report-card__meta", text: meta }),
+      reportMeter(
+        segments,
+        `${reportTitle(report)}：${meta}`,
+        "report-card__meter report-meter",
+      ),
+    );
 
     const body = element("div", { class: "report-card__body" });
     body.hidden = !expanded;
@@ -1893,29 +1956,41 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   function reportVerdictText(detail) {
-    const counts = detail.counts ?? {};
-    const total = detail.testCount == null
-      ? Object.values(counts).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0)
-      : detail.testCount;
-    const passed = Number.isFinite(counts.passed) ? counts.passed : 0;
-    const rate = total > 0 ? Math.round((passed / total) * 100) : null;
+    const segments = reportSegments(detail);
     return [
-      `共 ${total} 个用例`,
-      reportCountsText(counts),
-      rate === null ? "" : `通过率 ${rate}%`,
+      `共 ${segments.total} 个用例`,
+      reportCountsText(detail.counts),
     ].filter(Boolean).join(" · ");
   }
 
   function renderReportDetail(detail) {
     const box = element("div", { class: "report-detail" });
     const statusLabel = RUN_STATUS_LABELS[detail.status] ?? detail.status;
+    const segments = reportSegments(detail);
+    const rate = reportPassRate(segments);
     box.append(element("div", {
       class: "report-verdict",
       dataset: { status: detail.status },
     },
-    element("span", { class: "report-verdict__label", text: "结论" }),
-    element("span", { class: "report-verdict__status", text: statusLabel }),
-    element("span", { class: "report-verdict__text", text: reportVerdictText(detail) }),
+    element("div", { class: "report-verdict__score" },
+      element("span", {
+        class: "report-verdict__rate",
+        text: rate === null ? "—" : `${rate}%`,
+      }),
+      element("span", { class: "report-verdict__rate-label", text: "通过率" }),
+    ),
+    element("div", { class: "report-verdict__summary" },
+      element("div", { class: "report-verdict__headline" },
+        element("span", { class: "report-verdict__label", text: "结论" }),
+        element("span", { class: "report-verdict__status", text: statusLabel }),
+      ),
+      element("span", { class: "report-verdict__text", text: reportVerdictText(detail) }),
+      reportMeter(
+        segments,
+        `本批次 ${segments.total} 个用例：通过 ${segments.passed}，失败 ${segments.failed}，其他 ${segments.other}`,
+        "report-verdict__bar report-meter",
+      ),
+    ),
     ));
 
     const facts = element("div", { class: "report-detail__facts" });
