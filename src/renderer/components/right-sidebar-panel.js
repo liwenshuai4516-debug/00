@@ -1123,29 +1123,35 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const businessAssertions = item.assertions.filter((assertion) => assertion.kind === "business");
     const guardAssertions = item.assertions.filter((assertion) => assertion.kind === "guard");
     const previewAssertion = businessAssertions[0] ?? item.assertions[0] ?? null;
-    const article = element("article", { class: "case-card" });
+    const status = item.lastResult?.status ?? "not-run";
+    const article = element("article", {
+      class: "case-card",
+      dataset: { status, selected: String(selected) },
+    });
     const head = element("button", {
       type: "button",
       class: "case-card__head",
       "aria-expanded": String(expanded),
     });
     head.append(
-      element("span", {
-        class: "case-card__priority",
-        dataset: { priority: item.priority },
-        text: item.priority,
-      }),
-      element("span", { class: "case-card__name", text: item.name }),
+      element("span", { class: "case-card__top" },
+        element("span", {
+          class: "case-card__priority",
+          dataset: { priority: item.priority },
+          text: item.priority,
+        }),
+        element("span", { class: "case-card__name", title: item.name, text: item.name }),
+        element("span", {
+          class: "case-card__status",
+          dataset: { status },
+          text: CASE_STATUS_LABELS[status] ?? "未运行",
+        }),
+        element("span", { class: "case-card__chevron", "aria-hidden": "true", text: "›" }),
+      ),
       element("span", {
         class: "case-card__meta",
         text: `${CASE_TYPE_LABELS[item.type] ?? item.type} · 业务 ${businessAssertions.length} · 前置 ${guardAssertions.length}`,
       }),
-      element("span", {
-        class: "case-card__status",
-        dataset: { status: item.lastResult?.status ?? "not-run" },
-        text: CASE_STATUS_LABELS[item.lastResult?.status] ?? "未运行",
-      }),
-      element("span", { class: "case-card__chevron", "aria-hidden": "true", text: "›" }),
     );
 
     const preview = element("p", {
@@ -1164,16 +1170,20 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       const modulePath = (module.path ?? [module.title]).join(" / ");
       const casePage = item.page ?? module.page ?? "";
       const caseRole = item.role ?? module.role ?? "";
-      detail.append(element("p", {
-        class: "case-card__context",
-        text: [
-          `模块 ${modulePath}`,
-          casePage ? `页面 ${casePage}` : "",
-          caseRole ? `角色 ${caseRole}` : "",
-        ].filter(Boolean).join(" · "),
-      }));
+      const context = element("div", { class: "case-card__context" });
+      const contextChip = (label, value) => element("span", {
+        class: "case-context",
+        text: `${label} ${value}`,
+      });
+      context.append(
+        contextChip("模块", modulePath),
+        casePage ? contextChip("页面", casePage) : null,
+        caseRole ? contextChip("角色", caseRole) : null,
+      );
+      detail.append(context);
       detail.append(element("p", {
         class: "case-card__result",
+        dataset: { status },
         text: item.lastResult
           ? `最近运行 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}${item.lastResult.durationMs === null ? "" : ` · ${item.lastResult.durationMs} ms`}`
           : "最近运行：未运行",
@@ -1268,12 +1278,15 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         ["录制", item.recordedAt ? formatTime(item.recordedAt) : ""],
       ].filter(([, value]) => value);
       if (files.length > 0) {
-        detail.append(element("dl", { class: "case-card__files" },
+        const filesBlock = element("details", { class: "case-card__files-block" });
+        filesBlock.append(element("summary", { text: `文件与录制（${files.length}）` }));
+        filesBlock.append(element("dl", { class: "case-card__files" },
           files.flatMap(([label, value]) => [
             element("dt", { text: label }),
             element("dd", { text: value }),
           ]),
         ));
+        detail.append(filesBlock);
       }
     }
 

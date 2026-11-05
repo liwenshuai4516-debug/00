@@ -153,3 +153,5 @@
 - [jest-html-reporters 仓库](https://github.com/Hazyzh/jest-html-reporters)
 - [Serenity BDD 仓库](https://github.com/serenity-bdd/serenity-core)
 - [gotestsum 仓库](https://github.com/gotestyourself/gotestsum) / [dorny/test-reporter](https://github.com/dorny/test-reporter)
+
+测试用例列表与详情的呈现调研另见 [测试用例呈现调研](test-case-ui-research.md)。
