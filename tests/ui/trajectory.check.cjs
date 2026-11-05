@@ -16,10 +16,11 @@ app.on("window-all-closed", () => {});
 const root = path.resolve(__dirname, "../..");
 
 const base = Date.now() - 10 * 60 * 1000;
+const iso = (offset) => new Date(base + offset).toISOString();
 const raw = [
-  { role: "user", ts: base, content: "改一下 a.js" },
+  { role: "user", timestamp: iso(0), content: "改一下 a.js" },
   {
-    role: "assistant", ts: base + 10, durationMs: 1200, provider: "mock", model: "offline",
+    role: "assistant", timestamp: iso(10), durationMs: 1200, provider: "mock", model: "offline",
     stopReason: "toolUse", usage: { input: 100, output: 20, totalTokens: 120 },
     content: [
       { type: "thinking", thinking: "先看文件" },
@@ -28,17 +29,17 @@ const raw = [
     ],
   },
   {
-    role: "toolResult", ts: base + 1215, durationMs: 30, toolCallId: "call-1", toolName: "read",
+    role: "toolResult", timestamp: iso(1215), durationMs: 30, toolCallId: "call-1", toolName: "read",
     content: [{ type: "text", text: "one\ntwo" }], isError: false,
   },
   {
-    role: "assistant", ts: base + 1250, durationMs: 800, provider: "mock", model: "offline",
+    role: "assistant", timestamp: iso(1250), durationMs: 800, provider: "mock", model: "offline",
     stopReason: "stop", usage: { input: 200, output: 30, totalTokens: 230 },
     content: [{ type: "text", text: "已修改并通过 `npm test`。" }],
   },
-  { role: "user", ts: base + 3000, content: "再跑一次测试" },
+  { role: "user", timestamp: iso(3000), content: "再跑一次测试" },
   {
-    role: "assistant", ts: base + 3010, durationMs: 600, provider: "mock", model: "offline",
+    role: "assistant", timestamp: iso(3010), durationMs: 600, provider: "mock", model: "offline",
     stopReason: "stop", usage: { input: 300, output: 10, totalTokens: 310 },
     content: [{ type: "text", text: "测试通过。" }],
   },
@@ -84,7 +85,7 @@ const chat = {
     emit({
       type: "message_end",
       message: {
-        role: "assistant", ts: at + 20, durationMs: 300, provider: "mock", model: "offline",
+        role: "assistant", timestamp: new Date(at + 20).toISOString(), durationMs: 300, provider: "mock", model: "offline",
         stopReason: "stop", usage: { input: 10, output: 5, totalTokens: 15 },
         content: [{ type: "text", text: "新的实时回复。" }],
       },

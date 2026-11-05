@@ -1,4 +1,4 @@
-const { outputMessage, skillForRead } = require("./output-event-adapter.js");
+const { outputMessage, skillForRead, timestampOf } = require("./output-event-adapter.js");
 
 // 只提取文本，不把模型思考、工具参数或图片当成聊天正文。
 function getText(content) {
@@ -37,7 +37,8 @@ function toHistory(messages, { includeTrace = false, parseSkillBlock, skills = [
     )
     .map((message) => {
       // 轨迹视图需要真实时间；普通文本导出不额外携带时间字段。
-      const stamp = includeTrace && Number.isFinite(message.ts) ? { ts: message.ts } : {};
+      const stampMs = includeTrace ? timestampOf(message) : undefined;
+      const stamp = stampMs !== undefined ? { ts: stampMs } : {};
 
       // 压缩摘要没有 content 字段，需要单独读取 summary。
       if (message.role === "compactionSummary") {

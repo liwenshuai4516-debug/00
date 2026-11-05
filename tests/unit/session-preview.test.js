@@ -7,6 +7,18 @@ const { createSessionService } = require("../../src/main/services/session-servic
 const { registerAgentIpc } = require("../../src/main/ipc/agent-ipc.js");
 const { outputMessage } = require("../../src/main/adapters/output-event-adapter.js");
 const oldAnswer = { role: "assistant", text: "旧回答", output: outputMessage({ role: "assistant", content: [{ type: "text", text: "旧回答" }] }) };
+// 预览内容断言不依赖轨迹时间戳；时间戳由 message-adapter 的专项测试覆盖。
+function withoutTimestamps(history) {
+  return history.map((item) => {
+    const copy = { ...item };
+    delete copy.ts;
+    if (copy.output) {
+      copy.output = { ...copy.output };
+      delete copy.output.ts;
+    }
+    return copy;
+  });
+}
 
 async function fixture(t, version = 3) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "agent-preview-"));
@@ -35,7 +47,7 @@ test("无绑定旧会话可预览，内存迁移不改写文件且不创建模�
   const before = await readFile(file, "utf8");
   const service = createSessionService(dir, () => { throw new Error("不能创建 Agent"); });
   const result = await service.previewSession("old-session");
-  assert.deepEqual(result.history, [
+  assert.deepEqual(withoutTimestamps(result.history), [
     { role: "user", text: "旧问题" },
     oldAnswer,
   ]);
@@ -73,7 +85,7 @@ test("预览遵循当前分支并展示文件保存记录", async (t) => {
   );
   await writeFile(file, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   const service = createSessionService(dir);
-  assert.deepEqual((await service.previewSession("old-session")).history, [
+  assert.deepEqual(withoutTimestamps((await service.previewSession("old-session")).history), [
     { role: "user", text: "旧问题" },
     oldAnswer,
     { role: "status", text: "文件已保存" },
@@ -119,7 +131,7 @@ test("压缩后的预览展示 SDK 摘要和保留消息，不改写历史文件
   });
 
   assert.deepEqual(
-    (await service.previewSession("old-session")).history,
+    withoutTimestamps((await service.previewSession("old-session")).history),
     [
       {
         role: "status",

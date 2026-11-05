@@ -6,7 +6,7 @@
 
 ## 数据来源
 
-- **历史**：`toHistory(..., { includeTrace: true })` 在保留消息的同时带上 Pi 的 `ts`（响应开始时间）和 `durationMs`。打开会话、切换会话或新建对话后重建轨迹。
+- **历史**：`toHistory(..., { includeTrace: true })` 在保留消息的同时带上 Pi 的时间戳（`ts` 毫秒或 `timestamp` ISO，统一转为毫秒）和 `durationMs`。打开会话、切换会话或新建对话后重建轨迹。
 - **实时**：发送时开始一轮，接收 `message_end`（助手正文/思考/用量）、`tool_execution_start/end`（运行中与结果）、`steer_delivered`（插话）、`auto_retry_*`、`compaction_*` 和 `agent_settled`。
 - 没有时间戳的旧历史仍显示记录与时长，但隐藏时间轴并明确提示。
 

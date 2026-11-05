@@ -1,5 +1,17 @@
 const path = require("node:path");
 
+// Pi 不同版本把消息时间放在 ts（毫秒）或 timestamp（ISO）；统一转为毫秒供轨迹使用。
+function timestampOf(message) {
+  if (Number.isFinite(message?.ts)) return message.ts;
+  if (Number.isFinite(message?.timestamp)) return message.timestamp;
+  if (message?.timestamp instanceof Date) return message.timestamp.getTime();
+  if (typeof message?.timestamp === "string" && message.timestamp.trim() !== "") {
+    const parsed = Date.parse(message.timestamp);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
 // 只投影界面需要的字段，不透传完整 SDK 对象、签名、图片正文或供应商请求。
 function contentBlocks(content) {
   if (typeof content === "string") return [{ type: "text", text: content }];
@@ -46,8 +58,8 @@ function outputMessage(message) {
     role: "assistant", content: contentBlocks(message.content),
     provider: message.provider, model: message.model, usage: message.usage,
     stopReason: message.stopReason, errorMessage: message.errorMessage, durationMs: message.durationMs,
-    // Pi 的 ts 是响应开始时间；轨迹视图用它还原时间轴，缺失时由页面按耗时推算。
-    ...(Number.isFinite(message.ts) ? { ts: message.ts } : {}),
+    // Pi 的时间戳是响应开始时间；轨迹视图用它还原时间轴，缺失时由页面按耗时推算。
+    ...(timestampOf(message) !== undefined ? { ts: timestampOf(message) } : {}),
   };
   if (message.role === "toolResult") return {
     role: "toolResult", toolCallId: message.toolCallId, toolName: message.toolName,
@@ -55,7 +67,7 @@ function outputMessage(message) {
     // 历史消息只保存 details；bash 的退出码在旧记录里只能从结果文本读取。
     ...toolResultExtras(message.details, undefined, message.toolName),
     durationMs: message.durationMs,
-    ...(Number.isFinite(message.ts) ? { ts: message.ts } : {}),
+    ...(timestampOf(message) !== undefined ? { ts: timestampOf(message) } : {}),
     nestedCalls: message.nestedCalls && {
       complete: message.nestedCalls.complete,
       calls: message.nestedCalls.calls.map(call => ({
@@ -170,4 +182,4 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
   };
 }
 
-module.exports = { contentBlocks, outputMessage, skillForRead, createOutputEventAdapter };
+module.exports = { contentBlocks, outputMessage, skillForRead, timestampOf, createOutputEventAdapter };

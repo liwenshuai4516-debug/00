@@ -118,13 +118,22 @@ test("追踪历史保留时间戳，普通文本转换不新增时间字段", ()
       role: "assistant", ts: 1010, durationMs: 5,
       content: [{ type: "text", text: "回复" }],
     },
+    { role: "user", timestamp: "2026-11-05T06:16:35.502Z", content: "ISO 时间" },
+    {
+      role: "assistant", timestamp: "2026-11-05T06:16:36.502Z", durationMs: 5,
+      content: [{ type: "text", text: "ISO 回复" }],
+    },
   ];
 
   const traced = toHistory(messages, { includeTrace: true });
   assert.equal(traced[0].ts, 1000);
   assert.equal(traced[1].output.ts, 1010);
+  // 当前 Pi 版本把时间放在 timestamp（ISO）；轨迹按毫秒使用。
+  assert.equal(traced[2].ts, Date.parse("2026-11-05T06:16:35.502Z"));
+  assert.equal(traced[3].output.ts, Date.parse("2026-11-05T06:16:36.502Z"));
 
   const plain = toHistory(messages);
   assert.equal("ts" in plain[0], false);
   assert.equal("output" in plain[1], false);
+  assert.equal("ts" in plain[2], false);
 });
