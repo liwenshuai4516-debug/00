@@ -86,6 +86,11 @@ export function createTrajectoryModel() {
       records: [],
       usage: { input: 0, output: 0, total: 0 },
       status: "live",
+      source: "live",
+      retryMs: 0,
+      retryCount: 0,
+      compactionMs: 0,
+      compactionStartedAt: null,
     };
     requests.push(request);
     active = request;
@@ -228,15 +233,28 @@ export function createTrajectoryModel() {
       return;
     }
     if (output.type === "auto_retry_start") {
-      addStatus(`模型重试：第 ${output.attempt ?? 1} 次`, output.ts ?? Date.now());
+      const ts = output.ts ?? Date.now();
+      const request = ensureRequest(ts);
+      request.retryMs += Number.isFinite(output.delayMs) ? output.delayMs : 0;
+      request.retryCount += 1;
+      addStatus(`模型重试：第 ${output.attempt ?? 1} 次`, ts);
       return;
     }
     if (output.type === "compaction_start") {
-      addStatus("开始整理上下文", output.ts ?? Date.now());
+      const ts = output.ts ?? Date.now();
+      const request = ensureRequest(ts);
+      request.compactionStartedAt = ts;
+      addStatus("开始整理上下文", ts);
       return;
     }
     if (output.type === "compaction_end") {
-      addStatus(output.aborted ? "上下文整理已取消" : "上下文整理完成", output.ts ?? Date.now());
+      const ts = output.ts ?? Date.now();
+      const request = ensureRequest(ts);
+      if (Number.isFinite(request.compactionStartedAt)) {
+        request.compactionMs += Math.max(0, ts - request.compactionStartedAt);
+        request.compactionStartedAt = null;
+      }
+      addStatus(output.aborted ? "上下文整理已取消" : "上下文整理完成", ts);
       return;
     }
     if (output.type === "agent_settled") {
@@ -315,6 +333,7 @@ export function createTrajectoryModel() {
     }
 
     for (const request of requests) {
+      request.source = "history";
       request.status = "done";
       request.startedAt = request.startedAt
         ?? request.records.find((record) => Number.isFinite(record.ts))?.ts
@@ -324,6 +343,49 @@ export function createTrajectoryModel() {
         ?? null;
     }
     active = null;
+  }
+
+  function isReplayRecord(record) {
+    if (record.kind !== "tool") return false;
+    if (typeof record.summaryFile === "string" && record.summaryFile !== "") return true;
+    const command = record.args?.command;
+    return typeof command === "string" && /(?:^|[\s/])(?:execute\.cjs|playwright\s+test)(?:\s|$)/.test(command);
+  }
+
+  function timingOf(request) {
+    let modelMs = 0;
+    let toolMs = 0;
+    let replayMs = 0;
+    let toolErrorMs = 0;
+    for (const record of request.records) {
+      const duration = Number.isFinite(record.durationMs) ? Math.max(0, record.durationMs) : 0;
+      if (record.kind === "assistant") modelMs += duration;
+      else if (record.kind === "tool") {
+        toolMs += duration;
+        if (isReplayRecord(record)) replayMs += duration;
+        if (record.isError) toolErrorMs += duration;
+      }
+    }
+    const retryMs = Number.isFinite(request.retryMs) ? Math.max(0, request.retryMs) : 0;
+    const compactionMs = Number.isFinite(request.compactionMs) ? Math.max(0, request.compactionMs) : 0;
+    const hasWindow = Number.isFinite(request.startedAt) && Number.isFinite(request.endedAt) && request.endedAt > request.startedAt;
+    const known = modelMs + toolMs + retryMs + compactionMs;
+    const totalMs = hasWindow ? Math.max(request.endedAt - request.startedAt, 0) : known;
+    const waitingMs = hasWindow ? Math.max(0, totalMs - known) : 0;
+    return {
+      totalMs,
+      waitingMs,
+      modelMs,
+      toolMs,
+      replayMs,
+      toolOtherMs: Math.max(0, toolMs - replayMs),
+      toolErrorMs,
+      retryMs,
+      retryCount: request.retryCount ?? 0,
+      compactionMs,
+      source: request.source === "history" ? "history" : "live",
+      available: hasWindow || known > 0,
+    };
   }
 
   function snapshot() {
@@ -341,6 +403,7 @@ export function createTrajectoryModel() {
       sessionId,
       requests: requests.map((request) => ({
         ...request,
+        timing: timingOf(request),
         records: request.records.map((record) => ({ ...record })),
       })),
       hasTimeline: records.some((record) => Number.isFinite(record.ts)),

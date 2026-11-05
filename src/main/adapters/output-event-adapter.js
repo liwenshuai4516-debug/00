@@ -206,6 +206,7 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
     }
     if (["auto_retry_start", "auto_retry_end", "compaction_start", "compaction_end"].includes(event.type)) {
       return { type: event.type, attempt: event.attempt, maxAttempts: event.maxAttempts,
+        delayMs: Number.isFinite(event.delayMs) ? event.delayMs : undefined,
         reason: event.reason, aborted: event.aborted, success: event.success, willRetry: event.willRetry,
         failed: Boolean(event.errorMessage) };
     }

@@ -178,3 +178,65 @@ test("历史结束时未返回结果的工具调用标记为未确认", async ()
   assert.equal(tool.status, "unfinished");
   assert.deepEqual(tool.args, { command: "sleep 99" });
 });
+
+test("历史耗时构成按等待、模型、工具、回放和失败拆分", async () => {
+  const trajectory = await model();
+  trajectory.loadHistory([
+    { role: "user", text: "执行", ts: 0 },
+    {
+      role: "assistant",
+      output: {
+        role: "assistant", ts: 10, durationMs: 100,
+        content: [{ type: "toolCall", id: "c1", name: "bash", arguments: { command: "node resources/testing/ui/execute.cjs" } }],
+      },
+    },
+    {
+      role: "tool",
+      output: {
+        role: "toolResult", ts: 110, durationMs: 10, toolCallId: "c1", toolName: "bash",
+        summaryFile: "/work/qa/ui/runs/r/summary.json", isError: true,
+        content: [{ type: "text", text: "fail" }],
+      },
+    },
+    { role: "user", text: "继续", ts: 1000 },
+    { role: "assistant", output: { role: "assistant", ts: 1010, durationMs: 50, content: [{ type: "text", text: "ok" }] } },
+  ]);
+  const [first, second] = trajectory.snapshot().requests;
+  assert.deepEqual(first.timing, {
+    totalMs: 120,
+    waitingMs: 10,
+    modelMs: 100,
+    toolMs: 10,
+    replayMs: 10,
+    toolOtherMs: 0,
+    toolErrorMs: 10,
+    retryMs: 0,
+    retryCount: 0,
+    compactionMs: 0,
+    source: "history",
+    available: true,
+  });
+  assert.equal(second.timing.waitingMs, 10);
+  assert.equal(second.timing.modelMs, 50);
+});
+
+test("实时重试与整理进入耗时构成", async () => {
+  const trajectory = await model();
+  const base = Date.now();
+  trajectory.beginRequest("重试");
+  trajectory.accept({
+    type: "message_end",
+    message: { role: "assistant", ts: base + 10, durationMs: 100, content: [{ type: "text", text: "first" }] },
+  });
+  trajectory.accept({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 50, ts: base + 120 });
+  trajectory.accept({ type: "compaction_start", ts: base + 200 });
+  trajectory.accept({ type: "compaction_end", ts: base + 300, aborted: false });
+  trajectory.accept({ type: "agent_settled", aborted: false, ts: base + 300 });
+  trajectory.endRequest();
+  const timing = trajectory.snapshot().requests[0].timing;
+  assert.equal(timing.retryMs, 50);
+  assert.equal(timing.retryCount, 1);
+  assert.equal(timing.compactionMs, 100);
+  assert.equal(timing.modelMs, 100);
+  assert.equal(timing.source, "live");
+});

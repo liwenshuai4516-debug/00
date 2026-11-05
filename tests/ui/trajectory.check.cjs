@@ -53,18 +53,18 @@ const raw = [
     content: [{ type: "text", text: "已修改并通过 `npm test`。" }],
   },
   {
-    role: "assistant", timestamp: iso(1300), durationMs: 700, provider: "mock", model: "offline",
+    role: "assistant", timestamp: iso(2060), durationMs: 700, provider: "mock", model: "offline",
     stopReason: "toolUse", usage: { input: 120, output: 10, totalTokens: 130 },
     content: [{ type: "toolCall", id: "call-2", name: "bash", arguments: { command: "resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project demo --all" } }],
   },
   {
-    role: "toolResult", timestamp: iso(2100), durationMs: 1200, toolCallId: "call-2", toolName: "bash",
+    role: "toolResult", timestamp: iso(2770), durationMs: 1200, toolCallId: "call-2", toolName: "bash",
     content: [{ type: "text", text: `回放完成\n${"日志行\n".repeat(1200)}${JSON.stringify({ status: "failed", summaryFile, testCount: 2, counts: { total: 2, passed: 1, failed: 1 } })}` }],
-    isError: false,
+    isError: true,
   },
-  { role: "user", timestamp: iso(3000), content: "再跑一次测试" },
+  { role: "user", timestamp: iso(4100), content: "再跑一次测试" },
   {
-    role: "assistant", timestamp: iso(3010), durationMs: 600, provider: "mock", model: "offline",
+    role: "assistant", timestamp: iso(4110), durationMs: 600, provider: "mock", model: "offline",
     stopReason: "stop", usage: { input: 300, output: 10, totalTokens: 310 },
     content: [{ type: "text", text: "测试通过。" }],
   },
@@ -173,6 +173,13 @@ async function main() {
     assert.ok(await js("document.querySelectorAll('.traj-bar').length") >= 4);
     assert.match(await js("document.querySelector('.traj-summary').textContent"), /2 轮/);
     assert.match(await js("document.querySelector('.traj-summary').textContent"), /790 tokens/);
+    assert.equal(await js("document.querySelectorAll('.traj-composition').length"), 2);
+    const compositionText = await js("[...document.querySelectorAll('.traj-composition')].map(node=>node.textContent).join(' ')");
+    assert.match(compositionText, /等待/);
+    assert.match(compositionText, /模型/);
+    assert.match(compositionText, /回放/);
+    assert.match(compositionText, /其他工具/);
+    assert.match(compositionText, /工具失败/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /我先读取文件/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /read · a\.js/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /1\.2 秒/);
@@ -217,11 +224,9 @@ async function main() {
     win.setSize(1000, 560);
     await js("new Promise(r=>setTimeout(r,250))");
     await js("const view=document.getElementById('trajectory-view');view.scrollTop=0;view.dispatchEvent(new Event('scroll'))");
-    await js("new Promise(r=>setTimeout(r,120))");
-    assert.equal(await js("document.getElementById('trajectory-latest').hidden"), false);
+    await until("document.getElementById('trajectory-latest').hidden === false");
     await js("document.getElementById('trajectory-latest').click()");
-    await js("new Promise(r=>setTimeout(r,900))");
-    assert.equal(await js("document.getElementById('trajectory-latest').hidden"), true);
+    await until("document.getElementById('trajectory-latest').hidden === true");
     win.setSize(1280, 900);
     await js("new Promise(r=>setTimeout(r,250))");
     console.log("通过：轨迹跟随最新与回到最新");

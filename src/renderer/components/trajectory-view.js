@@ -459,12 +459,54 @@ export function createTrajectoryView(container, options = {}) {
     return details;
   }
 
+  function renderComposition(request) {
+    const timing = request.timing;
+    if (!timing?.available || !(timing.totalMs > 0)) return null;
+    const segments = [
+      ["wait", timing.waitingMs, "等待"],
+      ["model", timing.modelMs, "模型"],
+      ["replay", timing.replayMs, "回放"],
+      ["tool", timing.toolOtherMs, "其他工具"],
+      ["retry", timing.retryMs, "重试"],
+      ["compaction", timing.compactionMs, "整理"],
+    ].filter(([, value]) => Number.isFinite(value) && value > 0);
+    if (segments.length === 0) return null;
+    const total = segments.reduce((sum, [, value]) => sum + value, 0);
+    const box = element("div", "traj-composition");
+    box.setAttribute("aria-label", "本轮耗时构成");
+    box.title = timing.source === "history"
+      ? "历史记录只能从消息间隔推算等待，队列、审批和重试可能混在其中。"
+      : "等待为界面观察的模型排队/审批/间隙；模型和工具耗时优先使用 SDK 记录。";
+
+    const bar = element("div", "traj-composition__bar");
+    for (const [kind, value, label] of segments) {
+      const segment = element("span", `traj-composition__seg traj-composition__seg--${kind}`);
+      segment.style.width = `${(value / total) * 100}%`;
+      segment.title = `${label} ${formatDuration(value)}`;
+      bar.append(segment);
+    }
+    box.append(bar);
+
+    const legend = element("div", "traj-composition__legend");
+    legend.append(element("span", "", segments.map(([, value, label]) => `${label} ${formatDuration(value)}`).join(" · ")));
+    if (timing.toolErrorMs > 0) {
+      legend.append(element("span", "traj-composition__badge", `工具失败 ${formatDuration(timing.toolErrorMs)}`));
+    }
+    if (timing.source === "history") {
+      legend.append(element("span", "traj-composition__badge", "等待含未记录阶段"));
+    }
+    box.append(legend);
+    return box;
+  }
+
   function renderTime() {
     for (const request of snapshot.requests) {
       const activeQuery = normalizedQuery();
       if (requestMatches(request, activeQuery) || request.records.some((record) => recordMatches(record, activeQuery))) {
         const section = element("section", "traj-section");
         section.append(requestHeader(request));
+        const composition = renderComposition(request);
+        if (composition) section.append(composition);
         for (const record of request.records) {
           if (!requestMatches(request, activeQuery) && !recordMatches(record, activeQuery)) continue;
           if (rendered >= MAX_RENDERED_RECORDS) return;
@@ -490,6 +532,8 @@ export function createTrajectoryView(container, options = {}) {
       if (visible.length === 0 && !requestMatches(request, activeQuery)) continue;
       if (rendered >= MAX_RENDERED_RECORDS) return;
       const details = requestHeader(request, { collapsible: true });
+      const composition = renderComposition(request);
+      if (composition) details.append(composition);
       for (const record of visible) {
         if (rendered >= MAX_RENDERED_RECORDS) return;
         rendered += 1;
@@ -512,6 +556,8 @@ export function createTrajectoryView(container, options = {}) {
       if (tools.length === 0) continue;
       const section = element("section", "traj-section");
       section.append(requestHeader(request));
+      const composition = renderComposition(request);
+      if (composition) section.append(composition);
       for (const record of tools) {
         if (rendered >= MAX_RENDERED_RECORDS) return;
         rendered += 1;
