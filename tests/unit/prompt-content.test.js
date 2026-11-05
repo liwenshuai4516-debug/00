@@ -76,8 +76,10 @@ test("UI 录制技能要求审批入口生成 case，审批技能只负责执行
   assert.match(record, /页面出现提交、审批、同意、驳回、确认、上传定稿等入口/);
   assert.match(record, /不能因为未加载 qa-approval-workflow/);
   assert.match(record, /必须生成至少一条入口/);
+  assert.match(record, /录制前确认当前登录账号就是详情页当前节点的处理人/);
   const approval = await fs.readFile(path.resolve(__dirname, "../../.pi/skills/qa-approval-workflow/SKILL.md"), "utf8");
   assert.match(approval, /不替代 `qa-ui-record` 的入口盘点和 case 生成/);
+  assert.match(approval, /生成或执行审批前，先确认当前登录账号/);
   assert.match(approval, /必须位于实际测试工作区的 `\.pi\/skills\/qa-approval-workflow\/SKILL\.md`/);
   assert.match(approval, /当前应用权限模式/);
   assert.match(approval, /`qa_ui_login` 的 auto 只使用项目配置中的账号/);
