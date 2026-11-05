@@ -9,9 +9,11 @@
 1. “打开 models.json”打开官方目录的配置文件；首次不存在时创建空 `providers`，不覆盖已有文件。目录由 `getAgentDir()` 决定，默认 `~/.pi/agent`，可由 `PI_CODING_AGENT_DIR` 指定。
 2. 在文本编辑器中保存，然后点击“重新读取模型”。页面提供兼容接口的折叠示例。字段、环境变量引用与命令取值均遵循官方格式，建议用 `$YOUR_API_KEY` 引用已有环境变量。
 3. 聊天输入框右下角选择当前模型。目录使用官方 `ModelRuntime.getAvailable()`，按供应商分组，以供应商和模型 ID 区分同名模型。设置页用同一份目录渲染模型卡片，展示上下文窗口、最大输出、推理与图片能力，并标出当前模型与新对话默认。
-4. “新增模型 / 编辑”用表单维护 `models.json`：供应商名称、`baseUrl`、`api`，以及模型的 `id`、`name`、`api`、`reasoning`、`thinkingLevelMap`、`input`、`contextWindow`、`maxTokens`、`cost`、`compat.thinkingFormat`，`inputLimits`、`samplingParams`、`samplingParamsByThinkingLevel`、`promptCache` 以 JSON 文本编辑。保存后主进程立即重读运行时；写入前校验编号、协议、数值与重复条目。`models.json` 中只写了 `id` 的条目，表单用运行时实际生效的值补全显示。
-5. “设为默认”可按行设置任意模型，也可沿用当前对话的模型；页面通过官方 `SettingsManager.getDefaultProvider()/getDefaultModel()` 展示已保存的默认值。
-6. 思考强度在模型支持时直接可选，并按模型写入 `SettingsManager.setModelThinkingLevel()`，切回该模型沿用上次档位；模型未标记 `reasoning` 时给出“开启”入口，跳到该模型编辑表单补齐 `reasoning` 与思考协议。
+4. “可用模型”按提供商卡片展示：卡片头显示 key 状态点、提供商名称/编号、可用模型数，以及“新增模型”“编辑”入口。状态点只表示 `models.json` 中是否配置了 `apiKey`；环境变量与 `auth.json` 仍可能提供认证，因此未配置不会显示成错误。
+5. “新增提供商”先创建一条空提供商，再在卡片内添加模型；“编辑”只修改名称、`baseUrl` 与协议，编号是 `models.json` 的键，保存后不可改名，模型列表、`apiKey`、`headers` 与覆盖配置原样保留；“删除提供商”需要二次确认，并移除该提供商下的全部模型。
+6. “新增模型 / 编辑”用表单维护 `models.json`：供应商名称、`baseUrl`、`api`，以及模型的 `id`、`name`、`api`、`reasoning`、`thinkingLevelMap`、`input`、`contextWindow`、`maxTokens`、`cost`、`compat.thinkingFormat`，`inputLimits`、`samplingParams`、`samplingParamsByThinkingLevel`、`promptCache` 以 JSON 文本编辑。保存后主进程立即重读运行时；写入前校验编号、协议、数值与重复条目。`models.json` 中只写了 `id` 的条目，表单用运行时实际生效的值补全显示。
+7. “设为默认”可按行设置任意模型，也可沿用当前对话的模型；页面通过官方 `SettingsManager.getDefaultProvider()/getDefaultModel()` 展示已保存的默认值。
+8. 思考强度在模型支持时直接可选，并按模型写入 `SettingsManager.setModelThinkingLevel()`，切回该模型沿用上次档位；模型未标记 `reasoning` 时给出“开启”入口，跳到该模型编辑表单补齐 `reasoning` 与思考协议。
 
 Provider 扩展放入官方资源目录或受信任项目，通过扩展工厂的 `registerProvider` 登记；异步工厂在启动选择模型前完成。修改扩展后在聊天中执行 `/reload`。普通“重新读取模型”只刷新模型运行时，不重新执行扩展工厂。特殊协议实现、原生 Provider、虚拟模型及认证契约见官方文档，不再额外维护桌面私有格式。此页不提供自建 OAuth 登录流程；已有 Pi 环境变量、`auth.json` 与 `models.json` 认证由官方运行时解析。
 
@@ -28,11 +30,15 @@ Provider 扩展放入官方资源目录或受信任项目，通过扩展工厂�
 ## 代码位置
 
 - `src/main/pi-agent.mjs`：官方运行时、扩展模型登记、启动与历史选择。
-- `src/main/services/model-provider-service.js`：官方配置文件入口，以及 `models.json` 的结构化读取、保存与删除（校验、原子写入、保留凭据字段）。
+- `src/main/services/model-provider-service.js`：官方配置文件入口，以及 `models.json` 的结构化读取、模型/提供商的保存与删除（校验、原子写入、保留凭据字段）。
 - `src/main/services/session-service.js`：可用模型（含默认模型与能力字段）、切换、刷新、默认和思考强度。
-- `src/main/ipc/model-ipc.js`、`src/preload/preload.js`：有限接口与共用互斥；写入后立即重读运行时。
+- `src/main/ipc/model-ipc.js`、`src/preload/preload.js`：有限接口与共用互斥；模型/提供商写入后立即重读运行时。
 - `src/renderer/components/settings/model-providers.js`：设置页目录、模型表单与当前对话操作；`components/model-selector.js`：当前模型选择。
 - `src/renderer/styles/model-settings.css`：设置外框与模型页样式。
+
+提供商卡片与模型行：
+
+![模型与供应商：提供商卡片、密钥状态与模型列表](images/model-providers.png)
 
 ## 验证
 
@@ -55,7 +61,7 @@ SDK 专项使用临时配置、会话与本地 HTTP/SSE 服务，覆盖官方配
 
 2026-11-03 经用户明确授权，另在临时官方 `models.json` 中登记 `acceptance-custom`，使用 `.env` 中已有的 `deepseek/deepseek-flash` 模型信息和进程内认证，真实请求收到 5 段文本增量。未将密钥写入配置，未读取正式历史或修改正式 Pi 配置。随后使用下述脚本再次通过自定义供应商完成真实流式回复、read/write/edit/bash 临时文件操作、主动停止与子进程退出。以上结果不代表所有供应商、OAuth 或协议均已验收。需再次授权真实请求时，可手动运行 `node_modules/.bin/electron scripts/verify-pi-live.cjs` 检查同一路径及原生工具；不属于默认自动测试。
 
-本次相关的 83 项单元/SDK 检查通过；Electron 模型页 20、侧栏 37、主题 42、上下文 19、未发送会话 19、关闭 14、扩展桌面 16、归档 17、置顶 19、项目重命名 16 项通过。页面结果使用模拟或临时业务数据，与上述真实模型验证分别记录。
+本次相关的 83 项单元/SDK 检查通过；Electron 模型页 20、侧栏 37、主题 42、上下文 19、未发送会话 19、关闭 14、扩展桌面 16、归档 17、置顶 19、项目重命名 16 项通过。后续提供商卡片补充后，模型页为 43 项，`model-provider-service` 8 项、`model-ipc` 2 项通过。页面结果使用模拟或临时业务数据，与上述真实模型验证分别记录。
 
 启动修复补充：临时夹具先复现旧私有供应商导致 `listModels()` 失败，再验证启动时并发读取历史与模型目录可以进入新对话、旧历史和输入不变、显式打开旧记录仍拒绝、普通新对话清除提示，以及默认配置错误正常透传。相关单元/SDK 36 项、模型页 22 项及未发送会话页 19 项通过；本次修复不需要外部模型请求。
 

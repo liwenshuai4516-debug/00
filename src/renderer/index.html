@@ -434,7 +434,7 @@
       </div>
     </header>
     <section id="settings-model-panel" class="model-providers settings-content" role="tabpanel" aria-labelledby="settings-model-tab">
-      <p id="model-settings-intro">模型来自 Pi 官方的 models.json。可在此新增或修改模型；密钥仍由环境变量、auth.json 或 models.json 提供，页面不回填。</p>
+      <p id="model-settings-intro">模型来自 Pi 官方的 models.json。可在此新增/编辑提供商与模型；密钥仍由环境变量、auth.json 或 models.json 提供，页面不回填。</p>
       <div class="model-overview">
         <section class="model-panel-card">
           <div class="model-card-heading">
@@ -476,7 +476,8 @@
             <h3>可用模型</h3>
             <div class="model-card-tools">
               <span class="model-badge" data-model-count></span>
-              <button type="button" class="model-primary-button" data-add-model disabled>新增模型</button>
+              <button type="button" class="model-primary-button" data-add-provider disabled>新增提供商</button>
+              <button type="button" class="model-secondary-button" data-add-model disabled>新增模型</button>
             </div>
           </div>
           <p class="model-warning" data-models-warning hidden></p>
@@ -612,6 +613,39 @@
             <button type="submit" class="model-primary-button">保存模型</button>
             <button type="button" data-cancel-edit>取消</button>
             <span class="model-form-status" data-editor-status role="status" aria-atomic="true"></span>
+          </div>
+        </form>
+      </section>
+      <section class="model-panel-card model-editor" data-provider-editor hidden>
+        <div class="model-card-heading">
+          <h3 data-provider-editor-title>新增提供商</h3>
+          <span class="model-badge" data-provider-editor-hint>写入 Pi 官方 models.json</span>
+        </div>
+        <form data-provider-form autocomplete="off" novalidate>
+          <div class="model-form-grid">
+            <label class="model-form-field">
+              <span>供应商编号</span>
+              <input data-provider-field="providerId" placeholder="my-provider" spellcheck="false" required />
+            </label>
+            <label class="model-form-field">
+              <span>供应商名称</span>
+              <input data-provider-field="name" placeholder="可选，仅用于显示" />
+            </label>
+            <label class="model-form-field">
+              <span>供应商 Base URL</span>
+              <input data-provider-field="baseUrl" placeholder="https://api.example.com/v1" spellcheck="false" />
+            </label>
+            <label class="model-form-field">
+              <span>供应商接口协议</span>
+              <select data-provider-field="api"></select>
+            </label>
+          </div>
+          <p class="model-note">供应商编号是 models.json 的 providers 键，保存后不可改名；模型列表、apiKey 与 headers 原样保留。密钥仍由环境变量、auth.json 或 models.json 提供。</p>
+          <div class="model-form-actions">
+            <button type="submit" class="model-primary-button">保存提供商</button>
+            <button type="button" data-provider-cancel>取消</button>
+            <button type="button" class="model-danger-button" data-provider-delete hidden>删除提供商</button>
+            <span class="model-form-status" data-provider-editor-status role="status" aria-atomic="true"></span>
           </div>
         </form>
       </section>

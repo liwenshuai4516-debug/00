@@ -171,3 +171,57 @@ test("配置损坏时给出可修正的提示，不尝试覆盖文件", async t 
   await assert.rejects(service.saveModel({ providerId: "demo", model: { id: "x", input: ["text"] } }), /不是有效的 JSON/);
   assert.equal(await fs.readFile(file, "utf8"), broken);
 });
+
+test("提供商层保存只改名称、地址与协议，保留模型和凭据字段", async t => {
+  const { service, read } = await setup(t);
+  const created = await service.saveProvider({
+    providerId: "new",
+    provider: { name: "新供应商", baseUrl: "https://new.example.com/v1", api: "anthropic-messages" },
+  });
+  assert.deepEqual(created, { modelsPath: created.modelsPath, providerId: "new", action: "created" });
+
+  let document = await read();
+  assert.deepEqual(document.providers.new, {
+    name: "新供应商",
+    baseUrl: "https://new.example.com/v1",
+    api: "anthropic-messages",
+    models: [],
+  });
+
+  await service.saveProvider({
+    providerId: "demo",
+    provider: { name: "演示供应商改名", baseUrl: "https://api2.example.com/v1", api: "openai-completions" },
+  });
+  document = await read();
+  const demo = document.providers.demo;
+  assert.equal(demo.name, "演示供应商改名");
+  assert.equal(demo.baseUrl, "https://api2.example.com/v1");
+  assert.equal(demo.apiKey, "$DEMO_KEY");
+  assert.deepEqual(demo.headers, { "X-Secret": "never-return" });
+  assert.deepEqual(demo.models.map(model => model.id), ["demo-small", "demo-large"]);
+});
+
+test("提供商层校验失败不写文件，删除只移除目标区块", async t => {
+  const { service, read, file } = await setup(t);
+  const before = await fs.readFile(file, "utf8");
+  await assert.rejects(service.saveProvider({ providerId: "bad id" }), /供应商编号/);
+  await assert.rejects(
+    service.saveProvider({ providerId: "demo", provider: { baseUrl: "ftp://example.com" } }),
+    /Base URL/,
+  );
+  await assert.rejects(
+    service.saveProvider({ providerId: "demo", provider: { api: "no-such-api" } }),
+    /接口协议/,
+  );
+  assert.equal(await fs.readFile(file, "utf8"), before);
+
+  const result = await service.deleteProvider("demo");
+  assert.deepEqual(result, { modelsPath: file, providerId: "demo", modelCount: 2, action: "deleted" });
+  const document = await read();
+  assert.equal(document.providers.demo, undefined);
+  assert.deepEqual(document.providers.other, {
+    baseUrl: "https://other.example.com",
+    models: [{ id: "other-1" }],
+  });
+  await assert.rejects(service.deleteProvider("demo"), /不在 models.json 中/);
+});

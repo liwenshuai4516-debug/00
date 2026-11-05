@@ -75,6 +75,21 @@ async function main() {
     else if (provider) provider.models.push({ ...saved, provider: undefined });
     return { providerId: input.providerId, modelId: saved.id, action: existing >= 0 ? "updated" : "created" };
   });
+  ipcMain.handle("agent:save-provider", (_event, input) => {
+    calls.push(["saveProvider", input]);
+    const target = configProviders.find(item => item.id === input.providerId);
+    if (target) Object.assign(target, input.provider);
+    else configProviders.push({ id: input.providerId, ...input.provider, hasApiKey: false, models: [] });
+    return { providerId: input.providerId, action: target ? "updated" : "created" };
+  });
+  ipcMain.handle("agent:delete-provider", (_event, providerId) => {
+    calls.push(["deleteProvider", providerId]);
+    const index = configProviders.findIndex(item => item.id === providerId);
+    if (index < 0) throw Error("该供应商不在 models.json 中");
+    const [removed] = configProviders.splice(index, 1);
+    for (let i = models.length - 1; i >= 0; i -= 1) if (models[i].provider === providerId) models.splice(i, 1);
+    return { providerId, modelCount: removed.models.length, action: "deleted" };
+  });
   ipcMain.handle("agent:delete-model", (_event, provider, modelId) => {
     calls.push(["delete", provider, modelId]);
     const index = models.findIndex(model => model.provider === provider && model.id === modelId);
@@ -132,6 +147,7 @@ async function main() {
     await wait(`document.querySelector('[data-current-model]').textContent==='alpha/same'&&!document.querySelector('[data-open-models]').disabled`);
     await check("设置页不提供密钥回填入口，路径来自主进程", `document.querySelector('[data-models-path]').textContent==='/temporary/pi/models.json'&&!document.querySelector('#settings-model-panel input[type=password]')&&[...document.querySelectorAll('#settings-model-panel input,#settings-model-panel textarea')].every(el=>!/apikey|secret|密钥/i.test(el.dataset.field||''))`);
     await check("可用模型按供应商分组，名称来自目录且标出当前模型", `document.querySelectorAll('[data-model-catalog] .model-catalog-group').length===2&&document.querySelector('[data-current-model-name]').textContent==='同名模型'&&document.querySelector('[data-model-catalog] .model-row.is-current .model-row-id').textContent==='same'&&!document.querySelector('[data-model-catalog] img')`);
+    await check("提供商卡片显示密钥状态与模型数", `(()=>{const alpha=document.querySelector('[data-model-catalog] .provider-card[data-provider-id="alpha"]');const beta=document.querySelector('[data-model-catalog] .provider-card[data-provider-id="beta"]');return document.querySelectorAll('[data-model-catalog] .provider-card').length===2&&alpha.querySelector('.provider-credential-dot').dataset.credential==='configured'&&beta.querySelector('.provider-credential-dot').dataset.credential==='unknown'&&alpha.querySelector('.model-catalog-count').textContent==='1'&&alpha.querySelector('.provider-card__actions [data-provider-action="add-model"]');})()`);
     await check("模型卡片展示上下文、输出与推理能力，默认模型初始为未设置", `document.querySelector('[data-model-catalog] .model-row .model-row-meta .model-chip').textContent.includes('上下文')&&[...document.querySelectorAll('[data-model-catalog] .model-row')].some(row=>[...row.querySelectorAll('.model-row-meta .model-chip')].some(chip=>chip.textContent==='推理'))&&document.querySelector('[data-default-model]').textContent==='未设置'`);
     await check("上下文未知时明确说明不可用而不是显示为零", `document.querySelector('[data-current-context]').textContent.includes('暂不可用')&&!/\\b0\\b/.test(document.querySelector('[data-current-context]').textContent)`);
     await click("[data-open-models]"); await wait("!window.busy");
@@ -144,6 +160,33 @@ async function main() {
     await click("[data-close]");
     await check("重读期间设置窗口保持打开", `document.querySelector('#model-settings-dialog').open`);
     gate.resolve(); gate = undefined; await wait("!window.busy");
+
+    // 提供商层：编辑名称、新增空提供商、二次确认删除。
+    await run(`document.querySelector('[data-provider-action="edit-provider"][data-provider-id="beta"]').click()`);
+    await check("编辑提供商打开独立表单，编号只读", `!document.querySelector('[data-provider-editor]').hidden&&document.querySelector('[data-provider-editor-title]').textContent==='编辑提供商'&&document.querySelector('[data-provider-field="providerId"]').value==='beta'&&document.querySelector('[data-provider-field="providerId"]').readOnly&&!document.querySelector('[data-provider-delete]').hidden`);
+    await fill('[data-provider-field="name"]', "Beta 新名");
+    await click('[data-provider-form] button[type=submit]');
+    await wait("document.querySelector('[data-provider-editor]').hidden&&!window.busy");
+    await check("保存提供商后卡片名称更新", `document.querySelector('[data-model-catalog] .provider-card[data-provider-id="beta"] .model-catalog-title').textContent==='Beta 新名'&&document.querySelector('[data-provider-status]').textContent.includes('更新提供商 beta')`);
+    await click("[data-add-provider]");
+    await check("新增提供商使用空白独立表单", `!document.querySelector('[data-provider-editor]').hidden&&document.querySelector('[data-provider-editor-title]').textContent==='新增提供商'&&document.querySelector('[data-provider-field="providerId"]').value===''&&document.querySelector('[data-provider-field="providerId"]').readOnly===false&&document.querySelector('[data-provider-delete]').hidden`);
+    await fill('[data-provider-field="providerId"]', "gamma");
+    await fill('[data-provider-field="name"]', "Gamma 供应商");
+    await fill('[data-provider-field="baseUrl"]', "https://gamma.example.com/v1");
+    await click('[data-provider-form] button[type=submit]');
+    await wait("document.querySelector('[data-provider-editor]').hidden&&!window.busy");
+    await check("新增提供商后出现空模型卡片", `document.querySelector('[data-model-catalog] .provider-card[data-provider-id="gamma"] .model-catalog-title').textContent==='Gamma 供应商'&&document.querySelector('[data-model-catalog] .provider-card[data-provider-id="gamma"] .provider-empty').textContent.includes('暂无可运行模型')&&document.querySelector('[data-provider-status]').textContent.includes('新增提供商 gamma')`);
+    await run(`document.querySelector('[data-provider-action="edit-provider"][data-provider-id="gamma"]').click()`);
+    await click("[data-provider-delete]");
+    await check("删除提供商需要二次确认", `document.querySelector('[data-provider-delete]').textContent==='确认删除提供商'&&document.querySelector('[data-provider-editor-status]').textContent.includes('再次点击')`);
+    await click("[data-provider-delete]");
+    await wait("document.querySelector('[data-provider-editor]').hidden&&!window.busy");
+    await check("确认后删除提供商卡片与模型", `!document.querySelector('[data-model-catalog] .provider-card[data-provider-id="gamma"]')&&document.querySelector('[data-provider-status]').textContent.includes('删除提供商 gamma')`);
+    await run(`document.querySelectorAll('.settings-content, #settings-model-panel, #model-settings-dialog').forEach((node)=>{node.scrollTop=0;});`);
+    await run(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    if (process.env.MODEL_PROVIDERS_SCREENSHOT_PATH) {
+      await fs.writeFile(process.env.MODEL_PROVIDERS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
 
     // 新增模型：表单字段与 models.json 对齐，保存后立即出现在目录里。
     await click("[data-add-model]");

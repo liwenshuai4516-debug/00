@@ -11,6 +11,8 @@ test("官方配置入口不转发路径；写入、重读、默认与思考强�
     readCatalog: (...args) => { calls.push(["catalog", ...args]); return { providers: [] }; },
     saveModel: input => { calls.push(["save", input]); return { providerId: "demo", modelId: "m", action: "created" }; },
     deleteModel: (...args) => { calls.push(["delete", ...args]); return { providerId: "demo", modelId: "m", action: "deleted" }; },
+    saveProvider: input => { calls.push(["saveProvider", input]); return { providerId: input.providerId, action: "created" }; },
+    deleteProvider: providerId => { calls.push(["deleteProvider", providerId]); return { providerId, modelCount: 0, action: "deleted" }; },
   }, {
     reloadModels: (...args) => calls.push(["reload", ...args]),
     setDefaultModel: (...args) => calls.push(["default", ...args]),
@@ -35,10 +37,18 @@ test("官方配置入口不转发路径；写入、重读、默认与思考强�
   const saved = { providerId: "demo", model: { id: "m" } };
   assert.deepEqual(await call("save-model", saved), { providerId: "demo", modelId: "m", action: "created" });
   assert.deepEqual(await call("delete-model", "demo", "m"), { providerId: "demo", modelId: "m", action: "deleted" });
-  assert.deepEqual(calls, [["save", saved], ["reload"], ["delete", "demo", "m"], ["reload"]]);
+  const provider = { providerId: "demo2", provider: { name: "Demo" } };
+  assert.deepEqual(await call("save-provider", provider), { providerId: "demo2", action: "created" });
+  assert.deepEqual(await call("delete-provider", "demo2"), { providerId: "demo2", modelCount: 0, action: "deleted" });
+  assert.deepEqual(calls, [
+    ["save", saved], ["reload"],
+    ["delete", "demo", "m"], ["reload"],
+    ["saveProvider", provider], ["reload"],
+    ["deleteProvider", "demo2"], ["reload"],
+  ]);
 
   locked = true;
-  for (const name of ["reload-models", "set-default-model", "set-thinking-level", "save-model", "delete-model"]) {
+  for (const name of ["reload-models", "set-default-model", "set-thinking-level", "save-model", "delete-model", "save-provider", "delete-provider"]) {
     assert.throws(() => call(name), /忙碌/);
   }
   assert.ok(!handlers.has("agent:save-model-settings"));

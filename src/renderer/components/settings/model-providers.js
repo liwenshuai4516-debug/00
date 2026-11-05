@@ -55,6 +55,7 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
   const enableThinking = panel.querySelector("[data-enable-thinking]");
   const copyButton = panel.querySelector("[data-copy-models-path]");
   const addButton = panel.querySelector("[data-add-model]");
+  const addProviderButton = panel.querySelector("[data-add-provider]");
   const defaultButton = panel.querySelector("[data-default-model-button]");
   const editor = panel.querySelector("[data-model-editor]");
   const form = panel.querySelector("[data-model-form]");
@@ -65,6 +66,12 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
   const providerIdWrapper = form.querySelector("[data-provider-id-field]");
   const thinkingLevelsBox = form.querySelector("[data-thinking-levels]");
   const field = (name) => form.querySelector(`[data-field="${name}"]`);
+  const providerEditor = panel.querySelector("[data-provider-editor]");
+  const providerForm = panel.querySelector("[data-provider-form]");
+  const providerEditorTitle = panel.querySelector("[data-provider-editor-title]");
+  const providerEditorStatus = panel.querySelector("[data-provider-editor-status]");
+  const providerDeleteButton = panel.querySelector("[data-provider-delete]");
+  const providerField = (name) => providerForm.querySelector(`[data-provider-field="${name}"]`);
 
   let busy = true;
   let loading = false;
@@ -77,6 +84,8 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
   let currentModel = { provider: "", modelId: "" };
   let editing = null;
   let pendingDelete = "";
+  let editingProvider = "";
+  let pendingProviderDelete = "";
 
   function update() {
     const disabled = busy || loading;
@@ -199,6 +208,72 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
     return item;
   }
 
+  function providerCredential(providerId) {
+    const configured = catalog.providers.find((item) => item.id === providerId);
+    if (!configured) return { state: "unknown", title: "该提供商不在 models.json 目录中" };
+    return configured.hasApiKey
+      ? { state: "configured", title: "models.json 中已配置 apiKey" }
+      : { state: "unknown", title: "models.json 未配置 apiKey；环境变量或 auth.json 仍可能提供" };
+  }
+
+  function buildProviderCard(providerId, items) {
+    const credential = providerCredential(providerId);
+    const card = document.createElement("section");
+    card.className = "model-catalog-group provider-card";
+    card.dataset.providerId = providerId;
+    card.dataset.credential = credential.state;
+
+    const head = document.createElement("div");
+    head.className = "provider-card__head";
+
+    const dot = document.createElement("span");
+    dot.className = "provider-credential-dot";
+    dot.dataset.credential = credential.state;
+    dot.title = credential.title;
+    dot.setAttribute("aria-label", credential.title);
+
+    const heading = document.createElement("h4");
+    const title = document.createElement("span");
+    title.className = "model-catalog-title";
+    title.textContent = providerTitle(providerId);
+    const id = document.createElement("code");
+    id.textContent = providerId;
+    const amount = document.createElement("span");
+    amount.className = "model-catalog-count";
+    amount.textContent = String(items.length);
+    amount.title = `${items.length} 个可用模型`;
+    heading.append(title, id, amount);
+
+    const actions = document.createElement("div");
+    actions.className = "provider-card__actions";
+    const addModel = document.createElement("button");
+    addModel.type = "button";
+    addModel.dataset.providerAction = "add-model";
+    addModel.dataset.providerId = providerId;
+    addModel.textContent = "新增模型";
+    const editProvider = document.createElement("button");
+    editProvider.type = "button";
+    editProvider.dataset.providerAction = "edit-provider";
+    editProvider.dataset.providerId = providerId;
+    editProvider.textContent = "编辑";
+    actions.append(addModel, editProvider);
+    head.append(dot, heading, actions);
+    card.append(head);
+
+    if (items.length > 0) {
+      const list = document.createElement("ul");
+      list.className = "model-catalog-list";
+      for (const model of items) list.append(buildRow(model));
+      card.append(list);
+    } else {
+      card.append(Object.assign(document.createElement("p"), {
+        className: "provider-empty",
+        textContent: "该提供商暂无可运行模型；点击「新增模型」添加。",
+      }));
+    }
+    return card;
+  }
+
   function drawCatalog(listing) {
     catalogList.replaceChildren();
     const groups = new Map();
@@ -206,29 +281,17 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
       if (!groups.has(model.provider)) groups.set(model.provider, []);
       groups.get(model.provider).push(model);
     }
+    // 提供商层允许先建空提供商再补模型；仅存在于 models.json 的条目也要显示。
+    for (const provider of catalog.providers) {
+      if (!groups.has(provider.id)) groups.set(provider.id, []);
+    }
 
     for (const [providerId, items] of groups) {
-      const group = document.createElement("section");
-      group.className = "model-catalog-group";
-      const heading = document.createElement("h4");
-      const title = document.createElement("span");
-      title.className = "model-catalog-title";
-      title.textContent = providerTitle(providerId);
-      const id = document.createElement("code");
-      id.textContent = providerId;
-      const amount = document.createElement("span");
-      amount.className = "model-catalog-count";
-      amount.textContent = `${items.length}`;
-      heading.append(title, id, amount);
-      const list = document.createElement("ul");
-      list.className = "model-catalog-list";
-      for (const model of items) list.append(buildRow(model));
-      group.append(heading, list);
-      catalogList.append(group);
+      catalogList.append(buildProviderCard(providerId, items));
     }
 
     count.textContent = models.length ? `${models.length} 个模型` : "";
-    empty.hidden = models.length > 0 || Boolean(listing?.catalogError);
+    empty.hidden = groups.size > 0 || Boolean(listing?.catalogError);
     empty.textContent = "当前 Pi 配置没有可用模型。用「新增模型」添加供应商与模型，或打开 models.json 手动配置后重新读取。";
   }
 
@@ -273,6 +336,10 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
     );
     field("api").replaceChildren(
       option("", "继承供应商设置"),
+      ...apis.map((value) => option(value, value)),
+    );
+    providerField("api").replaceChildren(
+      option("", "不设置，沿用内置默认"),
       ...apis.map((value) => option(value, value)),
     );
   }
@@ -334,6 +401,9 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
 
   function openEditor(target) {
     editing = target.modelId ? { providerId: target.providerId, modelId: target.modelId } : null;
+    providerEditor.hidden = true;
+    editingProvider = "";
+    providerEditorStatus.textContent = "";
     editorStatus.textContent = "";
     const configuredProvider = catalog.providers.find((item) => item.id === target.providerId);
     const configuredModel = configuredProvider?.models.find((item) => item.id === target.modelId);
@@ -399,6 +469,40 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
     editor.hidden = true;
     editing = null;
     editorStatus.textContent = "";
+  }
+
+  function resetProviderDelete() {
+    pendingProviderDelete = "";
+    providerDeleteButton.textContent = "删除提供商";
+    providerDeleteButton.title = "删除该提供商及其全部模型";
+  }
+
+  function closeProviderEditor() {
+    providerEditor.hidden = true;
+    editingProvider = "";
+    providerEditorStatus.textContent = "";
+    resetProviderDelete();
+  }
+
+  function openProviderEditor(providerId) {
+    editingProvider = providerId ?? "";
+    const configured = catalog.providers.find((item) => item.id === editingProvider);
+    fillProtocolOptions();
+    providerEditorTitle.textContent = editingProvider ? "编辑提供商" : "新增提供商";
+    providerField("providerId").value = editingProvider;
+    providerField("providerId").readOnly = Boolean(editingProvider);
+    providerField("name").value = configured?.name ?? "";
+    providerField("baseUrl").value = configured?.baseUrl ?? "";
+    keepOption(providerField("api"), configured?.api);
+    providerField("api").value = configured?.api ?? "";
+    providerDeleteButton.hidden = !editingProvider;
+    providerEditorStatus.textContent = "";
+    resetProviderDelete();
+    editor.hidden = true;
+    editing = null;
+    providerEditor.hidden = false;
+    providerEditor.scrollIntoView({ block: "nearest" });
+    (editingProvider ? providerField("name") : providerField("providerId")).focus();
   }
 
   function readNumber(name, label) {
@@ -505,8 +609,8 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
       if (token !== sequence) return;
       if (sessionResult.error) throw sessionResult.error;
       if (catalogResult.catalog) catalog = catalogResult.catalog;
-      // 编辑中不重建协议下拉，避免覆盖用户正在修改的选择。
-      if (editor.hidden) fillProtocolOptions();
+      // 任一编辑器打开时都不重建协议下拉，避免覆盖用户正在修改的选择。
+      if (editor.hidden && providerEditor.hidden) fillProtocolOptions();
 
       const info = sessionResult.info;
       const listing = listingResult.listing ?? { models: [] };
@@ -579,6 +683,8 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
     openEditor({ providerId, modelId: "" });
   });
 
+  addProviderButton.addEventListener("click", () => openProviderEditor(""));
+
   enableThinking.addEventListener("click", () =>
     openEditor({ providerId: currentModel.provider, modelId: currentModel.modelId }),
   );
@@ -598,6 +704,20 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
 
   // 目录行内的操作统一委托，避免每次重绘绑定大量监听器。
   catalogList.addEventListener("click", (event) => {
+    const providerButton = event.target.closest("button[data-provider-action]");
+    if (providerButton) {
+      if (busy) return;
+      const providerId = providerButton.dataset.providerId;
+      if (providerButton.dataset.providerAction === "add-model") {
+        openEditor({ providerId, modelId: "" });
+        return;
+      }
+      if (providerButton.dataset.providerAction === "edit-provider") {
+        openProviderEditor(providerId);
+        return;
+      }
+    }
+
     const button = event.target.closest("button[data-action]");
     const row = event.target.closest(".model-row");
     if (!button || !row || busy) return;
@@ -644,6 +764,81 @@ export function createModelProviders(panel, api, setPageBusy, refreshModels) {
     const inputs = [...thinkingLevelsBox.querySelectorAll("input[data-level]")];
     if (inputs.filter((input) => input.checked).length > 1) return;
     for (const input of inputs) input.checked = DEFAULT_REASONING_LEVELS.includes(input.dataset.level);
+  });
+
+  providerForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (busy || loading) return;
+    const providerId = providerField("providerId").value.trim();
+    if (!providerId) {
+      providerEditorStatus.textContent = "请填写供应商编号。";
+      return;
+    }
+    providerEditorStatus.textContent = "正在保存……";
+    setPageBusy(true);
+    api
+      .saveProvider({
+        providerId,
+        provider: {
+          name: providerField("name").value.trim(),
+          baseUrl: providerField("baseUrl").value.trim(),
+          api: providerField("api").value,
+        },
+      })
+      .then(async (result) => {
+        closeProviderEditor();
+        if (await show()) {
+          status.textContent = `已${result?.action === "updated" ? "更新" : "新增"}提供商 ${result?.providerId ?? providerId}。${
+            result?.warning ? ` ${result.warning}` : ""
+          }`;
+        }
+      })
+      .catch((error) => {
+        providerEditorStatus.textContent = `保存失败：${error.message}`;
+      })
+      .finally(async () => {
+        await refreshModels();
+        setPageBusy(false);
+      });
+  });
+
+  providerForm.querySelector("[data-provider-cancel]").addEventListener("click", closeProviderEditor);
+
+  providerDeleteButton.addEventListener("click", () => {
+    if (busy || loading || !editingProvider) return;
+    if (pendingProviderDelete !== editingProvider) {
+      pendingProviderDelete = editingProvider;
+      providerDeleteButton.textContent = "确认删除提供商";
+      providerEditorStatus.textContent = "再次点击确认删除该提供商及其全部模型。";
+      setTimeout(() => {
+        if (pendingProviderDelete !== editingProvider) return;
+        resetProviderDelete();
+        providerEditorStatus.textContent = "";
+      }, 4000);
+      return;
+    }
+    const providerId = editingProvider;
+    resetProviderDelete();
+    providerEditorStatus.textContent = "正在删除……";
+    setPageBusy(true);
+    api
+      .deleteProvider(providerId)
+      .then(async (result) => {
+        closeProviderEditor();
+        if (await show()) {
+          const models = result?.modelCount ? `，同时移除 ${result.modelCount} 个模型` : "";
+          status.textContent = `已删除提供商 ${result?.providerId ?? providerId}${models}。${
+            result?.warning ? ` ${result.warning}` : ""
+          }`;
+        }
+      })
+      .catch((error) => {
+        providerEditorStatus.textContent = `删除失败：${error.message}`;
+      })
+      .finally(async () => {
+        await refreshModels();
+        setPageBusy(false);
+      });
   });
 
   form.addEventListener("submit", (event) => {

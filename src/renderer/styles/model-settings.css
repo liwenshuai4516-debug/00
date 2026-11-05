@@ -199,7 +199,7 @@
   font-weight: 600;
 }
 .model-settings-dialog .model-primary-button:hover:not(:disabled) { background: var(--primary-hover); }
-.model-card-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.model-card-tools { display: flex; flex: 0 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .model-settings-dialog p.model-empty {
   margin: 14px 0 0;
   padding: 24px 16px;
@@ -284,4 +284,122 @@
   .model-manager-brand h2 { font-size: 18px; }
   .model-manager-toolbar { justify-content: end; flex: 1; gap: 8px; }
   .settings-content { padding: 16px; }
+}
+
+/* ---------- 提供商卡片：密钥状态、模型数与行内操作 ---------- */
+
+.model-settings-dialog .provider-card {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--page) 55%, var(--surface));
+}
+
+.model-settings-dialog .provider-card + .provider-card {
+  margin-top: 2px;
+}
+
+.provider-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-card__head h4 {
+  flex: 1;
+  margin: 0;
+}
+
+.provider-credential-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.provider-credential-dot[data-credential="configured"] {
+  background: var(--focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 18%, transparent);
+}
+
+.provider-credential-dot[data-credential="unknown"] {
+  border: 1px solid color-mix(in srgb, var(--muted) 70%, transparent);
+}
+
+.provider-card__actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.model-settings-dialog .provider-card__actions button {
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10px;
+}
+
+.model-settings-dialog .provider-card__actions button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.model-settings-dialog .provider-card .model-catalog-list {
+  margin-top: 8px;
+}
+
+.provider-empty {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.model-settings-dialog .model-secondary-button {
+  min-height: 30px;
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: transparent;
+  font-size: 12px;
+}
+
+.model-settings-dialog .model-secondary-button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.model-settings-dialog .model-danger-button {
+  min-height: 30px;
+  padding: 3px 12px;
+  border: 1px solid color-mix(in srgb, var(--error-border) 40%, var(--border));
+  border-radius: 8px;
+  color: var(--error-border);
+  background: transparent;
+  font-size: 12px;
+}
+
+.model-settings-dialog .model-danger-button:hover:not(:disabled) {
+  border-color: var(--error-border);
+  background: color-mix(in srgb, var(--error-border) 8%, transparent);
+}
+
+@media (max-width: 760px) {
+  .provider-card__head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .provider-card__actions {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 16px;
+  }
 }

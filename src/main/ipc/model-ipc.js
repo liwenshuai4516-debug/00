@@ -25,6 +25,14 @@ function registerModelIpc(ipcMain, providers, sessions, runIdleOperation) {
     runIdleOperation(async () => reloadAfterWrite(await providers.deleteModel(providerId, modelId))),
   );
 
+  ipcMain.handle("agent:save-provider", (_event, input) =>
+    runIdleOperation(async () => reloadAfterWrite(await providers.saveProvider(input))),
+  );
+
+  ipcMain.handle("agent:delete-provider", (_event, providerId) =>
+    runIdleOperation(async () => reloadAfterWrite(await providers.deleteProvider(providerId))),
+  );
+
   // 只接受供应商与模型编号，实际使用哪份配置由主进程解析。
   ipcMain.handle("agent:set-default-model", (_event, provider, modelId) =>
     runIdleOperation(() =>

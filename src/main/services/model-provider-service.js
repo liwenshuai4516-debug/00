@@ -295,6 +295,56 @@ function createModelProviderService(
     return { modelsPath: file, providerId, modelId, action: "deleted" };
   }
 
+  // 提供商层编辑只动 name/baseUrl/api，保留 models、apiKey、headers 等未展示内容。
+  async function saveProvider(input) {
+    const { file, document } = await readDocument();
+    const providerId = readText(input?.providerId, "供应商编号", { required: true, max: 64 });
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(providerId)) {
+      throw new Error("供应商编号只能包含字母、数字、点、下划线和短横线，并以字母或数字开头。");
+    }
+
+    const name = readText(input?.provider?.name, "供应商名称", { max: 100 });
+    const baseUrl = readText(input?.provider?.baseUrl, "供应商 Base URL", { max: 500 });
+    if (baseUrl && !/^https?:\/\//i.test(baseUrl)) {
+      throw new Error("供应商 Base URL 需要以 http:// 或 https:// 开头。");
+    }
+    const api = readText(input?.provider?.api, "供应商接口协议", { max: 60 });
+    if (api && !API_OPTIONS.includes(api)) {
+      throw new Error(`供应商接口协议只能是：${API_OPTIONS.join("、")}。`);
+    }
+
+    const existing = document.providers[providerId];
+    const provider = { ...(isPlainObject(existing) ? existing : {}) };
+    for (const [field, value] of [["name", name], ["baseUrl", baseUrl], ["api", api]]) {
+      if (value) provider[field] = value;
+      else delete provider[field];
+    }
+    if (!Array.isArray(provider.models)) provider.models = [];
+    document.providers[providerId] = provider;
+
+    await writeDocument(file, document);
+    return {
+      modelsPath: file,
+      providerId,
+      action: isPlainObject(existing) ? "updated" : "created",
+    };
+  }
+
+  // 删除整个提供商区块（含模型与覆盖配置）；当前/默认模型是否仍可用由运行时重读判断。
+  async function deleteProvider(providerId) {
+    const { file, document } = await readDocument();
+    const id = readText(providerId, "供应商编号", { required: true, max: 64 });
+    const block = document.providers[id];
+    if (!isPlainObject(block)) {
+      throw new Error("该供应商不在 models.json 中，可能已被其他程序移除。");
+    }
+    const modelCount = Array.isArray(block.models) ? block.models.length : 0;
+    delete document.providers[id];
+
+    await writeDocument(file, document);
+    return { modelsPath: file, providerId: id, modelCount, action: "deleted" };
+  }
+
   async function openConfiguration() {
     const { modelsPath } = await readConfiguration();
     await mkdir(path.dirname(modelsPath), { recursive: true });
@@ -308,7 +358,7 @@ function createModelProviderService(
     if (error) throw new Error("无法打开 models.json，请使用文本编辑器打开所示路径。");
   }
 
-  return { readConfiguration, readCatalog, saveModel, deleteModel, openConfiguration };
+  return { readConfiguration, readCatalog, saveModel, deleteModel, saveProvider, deleteProvider, openConfiguration };
 }
 
 module.exports = { createModelProviderService };
