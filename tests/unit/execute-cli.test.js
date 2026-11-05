@@ -4,7 +4,7 @@ const path = require("node:path");
 const os = require("node:os");
 const { mkdtemp, mkdir, writeFile, rm } = require("node:fs/promises");
 const { createHash } = require("node:crypto");
-const { parseArgs, loadProject, loadCases } = require("../../resources/testing/ui/execute.cjs");
+const { parseArgs, loadProject, loadCases, resolveSystemUser } = require("../../resources/testing/ui/execute.cjs");
 
 async function setup(t) {
   const base = await mkdtemp(path.join(os.tmpdir(), "qa-execute-cli-"));
@@ -37,6 +37,20 @@ test("解析执行参数并拒绝冲突的 case 选择", () => {
   assert.throws(() => parseArgs(["--project", "pms", "--all", "--grep", "T1"]), /--all 与 --grep 不能同时使用/);
   assert.throws(() => parseArgs(["--project", "pms", "--cases", "a", "--all"]), /不能同时使用/);
   assert.throws(() => parseArgs(["--project", "pms"]), /缺少 --cases 或 --all/);
+  assert.equal(parseArgs(["--project", "pms", "--list-users"]).listUsers, true);
+  assert.throws(() => parseArgs(["--project", "pms", "--list-users", "--cases", "a"]), /不能与/);
+  assert.throws(() => parseArgs(["--project", "pms", "--cases", "a", "--user", "姜胤", "--storage-state", "state.json"]), /不能同时使用/);
+});
+
+test("按姓名或用户名解析系统用户，拒绝歧义和不存在", () => {
+  const users = [
+    { name: "姜胤", username: "jiangyin" },
+    { name: "姜胤", username: "jiangyin2" },
+    { name: "周卫东", username: "zhouweidong" },
+  ];
+  assert.equal(resolveSystemUser(users, "zhouweidong").username, "zhouweidong");
+  assert.throws(() => resolveSystemUser(users, "姜胤"), /多个账号/);
+  assert.throws(() => resolveSystemUser(users, "不存在"), /找不到/);
 });
 
 test("未传 --url 时从所选 case 推导目标并校验资产哈希", async (t) => {

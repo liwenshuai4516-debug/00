@@ -70,6 +70,8 @@ config/projects.local.json
 
 2026-11-04 已接入 UI 工作流：qa_ui_project 按地址匹配配置，qa_ui_login 的 auto 分支在后端读取凭据、按需登录并交接临时状态，详见 [内置 UI 测试](ui-testing-runtime.md)。无需在每个阶段人工输入账号密码；验证码、MFA、跨域认证、配置或表单失效仍需处理。没有持久登录态复用、多环境、凭据加密或团队共享。工作区与测试数据目录准备已合并进 qa_ui_project：一次调用完成 qa/data/ui/cases 创建/复用、写入探针和项目匹配，不再单独调用 qa-workspace-prepare。
 
+动态多用户执行不把人员逐个写入项目环境：`execute.cjs --list-users` 从系统“用户管理”读取姓名、用户名、部门和岗位；`--user` 使用同一套动态账号。默认测试密码只从本地 `QA_UI_TEST_PASSWORD` 读取（本地 `.env` 或进程环境），不提交、不打印、不写入脚本或报告。用户管理列表只返回展示字段，不返回密码。
+
 ## 测试数据目录与用例视图（2026-11-04）
 
 右侧栏「测试数据」不再单独列 `qa/data` 文件，而是解析 `qa/data/ui/cases/*.asset.json` 中的 `qa-ui-case/v1` 元数据，按项目 → 模块树 → 用例 → 断言展示；每次打开视图重新读取，回放结束后直接显示最新结果。

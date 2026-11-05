@@ -66,10 +66,13 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 
 - 未传 `--url` 时从所选用例推导目标地址；同项目多个目标时显式传 `--url`
 - `--grep` 只运行标题匹配的测试，配合 `--cases` 可精确复测单条 test；条件复测不使用 `--all`，全量复测才使用 `--all`
+- `--list-users` 从系统“用户管理”动态读取姓名、用户名、部门、岗位、角色和状态，不要求把人员逐个写进项目环境
+- `--user <姓名|用户名>` 用动态账号登录执行；默认测试密码只读本地 `QA_UI_TEST_PASSWORD`，不写入源码、命令行、日志或报告；一次执行只使用一个用户
 - 默认按项目配置无头自动登录；验证码/MFA/租户无法自动选择时传 `--storage-state`
 - 校验 `projectId`、`targetUrl` 和 spec 哈希，生成独立 `qa/ui/runs/execute-*` 批次，调用 `run.cjs`
-- 最后一行 JSON 输出 `status`、`summaryFile`、`testCount`、`counts`；退出码 0 才表示全部通过
+- 最后一行 JSON 输出 `status`、`summaryFile`、`testCount`、`counts` 和当前 `user`；退出码 0 才表示全部通过
 - 适合 cron/launchd 直接调用，不经过 Agent/MCP；登录态由批次清理，失败不自动重试
+- 多角色审批按节点拆成多个单用户批次；不使用子 agent 共享同一审批流状态（projectRef、登录态、批次目录不共享）
 
 ## 测试提示词（录制）
 

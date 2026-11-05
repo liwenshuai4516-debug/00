@@ -46,10 +46,20 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目
 | `--all` | 当前项目、当前目标地址下的全部已登记用例；同项目有多个目标时需配合 `--url` |
 | `--url` | 覆盖目标地址，必须与项目配置同源 |
 | `--storage-state` | 复用已有登录态（文件），适合验证码/MFA/SSO |
+| `--list-users` | 从系统“用户管理”动态列出姓名、用户名、部门、岗位、角色和状态；不执行用例 |
+| `--user` | 按姓名或用户名切换到系统用户执行；默认密码只读 `QA_UI_TEST_PASSWORD` |
 | `--tenant` | 登录后租户名称，默认 `项目管理` |
 | `--headed` | 登录窗口可见，仅调试 |
 
 登录默认用项目配置账号密码无头自动登录；不打印凭据。遇到验证码、MFA、跨站登录或租户无法自动选择时，先用 `qa-ui-basic`/应用登录生成 storageState，再传 `--storage-state`。
+
+## 动态用户登录
+
+- `--list-users` 从系统 `/system/user` 读取账号列表，只返回展示字段，不返回密码；不需要把每个人员写进项目环境。
+- `--user <姓名|用户名>` 先解析用户管理中的账号，再用默认测试密码登录。密码只从 `QA_UI_TEST_PASSWORD` 读取；该变量写入本地 `.env` 或进程环境，不写入源码、命令行、日志、报告或测试脚本。
+- 找不到、重名或非启用账号直接报错，不猜账号；`--user` 不能和 `--storage-state` 同时使用。
+- 一次执行只使用一个用户；审批多角色按节点拆成多个批次分别登录。登录态仍是批次私有，不能跨批次复用。
+- `--list-users` 读取的是用户管理权限下的动态数据；字段和分页由系统页面决定。
 
 ## 条件复测（精确到单条 test）
 
@@ -82,6 +92,13 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目
 4. 回放失败后不要重新 prepare 同一 case 来重试；先读 summary。
 5. finalize 不重置登录态；需要新批次时重新走 qa_ui_project → qa_ui_login → qa_ui_prepare。
 6. 批次结果读取 summary 后交 `qa-test-report`；清理、残留和失败按上表与报告技能处理。
+
+## 多角色审批与子 agent
+
+- 审批是顺序状态流：待办节点依赖上一步结果，不能把各节点当成可共享的并行任务。
+- 不要用子 agent 执行同一审批流：`projectRef`、登录态、批次目录和录制资产是当前会话状态，子 agent 默认不共享；并行会产生重复登录、重复批次或无法合并的证据。
+- 用单个编排 Agent，按节点用 `--user` 分批次执行；每批只用一个用户，失败/未授权时保留原批次并报告，不自动切换账号重跑。
+- 子 agent 只适合只读并行检查（如代码审查、独立配置核对），不适合这种需要连续页面状态和登录交接的审批执行。
 
 ## 定时执行
 
