@@ -54,11 +54,11 @@
 
 ```sh
 node --test tests/unit/line-diff.test.js tests/unit/workspace-changes-service.test.js \
-  tests/unit/workspace-changes-extension.test.js tests/unit/workspace-changes-ipc.test.js \
-  tests/unit/chat-workspace-changes.test.js
+  tests/unit/workspace-changes-extension.test.js tests/unit/workspace-changes-registration.test.js \
+  tests/unit/workspace-changes-ipc.test.js tests/unit/chat-workspace-changes.test.js
 node_modules/.bin/electron tests/ui/turn-changes.check.cjs
 ```
 
-结果：29 项单元检查通过；页面检查覆盖卡片、文件列表、逐行差异、二进制提示、关闭后隐藏且不再请求摘要、重新开启后的新卡片，以及设置开关文案；截图由该检查生成。另运行 `output-trace.check.cjs` 与 `permission-settings.check.cjs` 作为相邻页面回归，均通过。
+结果：30 项单元检查通过；页面检查覆盖卡片、文件列表、逐行差异、二进制提示、关闭后隐藏且不再请求摘要、重新开启后的新卡片，以及设置开关文案；截图由该检查生成。另运行 `output-trace.check.cjs` 与 `permission-settings.check.cjs` 作为相邻页面回归，均通过。
 
 单元检查使用真实 git 临时仓库与真实文件写入，但不请求模型；真实模型触发 write/edit、真实项目工作区与重启后的表现尚未人工验收，自动检查不能替代这些场景。
