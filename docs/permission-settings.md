@@ -36,7 +36,7 @@ DSH 的模型是 `read-only`、`workspace-write`、`full-access`（以及实验 
 
 - `src/main/services/permission-service.js`：保存在 `app.getPath("userData")/permission-settings.json`，v2 结构为 `defaultMode`、`sessions`、`workspaces`；兼容旧版 `{version:1, mode}` 并在下次保存时升级。写入 `0600` 原子临时文件；损坏文件回到安全默认但不自动覆盖。
 - `src/main/resources/permission-gate.mjs`：官方 `tool_call` 扩展。读取类工具（`read`、`read_workspace_*`、`list_workspace_directory`、`search_workspace_text`、`get_current_time`、`todo_write`、`qa_ui_project`、`web_search`、`web_fetch` 等）直接执行；带 `readOnlyHint` 的 MCP 工具也直接执行；`browser_snapshot`、`browser_verify_*`、`browser_network_*`、`generator_read_log` 等观察类录制工具按只读处理；其他工具按模式确认或阻止。确认使用 Pi 官方 `ctx.ui.confirm`，没有 UI 时失败关闭。门禁从 `ctx.sessionManager.getSessionId()` 和 `ctx.cwd` 解析会话/项目范围，不接受页面提供的编号或路径。
-- 同一扩展在 `before_agent_start` 写入 `app-permission` 系统提示词段，按当前模式告诉模型：完全权限视为已授权本次任务，不要逐项询问或只做只读；每次确认直接调用工具、由应用弹窗确认；只读不要尝试写操作。模式保存后在下一轮提示词立即生效。
+- 同一扩展在 `before_agent_start` 写入 `app-permission` 系统提示词段，按当前模式告诉模型：完全权限视为已授权本次任务，不要逐项询问或只做只读；每次确认直接调用工具、由应用弹窗确认，但弹窗只决定本次工具调用，任务需要写操作而测试环境未说明时仍按技能先确认一次；只读不要尝试写操作。模式保存后在下一轮提示词立即生效。
 - `src/main/pi-agent.mjs` 在创建会话时按会话/项目解析权限；`src/main/resources/pi-resources.mjs` 的 `resolveTrust` 在完全权限下直接信任项目资源，不弹项目信任确认，也不写入 `ProjectTrustStore`。
 - `src/main/ipc/agent-ipc.js`、`src/preload/preload.js`：`agent:read-permission-settings` / `agent:save-permission-settings`，主进程从当前实际会话与工作区解析范围，保存走共用空闲互斥。
 - `src/renderer/components/settings/permission-settings.js`：设置页「通用设置 → 权限控制」提供模式和范围下拉；当前生效范围以说明展示。
@@ -49,7 +49,7 @@ DSH 的模型是 `read-only`、`workspace-write`、`full-access`（以及实验 
 - 只读模式会阻止所有未声明为只读的工具；未知工具按“可能写入”处理。
 - 完全权限会跳过所有确认，包括命令和文件写入；只在明确信任当前任务时使用。系统提示词会把它声明为本次任务的授权，但不会绕过操作系统权限或用户在提示词里明确排除的范围。
 - 完全权限自动信任项目资源是**本次会话的加载决定**，不写入 `ProjectTrustStore`。会话创建后再切换到完全权限，不会自动补载之前因未信任而被排除的项目扩展/技能；需要新开会话或重新加载。
-- 确认只对本次工具调用有效，不形成永久授权；权限模式改变后当前会话的后续工具调用立即使用新模式，系统提示词在下一轮更新。已有会话若未加载权限扩展，需要新开会话或重启客户端。
+- 确认只对本次工具调用有效，不形成永久授权，也不替代测试环境授权；任务需要写操作而测试环境未说明时，仍按技能先确认一次。权限模式改变后当前会话的后续工具调用立即使用新模式，系统提示词在下一轮更新。已有会话若未加载权限扩展，需要新开会话或重启客户端。
 - `todo_write` 仅更新界面任务列表，不视为文件写入；`qa_ui_project` 只读取项目配置和目录，不返回凭据。
 
 ## 验证

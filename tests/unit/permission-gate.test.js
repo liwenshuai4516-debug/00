@@ -116,6 +116,8 @@ test("系统提示词按当前模式注入，模式切换后下一轮立即更�
   handlers.before_agent_start(event, ctx);
   assert.match(event.systemPromptOptions.sections["app-permission"], /每次确认/);
   assert.match(event.systemPromptOptions.sections["app-permission"], /逐次弹窗确认/);
+  assert.match(event.systemPromptOptions.sections["app-permission"], /仍先确认一次/);
+  assert.doesNotMatch(event.systemPromptOptions.sections["app-permission"], /不要再额外询问环境授权/);
 });
 
 test("门禁把当前会话与工作区传给按会话/项目解析", async () => {
