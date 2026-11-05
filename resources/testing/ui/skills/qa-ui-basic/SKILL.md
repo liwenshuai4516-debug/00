@@ -53,6 +53,7 @@ description: 当用户要录制 UI 用例、回放测试或验收页面时使用
 判定规则：
 
 - 原话只有“录制/生成用例/写脚本”，没有“回放/执行/验证”，按**只录制**。
+- “生成测试用例/写用例”的完成标准是在 `qa/data/ui/cases` 生成脚本与说明并调用 `qa_ui_finalize` 登记为标准化用例；只写 `qa/design/*.md`、只在聊天里列用例或只写未登记的 spec 都不算完成。用户明确只要设计文档、不录制时才例外。
 - 原话只有“执行/回放/跑一下/看结果”，没有“录制/补用例”，按**只执行**；没有 caseId 时先问跑哪些已有用例。
 - 同时要求录制和回放，或明确说“完整流程/端到端”，才走 1–7。
 - 意图不明确且两条路径成本差异大时，只问一句“只录制，还是也要回放？”；能从原话判断就不问。
@@ -95,8 +96,9 @@ manual-required 时根据 reason 处理：验证码/MFA/跨站认证或自动登
 
 加载并遵循 qa-ui-record 技能（与本源文件同级的 ../qa-ui-record/SKILL.md；未加载时先读取），按它完成功能面盘点、录制、现场断言和脚本整理。
 本步骤保留流程约束：先盘点查询项、工具栏按钮、行操作和展开收起控件并形成覆盖矩阵，再调用 qa_ui_prepare（mode=record、projectRef、targetUrl）；默认不手填 caseId；使用返回的 caseId、seedFile、caseFileName、caseDocument 和 recordingDir；结束调用 browser_close。测试环境的写操作按覆盖矩阵执行；仅非测试环境或不可逆外部副作用的操作列入未覆盖，不静默跳过。
+工具按固定顺序出现：`qa_ui_prepare` 成功返回后才会登记 `mcp__desktop_playwright_test__browser_*` / `generator_*`；准备前的工具清单里没有它们属于正常状态，不能据此判定“工具缺失”或直接报 blocked。必须先完成 `qa_ui_login`（saved 或 not-required）并成功调用 `qa_ui_prepare(mode=record)`，再确认这批工具已出现；prepare 已成功返回但工具仍未出现时，才停止并报告实际返回与错误。
 录制必须现场验证预期：每个业务步骤后用 browser_verify_* 验证，generator_read_log 核对动作与断言，generator_write_test 只写日志有证据的步骤与断言。
-脚本质量按 qa-ui-assertion 的断言规则和 qa-ui-record 的定位器、数据隔离、等待方式执行；仅用实际登记的官方 desktop-playwright-test 工具，未出现时停止。
+脚本质量按 qa-ui-assertion 的断言规则和 qa-ui-record 的定位器、数据隔离、等待方式执行；仅用本次 prepare 后实际登记的官方 desktop-playwright-test 工具。
 
 ## 5. 整理脚本并持久化
 

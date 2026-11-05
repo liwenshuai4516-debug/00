@@ -322,8 +322,8 @@ export function createUiTestingExtension(runtime) {
       name: "qa_ui_prepare",
       label: "准备 UI 测试",
       description:
-        "检查客户端内置运行环境，准备 UI 录制或多个已有 case 的独立回放批次，并自动生成摘要、版本及证据清单。",
-      promptSnippet: "准备 UI 录制或已有 case 的测试运行环境。",
+        "检查客户端内置运行环境，准备 UI 录制或多个已有 case 的独立回放批次，并自动生成摘要、版本及证据清单。录制模式成功返回后才会登记官方 Playwright 页面操作与脚本生成工具（browser_*/generator_*），准备前看不到它们属于正常状态。",
+      promptSnippet: "准备 UI 录制或已有 case 的测试运行环境；录制工具由本工具登记。",
       executionMode: "sequential",
       parameters: Type.Object({
         caseId: Type.Optional(Type.String({ minLength: 1, maxLength: 180 })),

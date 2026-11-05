@@ -27,9 +27,11 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 
 `qa_ui_prepare(mode=record)` 通过 `pi.registerMcpServer("desktop-playwright-test", ...)` 启动官方 Playwright Test MCP。该注册依赖**内置 MCP** 的 `direct` 暴露，工具名应为 `mcp__desktop_playwright_test__generator_setup_page`、`browser_click`、`browser_verify_*` 等。
 
+这些工具不是会话启动时就登记的：必须先完成 `qa_ui_login`（saved 或 not-required），再成功调用 `qa_ui_prepare(mode=record)`，`browser_*` / `generator_*` 才会出现。准备前的工具清单里没有它们属于正常状态，不能据此判定工具缺失或直接报 blocked；prepare 已成功返回但工具仍未出现时，才按实际错误停止。
+
 如果 Pi 设置了 `-builtin:mcp` 并安装 `pi-mcp-adapter`，适配器会把运行时注册降级为 proxy-only，不暴露上述直连工具，`qa_ui_finalize` 也会因缺少 `generator-log-*.json` 拒绝登记。带 UI 测试运行时的 SW-QA 会话会在设置读取层过滤该适配器并重新启用内置 MCP；只影响当前应用会话，不改用户的全局 `settings.json`，也不影响其他客户端。
 
-修改后必须**新开会话/重启客户端**，已启动的会话不会重新加载扩展。验证方式是会话工具清单出现上述 `mcp__desktop_playwright_test__*`，或 `qa_ui_prepare(mode=record)` 后录制目录生成 `generator-log-*.json`。
+修改后必须**新开会话/重启客户端**，已启动的会话不会重新加载扩展。验证方式是 prepare 后会话工具清单出现上述 `mcp__desktop_playwright_test__*`，或准备后录制目录生成 `generator-log-*.json`。
 
 自动登录、录制和回放默认无头执行，不打开前端浏览器；只有用户明确要求现场观察时才传 `headed=true`。`qa_ui_login(auto)` 遇到验证码/MFA 默认静默返回 manual-required，不主动弹窗；需要人工接管时由用户要求再开可见窗口。
 

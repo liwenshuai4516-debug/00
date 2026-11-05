@@ -59,9 +59,9 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 
 ## 1. 准备录制
 
-调用 qa_ui_prepare：mode=record、projectRef、targetUrl；默认无头，不要传 headed=true（仅用户明确要求观察页面时例外）。
+调用 qa_ui_prepare：mode=record、projectRef、targetUrl；默认无头，不要传 headed=true（仅用户明确要求观察页面时例外）。调用前必须已有 qa_ui_login 的 saved 或 not-required 结果。
 使用返回的 caseId、seedFile、caseFileName、caseDocument、caseFile 和 recordingDir；默认不手填 caseId，不覆盖同名资产。
-仅用当前会话实际登记的官方 desktop-playwright-test 工具；未出现时停止并报告，不自建脚本或改用其他工具。
+官方 desktop-playwright-test 工具（browser_* / generator_*）由 qa_ui_prepare 成功返回后才登记，准备前工具清单里没有它们属于正常状态，不能据此提前停止。prepare 后确认 `mcp__desktop_playwright_test__*` 已出现；仍未出现时才停止并报告，不自建脚本或改用其他工具。
 
 ## 2. 现场录制与验证
 
@@ -116,6 +116,7 @@ test 名称写「业务动作 + 预期结果」；步骤注释用录制 intent�
 caseDocument 必须包含 `qa-ui-case/v1` 元数据块；qa_ui_finalize 会校验并写入 .asset.json，缺失或字段不合规会拒绝登记。每个 case 必须有 `steps` 执行步骤；仅修正步骤记录时可在右侧栏「测试数据」中直接编辑，不必重新录制。步骤是说明元数据，不改变 spec 执行逻辑。
 元数据块就是后续管理/分类用的元数据稿；正文用例表是从它展开的人读版本，两者必须一致。
 `modulePath` 按被测系统实际左侧导航/菜单的层级填写（如 `["合同管理", "经营合同"]`），同一功能下的多份脚本保持同一路径；不要用页面路由、场景标签或猜测的层级代替。未填写时右侧目录按页面归组，仅用于兼容旧资产。
+未调用 qa_ui_finalize 登记时，右侧栏「测试数据」不会显示该用例；只写 caseDocument、脚本草稿或 `qa/design` 设计稿都不能报告为“已生成用例”。
 
 ````markdown
 # 用例说明
