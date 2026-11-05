@@ -13,6 +13,7 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/login.cjs` | 独立可见 Chromium、登录判断/自动登录/人工接管、私有 storageState 导出 |
 | `resources/testing/ui/run.cjs` | 批次执行、取消、清理、摘要与清单 |
 | `resources/testing/ui/playwright.config.cjs` | 单 worker、零重试、报告和证据策略 |
+| `resources/testing/ui/skills/qa-ui-intent/SKILL.md` | 意图识别与不改变原意的提示补全：输出 original/intent/completedPrompt/missing/route |
 | `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步编排、共享约束和阶段交接；具体录制/回放/报告操作委派给执行技能 |
 | `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
 | `resources/testing/ui/skills/qa-ui-execute/SKILL.md` | 按 caseId 单项/批量/定时执行，不录制、不改脚本 |
@@ -87,6 +88,8 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 先判断用户意图，不因调用 `/skill:qa-ui-basic` 就默认跑满七步：只录制走步骤 1–5，只执行走 1–3 + 6–7，只有录制并回放/完整测试才走 1–7；待办清单同步裁剪。用户确认目标为测试环境时视为业务层授权；工具层仍按当前应用权限模式逐次确认或放行。业务预期默认采用页面规则并标注来源。
 
 在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理细则由同目录注册的 `/skill:qa-ui-record` 提供，执行和报告分别由 `qa-ui-execute`、`qa-test-report` 提供。这些 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
+
+进入编排前先加载 `qa-ui-intent`：它保留用户原话，识别动作/对象/范围和交付物，输出 `intent`、`completedPrompt`、`missing` 和 `route`。补全只能显式化隐含范围与流程约束，不能把“录制”改成“执行”、把审批子集扩大成全页面，或把只生成 case 改成完整多角色审批。审批子集录制走 `qa-ui-record` 的“审批子集补全模式”，使用新 caseId 生成独立资产，非审批区域标本次范围外。
 
 | 步骤 | 实际行为与完成条件 |
 | --- | --- |

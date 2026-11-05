@@ -24,6 +24,7 @@ function resolveUiTestingRuntime(app, projectRoot) {
     login: path.join(directory, "login.cjs"),
     runner: path.join(directory, "run.cjs"),
     skill: path.join(directory, "skills/qa-ui-basic/SKILL.md"),
+    intentSkill: path.join(directory, "skills/qa-ui-intent/SKILL.md"),
     recordSkill: path.join(directory, "skills/qa-ui-record/SKILL.md"),
     executeSkill: path.join(directory, "skills/qa-ui-execute/SKILL.md"),
     assertionSkill: path.join(directory, "skills/qa-ui-assertion/SKILL.md"),

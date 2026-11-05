@@ -40,6 +40,7 @@ test("UI 流程技能说明登录态失效后的恢复顺序", async () => {
 
 test("qa-ui-basic 只做流程编排，执行细节由执行技能维护", async () => {
   const basic = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-basic/SKILL.md"), "utf8");
+  assert.match(basic, /qa-ui-intent/);
   assert.match(basic, /qa-ui-record/);
   assert.match(basic, /qa-ui-execute/);
   assert.match(basic, /qa-test-report/);
@@ -51,6 +52,23 @@ test("qa-ui-basic 只做流程编排，执行细节由执行技能维护", async
   const execute = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-execute/SKILL.md"), "utf8");
   assert.match(execute, /## 会话内 MCP 回放/);
   assert.match(execute, /--grep/);
+});
+
+test("意图识别技能保留原意并补全审批子集", async () => {
+  const intent = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-intent/SKILL.md"), "utf8");
+  assert.match(intent, /不改变原意/);
+  assert.match(intent, /original/);
+  assert.match(intent, /completedPrompt/);
+  assert.match(intent, /审批子集/);
+  assert.match(intent, /把“录制”改成“执行”/);
+  const basic = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-basic/SKILL.md"), "utf8");
+  assert.match(basic, /审批子集录制\/补全/);
+  const record = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-record/SKILL.md"), "utf8");
+  assert.match(record, /审批子集补全模式/);
+  const runtime = await fs.readFile(path.resolve(__dirname, "../../src/main/capabilities/ui-testing/runtime-paths.js"), "utf8");
+  assert.match(runtime, /intentSkill/);
+  const extension = await fs.readFile(path.resolve(__dirname, "../../src/main/capabilities/ui-testing/extension.mjs"), "utf8");
+  assert.match(extension, /runtime\.intentSkill/);
 });
 
 test("UI 录制技能要求审批入口生成 case，审批技能只负责执行规程", async () => {

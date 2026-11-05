@@ -58,6 +58,7 @@ OC-06 的预期来自界面筛选字段含义的推定，尚无业务需求文�
 | Pi 资源工厂接入 | [pi-resources.mjs](../src/main/resources/pi-resources.mjs) |
 | 环境准备、MCP 登记、日志与命令 | [extension.mjs](../src/main/capabilities/ui-testing/extension.mjs) |
 | 单 case 录制与脚本说明 | [qa-ui-record](../resources/testing/ui/skills/qa-ui-record/SKILL.md) |
+| 意图识别与提示补全 | [qa-ui-intent](../resources/testing/ui/skills/qa-ui-intent/SKILL.md) |
 | 七步编排与阶段交接 | [qa-ui-basic](../resources/testing/ui/skills/qa-ui-basic/SKILL.md) |
 | 官方执行器及报告配置 | [playwright.config.cjs](../resources/testing/ui/playwright.config.cjs) |
 | 运行时自检 | [verify.cjs](../resources/testing/ui/verify.cjs) |
