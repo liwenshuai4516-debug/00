@@ -49,9 +49,14 @@ test("UI 录制技能要求审批入口生成 case，审批技能只负责执行
   assert.match(approval, /多角色场景需用 start\/complete/);
 });
 
-test("工作区准备技能与 qa_ui_project 的目录检查保持一致", async () => {
-  const prepare = await fs.readFile(path.resolve(__dirname, "../../.pi/skills/qa-workspace-prepare/SKILL.md"), "utf8");
-  assert.match(prepare, /`qa_ui_project` 已包含 `qa\/data`/);
-  assert.match(prepare, /不要为了同一任务重复调用本技能/);
-  assert.match(prepare, /qa\/data\/ui\/cases/);
+test("qa_ui_project 合并工作区准备，不再保留独立准备技能", async () => {
+  const basic = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-basic/SKILL.md"), "utf8");
+  assert.match(basic, /qa_ui_project 一次完成工作区校验/);
+  assert.match(basic, /不再单独调用工作区准备技能/);
+  assert.match(basic, /directoryAction、createdDirectories、cleanupPending/);
+  const extension = await fs.readFile(path.resolve(__dirname, "../../src/main/capabilities/ui-testing/extension.mjs"), "utf8");
+  assert.match(extension, /一次调用校验当前会话工作区、创建或复用 qa\/data\/ui\/cases/);
+  await assert.rejects(
+    fs.access(path.resolve(__dirname, "../../.pi/skills/qa-workspace-prepare/SKILL.md")),
+  );
 });

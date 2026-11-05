@@ -67,14 +67,14 @@ description: 当用户要录制 UI 用例、回放测试或验收页面时使用
 ## 1. 检查当前工作区
 
 使用宿主当前会话 cwd，不能拿应用安装目录、技能目录或聊天里提到的其他目录代替已选择工作区。无可信 cwd 时提示选择工作区，不在其他位置创建文件。
-后续 qa_ui_project 会核对真实目录、工作区内链接、实际写入及探针清理。只在 ready 后使用返回的路径。
+qa_ui_project 一次完成工作区校验：真实目录、工作区内链接、创建或复用 `qa/data/ui/cases`、实际写入及探针清理；不再单独调用工作区准备技能。只在返回 ready 后使用返回的路径。
 测试输入保存在 dataDir（当前工作区 qa/data），新流程的脚本与用例说明在 caseDir（qa/data/ui/cases）。旧 qa/ui/cases 资产不迁移或删除。
 
 ## 2. 对照项目配置和前置数据
 
-调用 qa_ui_project，提供用户的 targetUrl；用户指定项目编号或名称时同时传 projectId/projectName。有上游工作区预期时传 expectedWorkspaceRoot。
+调用 qa_ui_project，提供用户的 targetUrl；用户指定项目编号或名称时同时传 projectId/projectName。有上游工作区预期时传 expectedWorkspaceRoot。该调用同时完成上面的工作区/目录准备和项目匹配，不需要分两次准备。
 宿主从现有项目配置按协议、主机、端口、路径边界匹配，最长路径范围优先；等价匹配或用户项目名称冲突时停止，不猜账号。不用简单字符串前缀，也不按工作目录名称猜系统名称。
-工具返回 projectRef、项目名/地址、credentialsConfigured、missingConfiguration、dataDir、caseDir、assetName，不返回账号密码。
+工具返回 projectRef、项目名/地址、credentialsConfigured、missingConfiguration、workspace、workspaceRoot、workspaceStatus、dataDir、caseDir、directoryAction、createdDirectories、cleanupPending、assetName，不返回账号密码。
 禁止 Agent 读取或打印 projects.local.json、调用后端读取接口导出密码、复制凭据到测试数据或报告。后续自动登录由工具在后端按需读取。
 
 列明本次模块、操作范围、角色、初态、测试数据和预期来源；模块按实际左侧导航的层级记录（如 `合同管理 / 经营合同`），供 qa-ui-case 的 modulePath 使用。检查已有 qa/data 中本次相关的非敏感业务输入，缺失必需数据时具体说明缺哪一项，不能自行发明业务规则。

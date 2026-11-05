@@ -92,6 +92,9 @@ if (scenario === "recording") {
     const project = (await projectTool.execute("project-check", { targetUrl })).details;
     assert.equal(project.projectName, "项目管理系统");
     assert.ok(!JSON.stringify(project).includes(password));
+    assert.equal(project.workspaceRoot, workspace);
+    assert.equal(project.workspaceStatus, "ready");
+    assert.equal(project.directoryAction, "created");
     assert.equal(project.caseDir, path.join(workspace, "qa/data/ui/cases"));
     const prepareTool = session.agent.state.tools.find((tool) => tool.name === "qa_ui_prepare");
     await assert.rejects(prepareTool.execute("no-login-check", { targetUrl, projectRef: project.projectRef, mode: "record" }), /判断并处理登录/);

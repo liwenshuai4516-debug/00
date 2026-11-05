@@ -26,9 +26,18 @@ test("项目按 origin/路径范围识别，数据只写当前工作区，返回
   const project = await resolveProject(runtime, { targetUrl: "http://127.0.0.1:8238/pms/OperationContract" }, workspace);
   assert.equal(project.projectId, "pms");
   assert.equal(project.credentialsConfigured, true);
+  assert.equal(project.workspaceRoot, workspace);
+  assert.equal(project.workspaceStatus, "ready");
+  assert.equal(project.directoryAction, "created");
+  assert.ok(project.createdDirectories.includes(path.join(workspace, "qa")));
+  assert.deepEqual(project.cleanupPending, []);
   assert.equal(project.caseDir, path.join(workspace, "qa/data/ui/cases"));
   assert.deepEqual(await fs.readdir(other), []);
   assert.ok(!JSON.stringify(project).includes("private-"));
+  const reused = await resolveProject(runtime, { targetUrl: "http://127.0.0.1:8238/pms/OperationContract" }, workspace);
+  assert.equal(reused.directoryAction, "reused");
+  assert.deepEqual(reused.createdDirectories, []);
+  assert.equal(reused.dataDir, path.join(workspace, "qa/data"));
   assert.match(project.assetName, /^项目管理系统__pms_OperationContract__/);
   await assert.rejects(resolveProject(runtime, { targetUrl: project.targetUrl, projectName: "错误的项目" }, workspace), /名称.*不一致/);
   assert.equal((await readCredentials(runtime, project)).password, "private-password");

@@ -114,8 +114,8 @@ export function createUiTestingExtension(runtime) {
     }
     pi.registerTool({
       name: "qa_ui_project",
-      label: "检查 UI 项目与测试数据目录",
-      description: "按当前会话工作区检查 qa/data，按地址匹配已登记项目。只返回项目名称、地址及配置完整性，不返回账号密码。每次调用返回新的 projectRef，可重置登录尝试状态。",
+      label: "校验工作区与 UI 项目",
+      description: "一次调用校验当前会话工作区、创建或复用 qa/data/ui/cases、执行写入探针，并按地址匹配已登记项目；返回 workspace、dataDir、caseDir、directoryAction 及项目配置完整性，不返回账号密码。每次调用返回新的 projectRef，可重置登录尝试状态。",
       executionMode: "sequential",
       parameters: Type.Object({
         targetUrl: Type.String(),

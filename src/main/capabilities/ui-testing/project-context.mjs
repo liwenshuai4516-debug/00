@@ -24,6 +24,7 @@ export async function prepareDataDirectory(cwd, expectedWorkspaceRoot) {
       throw new Error("测试数据目录不能通过链接指向工作区外部。");
     }
   };
+  const createdDirectories = [];
   let current = workspace;
   for (const part of ["qa", "data", "ui", "cases"]) {
     current = path.join(current, part);
@@ -34,8 +35,12 @@ export async function prepareDataDirectory(cwd, expectedWorkspaceRoot) {
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
       // 非递归创建：悬空链接或并发冲突不能绕过路径检查。
-      try { await mkdir(current); }
-      catch (creationError) { if (creationError.code !== "EEXIST") throw creationError; }
+      try {
+        await mkdir(current);
+        createdDirectories.push(current);
+      } catch (creationError) {
+        if (creationError.code !== "EEXIST") throw creationError;
+      }
     }
     current = await realpath(current);
     inside(current);
@@ -43,7 +48,16 @@ export async function prepareDataDirectory(cwd, expectedWorkspaceRoot) {
   const probe = path.join(current, `.write-probe-${randomUUID()}`);
   await writeFile(probe, "", { flag: "wx" });
   await unlink(probe);
-  return { workspace, dataDir: path.join(workspace, "qa/data"), caseDir: current };
+  return {
+    workspace,
+    workspaceRoot: workspace,
+    dataDir: path.join(workspace, "qa/data"),
+    caseDir: current,
+    workspaceStatus: "ready",
+    directoryAction: createdDirectories.length > 0 ? "created" : "reused",
+    createdDirectories,
+    cleanupPending: [],
+  };
 }
 
 export async function resolveProject(runtime, { targetUrl, projectId, projectName, expectedWorkspaceRoot }, cwd) {
