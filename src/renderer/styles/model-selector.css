@@ -218,6 +218,13 @@
   color: var(--focus);
 }
 
+.model-effort__hint {
+  margin: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .model-selector [role="status"] {
   flex-basis: 100%;
   min-height: 0;

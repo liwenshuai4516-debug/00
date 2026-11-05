@@ -163,19 +163,26 @@ export function createModelSelector(root, api, setPageBusy, refreshInfo) {
     }
 
     const levels = info.thinkingLevels ?? [];
-    effortBox.hidden = levels.length <= 1;
-    effortList.replaceChildren(...levels.map((level) => {
-      const active = level === info.thinkingLevel;
-      const button = element("button", {
-        type: "button",
-        class: "model-effort__button",
-        dataset: { level },
-        "aria-pressed": String(active),
-        onclick: () => void applyEffort(level),
-        text: effortLabel(level),
-      });
-      return button;
-    }));
+    effortBox.hidden = false;
+    if (levels.length <= 1) {
+      // 不把「没有思考档位」伪装成不存在的能力：明确提示去哪里开启。
+      effortList.replaceChildren(element("p", {
+        class: "model-effort__hint",
+        text: "当前模型未启用思考强度。到「设置 → 模型与供应商」编辑该模型，勾选「支持思考强度」并选择档位。",
+      }));
+    } else {
+      effortList.replaceChildren(...levels.map((level) => {
+        const active = level === info.thinkingLevel;
+        return element("button", {
+          type: "button",
+          class: "model-effort__button",
+          dataset: { level },
+          "aria-pressed": String(active),
+          onclick: () => void applyEffort(level),
+          text: effortLabel(level),
+        });
+      }));
+    }
   }
 
   function openMenu() {

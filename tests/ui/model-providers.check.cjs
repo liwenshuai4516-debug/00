@@ -154,6 +154,13 @@ async function main() {
     await run(`[...document.querySelectorAll('#model-effort .model-effort__button')].find((button)=>button.textContent==='高').click()`);
     await wait(`!window.busy`);
     await check("思考强度在模型菜单内切换", `document.querySelector('[data-model-trigger-effort]').textContent.includes('高')`);
+    info = { ...info, thinkingLevels: ["off"] };
+    await run("window.models.refresh()");
+    await run(`document.querySelector('#model-trigger').click()`);
+    await check("模型没有思考档位时说明开启入口", `document.querySelector('#model-effort .model-effort__hint').textContent.includes('设置 → 模型与供应商')`);
+    await run(`document.querySelector('#model-trigger').click()`);
+    info = { ...info, thinkingLevels: ["off", "low", "high"] };
+    await run("window.models.refresh()");
     win.setSize(390, 860);
     await run(`new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
     await run(`document.querySelector('#model-trigger').click()`);
