@@ -36,8 +36,17 @@
 #draft-toggle,
 #composer-draft-status,
 #message-input-hint,
-.composer-save-row:has(#composer-draft-retry[hidden]) {
+.composer-save-row:has(#composer-draft-retry[hidden]):not([data-alert="true"]) {
   display: none;
+}
+
+/* 待确认发送或输入错误时，恢复输入区状态行，直接说明发送按钮为何不可用。 */
+.composer-save-row[data-alert="true"] {
+  display: flex;
+}
+
+.composer-save-row[data-alert="true"] #composer-draft-status {
+  display: block;
 }
 
 body {

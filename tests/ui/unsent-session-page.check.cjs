@@ -23,6 +23,7 @@ Object.assign(entry("b"), { text: " 完整原文\r\n第二行 \n", revision: 2 }
 Object.assign(entry("c"), { text: "", revision: 3 });
 let current = "a", workspace = "/qa/one", serial = 0, generating = false, runningGate;
 let pendingSend = { id:"pending-c",text:" 待确认原文\r\n<img src=x onerror=alert(1)>\n第二行 ",draftRevision:2 };
+let composerPending = null;
 const history = id => id === "b" ? [] : [{ role: "user", text: `保留消息 ${id}` }];
 const failure = name => { if (flags[name]) { flags[name] = false; throw Error(`模拟${name}失败`); } };
 const pause = async name => { if (flags[name]) { const gate = flags[name]; flags[name] = null; await gate.promise; } };
@@ -61,7 +62,13 @@ const session = {
 };
 const composer = {
   loadCurrentDraft: async () => { calls.push(["load",current]); failure("load"); return { ...entry(current) }; },
-  inspectSend: async id => { calls.push(["inspect",id]); return { ...entry(id), pendingSend:null }; },
+  inspectSend: async id => { calls.push(["inspect",id]); return { ...entry(id), pendingSend: composerPending ? { ...composerPending } : null }; },
+  dismissSend: async (id,sendId) => {
+    calls.push(["dismissComposer",id,sendId]);
+    if (sendId !== composerPending?.id) throw Error("发送记录已变化");
+    composerPending = null;
+    return { sessionId:id, sendId };
+  },
   saveDraft: async (id,text,revision) => {
     calls.push(["save",id,text]); await pause("saveGate"); failure("save");
     assert.equal(revision,entry(id).revision); Object.assign(entry(id), { text,revision:revision+1 }); return { ...entry(id) };
@@ -339,6 +346,28 @@ async function main() {
     await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
     await fs.writeFile(path.join(temporary,"pending-send-1120.png"),(await win.webContents.capturePage()).toPNG());
     await click('#unsent-send-dialog [data-close]');
+  });
+  await check("待确认发送在输入区显示锁定原因",async () => {
+    composerPending={ id:"pending-new",text:"待确认的授权消息",draftRevision:2 };
+    await click('#new-chat-button'); await idle();
+    assert.equal(await js('document.getElementById("send-button").disabled'),true);
+    assert.match(await js('document.getElementById("send-button").title'),/未确认的发送原文/);
+    assert.equal(await js('getComputedStyle(document.getElementById("composer-draft-status")).display !== "none"'),true);
+    assert.match(await js('document.getElementById("composer-draft-status").textContent'),/有未确认的发送原文/);
+    assert.equal(await js('document.getElementById("unconfirmed-send").hidden'),false);
+    await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+    if (process.env.UNSENT_BLOCKED_SCREENSHOT_PATH) {
+      await fs.writeFile(process.env.UNSENT_BLOCKED_SCREENSHOT_PATH,(await win.webContents.capturePage()).toPNG());
+    }
+  });
+  await check("解除发送限制后恢复发送并隐藏提示",async () => {
+    await click("#unconfirmed-send summary");
+    await click("#dismiss-send-button");
+    await click("#dismiss-send-accept"); await idle();
+    assert.equal(composerPending,null);
+    assert.equal(await js('document.getElementById("send-button").disabled'),false);
+    assert.equal(await js('getComputedStyle(document.getElementById("composer-draft-status")).display'),"none");
+    assert.equal(await js('document.getElementById("unconfirmed-send").hidden'),true);
   });
   await check("列表迟到结果在页面离开后失效",async () => {
     const gate=Promise.withResolvers(); flags.listGate=gate;

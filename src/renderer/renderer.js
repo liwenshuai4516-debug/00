@@ -121,6 +121,21 @@ function renderComposerState() {
   if (shownSendId !== pending?.id) unconfirmedSend.open = false;
   shownSendId = pending?.id ?? null;
   unconfirmedText.textContent = pending?.text ?? "";
+
+  // 待确认发送会锁住发送按钮；把原因从折叠详情提到输入框上方，避免只看到按钮变灰。
+  const saveRow = composerStatus.closest(".composer-save-row");
+  if (saveRow) {
+    saveRow.dataset.alert = String(
+      Boolean(pending) || Boolean(composerState.error) || composerState.retryable,
+    );
+  }
+  const sendHint = pending
+    ? "有未确认的发送原文，请先解除发送限制"
+    : "发送消息";
+  if (sendButton.title !== sendHint) {
+    sendButton.title = sendHint;
+    sendButton.setAttribute("aria-label", sendHint);
+  }
   // 确认只属于打开时的会话和快照；切换后必须重新核对。
   if (
     dismissTarget &&
