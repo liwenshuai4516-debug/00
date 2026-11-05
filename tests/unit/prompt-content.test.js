@@ -44,4 +44,14 @@ test("UI 录制技能要求审批入口生成 case，审批技能只负责执行
   const approval = await fs.readFile(path.resolve(__dirname, "../../.pi/skills/qa-approval-workflow/SKILL.md"), "utf8");
   assert.match(approval, /不替代 `qa-ui-record` 的入口盘点和 case 生成/);
   assert.match(approval, /必须位于实际测试工作区的 `\.pi\/skills\/qa-approval-workflow\/SKILL\.md`/);
+  assert.match(approval, /当前应用权限模式/);
+  assert.match(approval, /`qa_ui_login` 的 auto 只使用项目配置中的账号/);
+  assert.match(approval, /多角色场景需用 start\/complete/);
+});
+
+test("工作区准备技能与 qa_ui_project 的目录检查保持一致", async () => {
+  const prepare = await fs.readFile(path.resolve(__dirname, "../../.pi/skills/qa-workspace-prepare/SKILL.md"), "utf8");
+  assert.match(prepare, /`qa_ui_project` 已包含 `qa\/data`/);
+  assert.match(prepare, /不要为了同一任务重复调用本技能/);
+  assert.match(prepare, /qa\/data\/ui\/cases/);
 });
