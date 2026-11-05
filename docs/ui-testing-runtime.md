@@ -154,12 +154,14 @@ qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业�
 把它安装到实际测试工作区：
 
 ```bash
-mkdir -p "/path/to/project/.pi/skills/qa-approval-workflow"
-cp .pi/skills/qa-approval-workflow/SKILL.md \
-  "/path/to/project/.pi/skills/qa-approval-workflow/SKILL.md"
+mkdir -p "/path/to/project/.pi/skills"
+cp -R .pi/skills/qa-approval-workflow \
+  "/path/to/project/.pi/skills/"
 ```
 
 然后新开会话或重启客户端，并在资源面板确认技能已登记。项目资源还受项目信任控制：未信任时项目 `.pi/skills` 可能不加载；需要按项目信任流程确认。
+
+必须复制完整技能目录，包括 `references/审批流人员对照表-流程模型×部门.md`。审批技能优先读取本次任务提供的对照表，否则按需读取内置原文快照，按「流程模型 × 发起部门」选择完整审批链；不依赖外部 WorkBuddy 路径，不默认启用可选节点，也不把未逐流程核实的人员映射当成已验收结果。账号仍从用户管理解析，模型标识、缺失人员、开关及实际待办从相应配置/详情页核对。
 
 审批技能是“多角色审批执行规程”，不是用例生成器；加载它不会自动生成审批 case。`qa-ui-record` 已要求：页面只要出现提交、审批、同意、驳回、确认、上传定稿等入口，就必须生成入口/权限/状态/校验 case；完整多角色审批才需要加载 `qa-approval-workflow`。因此“技能未安装”不等于“可以跳过审批入口”。生成审批子集 case 前必须确认当前登录账号是详情页当前节点处理人；不是则改用审批人账号或拆分批次，不能把“无审批按钮”写成通过。
 
