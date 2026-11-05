@@ -20,7 +20,30 @@ const textContent = content => (content ?? []).filter(block => block.type === "t
 const json = value => value === undefined ? "未记录" : JSON.stringify(value, null, 2);
 // 仅截断页面预览，不改写 SDK 保存和模型收到的内容。
 const preview = value => value.length > 12000 ? `${value.slice(0, 12000)}\n……显示已截断` : value;
-const duration = milliseconds => milliseconds < 1000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1000).toFixed(1)} s`;
+// 用时按秒/分钟/小时/天整合，避免长任务只显示上千秒；保留秒级小数用于短操作。
+export function formatDuration(milliseconds) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return "—";
+  if (milliseconds < 1000) return `${Math.round(milliseconds)} ms`;
+  const seconds = milliseconds / 1000;
+  const rounded = Math.round(seconds);
+  if (seconds < 60 && rounded < 60) {
+    return `${seconds >= 10 ? rounded : seconds.toFixed(1)} 秒`;
+  }
+  const totalMinutes = Math.floor(rounded / 60);
+  const restSeconds = rounded % 60;
+  if (totalMinutes < 60) {
+    return restSeconds === 0 ? `${totalMinutes} 分` : `${totalMinutes} 分 ${restSeconds} 秒`;
+  }
+  const totalHours = Math.floor(totalMinutes / 60);
+  const restMinutes = totalMinutes % 60;
+  if (totalHours < 24) {
+    return restMinutes === 0 ? `${totalHours} 小时` : `${totalHours} 小时 ${restMinutes} 分`;
+  }
+  const days = Math.floor(totalHours / 24);
+  const restHours = totalHours % 24;
+  return restHours === 0 ? `${days} 天` : `${days} 天 ${restHours} 小时`;
+}
+const duration = formatDuration;
 
 function summarySpan(className, text) {
   const node = document.createElement("span");

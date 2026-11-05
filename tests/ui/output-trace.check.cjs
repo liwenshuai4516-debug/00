@@ -328,15 +328,15 @@ async function main() {
         now = 1000; feed({type:'message_update',assistantMessageEvent:{type:'thinking_start',contentIndex:0}});
         now = 3000; feed({type:'message_update',assistantMessageEvent:{type:'thinking_delta',contentIndex:0,delta:'公开思考'}});
         await paint();
-        check(host.querySelector('.trace-thinking summary').textContent.includes('2.0 s（界面计时）'), '思考阶段计时');
+        check(host.querySelector('.trace-thinking summary').textContent.includes('2.0 秒（界面计时）'), '思考阶段计时');
         check(host.querySelector('.output-trace>summary').textContent.includes('模型正在思考'), '思考状态');
         now = 4000; feed({type:'message_update',assistantMessageEvent:{type:'thinking_end',contentIndex:0,content:'公开思考'}});
         feed({type:'message_end',message:msg([{type:'thinking',thinking:'公开思考'},{type:'toolCall',id:'t',name:'read',arguments:{path:'a'}}],42)});
         now = 4100; feed({type:'tool_execution_start',toolCallId:'t',toolName:'read'});
         now = 5500; for (const tick of intervals.values()) tick(); await paint();
-        check(host.querySelector('.trace-tool summary').textContent.includes('1.4 s（界面计时）'), '执行中的工具计时');
+        check(host.querySelector('.trace-tool summary').textContent.includes('1.4 秒（界面计时）'), '执行中的工具计时');
         check(host.querySelector('.trace-responses .trace-meta').textContent.includes('响应耗时 42 ms（SDK）'), '响应采用官方耗时');
-        check(host.querySelector('.trace-thinking summary').textContent.includes('3.0 s（界面计时）'), '思考结束后停止计时');
+        check(host.querySelector('.trace-thinking summary').textContent.includes('3.0 秒（界面计时）'), '思考结束后停止计时');
         now = 5700; feed({type:'tool_execution_end',toolCallId:'t',toolName:'read',isError:false,durationMs:88,result:{content:[]}});
         feed({type:'agent_end',willRetry:true}); await paint();
         check(host.querySelector('.output-trace').open, 'agent_end 不提前折叠');
@@ -348,7 +348,7 @@ async function main() {
         check(intervals.size===0, 'settled 清理计时器');
         check(!host.querySelector('.output-trace').open, 'settled 自动收起');
         check(document.activeElement===host.querySelector('.output-trace>summary'), '收起时保护键盘焦点');
-        check(host.querySelector('.output-trace>summary').textContent.includes('用时 7.9 s'), '总用时按界面观察');
+        check(host.querySelector('.output-trace>summary').textContent.includes('用时 7.9 秒'), '总用时按界面观察');
         const settled = host.querySelector('.output-trace>summary').textContent;
         now = 15000; await paint(); check(host.querySelector('.output-trace>summary').textContent===settled, '结束后用时冻结');
         trace.finish();
