@@ -35,3 +35,13 @@ test("UI 流程技能说明登录态失效后的恢复顺序", async () => {
   assert.match(skill, /finalize 只登记资产/);
   assert.match(skill, /不要重新 prepare 同一 case 来重试/);
 });
+
+test("UI 录制技能要求审批入口生成 case，审批技能只负责执行规程", async () => {
+  const record = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-record/SKILL.md"), "utf8");
+  assert.match(record, /页面出现提交、审批、同意、驳回、确认、上传定稿等入口/);
+  assert.match(record, /不能因为未加载 qa-approval-workflow/);
+  assert.match(record, /必须生成至少一条入口/);
+  const approval = await fs.readFile(path.resolve(__dirname, "../../.pi/skills/qa-approval-workflow/SKILL.md"), "utf8");
+  assert.match(approval, /不替代 `qa-ui-record` 的入口盘点和 case 生成/);
+  assert.match(approval, /必须位于实际测试工作区的 `\.pi\/skills\/qa-approval-workflow\/SKILL\.md`/);
+});

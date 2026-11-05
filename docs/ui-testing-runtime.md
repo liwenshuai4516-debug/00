@@ -139,6 +139,22 @@ qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业�
 
 旧的根级 npm 脚本入口指向不存在的执行器，已移除；旧 `config/` 测试配置同步删除。当前唯一准备入口是内置工具及返回的批次命令。POSIX shell 已验证，Windows 命令适配尚未验证。
 
+## 项目业务技能（如多角色审批）
+
+随客户端分发的 UI 测试技能由 `resources_discover` 注册；`qa-approval-workflow` 属于**项目业务技能**，默认只在当前会话 cwd 的 `.pi/skills/` 下发现，不在内置 UI 技能列表中。测试工作区没有 `.pi/skills/qa-approval-workflow` 时，模型看不到它，不能用 `/skill:qa-approval-workflow` 或其他方式加载。
+
+把它安装到实际测试工作区：
+
+```bash
+mkdir -p "/path/to/project/.pi/skills/qa-approval-workflow"
+cp .pi/skills/qa-approval-workflow/SKILL.md \
+  "/path/to/project/.pi/skills/qa-approval-workflow/SKILL.md"
+```
+
+然后新开会话或重启客户端，并在资源面板确认技能已登记。项目资源还受项目信任控制：未信任时项目 `.pi/skills` 可能不加载；需要按项目信任流程确认。
+
+审批技能是“多角色审批执行规程”，不是用例生成器；加载它不会自动生成审批 case。`qa-ui-record` 已要求：页面只要出现提交、审批、同意、驳回、确认、上传定稿等入口，就必须生成入口/权限/状态/校验 case；完整多角色审批才需要加载 `qa-approval-workflow`。因此“技能未安装”不等于“可以跳过审批入口”。
+
 ## 测试报告（UI 与接口共用）
 
 `run.cjs` 现在在 `summary.json` 写入 `schema: "qa-report/v1"` 和 `kind: "ui"`；接口测试执行器后续使用同一结构写入 `qa/api/runs/<runId>/summary.json`，`kind` 为 `api`。公共字段、状态和通过条件见 [测试报告](test-reports.md)，Agent 交付规则由 `qa-test-report` 技能负责。
