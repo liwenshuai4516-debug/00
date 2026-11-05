@@ -342,6 +342,99 @@ function createSessionService(
     };
   }
 
+  // 上下文构成是本地启发式估算，不替代 Pi 的 getContextUsage() 总量，也不请求模型。
+  // 采用 DSH 的一致口径：每个 token 约 4 个字符，另加消息/工具结构开销。
+  function estimateContextText(value) {
+    if (typeof value !== "string" || value.length === 0) return 0;
+    return Math.ceil(value.length / 4);
+  }
+
+  function estimateContextContent(content) {
+    if (typeof content === "string") return estimateContextText(content);
+    if (!Array.isArray(content)) return 0;
+    let tokens = 0;
+    for (const block of content) {
+      if (block === null || typeof block !== "object") continue;
+      if (typeof block.text === "string") tokens += estimateContextText(block.text);
+      else if (typeof block.thinking === "string") tokens += estimateContextText(block.thinking);
+      else if (block.type === "toolCall") {
+        tokens += estimateContextText(block.name ?? "");
+        try {
+          tokens += estimateContextText(JSON.stringify(block.arguments ?? {}));
+        } catch {
+          // 不可序列化的参数只计入名称；估算不能反过来让页面失败。
+        }
+      } else if (block.type === "image") {
+        // 无法读取供应商分词器；与 DSH 一样给出保守的固定占位。
+        tokens += 256;
+      } else if (block.content !== undefined) {
+        tokens += estimateContextContent(block.content);
+      }
+    }
+    return tokens;
+  }
+
+  function estimateContextMessages(messages) {
+    if (!Array.isArray(messages)) return 0;
+    let tokens = 0;
+    for (const message of messages) {
+      if (!message || typeof message !== "object") continue;
+      tokens += 8;
+      tokens += estimateContextContent(message.content);
+      if (message.toolName) tokens += estimateContextText(message.toolName);
+    }
+    return tokens;
+  }
+
+  function estimateContextTools(session) {
+    let names;
+    try {
+      names = new Set(session.getActiveTools?.() ?? []);
+    } catch {
+      names = new Set();
+    }
+    if (names.size === 0) return 0;
+    let tools;
+    try {
+      tools = session.getAllTools?.() ?? [];
+    } catch {
+      return 0;
+    }
+    let tokens = 0;
+    for (const tool of tools) {
+      if (!tool || !names.has(tool.name)) continue;
+      tokens += 12;
+      try {
+        tokens += estimateContextText(JSON.stringify({
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+          promptGuidelines: tool.promptGuidelines,
+        }));
+      } catch {
+        tokens += estimateContextText(tool.name);
+      }
+    }
+    return tokens;
+  }
+
+  async function getContextBreakdown() {
+    const session = await getSession(true);
+    const usage = session.getContextUsage?.() ?? null;
+    const systemTokens = estimateContextText(session.systemPrompt ?? "");
+    const toolsTokens = estimateContextTools(session);
+    const messageTokens = estimateContextMessages(session.messages);
+    return {
+      source: "heuristic",
+      systemTokens,
+      toolsTokens,
+      messageTokens,
+      totalTokens: systemTokens + toolsTokens + messageTokens,
+      contextWindow: usage?.contextWindow ?? null,
+      percent: usage?.percent ?? null,
+    };
+  }
+
   // 读取当前会话的模型目录，不发起模型推理请求。
   async function listModels() {
     const session = await getSession(true);
@@ -1003,6 +1096,7 @@ function createSessionService(
     loadHistory,
     currentSession,
     getSessionInfo,
+    getContextBreakdown,
     listModels,
     switchModel,
     reloadModels,

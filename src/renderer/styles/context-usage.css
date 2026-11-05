@@ -123,3 +123,125 @@
     max-width: none;
   }
 }
+
+/* ---------- 上下文构成：系统提示词 / 工具 / 消息 ---------- */
+.context-breakdown {
+  margin: 12px 0 4px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--page) 45%, var(--surface));
+}
+
+.context-breakdown[hidden] {
+  display: none;
+}
+
+.context-breakdown__bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.context-breakdown__segment {
+  flex-basis: 0;
+  min-width: 2px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.context-breakdown__segment[data-segment="system"] {
+  background: var(--focus);
+}
+
+.context-breakdown__segment[data-segment="tools"] {
+  background: color-mix(in srgb, var(--focus) 55%, var(--muted));
+}
+
+.context-breakdown__segment[data-segment="messages"] {
+  background: var(--muted);
+}
+
+.context-breakdown__rows {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.context-breakdown__rows li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.context-breakdown__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.context-breakdown__swatch[data-segment="system"] {
+  background: var(--focus);
+}
+
+.context-breakdown__swatch[data-segment="tools"] {
+  background: color-mix(in srgb, var(--focus) 55%, var(--muted));
+}
+
+.context-breakdown__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-breakdown__value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.context-breakdown__percent {
+  min-width: 34px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.context-breakdown__note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.context-breakdown__status {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.context-breakdown__status[hidden] {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .context-breakdown__rows li {
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+  }
+
+  .context-breakdown__percent {
+    display: none;
+  }
+}

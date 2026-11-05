@@ -214,6 +214,7 @@ contextBridge.exposeInMainWorld("agent", {
 
   // 读取实际会话的模型与真实工作目录。
   getSessionInfo: () => ipcRenderer.invoke("agent:session-info"),
+  readContextBreakdown: () => ipcRenderer.invoke("agent:read-context-breakdown"),
 
   // 只核对已登记的会话，不接收目录或页面提供的草稿状态。
   inspectComposerSend: (sessionId) =>

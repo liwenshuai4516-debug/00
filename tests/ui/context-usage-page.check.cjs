@@ -28,6 +28,22 @@ const session = {
     if (flags.infoFail) throw Error("模拟读取失败 <img src=x>");
     return snapshot;
   },
+  getContextBreakdown: async () => {
+    calls.push(["breakdown", current]);
+    const snapshot = usage.get(current) ?? estimate(0);
+    const total = Number.isFinite(snapshot?.tokens) ? snapshot.tokens : 0;
+    const systemTokens = Math.round(total * 0.3);
+    const toolsTokens = Math.round(total * 0.15);
+    return {
+      source: "heuristic",
+      systemTokens,
+      toolsTokens,
+      messageTokens: Math.max(0, total - systemTokens - toolsTokens),
+      totalTokens: total,
+      contextWindow: snapshot?.contextWindow ?? 10000,
+      percent: snapshot?.percent ?? 0,
+    };
+  },
   listModels: async () => ({ provider: "mock", modelId: models.get(current) ?? "flash", models: ["flash", "pro"].map(id => ({ id, name: id, provider: "mock" })) }),
   async switchModel(id) {
     calls.push(["model", current, id]); await pause("modelGate");
@@ -106,6 +122,10 @@ async function main() {
       assert.equal(calls.filter(c => c[0] === "info").length, 1);
       assert.equal(await label(), "上下文约 32.0%");
       await openDetails(); assert.match(await js(`document.querySelector('#context-usage [data-usage]').textContent`), /3,200 \/ 10,000/);
+      await until(`!document.querySelector('#context-usage [data-breakdown]').hidden`);
+      assert.equal(await js(`document.querySelectorAll('#context-usage [data-breakdown-row]').length`), 3);
+      assert.equal(await js(`document.querySelector('[data-breakdown-row="system"] [data-breakdown-tokens]').textContent`), "960");
+      assert.equal(calls.filter(c => c[0] === "breakdown").length, 1);
       assert.match(await js(`document.getElementById('session-info').textContent`), /32.0%/);
       assert.equal(await js(`document.querySelectorAll('#session-info img,#context-usage img').length`), 0);
       assert.equal(calls.filter(c => c[0] === "compact").length, 0);
@@ -259,6 +279,9 @@ async function main() {
         assert.equal(await js(`document.getElementById('context-usage-details').hidden`), false);
         assert.equal(await js(`document.documentElement.scrollWidth<=innerWidth&&[document.getElementById('context-usage-toggle'),document.getElementById('context-usage-details')].every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1&&e.scrollWidth<=e.clientWidth+1})`), true);
         await fs.writeFile(path.join(temporary, `context-${width}.png`), (await win.webContents.capturePage()).toPNG());
+        if (width === 1120 && process.env.CONTEXT_USAGE_SCREENSHOT_PATH) {
+          await fs.writeFile(process.env.CONTEXT_USAGE_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+        }
         await click('#context-usage-toggle');
       });
     }

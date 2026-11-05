@@ -656,6 +656,7 @@ const contextUsage = createContextUsage(
   {
     onRefresh: () => sessionInfoPanel.refresh(),
     onCompact: () => compactSessionButton.click(),
+    loadBreakdown: () => window.agent.readContextBreakdown?.(),
   },
 );
 // 菜单信息与常驻用量共用一次读取，不另发模型请求。

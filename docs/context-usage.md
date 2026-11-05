@@ -6,6 +6,16 @@
 
 输入区控制行（模型选择与发送按钮之间）显示环形指示与“上下文约 32.0%”。点击可查看估算tokens、模型窗口及说明，并可“重新读取”或沿用原有“整理上下文”。窄于 560px 时只保留环形指示，完整文案进入悬停提示与无障碍名称。Enter打开，Tab进入详情按钮，Escape收起并返回入口；输入法组词时不拦截Escape，点击外部或焦点移出也会收起。
 
+### 上下文构成（DSH 风格）
+
+详情面板新增三段式构成，只在展开详情时读取，不参与发送、压缩或模型请求：
+
+- **系统提示词**：Pi 生成的 system prompt，包含技能目录（name/description/location）；
+- **工具定义**：当前活动工具的名称、描述与参数 schema；
+- **消息与工具结果**：对话消息、工具结果和已加载的 `SKILL.md` 正文。
+
+三段都使用本地启发式估算（约 4 字符/token，另加消息/工具结构开销；图片按固定占位），不是提供方分词器或计费数据。技能目录计入系统提示词，技能正文与工具结果计入消息，因此没有单独的“skill”行；这与 DSH 的 `contextBreakdown` 口径一致。环形百分比仍只使用 Pi 的 `getContextUsage()`，构成条只显示三段之间的相对比例。
+
 | 情况 | 展示及行为 |
 | --- | --- |
 | 有效零值 | 上下文约0.0%，与未知区分 |
@@ -26,14 +36,18 @@
 
 ![上下文用量入口](images/context-usage-row.png)
 
+![上下文构成：系统提示词、工具与消息](images/context-breakdown.png)
+
 ## 实现
 
 - `src/renderer/components/session-info-panel.js`：统一读取并发布状态，按请求序号和当前会话编号保护迟到响应，支持失效、失败后的必要刷新与页面释放。
-- `src/renderer/components/context-usage.js`：只消费统一状态，展示估算与提示、管理详情和忙碌状态，不自行请求接口。
+- `src/renderer/components/context-usage.js`：消费统一状态，展开详情时通过专用接口读取构成，展示估算与提示、管理详情和忙碌状态。
 - `src/renderer/renderer.js`：接入组件、各切换入口使旧估算失效、文件保存后刷新，并将模型选择器与设置页的实际切换接入同一保护。
-- `src/renderer/index.html`及`styles/context-usage.css`：控制行入口、详情及窄窗布局，沿用深色主题变量。只保留一个用量状态播报区域；窄窗下详情相对 composer 定位，避免越出视口。
+- `src/main/services/session-service.js`：`getContextBreakdown()` 按系统提示词、活动工具和消息做本地估算，不替代 Pi 总量。
+- `src/main/ipc/agent-ipc.js`、`src/preload/preload.js`：新增只读 `agent:read-context-breakdown`，仅在展开详情时调用。
+- `src/renderer/index.html`及`styles/context-usage.css`：控制行入口、构成条、图例、详情及窄窗布局，沿用深色主题变量。只保留一个用量状态播报区域；窄窗下详情相对 composer 定位，避免越出视口。
 
-本轮不增加主进程、IPC、预加载接口或依赖，不修改模型计量语义。
+本轮新增一个只读 IPC，不修改 Pi 的上下文计量、发送、压缩或历史语义；不请求模型。
 
 ## 验证
 
@@ -42,6 +56,7 @@
 ```bash
 node --test \
   tests/unit/context-usage-view.test.js \
+  tests/unit/context-breakdown.test.js \
   tests/unit/session-info-refresh.test.js \
   tests/unit/session-info.test.js \
   tests/unit/context-compaction.test.js \
@@ -52,7 +67,7 @@ node --test \
   tests/unit/window-close-controller.test.js
 ```
 
-上下文19项页面专项及归档16/置顶19/未发送19/关闭14/侧栏35项回归，共122项通过：
+上下文19项页面专项（含三段式构成）及归档17/置顶19/未发送28/关闭14/侧栏79项回归通过；`context-breakdown` 3项单元检查通过：
 
 ```bash
 node_modules/.bin/electron tests/ui/context-usage-page.check.cjs
