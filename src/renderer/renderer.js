@@ -2172,6 +2172,17 @@ async function compactContext(instructions = "") {
   try {
     const result = await window.agent.compactSession(instructions);
 
+    // 没有可整理内容属于空操作：不重建消息区，
+    // 保留已有的过程展开状态，也不追加错误提示。
+    if (result.skipped) {
+      setRequestStatus(
+        result.skipReason === "already-compacted"
+          ? "最近已整理过，暂无可整理的新内容。"
+          : "当前对话内容较少，无需整理。",
+      );
+      return;
+    }
+
     // 只更新消息区，保留输入草稿和待保存的文件修改。
     // 不调用会清空草稿面板的 showHistory()。
     messages.replaceChildren();

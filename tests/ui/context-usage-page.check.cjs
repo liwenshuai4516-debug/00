@@ -47,6 +47,7 @@ const session = {
   async compactSession() {
     calls.push(["compact"]); compactGate = Promise.withResolvers(); await compactGate.promise;
     if (flags.compactFail) throw Error("模拟整理失败");
+    if (flags.compactSkip) return { history: history(), stopped: false, skipped: true, skipReason: "too-small" };
     usage.set(current, { tokens: null, percent: null, contextWindow: 10000 });
     return { history: history(), stopped: Boolean(flags.cancelled) };
   },
@@ -189,7 +190,7 @@ async function main() {
       assert.equal(await js(`document.getElementById('message-input').value`), "生成中新的输入");
       assert.equal(await js(`document.querySelectorAll('#proposal-list article').length`), count);
     });
-    await check("整理成功或失败均重新读取，失败保留原消息及输入", async () => {
+    await check("整理成功、失败或空操作均重新读取，失败保留原消息及输入", async () => {
       for (const fails of [false, true]) {
         usage.set(current, estimate(22)); await refresh();
         const messages = await js(`document.getElementById('messages').textContent`);
@@ -204,6 +205,16 @@ async function main() {
         if (fails) assert.ok((await js(`document.getElementById('messages').textContent`)).includes(messages));
       }
       flags.compactFail = false;
+
+      // 没有可整理内容时不重建消息区，也不追加错误提示。
+      flags.compactSkip = true;
+      const beforeSkip = await js(`document.getElementById('messages').textContent`);
+      await openDetails(); await click('#context-usage [data-compact]');
+      await until(`!document.getElementById('cancel-compaction-button').hidden`);
+      compactGate.resolve(); await idle();
+      assert.equal(await js(`document.getElementById('messages').textContent`), beforeSkip);
+      assert.match(await js(`document.getElementById('request-status').textContent`), /内容较少，无需整理/);
+      flags.compactSkip = false;
     });
     await check("请求失败收尾仍刷新用量并保留后来输入", async () => {
       flags.sendFail = true; await click('#send-button');

@@ -217,6 +217,16 @@ function createSessionService(
     return getHistory(await getSession(true));
   }
 
+  // SDK 对没有可整理内容的会话抛出固定英文错误；
+  // 只把这两种已知空操作转换成结果，其他错误继续上报。
+  function compactionSkipReason(error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (message === "Nothing to compact (session too small)") return "too-small";
+    if (message === "Already compacted") return "already-compacted";
+    return undefined;
+  }
+
   // 由 IPC 的互斥入口调用，整理期间不能发送、切换或保存。
   // 整理状态独立保存，初始化期间也能接收取消请求。
   async function compactSession(customInstructions) {
@@ -266,12 +276,26 @@ function createSessionService(
         };
       } catch (error) {
         // 用户取消引起的中断，不作为普通错误展示。
-        if (!request.stopRequested) throw error;
+        if (request.stopRequested) {
+          return {
+            stopped: true,
+            history: getHistory(session),
+          };
+        }
 
-        return {
-          stopped: true,
-          history: getHistory(session),
-        };
+        // 没有可整理内容属于空操作，不是失败：
+        // 返回给页面展示说明，避免 IPC 拒绝在主进程留下错误日志。
+        const skipReason = compactionSkipReason(error);
+        if (skipReason) {
+          return {
+            stopped: false,
+            skipped: true,
+            skipReason,
+            history: getHistory(session),
+          };
+        }
+
+        throw error;
       } finally {
         unsubscribe();
       }

@@ -78,6 +78,37 @@ test("SDK 整理失败时透传错误，保留当前会话", async () => {
   assert.equal(await service.getSession(), session);
 });
 
+test("SDK 表示没有可整理内容时返回空操作结果，不向页面抛错", async () => {
+  for (const [message, skipReason] of [
+    ["Nothing to compact (session too small)", "too-small"],
+    ["Already compacted", "already-compacted"],
+  ]) {
+    const session = {
+      sessionId: "current",
+      subscribe: () => () => {},
+      messages: [{ role: "user", content: "只有一句" }],
+
+      async compact() {
+        throw new Error(message);
+      },
+    };
+
+    const service = createSessionService("unused", async () => session);
+
+    await service.getSession(true);
+
+    const result = await service.compactSession();
+
+    assert.equal(result.stopped, false);
+    assert.equal(result.skipped, true);
+    assert.equal(result.skipReason, skipReason);
+
+    // 空操作不改变历史，页面可原样保留消息区。
+    assert.deepEqual(result.history, [{ role: "user", text: "只有一句" }]);
+    assert.equal(await service.getSession(), session);
+  }
+});
+
 test("生成期间拒绝整理，空闲后只向服务转发整理说明", async () => {
   const handlers = new Map();
   let busy = true;
