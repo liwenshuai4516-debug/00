@@ -240,3 +240,64 @@ test("实时重试与整理进入耗时构成", async () => {
   assert.equal(timing.modelMs, 100);
   assert.equal(timing.source, "live");
 });
+
+test("实时助手按内容索引累积，最终替换同一记录并只计算一次用量", async () => {
+  const trajectory = await model();
+  trajectory.reset("live");
+  trajectory.accept({ type: "message_start", ts: 1000, message: { role: "assistant", ts: 1000 } });
+  const id = trajectory.snapshot().requests[0].records[0].id;
+  const update = (ts, type, contentIndex, extra) => trajectory.accept({ type: "message_update", ts, assistantMessageEvent: { type, contentIndex, ...extra } });
+  update(1100, "text_delta", 2, { delta: "" });
+  update(1200, "thinking_delta", 0, { delta: "思考" });
+  update(1300, "text_delta", 2, { delta: "临时正文" });
+  update(1400, "toolcall_start", 1, { id: "c1", toolName: "read" });
+  update(1500, "toolcall_delta", 1, { delta: '{"path":"a"}' });
+  const before = trajectory.snapshot();
+  assert.equal(before.requests[0].records[0].text, "临时正文");
+  assert.equal(before.requests[0].records[0].observedTiming.firstTokenAt, 1200);
+  const content = [
+    { type: "thinking", thinking: "最终思考" },
+    { type: "toolCall", id: "c1", name: "read", arguments: { path: "a" } },
+    { type: "text", text: "最终正文" },
+  ];
+  trajectory.accept({ type: "message_end", ts: 2000, message: {
+    role: "assistant", ts: 1000, durationMs: 950, stopReason: "toolUse",
+    usage: { input: 10, output: 217, totalTokens: 227 }, content,
+  } });
+  const request = trajectory.snapshot().requests[0];
+  assert.equal(request.records.length, 1);
+  assert.equal(request.records[0].id, id);
+  assert.equal(request.records[0].text, "最终正文");
+  assert.equal(request.records[0].status, "done");
+  assert.equal(request.records[0].durationMs, 950);
+  assert.deepEqual(request.records[0].content, content);
+  assert.deepEqual(request.records[0].observedTiming, { startedAt: 1000, firstTokenAt: 1200, completedAt: 2000 });
+  assert.equal(request.usage.total, 227);
+  assert.equal(before.requests[0].records[0].observedTiming.completedAt, null, "旧快照不随新事件改变");
+});
+
+test("隐藏思考不计首 Token，停止及历史恢复不补造首 Token 时间", async () => {
+  const trajectory = await model();
+  trajectory.accept({ type: "message_start", ts: 1000, message: { role: "assistant" } });
+  trajectory.accept({ type: "message_update", ts: 1500, assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, redacted: true, delta: "隐藏" } });
+  trajectory.accept({ type: "agent_settled", ts: 1600, aborted: true });
+  const record = trajectory.snapshot().requests[0].records[0];
+  assert.equal(record.status, "unfinished");
+  assert.equal(record.thinking, "");
+  assert.equal(record.observedTiming.firstTokenAt, null);
+  assert.equal(record.observedTiming.completedAt, null);
+  trajectory.loadHistory([{ role: "assistant", output: { role: "assistant", ts: 1000, durationMs: 200, content: [{ type: "text", text: "历史" }] } }], "history");
+  assert.equal(trajectory.snapshot().requests[0].records[0].observedTiming, undefined);
+});
+
+test("工具保持调用编号与调用时 Schema，结果结束不丢失关联", async () => {
+  const trajectory = await model();
+  const schema = { name: "read", description: "读取文件", parameters: { type: "object" } };
+  trajectory.accept({ type: "tool_execution_start", ts: 1000, toolCallId: "c", toolName: "read", schema });
+  const id = trajectory.snapshot().requests[0].records[0].id;
+  trajectory.accept({ type: "tool_execution_end", ts: 1500, toolCallId: "c", toolName: "read", durationMs: 500, result: { content: [{ type: "text", text: "完成" }] } });
+  const record = trajectory.snapshot().requests[0].records[0];
+  assert.equal(record.id, id);
+  assert.equal(record.toolCallId, "c");
+  assert.deepEqual(record.schema, schema);
+});

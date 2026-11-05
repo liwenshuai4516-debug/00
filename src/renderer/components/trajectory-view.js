@@ -1,7 +1,7 @@
-// 运行轨迹视图：时长概览、按轮次/调用的记录表、搜索与展开详情。
+// 运行轨迹视图：时长概览、按轮次/调用的记录表、搜索与右侧检查器。
 // 只读取 trajectory-model 的投影，不请求模型或重新执行工具。
 import { formatDuration } from "./output-trace.js";
-import { renderMarkdown } from "./markdown-renderer.js";
+import { createTrajectoryInspector } from "./trajectory-inspector.js";
 
 const MODES = [
   ["time", "时长"],
@@ -9,7 +9,6 @@ const MODES = [
   ["call", "调用"],
 ];
 const MAX_RENDERED_RECORDS = 500;
-const MAX_TEXT = 8000;
 const MAX_TITLE = 80;
 
 const clockFormat = new Intl.DateTimeFormat("zh-CN", {
@@ -141,7 +140,7 @@ function recordTitle(record) {
   }
   if (record.kind === "assistant") {
     const line = firstLine(record.text);
-    return line === "" ? "仅工具调用" : clip(line);
+    return line === "" ? (record.status === "running" ? "正在响应…" : record.thinking ? clip(firstLine(record.thinking)) : "仅工具调用") : clip(line);
   }
   return clip(record.text || "", MAX_TITLE) || record.kind;
 }
@@ -176,6 +175,7 @@ function toolStatus(record) {
 function metaText(record) {
   const parts = [];
   if (record.kind === "tool") parts.push(toolStatus(record));
+  if (record.kind === "assistant" && record.status === "running") parts.push("运行中");
   if (record.kind === "tool" || record.kind === "assistant") {
     const duration = formatDuration(record.durationMs);
     if (duration !== "—") parts.push(duration);
@@ -189,96 +189,23 @@ function badgeText(kind) {
   return { user: "用户", assistant: "助手", tool: "工具", status: "状态" }[kind] ?? "记录";
 }
 
-function preBlock(text, className = "traj-code") {
-  return element("pre", className, text === "" || text === undefined ? "（空）" : text);
-}
-
-function renderRecord(record, { open, onToggle, replay, renderReplay }) {
-  const details = element("details", "traj-record");
-  details.dataset.kind = record.kind;
-  details.dataset.recordId = record.id;
-  details.open = open;
-  details.addEventListener("toggle", () => onToggle(record, details.open));
-
-  const summary = element("summary", "traj-record__head");
-  summary.append(element("span", "traj-record__badge", badgeText(record.kind)));
-  if (replay) summary.append(element("span", "traj-record__replay-tag", "回放"));
-  summary.append(element("span", "traj-record__title", recordTitle(record)));
-  if (record.kind === "tool") {
-    const previewText = firstLine(record.result ?? "");
-    if (previewText !== "") {
-      summary.append(element("span", "traj-record__preview", `→ ${clip(previewText, 70)}`));
-    }
+function renderRecord(record, { selected, onSelect, replay }) {
+  const row = element("div", "traj-record");
+  row.dataset.kind = record.kind;
+  row.dataset.recordId = record.id;
+  const head = element("button", "traj-record__head");
+  head.type = "button";
+  head.setAttribute("aria-pressed", String(selected));
+  head.append(element("span", "traj-record__badge", badgeText(record.kind)));
+  if (replay) head.append(element("span", "traj-record__replay-tag", "回放"));
+  head.append(element("span", "traj-record__title", recordTitle(record)));
+  if (record.kind === "tool" && firstLine(record.result ?? "") !== "") {
+    head.append(element("span", "traj-record__preview", `→ ${clip(firstLine(record.result), 70)}`));
   }
-  summary.append(element("span", "traj-record__meta", metaText(record)));
-  details.append(summary);
-
-  const body = element("div", "traj-record__body");
-  const meta = element("div", "traj-record__facts");
-  const facts = [
-    ["时间", clock(record.ts)],
-    ["耗时", formatDuration(record.durationMs)],
-  ];
-  if (record.kind === "tool") facts.push(["状态", toolStatus(record)]);
-  if (record.kind === "assistant" && record.model) facts.push(["模型", `${record.provider ? `${record.provider}/` : ""}${record.model}`]);
-  if (record.usage) facts.push(["用量", `输入 ${record.usage.input} · 输出 ${record.usage.output} · 合计 ${record.usage.total}`]);
-  if (record.parentToolCallId) facts.push(["父调用", record.parentToolCallId]);
-  for (const [label, value] of facts) {
-    const item = element("span", "traj-fact");
-    item.append(element("span", "traj-fact__label", label));
-    item.append(element("span", "traj-fact__value", value));
-    meta.append(item);
-  }
-  body.append(meta);
-
-  if (record.kind === "assistant") {
-    if (record.text) {
-      const text = element("div", "traj-markdown markdown-body");
-      try {
-        renderMarkdown(text, record.text);
-      } catch {
-        text.classList.remove("markdown-body");
-        text.textContent = record.text;
-      }
-      body.append(text);
-    }
-    if (record.thinking) {
-      const thinking = element("details", "traj-thinking");
-      thinking.append(element("summary", "", "思考过程"));
-      thinking.append(preBlock(record.thinking.slice(0, MAX_TEXT)));
-      body.append(thinking);
-    }
-    if (Array.isArray(record.toolCalls) && record.toolCalls.length > 0) {
-      body.append(element("p", "traj-note", `本响应发起 ${record.toolCalls.length} 次工具调用。`));
-    }
-  } else if (record.kind === "tool") {
-    if (record.skill) {
-      body.append(element("p", "traj-note", `技能：${record.skill.name}${record.skill.source ? `（${record.skill.source}）` : ""}`));
-    }
-    if (replay) {
-      const replayBox = element("div", "traj-replay");
-      replayBox.dataset.replayFor = record.id;
-      body.append(replayBox);
-      renderReplay?.(replayBox, record, replay, open);
-    }
-    const raw = element("details", "traj-raw");
-    // 回放记录先展示逐测试统计，原始日志默认收起，避免长输出淹没结果。
-    raw.open = !replay;
-    raw.append(element("summary", "", "参数与原始结果"));
-    const argsTitle = element("p", "traj-section-title", "参数");
-    raw.append(argsTitle, preBlock(JSON.stringify(record.args ?? "未记录", null, 2).slice(0, MAX_TEXT)));
-    raw.append(element("p", "traj-section-title", "结果"));
-    raw.append(preBlock((record.result ?? "").slice(0, MAX_TEXT)));
-    if (Array.isArray(record.nestedCalls?.calls) && record.nestedCalls.calls.length > 0) {
-      raw.append(element("p", "traj-note", `嵌套调用 ${record.nestedCalls.calls.length} 次${record.nestedCalls.complete === false ? "（记录不完整）" : ""}。`));
-    }
-    body.append(raw);
-  } else {
-    body.append(preBlock(record.text ?? ""));
-  }
-
-  details.append(body);
-  return details;
+  head.append(element("span", "traj-record__meta", metaText(record)));
+  head.addEventListener("click", () => onSelect(record.id));
+  row.append(head);
+  return row;
 }
 
 export function createTrajectoryView(container, options = {}) {
@@ -288,19 +215,55 @@ export function createTrajectoryView(container, options = {}) {
   const normalizedQuery = () => query.trim().toLowerCase();
   let recordsEl = null;
   let rendered = 0;
-  const expanded = new Set();
+  let selectedRecordId = null;
+  let selectedRequestIndex = null;
   const replayCache = new Map();
   const loadReplaySummary = typeof options.loadReplaySummary === "function"
     ? options.loadReplaySummary
     : null;
 
-  function toggleRecord(record, open) {
-    if (open) {
-      expanded.add(record.id);
-      if (replayInfo(record)) void loadReplay(record);
-    } else {
-      expanded.delete(record.id);
+  const inspector = createTrajectoryInspector({
+    onClose: () => {
+      const id = selectedRecordId;
+      selectedRecordId = null;
+      selectedRequestIndex = null;
+      syncSelection();
+      const row = [...container.querySelectorAll(".traj-record")].find((node) => node.dataset.recordId === id);
+      (row?.querySelector("button") ?? recordsEl)?.focus({ preventScroll: true });
+    },
+    onRecord: (id) => focusRecord(id, "overview"),
+    onRequest: (index, tab = "overview") => {
+      selectedRecordId = null;
+      selectedRequestIndex = index;
+      syncSelection(tab);
+    },
+    renderReplay: (box, record) => {
+      const info = replayInfo(record);
+      if (!info) return;
+      box.dataset.replayFor = record.id;
+      renderReplayBox(box, record, info, replayCache.get(record.id));
+      if (!replayCache.has(record.id)) void loadReplay(record);
+    },
+  });
+
+  function selectRecord(id, tab) {
+    selectedRecordId = id;
+    selectedRequestIndex = null;
+    syncSelection(tab);
+  }
+
+  function syncSelection(tab) {
+    for (const row of container.querySelectorAll(".traj-record")) {
+      const selected = row.dataset.recordId === selectedRecordId;
+      row.dataset.selected = String(selected);
+      row.querySelector("button")?.setAttribute("aria-pressed", String(selected));
     }
+    for (const bar of container.querySelectorAll(".traj-bar")) {
+      bar.dataset.selected = String(bar.dataset.recordId === selectedRecordId);
+    }
+    const request = snapshot.requests.find((item) => item.index === selectedRequestIndex || item.records.some((record) => record.id === selectedRecordId));
+    const record = request?.records.find((item) => item.id === selectedRecordId);
+    inspector.render(request ? { record, request, requestOnly: selectedRequestIndex !== null, tab } : null);
   }
 
   function findRecord(id) {
@@ -425,12 +388,6 @@ export function createTrajectoryView(container, options = {}) {
     }
   }
 
-  function renderReplayInto(box, record, info, open) {
-    const state = replayCache.get(record.id);
-    renderReplayBox(box, record, info, state);
-    if (open && !state) void loadReplay(record);
-  }
-
   function requestHeader(request, { collapsible = false } = {}) {
     const summaryText = `第 ${request.index + 1} 轮`;
     const duration = request.startedAt && request.endedAt
@@ -444,7 +401,14 @@ export function createTrajectoryView(container, options = {}) {
 
     if (!collapsible) {
       const header = element("div", "traj-request");
-      header.append(element("span", "traj-request__index", summaryText));
+      const source = element("button", "traj-request__index traj-request-link", summaryText);
+      source.type = "button";
+      source.addEventListener("click", () => {
+        selectedRecordId = null;
+        selectedRequestIndex = request.index;
+        syncSelection("overview");
+      });
+      header.append(source);
       header.append(element("span", "traj-request__text", stat));
       return header;
     }
@@ -512,10 +476,9 @@ export function createTrajectoryView(container, options = {}) {
           if (rendered >= MAX_RENDERED_RECORDS) return;
           rendered += 1;
           section.append(renderRecord(record, {
-            open: expanded.has(record.id),
-            onToggle: toggleRecord,
+            selected: record.id === selectedRecordId,
+            onSelect: selectRecord,
             replay: replayInfo(record),
-            renderReplay: renderReplayInto,
           }));
         }
         recordsEl.append(section);
@@ -538,10 +501,9 @@ export function createTrajectoryView(container, options = {}) {
         if (rendered >= MAX_RENDERED_RECORDS) return;
         rendered += 1;
         details.append(renderRecord(record, {
-          open: expanded.has(record.id),
-          onToggle: toggleRecord,
+          selected: record.id === selectedRecordId,
+          onSelect: selectRecord,
           replay: replayInfo(record),
-          renderReplay: renderReplayInto,
         }));
       }
       recordsEl.append(details);
@@ -562,10 +524,9 @@ export function createTrajectoryView(container, options = {}) {
         if (rendered >= MAX_RENDERED_RECORDS) return;
         rendered += 1;
         section.append(renderRecord(record, {
-          open: expanded.has(record.id),
-          onToggle: toggleRecord,
+          selected: record.id === selectedRecordId,
+          onSelect: selectRecord,
           replay: replayInfo(record),
-          renderReplay: renderReplayInto,
         }));
       }
       recordsEl.append(section);
@@ -600,7 +561,7 @@ export function createTrajectoryView(container, options = {}) {
       });
   }
 
-  function focusRecord(id) {
+  function focusRecord(id, tab) {
     const record = findRecord(id);
     if (!record) return;
     if (mode !== "time" || query !== "") {
@@ -610,9 +571,7 @@ export function createTrajectoryView(container, options = {}) {
     }
     const node = container.querySelector(`.traj-record[data-record-id="${id}"]`);
     if (!node) return;
-    node.open = true;
-    expanded.add(id);
-    if (replayInfo(record)) void loadReplay(record);
+    selectRecord(id, tab);
     node.scrollIntoView({ block: "center", behavior: "smooth" });
     node.classList.add("traj-record--focus");
     window.setTimeout(() => node.classList.remove("traj-record--focus"), 1600);
@@ -709,15 +668,23 @@ export function createTrajectoryView(container, options = {}) {
     const previousSession = container.dataset.sessionId ?? "";
     const sessionChanged = previousSession !== snapshot.sessionId;
     if (sessionChanged) {
-      expanded.clear();
+      selectedRecordId = null;
+      selectedRequestIndex = null;
+      inspector.reset();
       query = "";
       replayCache.clear();
     }
     container.dataset.sessionId = snapshot.sessionId ?? "";
     const scrollTop = recordsEl?.scrollTop ?? 0;
+    // 整体重绘会暂时移除检查器；先保存其滚动位置，避免断开 DOM 后被浏览器归零。
+    const inspectorBody = inspector.root.querySelector(".traj-inspector-body");
+    const inspectorScrollTop = inspectorBody.scrollTop;
     // 实时更新时若用户已在底部，继续跟随最新记录；上翻查看时不打断。
     const followLatest = isAtBottom();
     const focusedSearch = document.activeElement?.matches?.(".traj-search input") === true;
+    const focusedInspector = inspector.root.contains(document.activeElement)
+      ? document.activeElement.dataset.tab ?? (document.activeElement === inspector.root.querySelector(".traj-inspector-close") ? "close" : "body")
+      : null;
     const selectionStart = focusedSearch ? document.activeElement.selectionStart : null;
     const selectionEnd = focusedSearch ? document.activeElement.selectionEnd : null;
     container.replaceChildren();
@@ -739,6 +706,7 @@ export function createTrajectoryView(container, options = {}) {
           item.setAttribute("aria-selected", String(item.dataset.mode === value));
         }
         renderRecords();
+        syncSelection();
       });
       modes.append(button);
     }
@@ -753,6 +721,7 @@ export function createTrajectoryView(container, options = {}) {
     input.addEventListener("input", () => {
       query = input.value;
       renderRecords();
+      syncSelection();
     });
     search.append(input);
     toolbar.append(search);
@@ -778,10 +747,25 @@ export function createTrajectoryView(container, options = {}) {
     recordsEl.tabIndex = 0;
     recordsEl.setAttribute("role", "region");
     recordsEl.setAttribute("aria-label", "轨迹记录");
-    shell.append(recordsEl);
+    const split = element("div", "traj-split");
+    recordsEl.addEventListener("click", (event) => {
+      if (event.target !== recordsEl) return;
+      selectedRecordId = null;
+      selectedRequestIndex = null;
+      syncSelection();
+    });
+    split.append(recordsEl, inspector.root);
+    shell.append(split);
     container.append(shell);
     renderRecords();
+    syncSelection();
+    if (!sessionChanged) inspectorBody.scrollTop = inspectorScrollTop;
     recordsEl.scrollTop = follow || sessionChanged || followLatest ? recordsEl.scrollHeight : scrollTop;
+    if (focusedInspector && !sessionChanged && !inspector.root.hidden) {
+      const target = focusedInspector === "close" ? inspector.root.querySelector(".traj-inspector-close")
+        : inspector.root.querySelector(`[data-tab="${focusedInspector}"]`) ?? inspector.root.querySelector(".traj-inspector-body");
+      target?.focus({ preventScroll: true });
+    }
     if (focusedSearch) {
       const searchInput = container.querySelector(".traj-search input");
       searchInput?.focus();
@@ -798,7 +782,7 @@ export function createTrajectoryView(container, options = {}) {
   return {
     render,
     // 搜索框聚焦（含输入法组词）时不自动重建，避免打断输入；失去焦点后的下一次事件再更新。
-    isEditing: () => document.activeElement?.matches?.(".traj-search input") === true,
+    isEditing: () => document.activeElement?.matches?.(".traj-search input") === true || inspector.isInteracting(),
     isAtBottom,
     scrollToLatest: () => recordsEl?.scrollTo({ top: recordsEl.scrollHeight, behavior: "smooth" }),
     reset: () => render({ sessionId: "", requests: [], hasTimeline: false, totals: {} }),

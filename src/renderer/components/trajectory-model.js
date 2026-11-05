@@ -25,6 +25,7 @@ function usageOf(output) {
   return {
     input,
     output: outputTokens,
+    outputReported: Number.isFinite(usage.output),
     total: Number.isFinite(total) ? total : input + outputTokens,
   };
 }
@@ -39,6 +40,7 @@ export function createTrajectoryModel() {
   let active = null;
   let serial = 0;
   const activeTools = new Map();
+  let liveAssistant = null;
 
   function addRecord(request, record) {
     const value = {
@@ -72,6 +74,8 @@ export function createTrajectoryModel() {
   }
 
   function startRequest(text, ts) {
+    if (liveAssistant) liveAssistant.status = "unfinished";
+    liveAssistant = null;
     const at = Number.isFinite(ts) ? ts : null;
     if (active) {
       markRunningTools(active, "unfinished", true);
@@ -107,6 +111,8 @@ export function createTrajectoryModel() {
 
   function closeActive(ts = Date.now()) {
     if (!active) return;
+    if (liveAssistant) liveAssistant.status = "unfinished";
+    liveAssistant = null;
     markRunningTools(active, "unfinished", false);
     active.endedAt = active.endedAt ?? ts;
     active.status = "done";
@@ -126,7 +132,7 @@ export function createTrajectoryModel() {
     const request = ensureRequest(ts);
     const content = output?.content ?? [];
     const toolCalls = content.filter((block) => block.type === "toolCall");
-    return addRecord(request, {
+    const fields = {
       kind: "assistant",
       text: textOf(content),
       thinking: thinkingOf(content),
@@ -136,9 +142,66 @@ export function createTrajectoryModel() {
       provider: output?.provider,
       stopReason: output?.stopReason,
       errorMessage: output?.errorMessage,
+      content: content.filter((block) => !block.redacted),
+      status: ["error", "aborted"].includes(output?.stopReason) ? "error" : "done",
       ts,
       durationMs,
+    };
+    if (liveAssistant) {
+      const record = liveAssistant;
+      Object.assign(record, fields);
+      record.observedTiming.completedAt = fallbackTs;
+      if (record.usage) {
+        request.usage.input += record.usage.input;
+        request.usage.output += record.usage.output;
+        request.usage.total += record.usage.total;
+      }
+      if (Number.isFinite(ts) && Number.isFinite(durationMs)) request.endedAt = Math.max(request.endedAt ?? 0, ts + durationMs);
+      liveAssistant = null;
+      return record;
+    }
+    return addRecord(request, fields);
+  }
+
+  function startAssistant(output) {
+    const at = output.ts ?? Date.now();
+    const request = ensureRequest(at);
+    if (liveAssistant) liveAssistant.status = "unfinished";
+    liveAssistant = addRecord(request, {
+      kind: "assistant", text: "", thinking: "", toolCalls: [], content: [],
+      provider: output.message?.provider, model: output.message?.model,
+      ts: output.message?.ts ?? at, status: "running",
+      observedTiming: { startedAt: at, firstTokenAt: null, completedAt: null },
     });
+  }
+
+  function updateAssistant(output) {
+    const update = output.assistantMessageEvent;
+    if (!update || !Number.isInteger(update.contentIndex)) return;
+    if (update.redacted) {
+      if (liveAssistant) {
+        delete liveAssistant.content[update.contentIndex];
+        liveAssistant.thinking = thinkingOf(liveAssistant.content.filter(Boolean));
+      }
+      return;
+    }
+    if (!liveAssistant) startAssistant(output);
+    const blocks = liveAssistant.content;
+    const index = update.contentIndex;
+    const kind = update.type.split("_")[0];
+    if (update.type.endsWith("_delta") && typeof update.delta === "string" && update.delta !== "") {
+      liveAssistant.observedTiming.firstTokenAt ??= output.ts ?? Date.now();
+      if (kind === "text") blocks[index] = { type: "text", text: (blocks[index]?.text ?? "") + update.delta };
+      if (kind === "thinking") blocks[index] = { type: "thinking", thinking: (blocks[index]?.thinking ?? "") + update.delta };
+      if (kind === "toolcall") blocks[index] = { ...blocks[index], type: "toolCall", argumentsRaw: (blocks[index]?.argumentsRaw ?? "") + update.delta };
+    }
+    if (update.type === "toolcall_start") blocks[index] = { type: "toolCall", id: update.id, name: update.toolName, argumentsRaw: "" };
+    if (update.type === "text_end") blocks[index] = { type: "text", text: update.content ?? "" };
+    if (update.type === "thinking_end") blocks[index] = { type: "thinking", thinking: update.content ?? "" };
+    if (update.type === "toolcall_end" && update.toolCall) blocks[index] = update.toolCall;
+    liveAssistant.text = textOf(blocks.filter(Boolean));
+    liveAssistant.thinking = thinkingOf(blocks.filter(Boolean));
+    liveAssistant.toolCalls = blocks.filter((block) => block?.type === "toolCall");
   }
 
   function addTool(output, live = false) {
@@ -149,6 +212,7 @@ export function createTrajectoryModel() {
     const request = ensureRequest(ts);
     return addRecord(request, {
       kind: "tool",
+      toolCallId: output?.toolCallId,
       toolName: output?.toolName ?? "tool",
       args: output?.args,
       result: textOf(output?.result?.content ?? output?.content),
@@ -170,6 +234,8 @@ export function createTrajectoryModel() {
     const request = ensureRequest(ts);
     const record = addRecord(request, {
       kind: "tool",
+      toolCallId: output?.toolCallId,
+      schema: output?.schema,
       toolName: output?.toolName ?? "tool",
       args: output?.args,
       result: "",
@@ -212,6 +278,14 @@ export function createTrajectoryModel() {
 
   function accept(output) {
     if (!output || typeof output !== "object") return;
+    if (output.type === "message_start" && output.message?.role === "assistant") {
+      startAssistant(output);
+      return;
+    }
+    if (output.type === "message_update") {
+      updateAssistant(output);
+      return;
+    }
     if (output.type === "agent_start") {
       ensureRequest(output.ts);
       return;
@@ -278,6 +352,7 @@ export function createTrajectoryModel() {
     requests = [];
     active = null;
     serial = 0;
+    liveAssistant = null;
     activeTools.clear();
     const callArgs = new Map();
     const pendingCalls = new Map();
@@ -318,10 +393,11 @@ export function createTrajectoryModel() {
     }
 
     // 历史结束时仍未返回结果的工具调用标记为未确认，与实时停止的呈现一致。
-    for (const call of pendingCalls.values()) {
+    for (const [toolCallId, call] of pendingCalls) {
       if (!call.request) continue;
       addRecord(call.request, {
         kind: "tool",
+        toolCallId,
         toolName: call.name,
         args: call.args,
         result: "",
@@ -343,6 +419,7 @@ export function createTrajectoryModel() {
         ?? null;
     }
     active = null;
+    liveAssistant = null;
   }
 
   function isReplayRecord(record) {
@@ -404,7 +481,11 @@ export function createTrajectoryModel() {
       requests: requests.map((request) => ({
         ...request,
         timing: timingOf(request),
-        records: request.records.map((record) => ({ ...record })),
+        records: request.records.map((record) => ({
+          ...record,
+          ...(record.observedTiming ? { observedTiming: { ...record.observedTiming } } : {}),
+          ...(record.content ? { content: record.content.filter(Boolean).map((block) => ({ ...block })) } : {}),
+        })),
       })),
       hasTimeline: records.some((record) => Number.isFinite(record.ts)),
       totals,
@@ -415,6 +496,7 @@ export function createTrajectoryModel() {
     sessionId = typeof nextSessionId === "string" ? nextSessionId : "";
     requests = [];
     active = null;
+    liveAssistant = null;
     activeTools.clear();
   }
 

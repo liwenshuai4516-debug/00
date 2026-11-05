@@ -193,6 +193,11 @@ function createOutputEventAdapter(getSession, parseSkillBlock, input) {
         parentToolCallId: event.parentToolCallId, args: event.args,
         skill: skill ?? calls.get(event.toolCallId),
       };
+      if (event.type === "tool_execution_start") {
+        // 只登记本次调用时的公开工具说明；历史缺失时不拿当前 Schema 冒充旧版本。
+        const tool = session.getAllTools?.().find((item) => item.name === event.toolName);
+        if (tool) projected.schema = { name: tool.name, description: tool.description, parameters: tool.parameters };
+      }
       if (result) projected.result = {
         content: contentBlocks(result.content),
         ...toolResultExtras(result.details, result.structuredContent, event.toolName, result.content),

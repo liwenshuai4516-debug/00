@@ -62,7 +62,7 @@
   font-size: 12px;
 }
 
-.trajectory > :not(.traj-records) {
+.trajectory > :not(.traj-split) {
   flex: none;
 }
 
@@ -224,12 +224,22 @@
 
 /* ---------- 记录列表 ---------- */
 
+.traj-split {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
 .traj-records {
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: 2px;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
@@ -295,7 +305,12 @@
   gap: 10px;
   min-width: 0;
   padding: 7px 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
   color: var(--muted);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   list-style: none;
 }
@@ -306,6 +321,24 @@
 
 .traj-record__head:hover {
   background: color-mix(in srgb, var(--hover) 60%, transparent);
+}
+
+.traj-record[data-selected="true"] {
+  background: color-mix(in srgb, var(--focus) 14%, var(--page));
+  box-shadow: inset 2px 0 var(--focus);
+}
+
+.traj-record__head:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.traj-request-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
 }
 
 .traj-record__badge {
@@ -358,49 +391,10 @@
   font-size: 10px;
 }
 
-.traj-record__body {
-  padding: 4px 10px 12px 50px;
-}
-
-.traj-record__facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  margin-bottom: 8px;
-}
-
-.traj-fact {
-  display: inline-flex;
-  gap: 5px;
-  font-size: 11px;
-}
-
-.traj-fact__label {
-  color: var(--muted);
-}
-
-.traj-fact__value {
-  color: var(--text);
-}
-
 .traj-section-title {
   margin: 8px 0 3px;
   color: var(--muted);
   font-size: 11px;
-}
-
-.traj-code {
-  max-height: 320px;
-  margin: 0 0 6px;
-  padding: 8px 10px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--page);
-  color: var(--text);
-  font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .traj-markdown {
@@ -410,16 +404,6 @@
 
 .traj-markdown :first-child {
   margin-top: 0;
-}
-
-.traj-thinking {
-  margin-top: 6px;
-  padding: 4px 0;
-}
-
-.traj-thinking > summary {
-  color: var(--muted);
-  font-size: 11px;
 }
 
 .traj-note,
@@ -457,10 +441,6 @@
     width: 100%;
   }
 
-  .traj-record__body {
-    padding-left: 10px;
-  }
-
   .traj-record__meta {
     display: none;
   }
@@ -492,6 +472,11 @@
   outline-offset: 2px;
 }
 
+#trajectory-view:has(.traj-inspector:not([hidden])) + #trajectory-latest {
+  left: 24px;
+  right: auto;
+}
+
 /* 时长条可点击定位到记录。 */
 .traj-bar {
   min-width: 3px;
@@ -513,6 +498,11 @@
 .traj-bar:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
+}
+
+.traj-bar[data-selected="true"] {
+  box-shadow: 0 0 0 2px var(--page), 0 0 0 3px var(--focus);
+  z-index: 1;
 }
 
 .traj-record--focus {
@@ -717,4 +707,191 @@
   .traj-composition {
     margin-inline: 0;
   }
+}
+
+/* DSH 式局部检查器：标题和页签固定，内容与左侧列表分别滚动。 */
+.traj-inspector {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: clamp(320px, 38%, 440px);
+  max-width: calc(100% - 280px);
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--page);
+}
+
+.traj-inspector-resize {
+  position: absolute;
+  inset: 0 auto 0 -4px;
+  z-index: 3;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.traj-inspector-resize:hover,
+.traj-inspector-resize:focus-visible {
+  background: color-mix(in srgb, var(--focus) 35%, transparent);
+  outline: none;
+}
+
+.traj-inspector-header {
+  display: flex;
+  flex: none;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.traj-inspector-title {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.traj-inspector-close {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.traj-inspector-tabs {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  height: 34px;
+  padding: 0 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: none;
+}
+
+.traj-inspector-tab {
+  flex: none;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.traj-inspector-tab[aria-selected="true"] {
+  color: var(--focus);
+  border-bottom-color: var(--focus);
+}
+
+.traj-inspector-body {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 14px 48px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  overflow-wrap: anywhere;
+}
+
+.traj-inspector-facts {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.traj-inspector-facts > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.traj-inspector-facts dt { color: var(--muted); }
+.traj-inspector-facts dd { margin: 0; min-width: 0; color: var(--text); }
+
+.traj-inspector-section { margin: 0 0 14px; min-width: 0; }
+.traj-inspector-section h3 { margin: 0 0 5px; font: inherit; }
+
+.traj-inspector-preview {
+  max-height: 230px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.traj-inspector-link {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.traj-inspector-link:hover:not(:disabled) { color: var(--focus); }
+.traj-inspector-link:disabled { cursor: default; }
+
+.traj-inspector-thinking {
+  margin: 6px 0 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+
+.traj-inspector-thinking > summary { cursor: pointer; margin-bottom: 6px; }
+.traj-inspector-thinking .traj-markdown { font-size: 13px; line-height: 20px; }
+.traj-inspector-thinking :is(h1, h2, h3, h4, h5, h6) { font-size: inherit; line-height: inherit; }
+
+.traj-inspector-code,
+.traj-json-value {
+  margin: 4px 0 10px;
+  color: var(--text);
+  font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.traj-json-node { padding-left: 10px; }
+.traj-json-node > summary { cursor: pointer; }
+.traj-inspector-raw { min-width: 0; }
+.traj-inspector-copy {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.traj-inspector :is(button, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+@container (max-width: 760px) {
+  .traj-inspector {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 4;
+    width: min(92%, 420px) !important;
+    max-width: 92%;
+    box-shadow: -12px 0 32px var(--menu-shadow);
+  }
+
+  .traj-inspector-resize { display: none; }
 }

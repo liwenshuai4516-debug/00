@@ -153,3 +153,14 @@ test("回放摘要路径从完整工具结果提取，不受展示截断影响",
   assert.equal(output.summaryFile, "/work/qa/ui/runs/run-1/summary.json");
   assert.equal(output.content[0].text.length > 4000, true);
 });
+
+test("工具开始仅投影该工具的公开 Schema，不透传执行器及其他登记信息", () => {
+  const project = createOutputEventAdapter(() => ({
+    ...session,
+    getAllTools: () => [{ name: "read", description: "读取文件", parameters: { type: "object", properties: { path: { type: "string" } } }, sourceInfo: { private: "private-source" }, execute: () => {} }],
+  }), () => null, "测试");
+  const output = project({ type: "tool_execution_start", toolCallId: "c", toolName: "read", args: { path: "a" } });
+  assert.deepEqual(output.schema, { name: "read", description: "读取文件", parameters: { type: "object", properties: { path: { type: "string" } } } });
+  assert.doesNotMatch(JSON.stringify(output), /private-source|execute|sourceInfo/);
+  assert.equal(outputMessage({ role: "toolResult", toolName: "read", content: [] }).schema, undefined);
+});

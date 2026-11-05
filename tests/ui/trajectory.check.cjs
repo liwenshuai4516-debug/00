@@ -148,7 +148,10 @@ async function main() {
   });
   const errors = [];
   win.webContents.on("console-message", (event) => { if (event.level === "error") errors.push(event.message); });
-  const js = (source) => win.webContents.executeJavaScript(source);
+  const js = (source) => win.webContents.executeJavaScript(source).catch((error) => {
+    console.error("页面检查失败：", source, errors);
+    throw error;
+  });
   const until = (expression) => js(`(async()=>{for(let i=0;i<500;i++){if(${expression})return;await new Promise(r=>setTimeout(r,10));}throw Error('等待失败: '+${JSON.stringify(expression)});})()`);
   const idle = () => until("!document.getElementById('new-chat-button').disabled");
 
@@ -186,15 +189,30 @@ async function main() {
     assert.match(await js("document.querySelector('.traj-records').textContent"), /read · a\.js/);
     assert.match(await js("document.querySelector('.traj-records').textContent"), /1\.2 秒/);
     console.log("通过：轨迹标签、时长概览、轮次与记录");
+    // 助手记录检查器：概述输出量、Markdown/原文、来源跳转和历史计时缺失。
+    await js("document.querySelector('.traj-record[data-kind=\"assistant\"] button').click()");
+    assert.equal(await js("document.querySelector('.traj-inspector').hidden"), false);
+    assert.deepEqual(await js("[...document.querySelectorAll('.traj-inspector-tab')].map(node=>node.textContent)"), ["概述", "预览", "原始内容"]);
+    assert.match(await js("document.querySelector('.traj-inspector-facts').textContent"), /20 tok（输出）/);
+    assert.match(await js("document.querySelector('.traj-inspector-body').textContent"), /首 Token 延迟未记录/);
+    await js("document.querySelector('.traj-inspector [data-tab=\"rendered\"]').click()");
+    assert.match(await js("document.querySelector('.traj-inspector-body').textContent"), /先看文件/);
+    await js("document.querySelector('.traj-inspector [data-tab=\"raw\"]').click()");
+    assert.deepEqual(await js("[...document.querySelectorAll('.traj-inspector-body h3')].map(node=>node.textContent)"), ["思考", "正文", "工具调用 · read"]);
+    await js("document.querySelector('.traj-inspector [data-tab=\"overview\"]').click()");
+    await js("[...document.querySelectorAll('.traj-inspector-facts button')].find(node=>node.textContent.includes('第 1 轮')).click()");
+    assert.deepEqual(await js("[...document.querySelectorAll('.traj-inspector-tab')].map(node=>node.textContent)"), ["概述", "用量", "计时"]);
+    await js("document.querySelector('.traj-inspector-close').click()");
+    console.log("通过：助手概述/预览/原始内容及来源跳转，历史首 Token 未伪造");
     if (process.env.TRAJECTORY_SCREENSHOT_PATH) {
       await js("new Promise(r=>setTimeout(r,500))");
       await fs.writeFile(process.env.TRAJECTORY_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
 
     // 回放记录展开后读取逐测试统计。
-    const replayId = await js("document.querySelector('.traj-record__replay-tag')?.closest('details')?.dataset.recordId");
+    const replayId = await js("document.querySelector('.traj-record__replay-tag')?.closest('.traj-record')?.dataset.recordId");
     assert.ok(replayId, "未识别回放记录");
-    await js(`document.querySelector('[data-record-id="' + ${JSON.stringify(replayId)} + '"] summary').click()`);
+    await js(`document.querySelector('[data-record-id="' + ${JSON.stringify(replayId)} + '"] button').click()`);
     await until("document.querySelector('.traj-replay__table')");
     assert.match(await js("document.querySelector('.traj-replay__summary').textContent"), /2 用例 · 1 通过 · 1 失败/);
     assert.equal(await js("document.querySelectorAll('.traj-replay__table tbody tr').length"), 2);
@@ -202,6 +220,10 @@ async function main() {
     assert.match(await js("document.querySelector('.traj-replay__table').textContent"), /审批合同/);
     assert.match(await js("document.querySelector('.traj-replay__table').textContent"), /400 ms/);
     assert.match(await js("document.querySelector('.traj-replay__table').textContent"), /断言失败：状态错误/);
+    assert.deepEqual(await js("[...document.querySelectorAll('.traj-inspector-tab')].map(node=>node.textContent)"), ["概述", "参数", "结果", "Schema", "计时"]);
+    await js("document.querySelector('.traj-inspector [data-tab=\"schema\"]').click()");
+    assert.match(await js("document.querySelector('.traj-inspector-body').textContent"), /该次调用未记录工具 Schema/);
+    await js("document.querySelector('.traj-inspector [data-tab=\"overview\"]').click()");
     console.log("通过：回放逐测试耗时与错误");
     if (process.env.TRAJECTORY_REPLAY_SCREENSHOT_PATH) {
       await js("document.querySelector('.traj-replay').scrollIntoView({block:'center'})");
@@ -212,20 +234,20 @@ async function main() {
     // 点击时长条定位到对应记录并高亮。
     const targetId = await js("document.querySelector('.traj-bar--model').dataset.recordId");
     await js(`document.querySelector('.traj-bar--model').click()`);
-    await until(`document.querySelector('.traj-record[data-record-id="' + ${JSON.stringify(targetId)} + '"]')?.open`);
+    await until(`document.querySelector('.traj-record[data-record-id="' + ${JSON.stringify(targetId)} + '"]')?.dataset.selected === 'true'`);
     assert.equal(await js(`document.querySelector('.traj-record[data-record-id="' + ${JSON.stringify(targetId)} + '"]').classList.contains('traj-record--focus')`), true);
     console.log("通过：点击时长条定位到记录");
 
     // 点击轨道空白处定位横坐标最近的记录。
-    await js("[...document.querySelectorAll('.traj-record[open]')].forEach(node=>{node.open=false})");
+    await js("document.querySelector('.traj-inspector-close')?.click()");
     await js("(()=>{const track=document.querySelector('.traj-overview__track');const rect=track.getBoundingClientRect();track.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:rect.left+rect.width*0.7,clientY:rect.top+rect.height/2}));})()");
-    await until("document.querySelectorAll('.traj-record[open]').length >= 1");
+    await until("document.querySelector('.traj-record[data-selected=\"true\"]')");
     console.log("通过：点击时长轨道定位最近记录");
 
     // 顶部概览固定，只有下方记录列表滚动；展开长详情也不改变概览位置。
     win.setSize(1000, 560);
     await js("new Promise(r=>setTimeout(r,250))");
-    await js("document.querySelectorAll('.traj-record').forEach(node=>{node.open=true})");
+    await js("document.querySelector('.traj-inspector-close')?.click()");
     await js("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))");
     assert.equal(await js("document.querySelector('.traj-records').scrollHeight > document.querySelector('.traj-records').clientHeight"), true, "记录列表应独立滚动");
     const headerRects = await js("['.traj-toolbar','.traj-summary','.traj-overview'].map(selector=>{const rect=document.querySelector(selector).getBoundingClientRect();return {top:rect.top,bottom:rect.bottom}})");
@@ -253,7 +275,7 @@ async function main() {
     assert.equal(await js("document.querySelectorAll('.traj-turn[open]').length"), 1);
     assert.match(await js("document.querySelector('.traj-turn').textContent"), /改一下 a\.js/);
     if (process.env.TRAJECTORY_TURN_SCREENSHOT_PATH) {
-      await js("[...document.querySelectorAll('.traj-record[open]')].forEach(node=>{node.open=false})");
+      await js("document.querySelector('.traj-inspector-close')?.click()");
       await js("new Promise(r=>setTimeout(r,400))");
       await fs.writeFile(process.env.TRAJECTORY_TURN_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
@@ -263,7 +285,7 @@ async function main() {
     assert.equal(await js("document.querySelectorAll('.traj-record[data-kind=\"tool\"]').length"), 2);
     assert.equal(await js("document.querySelectorAll('.traj-record[data-kind=\"assistant\"]').length"), 0);
     if (process.env.TRAJECTORY_CALL_SCREENSHOT_PATH) {
-      await js("[...document.querySelectorAll('.traj-record[open]')].forEach(node=>{node.open=false})");
+      await js("document.querySelector('.traj-inspector-close')?.click()");
       await js("new Promise(r=>setTimeout(r,400))");
       await fs.writeFile(process.env.TRAJECTORY_CALL_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     }
@@ -274,9 +296,9 @@ async function main() {
     await js("new Promise(r=>requestAnimationFrame(r))");
     assert.equal(await js("document.querySelectorAll('.traj-record').length"), 1);
     assert.match(await js("document.querySelector('.traj-record__title').textContent"), /a\.js/);
-    await js("document.querySelector('.traj-record summary').click()");
-    assert.match(await js("document.querySelector('.traj-record__body').textContent"), /参数/);
-    assert.match(await js("document.querySelector('.traj-record__body').textContent"), /one/);
+    await js("document.querySelector('.traj-record button').click()");
+    assert.match(await js("document.querySelector('.traj-inspector-body').textContent"), /参数/);
+    assert.match(await js("document.querySelector('.traj-inspector-body').textContent"), /one/);
     console.log("通过：轮次/调用切换、搜索与工具详情");
 
     await js("(()=>{const input=document.querySelector('.traj-search input');input.value='';input.dispatchEvent(new Event('input'));})()");
@@ -349,9 +371,111 @@ async function main() {
     }
     await js("window.scrollFixture.host.remove();delete window.scrollFixture;document.getElementById('trajectory-view').hidden=false");
     console.log("通过：长列表重绘保持阅读位置、底部跟随、键盘滚动及宽窄窗三种视图固定布局");
+    // 独立模拟流式会话，不读取真实历史或请求模型。
+    win.setSize(1280, 900);
+    await js(`(async()=>{
+      const { createTrajectoryView } = await import('./components/trajectory-view.js');
+      const { createTrajectoryModel } = await import('./components/trajectory-model.js');
+      document.getElementById('trajectory-view').hidden=true;
+      document.getElementById('trajectory-latest').hidden=true;
+      const host=document.createElement('section');
+      host.className='trajectory-view';
+      document.querySelector('.thread-area').append(host);
+      const model=createTrajectoryModel();
+      model.reset('inspector-fixture');
+      model.accept({type:'agent_start',ts:1000});
+      model.accept({type:'message_start',ts:1100,message:{role:'assistant',ts:1000,provider:'mock',model:'offline'}});
+      const view=createTrajectoryView(host);
+      const refresh=()=>view.render(model.snapshot());
+      refresh();
+      const click=selector=>host.querySelector(selector).click();
+      const update=(ts,delta)=>{model.accept({type:'message_update',ts,assistantMessageEvent:{type:'text_delta',contentIndex:0,delta}});refresh()};
+      window.inspectorFixture={host,model,view,refresh,click,update};
+      click('.traj-record[data-kind="assistant"] button');
+      click('[data-tab="rendered"]');
+    })()`);
+    const fixture = "window.inspectorFixture.host";
+    const detailText = `${fixture}.querySelector('.traj-inspector-body').textContent`;
+    const selectedId = await js(`${fixture}.querySelector('.traj-record[data-selected="true"]').dataset.recordId`);
+    assert.match(await js(detailText), /等待模型输出/);
+    await js("window.inspectorFixture.update(1300,'**流式正文** <img src=x onerror=\"window.trajectoryInjected=true\">')");
+    assert.equal(await js(`${fixture}.querySelector('.traj-record[data-selected="true"]').dataset.recordId`), selectedId);
+    assert.equal(await js(`${fixture}.querySelector('[data-tab="rendered"]').getAttribute('aria-selected')`), "true");
+    assert.match(await js(`${fixture}.querySelector('.traj-inspector-body strong').textContent`), /流式正文/);
+    assert.equal(await js("Boolean(window.trajectoryInjected)"), false);
+    assert.equal(await js(`${fixture}.querySelectorAll('.traj-inspector [onerror]').length`), 0);
+    await js(`(()=>{
+      const f=window.inspectorFixture;
+      f.model.accept({type:'message_end',ts:3300,message:{role:'assistant',ts:1000,durationMs:2300,usage:{input:100,output:40,totalTokens:140},content:[{type:'thinking',thinking:'核对工具定义和输入参数。'},{type:'text',text:'流式完成，准备读取文件。'},{type:'toolCall',id:'inspect-call',name:'read',arguments:{path:'example.js'}}]}});
+      f.model.accept({type:'tool_execution_start',ts:3400,toolCallId:'inspect-call',toolName:'read',args:{path:'example.js'},schema:{name:'read',description:'读取文件',parameters:{type:'object',properties:{path:{type:'string'}}}}});
+      f.refresh();
+      f.click('[data-tab="overview"]');
+    })()`);
+    assert.equal(await js(`${fixture}.querySelector('.traj-record[data-selected="true"]').dataset.recordId`), selectedId);
+    assert.match(await js(detailText), /200 ms（界面观察）/);
+    assert.match(await js(detailText), /20\.0 tok\/s（界面观察）/);
+    assert.match(await js(detailText), /2\.3 秒（SDK）/);
+    await js(`[...${fixture}.querySelectorAll('h3 button')].find(node=>node.textContent.includes('请求计时')).click()`);
+    assert.equal(await js(`${fixture}.querySelector('[data-tab="timing"]').getAttribute('aria-selected')`), "true");
+    await js(`${fixture}.querySelector('.traj-record[data-kind="assistant"] button').click()`);
+    await js(`[...${fixture}.querySelectorAll('.traj-inspector-link')].find(node=>node.textContent.startsWith('⌕ read')).click()`);
+    assert.equal(await js(`${fixture}.querySelector('.traj-record[data-kind="tool"]').dataset.selected`), "true");
+    assert.equal(await js(`${fixture}.querySelector('[data-tab="overview"]').getAttribute('aria-selected')`), "true");
+    await js("window.inspectorFixture.click('[data-tab=\"schema\"]')");
+    assert.match(await js(detailText), /读取文件/);
+    await js(`(()=>{
+      const f=window.inspectorFixture;
+      f.click('[data-tab="output"]');
+      f.model.accept({type:'tool_execution_end',ts:3900,toolCallId:'inspect-call',durationMs:500,result:{content:[{type:'text',text:Array.from({length:80},(_,i)=>'第 '+i+' 行文件内容').join('\\n')}]}});
+      f.refresh();
+    })()`);
+    assert.equal(await js(`${fixture}.querySelector('[data-tab="output"]').getAttribute('aria-selected')`), "true");
+    assert.match(await js(detailText), /第 79 行文件内容/);
+    // 左列表与右详情分别滚动，详情头和页签固定；更新保留右侧阅读位置。
+    await js(`${fixture}.querySelector('.traj-inspector-body').scrollTop=150`);
+    const inspectorHeaderTop = await js(`${fixture}.querySelector('.traj-inspector-header').getBoundingClientRect().top`);
+    await js("window.inspectorFixture.refresh()");
+    assert.equal(await js(`${fixture}.querySelector('.traj-inspector-body').scrollTop`), 150);
+    assert.equal(await js(`${fixture}.querySelector('.traj-records').scrollTop`), 0);
+    assert.equal(await js(`${fixture}.querySelector('.traj-inspector-header').getBoundingClientRect().top`), inspectorHeaderTop);
+    // 宽窗分栏与键盘/鼠标拖宽，双击恢复默认。
+    assert.equal(await js(`${fixture}.querySelector('.traj-inspector').getBoundingClientRect().left >= ${fixture}.querySelector('.traj-records').getBoundingClientRect().right`), true);
+    const defaultWidth = await js(`${fixture}.querySelector('.traj-inspector').getBoundingClientRect().width`);
+    await js(`${fixture}.querySelector('.traj-inspector-resize').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))`);
+    assert.equal(await js(`${fixture}.querySelector('.traj-inspector').getBoundingClientRect().width`), defaultWidth + 16);
+    const handle = await js(`(()=>{const r=${fixture}.querySelector('.traj-inspector-resize').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+20)}})()`);
+    win.webContents.sendInputEvent({ type: "mouseMove", ...handle });
+    win.webContents.sendInputEvent({ type: "mouseDown", ...handle, button: "left", clickCount: 1 });
+    win.webContents.sendInputEvent({ type: "mouseMove", x: handle.x + 150, y: handle.y });
+    win.webContents.sendInputEvent({ type: "mouseUp", x: handle.x + 150, y: handle.y, button: "left", clickCount: 1 });
+    await until(`${fixture}.querySelector('.traj-inspector').getBoundingClientRect().width < ${defaultWidth}`);
+    assert.ok(await js(`${fixture}.querySelector('.traj-inspector').getBoundingClientRect().width`) >= 320);
+    await js(`${fixture}.querySelector('.traj-inspector-resize').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))`);
+    assert.equal(await js(`${fixture}.querySelector('.traj-inspector').getBoundingClientRect().width`), defaultWidth);
+    // 关联助手回跳及截图。
+    await js("window.inspectorFixture.click('[data-tab=\"overview\"]')");
+    await js(`[...${fixture}.querySelectorAll('.traj-inspector-facts button')].find(node=>node.textContent==='查看 ›').click()`);
+    assert.equal(await js(`${fixture}.querySelector('.traj-record[data-selected="true"]').dataset.recordId`), selectedId);
+    await js("new Promise(r=>setTimeout(r,400))");
+    await fs.writeFile(path.join(temporary, "trajectory-inspector.png"), (await win.webContents.capturePage()).toPNG());
+    win.setSize(375, 700);
+    await js("new Promise(r=>setTimeout(r,450))");
+    assert.equal(await js(`getComputedStyle(${fixture}.querySelector('.traj-inspector')).position`), "absolute");
+    assert.equal(await js("document.documentElement.scrollWidth <= innerWidth"), true);
+    assert.ok(await js(`${fixture}.querySelector('.traj-inspector').getBoundingClientRect().width`) <= 375 * 0.92);
+    await fs.writeFile(path.join(temporary, "trajectory-inspector-narrow.png"), (await win.webContents.capturePage()).toPNG());
+    // Escape 关闭回焦选中记录，切换会话清除详情。
+    await js(`${fixture}.querySelector('.traj-inspector-close').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+    assert.equal(await js(`${fixture}.querySelector('.traj-inspector').hidden`), true);
+    assert.equal(await js(`document.activeElement.closest('.traj-record')?.dataset.recordId`), selectedId);
+    await js(`${fixture}.querySelector('.traj-record[data-kind="assistant"] button').click();window.inspectorFixture.model.reset('other-session');window.inspectorFixture.refresh()`);
+    assert.equal(await js(`${fixture}.querySelector('.traj-inspector').hidden`), true);
+    await js("window.inspectorFixture.host.remove();delete window.inspectorFixture;document.getElementById('trajectory-view').hidden=false");
+    console.log("通过：流式选中稳定、观察计时、Schema、关联跳转、安全文本、独立滚动、拖宽、窄窗与会话切换");
     assert.deepEqual(errors, []);
     console.log("通过：对话/轨迹视图与运行轨迹功能");
     console.log(`截图：${path.join(temporary, "trajectory.png")}`);
+    console.log(`检查器截图：${path.join(temporary, "trajectory-inspector.png")}、${path.join(temporary, "trajectory-inspector-narrow.png")}`);
     console.log(`固定概览截图：${path.join(temporary, "trajectory-pinned-1280.png")}、${path.join(temporary, "trajectory-pinned-375.png")}`);
   } finally {
     win.destroy();
