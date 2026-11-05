@@ -21,12 +21,12 @@ async function setup(t) {
     else process.env.PI_CODING_AGENT_DIR = previous;
     await fs.rm(base, { recursive: true, force: true });
   });
-  return { workspace };
+  return { agentDir, workspace };
 }
 
 async function load(t, permissionMode) {
   const { createPiResources } = await import("../../src/main/resources/pi-resources.mjs");
-  const { workspace } = await setup(t);
+  const { agentDir, workspace } = await setup(t);
   const asked = [];
   const resources = await createPiResources({
     cwd: workspace,
@@ -38,13 +38,15 @@ async function load(t, permissionMode) {
     onDiagnostics: () => {},
     permissionMode,
   });
-  return { asked, resources, workspace };
+  return { agentDir, asked, resources, workspace };
 }
 
 test("完全权限自动信任项目资源，不弹项目信任确认", async (t) => {
-  const { asked, resources } = await load(t, "full-access");
+  const { agentDir, asked, resources } = await load(t, "full-access");
   assert.equal(asked.length, 0);
   assert.equal(resources.settingsManager.isProjectTrusted(), true);
+  // 自动信任只作用于本次会话，不把项目静默写入信任库。
+  await assert.rejects(fs.stat(path.join(agentDir, "trust.json")), { code: "ENOENT" });
 });
 
 test("非完全权限仍按既有信任流程询问，不自动信任", async (t) => {
