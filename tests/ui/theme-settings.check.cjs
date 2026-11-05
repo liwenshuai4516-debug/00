@@ -201,6 +201,9 @@ async function main() {
   try {
     createWindow();
     await load();
+    if (process.env.PERMISSION_COMPOSER_SCREENSHOT_PATH) {
+      await writeFile(process.env.PERMISSION_COMPOSER_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
     await check(
       "提供四个任务模板，未选择时不可插入",
       `document.querySelector('#task-template-select').options.length===5 && document.querySelector('#task-template-insert').disabled`,

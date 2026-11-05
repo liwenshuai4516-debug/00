@@ -97,10 +97,13 @@ function registerAgentIpc(
   // 只读的本地估算；用户展开上下文详情时才调用，不参与发送或压缩决策。
   ipcMain.handle("agent:read-context-breakdown", () => sessionService.getContextBreakdown());
   ipcMain.handle("agent:read-permission-settings", async () =>
-    permissionService.settings(await currentPermissionContext()),
+    permissionService
+      ? permissionService.settings(await currentPermissionContext())
+      : { mode: "ask", scope: "session", defaultMode: "ask", options: [] },
   );
   ipcMain.handle("agent:save-permission-settings", (_event, mode, scope) =>
     runIdleOperation(async () => {
+      if (!permissionService) throw new Error("权限服务尚未初始化。");
       const context = await currentPermissionContext();
       return permissionService.save({ mode, scope, ...context });
     }),

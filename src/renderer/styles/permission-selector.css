@@ -1,0 +1,146 @@
+/* 输入框内的权限选择器：与模型选择器同一层控制行，不占据消息区。 */
+.permission-selector {
+  position: relative;
+  flex: none;
+  min-width: 0;
+}
+
+.permission-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+  max-width: 10rem;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.permission-trigger:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.permission-trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.permission-trigger .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.permission-trigger__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.permission-trigger__chevron {
+  flex: none;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.permission-trigger[data-state="risk"] {
+  color: var(--error-border);
+}
+
+.permission-menu {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: min(300px, calc(100vw - 24px));
+  max-height: min(330px, 55dvh);
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 30%);
+}
+
+.permission-menu[hidden] {
+  display: none;
+}
+
+.permission-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.permission-choice:hover:not(:disabled),
+.permission-choice[aria-selected="true"] {
+  background: color-mix(in srgb, var(--focus) 8%, transparent);
+}
+
+.permission-choice:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.permission-choice__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.permission-choice__description {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.permission-choice__risk {
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--error-border) 45%, var(--border));
+  border-radius: 999px;
+  color: var(--error-border);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.permission-choice__check {
+  color: var(--focus);
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .permission-trigger__label {
+    display: none;
+  }
+
+  .permission-trigger {
+    max-width: 4.5rem;
+    padding: 4px 6px;
+  }
+
+  .permission-menu {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 92px;
+    width: auto;
+  }
+}

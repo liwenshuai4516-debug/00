@@ -113,6 +113,9 @@ export function createPermissionSettings(panel, api, setPageBusy) {
       status.textContent = targetScope === "default" && scope !== "default"
         ? `已设置新会话默认权限为「${label}」；当前会话仍按「${scopeLabel(scope)}」生效。`
         : `已切换为「${label}」（${scopeLabel(scope)}），对后续工具调用立即生效。`;
+      window.dispatchEvent(new CustomEvent("permission-settings-changed", {
+        detail: { mode, scope, defaultMode, options },
+      }));
     } catch (error) {
       status.textContent = `保存失败：${error.message}`;
       status.dataset.state = "error";
@@ -136,6 +139,16 @@ export function createPermissionSettings(panel, api, setPageBusy) {
     status.dataset.state = "";
   }
 
+  function onChanged(event) {
+    if (!event.detail?.mode) return;
+    mode = event.detail.mode;
+    if (event.detail.scope) scope = event.detail.scope;
+    if (event.detail.defaultMode) defaultMode = event.detail.defaultMode;
+    if (Array.isArray(event.detail.options)) options = event.detail.options;
+    draw();
+  }
+
+  window.addEventListener("permission-settings-changed", onChanged);
   draw();
   return { show, hide, setBusy };
 }

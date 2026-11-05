@@ -20,6 +20,18 @@ DSH 的模型是 `read-only`、`workspace-write`、`full-access`（以及实验 
 | 当前项目所有会话 | `workspaces[workspace]` | 同一真实工作区的所有会话；保存时清除当前会话的旧覆盖 |
 | 新会话默认 | `defaultMode` | 没有会话/项目覆盖的新会话 |
 
+## 输入框里的权限选择器
+
+输入框底部、工作区入口右侧提供 DSH 式的权限触发器（盾牌 + 当前模式 + 下拉箭头）。点击后可切换：
+
+- **每次确认**：读取类工具直接执行，写入和命令逐次弹窗；
+- **只读**：阻止写入和命令；
+- **完全权限**：确认风险后直接执行。
+
+输入框切换写入**当前会话**范围；设置页的「应用范围」可选择仅当前会话、当前项目所有会话或新会话默认。两个入口共用同一份设置，设置页保存后会通知输入框更新，输入框切换后当前会话立即生效。
+
+![输入框权限选择器](images/permission-composer.png)
+
 ## 实现
 
 - `src/main/services/permission-service.js`：保存在 `app.getPath("userData")/permission-settings.json`，v2 结构为 `defaultMode`、`sessions`、`workspaces`；兼容旧版 `{version:1, mode}` 并在下次保存时升级。写入 `0600` 原子临时文件；损坏文件回到安全默认但不自动覆盖。
@@ -28,6 +40,7 @@ DSH 的模型是 `read-only`、`workspace-write`、`full-access`（以及实验 
 - `src/main/pi-agent.mjs` 在创建会话时按会话/项目解析权限；`src/main/resources/pi-resources.mjs` 的 `resolveTrust` 在完全权限下直接信任项目资源，不弹项目信任确认，也不写入 `ProjectTrustStore`。
 - `src/main/ipc/agent-ipc.js`、`src/preload/preload.js`：`agent:read-permission-settings` / `agent:save-permission-settings`，主进程从当前实际会话与工作区解析范围，保存走共用空闲互斥。
 - `src/renderer/components/settings/permission-settings.js`：设置页「通用 → 权限控制」提供模式和范围选择；当前生效范围以徽标/说明展示。
+- `src/renderer/components/permission-selector.js`：输入框内的权限选择器，默认保存到当前会话；设置页变更通过 `permission-settings-changed` 事件同步。
 - 设置页新增「通用」分类；模型、主题、归档、提示词、技能与扩展包分类保持不变。
 
 ## 边界
@@ -44,6 +57,7 @@ DSH 的模型是 `read-only`、`workspace-write`、`full-access`（以及实验 
 ```bash
 node --test tests/unit/permission-service.test.js tests/unit/permission-gate.test.js tests/unit/permission-trust.test.js
 node_modules/.bin/electron --no-sandbox tests/ui/permission-settings.check.cjs
+node_modules/.bin/electron --no-sandbox tests/ui/permission-selector.check.cjs
 node_modules/.bin/electron --no-sandbox tests/ui/theme-settings.check.cjs
 ```
 
@@ -51,6 +65,7 @@ node_modules/.bin/electron --no-sandbox tests/ui/theme-settings.check.cjs
 - 权限门禁：7 项（读工具直通、写工具确认、只读阻止、完全权限放行、MCP 观察/点击分类、无 UI/拒绝失败关闭、系统提示词按模式更新、会话/工作区上下文传递）。
 - 完全权限项目信任：2 项（完全权限不弹信任确认、非完全权限仍按既有流程）。
 - 权限设置页面：6 项（三种模式、会话/项目范围、完全权限风险提示、忙碌禁用）。
-- 主题设置 43 项复跑通过，确认新增「通用」分类和范围选择没有破坏现有设置页导航。
+- 权限选择器：5 项（默认状态、菜单、会话保存、设置同步、Escape 关闭）。
+- 主题设置 43 项复跑通过，确认新增「通用」分类、范围选择和输入框选择器没有破坏现有设置页导航与窄窗布局。
 
 ![通用设置：权限控制](images/permission-settings.png)

@@ -5,6 +5,7 @@ import { createProjectPanel } from "./components/project-panel.js";
 import { mountHistoryPreview } from "./components/history-preview.js";
 import { createSessionInfoPanel, formatContextUsage } from "./components/session-info-panel.js";
 import { createContextUsage } from "./components/context-usage.js";
+import { createPermissionSelector } from "./components/permission-selector.js";
 import { createMessageScroll } from "./components/message-scroll.js";
 import { createSendQueue } from "./components/send-queue.js";
 import { createFileReferenceMenu } from "./components/file-reference-menu.js";
@@ -659,6 +660,14 @@ const contextUsage = createContextUsage(
     loadBreakdown: () => window.agent.readContextBreakdown?.(),
   },
 );
+const permissionSelector = createPermissionSelector(
+  document.getElementById("permission-selector"),
+  {
+    readPermissionSettings: () => window.agent.readPermissionSettings(),
+    savePermissionSettings: (mode, scope) => window.agent.savePermissionSettings(mode, scope),
+  },
+);
+window.addEventListener("pagehide", () => permissionSelector.dispose(), { once: true });
 // 菜单信息与常驻用量共用一次读取，不另发模型请求。
 const sessionInfoPanel = createSessionInfoPanel(
   document.getElementById("session-info"),
