@@ -28,12 +28,29 @@ test("测试职责与覆盖矩阵、报告状态及动态工具流程对齐", as
 });
 
 test("UI 流程技能说明登录态失效后的恢复顺序", async () => {
-  const skill = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-basic/SKILL.md"), "utf8");
-  assert.match(skill, /qa_ui_login\(auto\) 对每个 projectRef 只尝试一次/);
-  assert.match(skill, /一次 qa_ui_prepare\(mode=run\) 会绑定该登录态/);
-  assert.match(skill, /重新调用 qa_ui_project 获取新的 projectRef/);
-  assert.match(skill, /finalize 只登记资产/);
-  assert.match(skill, /不要重新 prepare 同一 case 来重试/);
+  const basic = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-basic/SKILL.md"), "utf8");
+  assert.match(basic, /qa_ui_login\(auto\) 对每个 projectRef 只尝试一次/);
+  assert.match(basic, /重新调用 qa_ui_project 获取新的 projectRef/);
+  const execute = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-execute/SKILL.md"), "utf8");
+  assert.match(execute, /run 准备会绑定当前登录态/);
+  assert.match(execute, /不要重新 prepare 同一 case 来重试/);
+  const record = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-record/SKILL.md"), "utf8");
+  assert.match(record, /qa_ui_finalize 只登记资产/);
+});
+
+test("qa-ui-basic 只做流程编排，执行细节由执行技能维护", async () => {
+  const basic = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-basic/SKILL.md"), "utf8");
+  assert.match(basic, /qa-ui-record/);
+  assert.match(basic, /qa-ui-execute/);
+  assert.match(basic, /qa-test-report/);
+  assert.match(basic, /具体步骤由对应执行技能维护/);
+  assert.doesNotMatch(basic, /browser_snapshot|generator_read_log|replayCommand/);
+  const record = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-record/SKILL.md"), "utf8");
+  assert.match(record, /文件命名由工具生成/);
+  assert.match(record, /generator_write_test/);
+  const execute = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-execute/SKILL.md"), "utf8");
+  assert.match(execute, /## 会话内 MCP 回放/);
+  assert.match(execute, /--grep/);
 });
 
 test("UI 录制技能要求审批入口生成 case，审批技能只负责执行规程", async () => {

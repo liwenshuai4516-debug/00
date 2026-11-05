@@ -19,7 +19,7 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 - 业务预期默认采用**页面规则（页面既有基线）**，来源标注为「页面规则」；用户需求/用例说明优先。页面规则与常识冲突时记录待确认，不擅自判缺陷。
 - 账号由测试环境提供：主账号走项目配置，多角色/部门账号从「系统管理 → 用户管理」读取；统一测试密码由宿主提供，不向用户索要账号或“部门 B 账号”。
 - 造数直接执行：允许创建 ≥11 条测试数据，使用唯一前缀 + 时间戳/后缀并登记清理。
-- 权限、账号、造数、字段/金额/日期/编号/附件规则按 `qa-ui-basic` 执行契约处理，不列待确认清单阻塞录制；影响结论的标「待确认」。
+- 权限、账号、造数、字段/金额/日期/编号/附件规则按本技能的「测试环境授权与预期来源」处理，不列待确认清单阻塞录制；影响结论的标「待确认」。
 
 录制前先定脚本结构：一个 test 一个业务场景，只读与写入分开，每个 test 写清初态、动作、业务结果断言和数据来源。
 预期优先来自用户需求或用例说明；没有时以页面规则为默认来源并标注；页面规则无法判断的冲突记录待确认并继续，只有会反转通过/失败结论时才问一个，不列问卷。
@@ -64,6 +64,7 @@ description: 录制并整理 UI 用例脚本：在 qa_ui_prepare(record) 后用�
 调用 qa_ui_prepare：mode=record、projectRef、targetUrl；默认无头，不要传 headed=true（仅用户明确要求观察页面时例外）。调用前必须已有 qa_ui_login 的 saved 或 not-required 结果。
 prepare 报登录态已失效、已绑定批次或与目标站点不符时，不要重复 prepare 或 auto；先重新调用 qa_ui_project，再用返回的新 projectRef 登录，最后 prepare。saved 登录态可复用于多次 record 准备，但一次 run 准备会绑定它。
 使用返回的 caseId、seedFile、caseFileName、caseDocument、caseFile 和 recordingDir；默认不手填 caseId，不覆盖同名资产。
+文件命名由工具生成“项目名称__页面路径__短摘要.spec.cjs”；路由 hash 纳入页面路径，同名重复录制自动追加版本。禁止自行重命名到准备路径之外或覆盖旧资产。
 官方 desktop-playwright-test 工具（browser_* / generator_*）由 qa_ui_prepare 成功返回后才登记，准备前工具清单里没有它们属于正常状态，不能据此提前停止。prepare 后确认 `mcp__desktop_playwright_test__*` 已出现；仍未出现时才停止并报告，不自建脚本或改用其他工具。全局 `-builtin:mcp`、`pi-mcp-adapter` 会被宿主在本会话过滤，不能据此判定 MCP 不可用。
 不要用 pi-playwright、pi-chrome 等其他浏览器技能/CLI 替代本流程；它们使用不同的 Playwright 与浏览器版本，不会产生可 finalize 的 generator 日志。录制期间避免上下文压缩或会话替换；会话恢复/切换、扩展 reload 或压缩后，projectRef、MCP 工具和录制日志会失效，必须从 qa_ui_project → qa_ui_login → qa_ui_prepare（新 caseId）重新开始，不能复用旧 refs。
 

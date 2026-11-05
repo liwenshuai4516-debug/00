@@ -10,9 +10,9 @@ description: 只执行已有标准化 UI 用例：按 caseId 单项、批量或�
 - 只执行 `qa/data/ui/cases/*.asset.json` 已登记、且 spec 与登记哈希一致的用例。
 - 不进入录制、功能面盘点、用例编辑或 finalize；需要新增/修改用例时改用 `qa-ui-basic` / `qa-ui-record`。
 - 一次命令跑选定 case，不重复执行同一批次；失败不自动重跑，不把失败改成通过。
-- 测试环境默认允许执行、造数和必要写操作，不再询问授权；生产/未知环境仍需用户确认。
+- 测试环境以用户原话、项目配置或当前应用权限模式为准；完全权限视为已授权，每次确认模式下工具/CLI 的写操作仍由应用确认，拒绝时按未授权处理。生产/未知环境仍需用户确认。
 - 账号由项目配置/系统管理提供；多角色账号从用户管理读取，不向用户索要账号或密码。
-- 权限、账号、造数不询问；测试环境直接执行，只有生产/未知环境或不可逆外部副作用才暂停。
+- 权限、账号、造数在业务层不重复询问；工具层按当前应用权限模式执行，只有生产/未知环境或不可逆外部副作用才暂停。
 
 ## 后台静默
 
@@ -72,6 +72,17 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目
 4. 报告：加载 `qa-test-report`，按统一 `qa-report/v1` 状态、通过条件和证据顺序交付；UI 批次额外说明 runId、summary 路径和 tracePolicy。退出码非 0 或 `status` 非 `passed` 时不得说通过。
 5. 不做自动重跑；需要新批次时重新执行命令。用例脚本已变更时 CLI 会拒绝，先回到录制/ finalize 流程。
 
+## 会话内 MCP 回放（需要现有登录态或人工接管时）
+
+只执行仍优先使用上面的 CLI。需要在当前会话继承私有登录态或人工接管时：
+
+1. 已按 `qa-ui-basic` 第 1–3 步取得 projectRef、targetUrl 和 saved/not-required 登录。
+2. 调用 `qa_ui_prepare(mode=run, projectRef, targetUrl, caseId/caseIds, grep?)`；run 准备会绑定当前登录态，一个登录态只能准备一个回放批次。
+3. 返回的 `replayCommand` 用 Pi 原生 bash 执行，timeout 可用 660 秒；不自动重放同一命令。
+4. 回放失败后不要重新 prepare 同一 case 来重试；先读 summary。
+5. finalize 不重置登录态；需要新批次时重新走 qa_ui_project → qa_ui_login → qa_ui_prepare。
+6. 批次结果读取 summary 后交 `qa-test-report`；清理、残留和失败按上表与报告技能处理。
+
 ## 定时执行
 
 用系统 cron/launchd 直接调 CLI，不经过 Agent 和 MCP，token 成本为零。示例：
@@ -94,4 +105,4 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目
 
 ## 与工作流的关系
 
-`qa-ui-basic` 的步骤 1–3 + 6–7 是执行能力；本 skill 把它们封装成一条 CLI 调用。只执行时优先加载本 skill，不加载录制、盘点和报告全流程，减少 token 与无关工具调用。
+`qa-ui-basic` 的第 1–3 步是前置编排，6–7 是回放与报告交接；本 skill 提供 CLI 和会话内回放的具体执行步骤。只执行时优先加载本 skill，不加载录制、盘点和报告全流程，减少 token 与无关工具调用。

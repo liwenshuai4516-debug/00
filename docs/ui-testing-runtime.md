@@ -13,7 +13,7 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/login.cjs` | 独立可见 Chromium、登录判断/自动登录/人工接管、私有 storageState 导出 |
 | `resources/testing/ui/run.cjs` | 批次执行、取消、清理、摘要与清单 |
 | `resources/testing/ui/playwright.config.cjs` | 单 worker、零重试、报告和证据策略 |
-| `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步流程、项目/登录/回放/报告的操作约定 |
+| `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步编排、共享约束和阶段交接；具体录制/回放/报告操作委派给执行技能 |
 | `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
 | `resources/testing/ui/skills/qa-ui-execute/SKILL.md` | 按 caseId 单项/批量/定时执行，不录制、不改脚本 |
 | `resources/testing/ui/skills/qa-ui-assertion/SKILL.md` | 独立断言规则：来源、业务/守卫、数据不变量、编辑同步、失败判定 |
@@ -84,7 +84,7 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 
 ## 当前七步流程（2026-11-04）
 
-先判断用户意图，不因调用 `/skill:qa-ui-basic` 就默认跑满七步：只录制走步骤 1–5，只执行走 1–3 + 6–7，只有录制并回放/完整测试才走 1–7；待办清单同步裁剪。用户确认目标为测试环境时，全部页面写操作已授权；业务预期默认采用页面规则并标注来源。
+先判断用户意图，不因调用 `/skill:qa-ui-basic` 就默认跑满七步：只录制走步骤 1–5，只执行走 1–3 + 6–7，只有录制并回放/完整测试才走 1–7；待办清单同步裁剪。用户确认目标为测试环境时视为业务层授权；工具层仍按当前应用权限模式逐次确认或放行。业务预期默认采用页面规则并标注来源。
 
 在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理细则由同目录注册的 `/skill:qa-ui-record` 提供，执行和报告分别由 `qa-ui-execute`、`qa-test-report` 提供。这些 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
 
@@ -93,12 +93,14 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 | 1. 工作区检查 | 使用当前会话 cwd；qa_ui_project 在同一次调用中校验真实路径、目录边界、`qa/data/ui/cases` 创建/复用和写入探针；没有工作区则先选择，不自动用安装目录 |
 | 2. 项目和前置数据检查 | 同一次 qa_ui_project 调用将 URL、可选 projectId/projectName 与本机配置比对，返回脱敏项目上下文、workspace/dataDir/caseDir 和目录动作；Agent 核验相关业务输入、初态、角色和预期来源 |
 | 3. 判断登录 | qa_ui_login(action=auto, projectRef) 检查表单，按需使用配置凭据登录一次；公开页面返回 not-required，认证成功返回 saved，异常返回 manual-required |
-| 4. 真实录制 | 先按 qa-ui-record 盘点查询项、工具栏按钮、行操作与展开收起控件并形成覆盖矩阵；qa_ui_prepare(mode=record, projectRef, targetUrl) 继承该项目登录态；现场快照、操作、逐步骤断言、生成日志及写脚本，结束关闭页面 |
-| 5. 整理与持久化 | Agent 按 qa-ui-record 的断言来源、定位器、数据隔离和等待方式整理独立 test，生成含断言的用例列表、覆盖范围与 qa-ui-case 元数据稿；qa_ui_finalize 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
-| 6. 独立回放 | qa_ui_prepare(mode=run, projectRef, targetUrl, caseId) 验证资产登记哈希，执行返回命令；在新浏览器上下文回放，并清理私有登录态 |
-| 7. 输出结果 | 按 `qa-test-report` 的 `qa-report/v1` 规则交付；UI 批次读取原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
+| 4. 真实录制 | `qa-ui-basic` 委派 `qa-ui-record`：功能面盘点、`qa_ui_prepare(mode=record)`、官方工具现场操作、逐步骤断言、生成日志、脚本和 browser_close 均由录制技能执行 |
+| 5. 整理与持久化 | `qa-ui-record` 负责脚本、用例说明、元数据和 finalize 自检；`qa_ui_finalize` 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
+| 6. 独立回放 | `qa-ui-basic` 委派 `qa-ui-execute`：优先走 CLI；条件/全量复测、`--grep` 单条 test、会话内 MCP 回放和批次清理由执行技能执行 |
+| 7. 输出结果 | `qa-ui-basic` 委派 `qa-test-report`：按 `qa-report/v1` 规则交付；UI 批次读取原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
 
-项目配置仍使用客户端源码根目录的 `config/projects.local.json`，不复制到被测工作区。配置位置与手工编辑约定见 [项目前置数据](project-data.md)。账号密码由后端及独立登录进程使用，不返回模型，不写脚本或报告；不要让 Agent 用原生 read/bash 读取真实配置。目录/地址就绪不表示业务前置数据已正确，返回的 businessDataStatus=not-validated 明示这个边界。步骤 1 和 2 由同一个 `qa_ui_project` 调用完成，不再单独准备工作区目录。
+`qa-ui-basic` 只负责业务编排、共享约束和阶段交接；录制、断言、CLI/会话回放、报告的具体步骤分别由 `qa-ui-record`、`qa-ui-assertion`、`qa-ui-execute`、`qa-test-report` 维护，避免同一流程在多处重复描述。步骤 1 和 2 由同一个 `qa_ui_project` 调用完成，不再单独准备工作区目录。
+
+项目配置仍使用客户端源码根目录的 `config/projects.local.json`，不复制到被测工作区。配置位置与手工编辑约定见 [项目前置数据](project-data.md)。账号密码由后端及独立登录进程使用，不返回模型，不写脚本或报告；不要让 Agent 用原生 read/bash 读取真实配置。目录/地址就绪不表示业务前置数据已正确，返回的 businessDataStatus=not-validated 明示这个边界。
 
 例如，用户给出 `http://192.168.90.224:8238/pms/OperationContract`，若已配置项目地址为同 origin 的根路径，就匹配该项目；协议、端口或主机不同则不匹配。路径按完整段边界匹配，最长范围优先；多个同等候选必须给 projectId，用户名称冲突也停止，不能随意选择账号。当前实现不会用工作区名称猜目标系统。
 
