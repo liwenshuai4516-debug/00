@@ -207,6 +207,93 @@ test("modulePath 构建多级目录并合并同路径用例", async (t) => {
   assert.equal(catalog.lastRun.runId, "run-2");
 });
 
+test("删除单条用例同步脚本、资产和说明，最后一条删除资产文件", async (t) => {
+  const { service, project, dataRoot } = await setup(t);
+  const cases = path.join(dataRoot, "ui", "cases");
+  const caseMeta = {
+    schema: "qa-ui-case/v1",
+    caseId: "批量",
+    project: { id: "pms", name: "项目管理系统" },
+    page: "/pms/Contract",
+    role: "管理员",
+    dataPolicy: "read-only",
+    tags: [],
+    cases: [
+      {
+        name: "T1 列表",
+        type: "functional",
+        priority: "P1",
+        steps: ["打开列表"],
+        assertions: [{ id: "A1", kind: "business", text: "列表出现", source: "页面基线" }],
+      },
+      {
+        name: "T2 查询",
+        type: "functional",
+        priority: "P2",
+        steps: ["打开列表", "点击查询"],
+        assertions: [{ id: "A1", kind: "business", text: "查询完成", source: "页面基线" }],
+      },
+    ],
+    caseCount: 2,
+    assertionCount: 2,
+  };
+  const specPath = path.join(cases, "批量.spec.cjs");
+  const assetPath = "ui/cases/批量.asset.json";
+  const spec = [
+    'const { test } = require("@playwright/test");',
+    'test("T1 列表", async ({ page }) => { await page.goto("/"); });',
+    'test("T2 查询", async ({ page }) => { await page.goto("/"); });',
+    "",
+  ].join("\n");
+  await writeFile(specPath, spec);
+  await writeFile(path.join(cases, "批量.asset.json"), JSON.stringify({ caseId: "批量", sha256: "old", caseMeta }, null, 2));
+  await writeFile(path.join(cases, "批量.md"), [
+    "# 批量",
+    "",
+    "```json qa-ui-case",
+    JSON.stringify(caseMeta, null, 2),
+    "```",
+    "",
+    "## 用例与断言",
+    "",
+    "| 用例 | 类型 | 优先级 | 断言 |",
+    "| --- | --- | --- | --- |",
+    "| T1 列表 | 功能 | P1 | 列表出现 |",
+    "| T2 查询 | 功能 | P2 | 查询完成 |",
+    "",
+  ].join("\n"));
+
+  await assert.rejects(
+    service.deleteCases(project.id, [{ assetPath: "../批量.asset.json", caseName: "T1 列表" }]),
+    /只能删除/,
+  );
+  await assert.rejects(
+    service.deleteCases(project.id, [{ assetPath, caseName: "不存在" }]),
+    /未找到用例/,
+  );
+  const unchanged = JSON.parse(await readFile(path.join(cases, "批量.asset.json"), "utf8"));
+  assert.equal(unchanged.caseMeta.cases.length, 2);
+  assert.match(await readFile(specPath, "utf8"), /T1 列表/);
+  const first = await service.deleteCases(project.id, [{ assetPath, caseName: "T1 列表" }]);
+  assert.deepEqual(first.deleted, [{ assetPath, caseName: "T1 列表" }]);
+  const nextSpec = await readFile(specPath, "utf8");
+  assert.doesNotMatch(nextSpec, /T1 列表/);
+  assert.match(nextSpec, /T2 查询/);
+  const asset = JSON.parse(await readFile(path.join(cases, "批量.asset.json"), "utf8"));
+  assert.equal(asset.caseMeta.caseCount, 1);
+  assert.deepEqual(asset.caseMeta.cases.map((item) => item.name), ["T2 查询"]);
+  assert.notEqual(asset.sha256, "old");
+  const document = await readFile(path.join(cases, "批量.md"), "utf8");
+  assert.doesNotMatch(document, /T1 列表/);
+  assert.match(document, /T2 查询/);
+
+  const last = await service.deleteCases(project.id, [{ assetPath, caseName: "T2 查询" }]);
+  assert.deepEqual(last.removedAssets, [assetPath]);
+  await assert.rejects(access(specPath), /ENOENT/);
+  await assert.rejects(access(path.join(cases, "批量.asset.json")), /ENOENT/);
+  await assert.rejects(access(path.join(cases, "批量.md")), /ENOENT/);
+});
+
 test("删除单个文件并保留其他测试数据", async (t) => {
   const { service, project, dataRoot } = await setup(t);
   const result = await service.remove(project.id, "ui/cases/demo.spec.cjs");

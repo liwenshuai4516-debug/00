@@ -241,6 +241,11 @@ function registerAgentIpc(
       projectService.updateTestCaseSteps(projectId, assetPath, caseName, steps),
     );
   });
+  ipcMain.handle("agent:delete-test-cases", (_event, projectId, items) => {
+    return runIdleOperation(() =>
+      projectService.deleteTestCases(projectId, items),
+    );
+  });
   // 测试报告只读；目录和批次编号都在主进程按项目工作区解析。
   ipcMain.handle("agent:list-test-reports", (_event, projectId) =>
     projectService.listTestReports(projectId),

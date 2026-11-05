@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { createHash } = require("node:crypto");
 const { readdir, readFile, writeFile, realpath, stat, lstat, unlink } = require("node:fs/promises");
 
 const DATA_SEGMENTS = ["qa", "data"];
@@ -212,6 +213,78 @@ function normalizeCaseSteps(steps) {
   });
 }
 
+function removeCaseTableRows(document, caseNames) {
+  const lines = document.split("\n");
+  let inSection = false;
+  const removed = new Set(caseNames);
+  const result = [];
+  for (const line of lines) {
+    if (line.trim() === "## 用例与断言") { inSection = true; result.push(line); continue; }
+    if (inSection && line.trim().startsWith("## ")) inSection = false;
+    if (inSection && line.startsWith("|")) {
+      const cells = line.split("|");
+      if (cells.length >= 6 && removed.has(cells[1].trim())) continue;
+    }
+    result.push(line);
+  }
+  return result.join("\n");
+}
+
+function matchingBrace(source, start) {
+  let depth = 0;
+  let quote = null;
+  let lineComment = false;
+  let blockComment = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (lineComment) {
+      if (char === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === "*" && next === "/") { blockComment = false; index += 1; }
+      continue;
+    }
+    if (quote) {
+      if (char === "\\") { index += 1; continue; }
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "/" && next === "/") { lineComment = true; index += 1; continue; }
+    if (char === "/" && next === "*") { blockComment = true; index += 1; continue; }
+    if (char === '"' || char === "'" || char === "`") { quote = char; continue; }
+    if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+// 删除 spec 中与用例名对应的 test 块；找不到时返回 null，调用方必须在写入前中止。
+function removeSpecTest(source, caseName) {
+  let index = -1;
+  for (const quote of ['"', "'", "`"]) {
+    index = source.indexOf(`test(${quote}${caseName}${quote}`, index + 1);
+    if (index >= 0) break;
+  }
+  if (index < 0) return null;
+  const arrow = source.indexOf("=>", index);
+  if (arrow < 0) return null;
+  const brace = source.indexOf("{", arrow);
+  if (brace < 0) return null;
+  const end = matchingBrace(source, brace);
+  if (end < 0) return null;
+  let after = end + 1;
+  while (source[after] === " " || source[after] === "\t") after += 1;
+  if (source[after] === ")") after += 1;
+  if (source[after] === ";") after += 1;
+  while (source[after] === "\r" || source[after] === "\n") after += 1;
+  const lineStart = source.lastIndexOf("\n", index) + 1;
+  return source.slice(0, lineStart) + source.slice(after);
+}
 function replaceAssertionTableRow(document, caseName, assertions) {
   const summary = assertions
     .map((assertion) => `${assertion.id} ${assertion.kind === "guard" ? "前置" : "业务"}：${assertion.text}${assertion.source ? `（${assertion.source}）` : ""}`)
@@ -626,7 +699,154 @@ function createTestDataService(projectStore) {
     return updateCase(projectId, assetPath, caseName, { steps });
   }
 
-  return { list, remove, updateAssertions, updateSteps };
+  async function deleteCases(projectId, items) {
+    if (!Array.isArray(items) || items.length === 0) throw new Error("请选择要删除的用例。");
+    if (items.length > 100) throw new Error("一次最多删除 100 条用例。");
+    const groups = new Map();
+    const seen = new Set();
+    for (const item of items) {
+      if (typeof item?.assetPath !== "string" || !item.assetPath.trim()) throw new Error("用例资产路径无效。");
+      if (typeof item?.caseName !== "string" || !item.caseName.trim()) throw new Error("用例名称无效。");
+      const normalized = item.assetPath.replaceAll("\\", "/");
+      const segments = normalized.split("/");
+      if (
+        path.posix.isAbsolute(normalized) ||
+        path.win32.isAbsolute(normalized) ||
+        segments.length !== 3 ||
+        segments[0] !== "ui" ||
+        segments[1] !== "cases" ||
+        !segments[2].endsWith(".asset.json") ||
+        segments.some((segment) => !segment || segment === "." || segment === "..")
+      ) {
+        throw new Error("只能删除 qa/data/ui/cases 下的用例。");
+      }
+      const key = `${normalized}\u001f${item.caseName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (!groups.has(normalized)) groups.set(normalized, new Set());
+      groups.get(normalized).add(item.caseName);
+    }
+
+    const resolved = await resolveRoot(projectId);
+    if (resolved === null) throw new Error("测试数据目录不存在。");
+    const { root } = resolved;
+    const plans = [];
+
+    for (const [assetPath, names] of groups) {
+      const target = path.join(root, ...assetPath.split("/"));
+      const relative = path.relative(root, target);
+      if (!relative || isOutside(relative)) throw new Error("用例资产路径超出 qa/data。");
+      let link;
+      try {
+        link = await lstat(target);
+      } catch (error) {
+        if (error.code === "ENOENT") throw new Error("用例资产已不存在，请刷新。");
+        throw error;
+      }
+      if (link.isSymbolicLink()) throw new Error("不能删除符号链接中的用例。");
+      if (!link.isFile()) throw new Error("只能删除用例资产文件中的用例。");
+      const real = await realpath(target);
+      if (isOutside(path.relative(root, real))) throw new Error("用例资产路径超出 qa/data。");
+
+      let metadata;
+      try {
+        metadata = JSON.parse(await readFile(real, "utf8"));
+      } catch {
+        throw new Error("用例资产不是有效 JSON，无法删除用例。");
+      }
+      const caseMeta = metadata?.caseMeta;
+      if (caseMeta?.schema !== "qa-ui-case/v1" || !Array.isArray(caseMeta.cases)) {
+        throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法删除用例。");
+      }
+      const existingNames = new Set(caseMeta.cases.map((item) => item.name));
+      for (const name of names) {
+        if (!existingNames.has(name)) throw new Error(`未找到用例「${name}」，请刷新后重试。`);
+      }
+
+      const specPath = real.replace(/\.asset\.json$/, ".spec.cjs");
+      let spec;
+      try {
+        spec = await readFile(specPath, "utf8");
+      } catch (error) {
+        if (error.code === "ENOENT") throw new Error("用例脚本不存在，不能只删除资产记录。");
+        throw error;
+      }
+      let nextSpec = spec;
+      for (const name of names) {
+        const next = removeSpecTest(nextSpec, name);
+        if (next === null) throw new Error(`脚本中未找到用例「${name}」，未执行删除。`);
+        nextSpec = next;
+      }
+
+      const remaining = caseMeta.cases.filter((item) => !names.has(item.name));
+      if (remaining.length === 0) {
+        plans.push({
+          removeAll: true,
+          target,
+          specPath,
+          documentPath: real.replace(/\.asset\.json$/, ".md"),
+          assetPath,
+        });
+        continue;
+      }
+
+      caseMeta.cases = remaining;
+      caseMeta.caseCount = remaining.length;
+      caseMeta.assertionCount = remaining.reduce(
+        (total, item) => total + (Array.isArray(item.assertions) ? item.assertions.length : 0),
+        0,
+      );
+      metadata.sha256 = createHash("sha256").update(nextSpec).digest("hex");
+
+      const documentPath = real.replace(/\.asset\.json$/, ".md");
+      let nextDocument = null;
+      try {
+        let document = await readFile(documentPath, "utf8");
+        const block = document.match(/```json qa-ui-case[ \t]*\r?\n([\s\S]*?)\r?\n```/);
+        if (block) {
+          const documentMeta = JSON.parse(block[1]);
+          if (Array.isArray(documentMeta.cases)) {
+            documentMeta.cases = documentMeta.cases.filter((item) => !names.has(item.name));
+          }
+          document = document.replace(block[0], "```json qa-ui-case\n" + JSON.stringify(documentMeta, null, 2) + "\n```");
+        }
+        document = removeCaseTableRows(document, names);
+        nextDocument = document;
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+
+      plans.push({
+        removeAll: false,
+        assetPath,
+        target,
+        specPath,
+        nextSpec,
+        assetText: JSON.stringify(metadata, null, 2) + "\n",
+        documentPath,
+        nextDocument,
+      });
+    }
+
+    const removedAssets = [];
+    const deleted = [];
+    for (const plan of plans) {
+      if (plan.removeAll) {
+        await unlink(plan.target).catch((error) => { if (error.code !== "ENOENT") throw error; });
+        await unlink(plan.specPath).catch((error) => { if (error.code !== "ENOENT") throw error; });
+        await unlink(plan.documentPath).catch((error) => { if (error.code !== "ENOENT") throw error; });
+        removedAssets.push(plan.assetPath);
+      } else {
+        await writeFile(plan.specPath, plan.nextSpec);
+        if (plan.nextDocument !== null) await writeFile(plan.documentPath, plan.nextDocument);
+        await writeFile(plan.target, plan.assetText);
+      }
+      for (const name of groups.get(plan.assetPath)) deleted.push({ assetPath: plan.assetPath, caseName: name });
+    }
+    return { deleted, removedAssets };
+  }
+
+  return { list, remove, updateAssertions, updateSteps, deleteCases };
 }
 
 module.exports = { createTestDataService };

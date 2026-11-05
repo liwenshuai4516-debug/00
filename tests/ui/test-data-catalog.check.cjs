@@ -35,7 +35,11 @@ async function main() {
   ${iconSprite}
   <div id="tabs"></div>
   <div id="body"></div>
-  <dialog id="confirm"></dialog>
+  <dialog id="confirm">
+    <h2 id="right-panel-confirm-title"></h2>
+    <p id="right-panel-confirm-message"></p>
+    <div><button type="button" data-cancel>取消</button><button type="button" data-confirm>确定</button></div>
+  </dialog>
   <script type="module">
     import { createRightSidebarPanel } from "${panelUrl}";
     const panel = createRightSidebarPanel({
@@ -137,6 +141,22 @@ async function main() {
     await check("搜索命中模块路径显示该分支全部用例", `document.querySelectorAll('.case-module--nested').length===1&&document.querySelectorAll('.case-card').length===2`);
     await run(`(()=>{const input=document.querySelector('.case-catalog__search');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await check("清空搜索恢复全部用例", `document.querySelectorAll('.case-module').length===3&&document.querySelectorAll('.case-card').length===3`);
+
+    await run(`(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');if(card.querySelector('.case-card__body').hidden)card.querySelector('.case-card__head').click();})()`);
+    await run(`(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');[...card.querySelectorAll('.case-card__edit')].find((button)=>button.textContent==='删除用例').click();})()`);
+    await wait(`document.getElementById('confirm').open`);
+    await check("单条删除需要确认同步移除脚本", `document.getElementById('right-panel-confirm-message').textContent.includes('spec 脚本')&&document.getElementById('right-panel-confirm-message').textContent.includes('不可恢复')`);
+    await run(`document.querySelector('#confirm [data-confirm]').click()`);
+    await wait(`![...document.querySelectorAll('.case-card__name')].some((node)=>node.textContent==='T2 权限拒绝时列表为空')`);
+    await check("单条删除后保留同资产其他用例", `document.querySelectorAll('.case-card').length===2&&document.querySelector('.right-panel__status').textContent.includes('已删除 1 条用例')`);
+
+    await run(`(()=>{const names=['T1 列表加载与结构完整','T3 合同编号不存在时展示空态'];for(const card of document.querySelectorAll('.case-card')){const name=card.querySelector('.case-card__name').textContent;if(names.includes(name))card.querySelector('.case-card__select').click();}})()`);
+    await check("勾选多条用例显示批量删除入口", `document.querySelector('.case-bulk__count').textContent==='已选 2 条'&&document.querySelector('.case-bulk__delete').textContent==='删除选中（2）'&&!document.querySelector('.case-bulk__delete').disabled`);
+    await run(`document.querySelector('.case-bulk__delete').click()`);
+    await wait(`document.getElementById('confirm').open`);
+    await run(`document.querySelector('#confirm [data-confirm]').click()`);
+    await wait(`document.querySelectorAll('.case-card').length===0`);
+    await check("批量删除后目录清空并显示空态", `document.querySelector('.case-catalog')===null&&document.querySelector('.right-panel__empty').textContent.includes('暂无标准化用例')`);
 
     assert.deepEqual(errors, [], "页面不应有 console error");
     console.log(`PASS ${passed} 项检查`);

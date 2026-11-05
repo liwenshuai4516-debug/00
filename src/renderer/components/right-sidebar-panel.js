@@ -142,6 +142,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let data = null;
   let caseQuery = "";
   const expandedCases = new Set();
+  const selectedCases = new Map();
   let editingAssertions = null;
   let editingSteps = null;
   const collapsedModules = new Set();
@@ -273,6 +274,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       data = null;
       caseQuery = "";
       expandedCases.clear();
+      selectedCases.clear();
       editingAssertions = null;
       editingSteps = null;
       collapsedModules.clear();
@@ -898,7 +900,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     });
     paint();
 
-    container.append(summary, renderRunLine(catalog.lastRun), search, list);
+    container.append(summary, renderRunLine(catalog.lastRun), search, renderCaseBulkBar(catalog), list);
     return container;
   }
 
@@ -939,6 +941,120 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       }));
     }
     return sections;
+  }
+
+  function collectModuleCases(modules) {
+    const items = [];
+    const stack = [...modules];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      items.push(...(node.cases ?? []));
+      stack.push(...(node.children ?? []));
+    }
+    return items;
+  }
+
+  function visibleCaseItems(catalog) {
+    const needle = caseQuery.trim().toLowerCase();
+    const roots = needle
+      ? catalog.modules.map((module) => filterCaseModule(module, needle)).filter(Boolean)
+      : catalog.modules;
+    return collectModuleCases(roots);
+  }
+
+  function caseSelectionKey(item) {
+    return `${item.assetPath}::${item.name}`;
+  }
+
+  function updateCaseBulkBar() {
+    const bar = content.querySelector(".case-bulk");
+    if (!bar) return;
+    const count = bar.querySelector(".case-bulk__count");
+    const remove = bar.querySelector(".case-bulk__delete");
+    const size = selectedCases.size;
+    count.textContent = `已选 ${size} 条`;
+    remove.disabled = size === 0 || busy;
+    remove.textContent = size === 0 ? "删除选中" : `删除选中（${size}）`;
+  }
+
+  function renderCaseBulkBar(catalog) {
+    const bar = element("div", { class: "case-bulk" });
+    const selectAll = element("button", {
+      type: "button",
+      class: "case-bulk__button",
+      text: "全选",
+      onclick: () => {
+        for (const item of visibleCaseItems(catalog)) {
+          selectedCases.set(caseSelectionKey(item), {
+            assetPath: item.assetPath,
+            caseName: item.name,
+          });
+        }
+        render();
+      },
+    });
+    const clear = element("button", {
+      type: "button",
+      class: "case-bulk__button",
+      text: "清除",
+      onclick: () => {
+        selectedCases.clear();
+        render();
+      },
+    });
+    const count = element("span", { class: "case-bulk__count", text: `已选 ${selectedCases.size} 条` });
+    const remove = element("button", {
+      type: "button",
+      class: "case-bulk__delete",
+      disabled: selectedCases.size === 0 || busy,
+      text: selectedCases.size === 0 ? "删除选中" : `删除选中（${selectedCases.size}）`,
+      onclick: () => void deleteSelectedCases(),
+    });
+    bar.append(selectAll, clear, count, remove);
+    return bar;
+  }
+
+  async function deleteCaseItems(items, message) {
+    if (items.length === 0) return;
+    const confirmed = await confirmAction({
+      title: "删除测试用例",
+      message,
+      confirmLabel: `删除 ${items.length} 条`,
+    });
+    if (!confirmed) {
+      setStatus("已取消删除。");
+      return;
+    }
+    busy = true;
+    setStatus("正在删除测试用例…");
+    render();
+    try {
+      await api().deleteTestCases(selectedId, items);
+      selectedCases.clear();
+      await loadData();
+      setStatus(`已删除 ${items.length} 条用例。`);
+    } catch (error) {
+      setStatus(errorMessage(error), true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  async function deleteSelectedCases() {
+    const items = [...selectedCases.values()];
+    if (items.length === 0) return;
+    await deleteCaseItems(
+      items,
+      `将删除选中的 ${items.length} 条用例，并同步从 spec 脚本、资产和说明中移除；最后一条用例删除后对应资产文件也会删除。不可恢复。`,
+    );
+  }
+
+  async function deleteCase(item) {
+    await deleteCaseItems(
+      [{ assetPath: item.assetPath, caseName: item.name }],
+      `将删除用例「${item.name}」，并同步从 spec 脚本、资产和说明中移除；若这是资产最后一条用例，会同时删除资产文件。不可恢复。`,
+    );
   }
 
   function renderCaseModule(module) {
@@ -1000,6 +1116,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   function renderCaseCard(module, item) {
     const key = `${item.assetPath}::${item.name}`;
+    const selected = selectedCases.has(key);
     const editingAssertionsMode = editingAssertions?.key === key;
     const editingStepsMode = editingSteps?.key === key;
     const expanded = expandedCases.has(key) || editingAssertionsMode || editingStepsMode;
@@ -1134,6 +1251,14 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         });
         editActions.append(editAssertions);
       }
+      const deleteButton = element("button", {
+        type: "button",
+        class: "case-card__edit case-card__edit--danger",
+        disabled: busy,
+        text: "删除用例",
+      });
+      deleteButton.addEventListener("click", () => void deleteCase(item));
+      editActions.append(deleteButton);
       detail.append(editActions);
 
       const files = [
@@ -1161,7 +1286,23 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       else expandedCases.delete(key);
     });
 
-    article.append(head, preview, detail);
+    const row = element("div", { class: "case-card__row" });
+    const select = element("input", {
+      type: "checkbox",
+      class: "case-card__select",
+      "aria-label": `选择用例 ${item.name}`,
+    });
+    select.checked = selected;
+    select.addEventListener("change", () => {
+      if (select.checked) {
+        selectedCases.set(key, { assetPath: item.assetPath, caseName: item.name });
+      } else {
+        selectedCases.delete(key);
+      }
+      updateCaseBulkBar();
+    });
+    row.append(select, head);
+    article.append(row, preview, detail);
     return article;
   }
 
@@ -1545,6 +1686,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       data = null;
       caseQuery = "";
       expandedCases.clear();
+      selectedCases.clear();
       editingAssertions = null;
       editingSteps = null;
       collapsedModules.clear();

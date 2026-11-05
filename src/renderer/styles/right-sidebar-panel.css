@@ -740,6 +740,68 @@
   border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
 
+.case-card__row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.case-card__select {
+  flex: none;
+  margin: 12px 0 0 10px;
+  accent-color: var(--focus);
+}
+
+.case-card__row .case-card__head {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.case-card__row + .case-card__assertion-preview {
+  padding-left: 34px;
+}
+
+.case-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.case-bulk__button,
+.case-bulk__delete {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.case-bulk__button:hover:not(:disabled),
+.case-bulk__delete:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.case-bulk__delete {
+  border-color: color-mix(in srgb, var(--error-border) 45%, var(--border));
+  color: var(--error-border);
+}
+
+.case-bulk__delete:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.case-bulk__count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .case-module__cases .case-card:first-child {
   border-top: 0;
 }
@@ -927,6 +989,17 @@
 .case-card__edit:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--focus) 40%, var(--border));
   color: var(--focus);
+}
+
+.case-card__edit--danger {
+  margin-left: auto;
+  border-color: color-mix(in srgb, var(--error-border) 35%, var(--border));
+  color: var(--error-border);
+}
+
+.case-card__edit--danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--error-border) 55%, var(--border));
+  color: var(--error-border);
 }
 
 .case-card__edit-actions {

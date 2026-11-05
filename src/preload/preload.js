@@ -250,6 +250,8 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke("agent:update-test-case-assertions", projectId, assetPath, caseName, assertions),
   updateTestCaseSteps: (projectId, assetPath, caseName, steps) =>
     ipcRenderer.invoke("agent:update-test-case-steps", projectId, assetPath, caseName, steps),
+  deleteTestCases: (projectId, items) =>
+    ipcRenderer.invoke("agent:delete-test-cases", projectId, items),
 
   // 测试报告只读；页面只提交项目编号、类型和批次目录名。
   listTestReports: (projectId) =>

@@ -130,6 +130,37 @@ const items = [
 ];
 
 contextBridge.exposeInMainWorld("agent", {
+  deleteTestCases: async (_projectId, items) => {
+    const selected = new Set(items.map((item) => `${item.assetPath}\u001f${item.caseName}`));
+    const removeFrom = (node) => {
+      node.cases = (node.cases ?? []).filter(
+        (item) => !selected.has(`${item.assetPath}\u001f${item.name}`),
+      );
+      for (const child of node.children ?? []) removeFrom(child);
+      node.children = (node.children ?? []).filter(
+        (child) => (child.cases?.length ?? 0) > 0 || (child.children?.length ?? 0) > 0,
+      );
+      node.caseCount = (node.cases?.length ?? 0)
+        + (node.children ?? []).reduce((total, child) => total + child.caseCount, 0);
+      return node.caseCount;
+    };
+    currentCatalog.modules = currentCatalog.modules.filter(
+      (module) => removeFrom(module) > 0,
+    );
+    const countAssertions = (node) => (node.cases ?? []).reduce((sum, test) => sum + test.assertions.length, 0)
+      + (node.children ?? []).reduce((sum, child) => sum + countAssertions(child), 0);
+    const countCases = (node) => (node.cases?.length ?? 0)
+      + (node.children ?? []).reduce((sum, child) => sum + countCases(child), 0);
+    const countNodes = (nodes) => nodes.reduce((sum, node) => sum + 1 + countNodes(node.children ?? []), 0);
+    currentCatalog.totals = {
+      ...currentCatalog.totals,
+      modules: currentCatalog.modules.length,
+      submodules: Math.max(0, countNodes(currentCatalog.modules) - currentCatalog.modules.length),
+      cases: currentCatalog.modules.reduce((sum, module) => sum + countCases(module), 0),
+      assertions: currentCatalog.modules.reduce((sum, module) => sum + countAssertions(module), 0),
+    };
+    return { deleted: items, removedAssets: [] };
+  },
   updateTestCaseSteps: async (_projectId, assetPath, caseName, steps) => {
     const findCase = (node) => {
       for (const item of node.cases ?? []) {
