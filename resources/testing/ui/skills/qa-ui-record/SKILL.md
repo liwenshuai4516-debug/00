@@ -78,6 +78,16 @@ prepare 报登录态已失效、已绑定批次或与目标站点不符时，不
 官方 desktop-playwright-test 工具（browser_* / generator_*）由 qa_ui_prepare 成功返回后才登记，准备前工具清单里没有它们属于正常状态，不能据此提前停止。prepare 后确认 `mcp__desktop_playwright_test__*` 已出现；仍未出现时才停止并报告，不自建脚本或改用其他工具。全局 `-builtin:mcp`、`pi-mcp-adapter` 会被宿主在本会话过滤，不能据此判定 MCP 不可用。
 不要用 pi-playwright、pi-chrome 等其他浏览器技能/CLI 替代本流程；它们使用不同的 Playwright 与浏览器版本，不会产生可 finalize 的 generator 日志。录制期间避免上下文压缩或会话替换；会话恢复/切换、扩展 reload 或压缩后，projectRef、MCP 工具和录制日志会失效，必须从 qa_ui_project → qa_ui_login → qa_ui_prepare（新 caseId）重新开始，不能复用旧 refs。
 
+### 1.1 跨批次用例编号
+
+工具返回的 `caseId` 标识一份脚本资产；标题中的 `PC-L14` 等是业务用例编号，两者不同。文件名或 caseId 不重复，不代表业务用例编号不重复。
+
+- 写录制 plan 和 test 标题前，读取当前工作区 caseDir 下同项目 `.asset.json` 的 `caseMeta.cases[].name`；存在旧 `qa/ui/cases/` 资产时一并核对，并纳入本任务尚未登记的脚本/说明中已分配的编号。按项目查重，不能只检查当前文件、当前页面或本轮对话。
+- 沿用对应模块已有的短前缀；新模块先确认前缀未被同项目其他模块占用。同项目内完整用例编号唯一，同前缀新增序号从已有最大值加 1 开始；不按用例数量分配，不从 01 重置，不回填编号空缺，不复用已知已删除或中断任务的编号。示例：已有 PC-L07、PC-L14，新用例从 PC-L15 开始。
+- 新增、补录、审批子集和单独的缺陷复现 case 都分配新编号；同一已登记用例的编辑或复测保留原编号。缺陷编号（如 DEF-PC-002）仅作关联说明，不替代用例编号；不同场景不能共用编号。
+- test 标题统一为「用例编号 + 空格 + 业务动作与预期」，与 `cases[].name`、正文用例表、覆盖矩阵逐字对应；不新增 `cases[].id` 等协议外字段。新断言使用「所属用例编号-A1/A2…」，完整断言 id 不超过 20 字符，并同步正文引用。下方模板编号仅演示格式，不直接照抄。
+- finalize 前重新核对同项目资产和本批全部编号；发现其他批次已占用时，只重新分配本次未登记用例的冲突编号，同步 spec 与说明后再登记。既有重复编号只报告对应资产，不自动重编号、覆盖或删除旧资产。资产不可读或无法确认编号占用时停止分配并报告，不猜测下一号。
+
 ## 2. 现场录制与验证
 
 1. generator_setup_page：plan 逐步写「动作 → 可观察预期 → 数据来源」；project=chromium；seedFile=返回值。
@@ -123,7 +133,7 @@ nth 只用于同角色重复控件，先用容器或业务文本缩小范围；�
 ### 4.1 脚本
 
 CommonJS + 两空格；文件内可有多个独立 test；共享前置用 beforeEach，登录不重复。
-test 名称写「业务动作 + 预期结果」；步骤注释用录制 intent，不写实现细节。
+test 名称写「用例编号 + 空格 + 业务动作与预期结果」，编号按第 1.1 节跨批次分配；步骤注释用录制 intent，不写实现细节。
 不保留临时 ref、录制窗口依赖或上一个 test 的状态。
 
 ### 4.2 用例说明：元数据稿 + 含断言的 case 列表
@@ -149,7 +159,7 @@ qa_ui_finalize 只登记资产，不重置 projectRef/登录态；若登录态�
   "tags": ["合同", "新建"],
   "cases": [
     {
-      "name": "新建合同后列表显示该合同",
+      "name": "OC-L01 新建合同后列表显示该合同",
       "type": "functional",
       "priority": "P1",
       "steps": [
@@ -159,8 +169,8 @@ qa_ui_finalize 只登记资产，不重置 projectRef/登录态；若登录态�
         "确认列表出现新合同"
       ],
       "assertions": [
-        { "id": "A1", "kind": "business", "text": "新合同行可见", "source": "用户要求：新建后列表出现" },
-        { "id": "A2", "kind": "business", "text": "行内包含合同编号", "source": "用户要求：列表展示编号" }
+        { "id": "OC-L01-A1", "kind": "business", "text": "新合同行可见", "source": "用户要求：新建后列表出现" },
+        { "id": "OC-L01-A2", "kind": "business", "text": "行内包含合同编号", "source": "用户要求：列表展示编号" }
       ]
     }
   ]
@@ -171,13 +181,13 @@ qa_ui_finalize 只登记资产，不重置 projectRef/登录态；若登录态�
 
 | 用例 | 类型 | 优先级 | 断言 |
 | --- | --- | --- | --- |
-| 新建合同后列表显示该合同 | functional | P1 | A1 新合同行可见（用户要求）；A2 行内包含合同编号（用户要求） |
+| OC-L01 新建合同后列表显示该合同 | functional | P1 | OC-L01-A1 新合同行可见（用户要求）；OC-L01-A2 行内包含合同编号（用户要求） |
 
 ## 覆盖范围
 
 | 功能/控件 | 覆盖用例 | 说明 |
 | --- | --- | --- |
-| 新建合同后列表显示该合同 | 本用例 | |
+| 新建合同后列表显示该合同 | OC-L01 新建合同后列表显示该合同 | |
 | 归属部门 / 流程节点 / 项目类型筛选 | - | 未覆盖：仍在折叠区，需展开后评估 |
 | 合同签订日期查询 | - | 未覆盖：需展开查询区后评估 |
 | 查询区展开/收起 | - | 未覆盖：图标按钮，需先只读点击确认功能 |
@@ -205,13 +215,13 @@ qa_ui_finalize 只登记资产，不重置 projectRef/登录态；若登录态�
 | role | 是 | 本批用例使用的角色 |
 | dataPolicy | 是 | `read-only`、`write-unique`、`write-disposable`、`no-write` 之一 |
 | tags | 否 | 非空字符串数组，建议 2-4 个模块/业务对象/场景标签；只用于搜索，不替代 modulePath |
-| cases[].name | 是 | 与 spec 中 test 标题逐字一致；同文件不重复 |
+| cases[].name | 是 | 「用例编号 + 空格 + 业务动作与预期结果」，与 spec 中 test 标题逐字一致；编号按第 1.1 节在同项目跨批次查重 |
 | cases[].type | 是 | `functional`、`permission`、`boundary`、`exception`、`regression` |
 | cases[].priority | 是 | `P0`-`P3` |
 | cases[].steps | 是 | 1-50 条真实操作步骤，每条约 500 字内；按“动作 + 目标 + 输入”顺序写，不写实现细节或断言来源 |
 | cases[].assertions[] | 是 | 至少一条；每条都要 text 和 source |
 | assertions[].kind | 否 | `business` 或 `guard`，默认 business |
-| assertions[].id | 否 | 短编号（A1/A2），便于正文引用 |
+| assertions[].id | 否 | 新生成用例填写「所属用例编号-A1/A2…」，不超过 20 字符，便于正文引用；旧资产保留原编号 |
 
 断言字段的取值和 business/guard 规则见 `qa-ui-assertion`；本表只定义元数据字段。
 
@@ -222,7 +232,7 @@ qa_ui_finalize 只登记资产，不重置 projectRef/登录态；若登录态�
 - 元数据块 schema、caseId、project.id 与工具返回一致；
 - modulePath 与实际导航层级一致，未用页面路由或标签代替；
 - cases[].steps 覆盖真实操作顺序且与 spec 一致，没有把断言写成执行步骤；
-- cases[].name 与 spec 的 test 标题一致；
+- cases[].name 与 spec 的 test 标题一致；按第 1.1 节重新查重，用例编号在同项目既有资产和本批内无冲突，断言编号与所属用例对应；
 - 正文用例表与元数据块一致；
 - 「覆盖范围」覆盖全部可见筛选、工具栏按钮和行操作，未覆盖项有原因；
 - 无 ref、自动 id、样式类（例外已注明）；
