@@ -18,10 +18,10 @@ let check = "all";
 for (let index = 0; index < args.length; index += 2) {
   if (args[index] === "--model") realModel = args[index + 1];
   else if (args[index] === "--check") check = args[index + 1];
-  else throw new Error("未知参数；支持 --model provider/model、--check all|init|error|explore|replay");
+  else throw new Error("未知参数；支持 --model provider/model、--check all|init|error|disconnect|explore|replay");
   if (!args[index + 1]) throw new Error("参数缺少值");
 }
-assert.ok(["all", "init", "error", "explore", "replay"].includes(check), "未知检查范围");
+assert.ok(["all", "init", "error", "disconnect", "explore", "replay"].includes(check), "未知检查范围");
 assert.ok(!realModel || realModel.includes("/"), "模型须为 provider/model");
 assert.ok(check !== "explore" || realModel, "探索检查必须指定模型");
 const selected = (stage) => check === "all" || check === stage;
@@ -152,6 +152,23 @@ try {
       summary.checks.failStop = "passed: one call, zero actions, browser closed";
     }
   }
+  if (selected("disconnect")) {
+    try {
+      await probe("disconnect-probe", state);
+      assert.fail("断线负例不应成功");
+    } catch (error) {
+      const terminal = error.result?.terminal;
+      assert.equal(terminal?.status, "failed");
+      assert.equal(terminal.reason, "browser-error");
+      assert.equal(terminal.browserError, "ConnectionClosed");
+      assert.equal(terminal.modelCalls, 0);
+      assert.equal(terminal.actions, 0);
+      assert.equal(terminal.reconnectAttempts, 0);
+      assert.equal(terminal.cleanupConfirmed, true);
+      assert.equal(error.result.code, 1);
+      summary.checks.disconnectStop = "passed: zero reconnects, zero calls, browser closed";
+    }
+  }
   if (selected("explore") && realModel) {
     phase = "explore";
     const model = await resolveModel(realModel);
@@ -167,7 +184,15 @@ try {
     const done = explored.events.find(e => e.type === "action" && e.action.done);
     assert.equal(done?.observed?.identityConfirmed, true);
     assert.equal(done?.observed?.asyncResultVisible, true);
+    assert.equal(explored.terminal.reconnectAttempts, 0);
+    const privateEntries = await fs.readdir(path.join(output, "explore/private"));
+    const agentDirectories = privateEntries.filter(name => name.startsWith("browser_use_agent_"));
+    assert.ok(agentDirectories.length > 0, "缺少 SDK 任务目录，不能确认默认截图检查");
+    for (const name of agentDirectories) {
+      assert.deepEqual(await fs.readdir(path.join(output, "explore/private", name, "screenshots")), [], "SDK 不应保存默认逐步截图");
+    }
     summary.checks.stableTarget = "passed";
+    summary.checks.manualEvidence = "passed: key evidence exists, no SDK step screenshots";
   } else if (selected("explore")) summary.checks.explore = "not-run: model not selected";
   if (selected("replay")) {
     phase = "replay";

@@ -2,30 +2,33 @@
 
 验证日期：2026-11-06，Asia/Shanghai。范围对应 [实施方案](browser-use-playwright-plan.md)第 4 节和阶段 1。
 
-**当前结论：阶段 1 的受控功能小验证已通过，正式接入仍有内部恢复与采集边界待解决。** 用户确认所选内网 Qwen 应直连后，仅为该模型主机添加子进程代理例外；一次定向恢复验证成功，以 3 次模型调用完成导航、Beta 行点击和异步结果确认，保留稳定目标及截图，浏览器已关闭。此前实际取消、注入错误停止和独立 Playwright 回放也已通过。未替换正式入口、未进入阶段 2；SDK 启动重试、重连和默认逐步截图等限制见下文。旧错误和失败请求的费用未知状态继续保留，不因本次成功改写。
+**当前结论：阶段 1 小验证及三个运行时控制已在补丁版通过。** 用户批准维护最小依赖补丁后，已构建并锁定 browser-use **0.13.14+swqa.1**：严格模式启动只尝试 1 次、关闭自动重连和默认逐步截图。实际断线、取消、模型错误停止和 Qwen 核心场景均有通过记录；最新探索仅保存两个关键节点的手动证据。一次探索因暴露了范围外动作而停止，收窄公开工具列表后的一次恢复验证通过。未替换正式入口、未进入阶段 2；历史失败与计费未知状态继续保留。
 
 ## 入口和边界
 
 - `tooling/testing/ui/browser-use-smoke.mjs`：受控本地页面、现有后台登录导出、探针编排和独立 Playwright 回放检查。
 - `resources/testing/ui/browser-use/bridge.cjs`：Node → Python JSON Lines；核对 taskId、终值、退出码和浏览器收尾；取消 5 秒后仍未退出则终止进程组，结果不冒充正常取消。
 - 同目录 `explore.py`：公开 `Browser`、`Agent`、`ChatOpenAI`、`Tools` 和回调接口；记录动作前目标、业务行祖先、动作结果与证据引用。仅允许本地页面的导航、点击、结束。
+- 补丁版以公开 BrowserProfile.launch_max_attempts=1、auto_reconnect=False 和 Agent.capture_screenshots=False 启用严格行为。BrowserErrorEvent 触发进行中工作的取消与收尾；Tools 的公开排除参数使模型动作 schema 也只包含 navigate / click / done。运行时代码不深层导入私有方法；依赖组件测试会核对其内部实现。
 - Python 子进程将已解析的环境／系统代理保留在内存环境中，再为 `127.0.0.1`、`localhost`、`::1` 设置绕过，防止本机 CDP 被送到系统 SOCKS 代理。不修改 macOS 代理设置，也不写出代理地址。初始化失败保留脱敏错误、栈位置和子事件状态；不序列化事件参数或处理结果。
 - 用户另行确认 `qwen3.8-flash-next/qwen3.8-flash-next` 对应的内网模型应直连；CLI 仅为这个引用传入 `directModelHost`，Python 为其实际认证解析后的 endpoint 主机追加 NO_PROXY 例外。其他模型及外网继续使用已有代理，没有按所有内网地址推断直连。
 - 模型调用失败保留脱敏异常链、可用状态码与 SDK 步骤错误，禁止重交；`modelCalls` 是适配器的调用尝试数（包含注入负例），不等于服务器已接收请求数，计费用量缺失时仍为未知。
 - 探针未注册到正式 Pi 工具、IPC 或界面。既有 UI 测试流程未替换，真实项目配置、账号、会话与 `.env` 未读取。
 - 选择真实模型后，通过 Pi 1.4.0 的公开 `ModelRuntime.create()`、`getModel()`、`getAuth()` 取得最少参数，经 stdin 内存交接。不直接解析认证文件，不支持未验证的 OAuth、订阅和其他 API，不自动换模型。
-- 自动登录使用临时账号和本地服务，导出的状态权限为 `0600`。探针结果、选定截图与浏览器 profile 位于已忽略的 `qa/ui/browser-use-smoke/`，其中 `private/` 不应分发。SDK 还自行向临时目录的 `browser_use_agent_*` 写逐步截图；bridge 已将子进程 TMPDIR 指向本任务 private，实际两张 SDK 截图也都在该目录内。file_system_path 不覆盖它的截图目录；路径隔离已确认，但关闭逐步采集及重复持久化仍未解决。
+- 自动登录使用临时账号和本地服务，导出的状态权限为 `0600`。探针结果、选定截图与浏览器 profile 位于已忽略的 `qa/ui/browser-use-smoke/`，其中 `private/` 不应分发。bridge 将子进程 TMPDIR 指向本任务 private；补丁版关闭默认逐步截图，SDK 截图目录实际为空，仅通过公开 take_screenshot() 在点击和结束前采集两张证据。
 
 ## 版本和准备方式
 
-当前开发平台为 macOS arm64；此次安装使用 Python **3.13.13**、browser-use **0.13.14**。这是一组待完成兼容性验证的候选版本，不代表安装包运行时已经可发布。`requirements.lock` 固定本次 107 个 Python 包及分发哈希，未改变 npm 依赖。
+当前开发平台为 macOS arm64；此次安装使用 Python **3.13.13**、browser-use **0.13.14+swqa.1**（基于官方 0.13.14 的下游补丁版）。受控范围已验证，不代表安装包运行时已经可发布。requirements.lock 固定 107 个 Python 包及分发哈希；只替换 browser-use 为预先构建的本地 wheel，其余 106 个包不变，未改变 npm 依赖。
 
-来源为 PyPI `browser-use` 0.13.14 元数据及所安装版本的公开参数签名；Pi 依据安装包的公开导出及 `.d.ts`，未调用 `getCompatibilityRequestConfig()` 等内部兼容接口。
+源码来自 PyPI browser-use 0.13.14 sdist，源码与补丁及构建结果哈希见 upstream.json；构建依赖另行锁定，wheel 两次独立构建哈希一致。安装方式和维护责任见 [补丁运行时](browser-use-runtime-gaps.md)。Pi 依据安装包的公开导出及 .d.ts，未调用 getCompatibilityRequestConfig() 等内部兼容接口。
 
 ```sh
 uv venv --python 3.13.13 resources/testing/ui/browser-use/.venv
+resources/testing/ui/browser-use/.venv/bin/python resources/testing/ui/browser-use/build-runtime.py
 uv pip sync --python resources/testing/ui/browser-use/.venv/bin/python resources/testing/ui/browser-use/requirements.lock --require-hashes
 node --test tests/unit/browser-use-bridge.test.js
+resources/testing/ui/browser-use/.venv/bin/python tests/helpers/browser-use-runtime.check.py
 resources/testing/ui/browser-use/.venv/bin/python tests/helpers/browser-use-probe.check.py
 ```
 
@@ -46,6 +49,7 @@ node tooling/testing/ui/browser-use-smoke.mjs --check replay
 # 定向初始化取消 / 注入错误检查，不请求模型
 node tooling/testing/ui/browser-use-smoke.mjs --check init
 node tooling/testing/ui/browser-use-smoke.mjs --check error
+node tooling/testing/ui/browser-use-smoke.mjs --check disconnect
 
 # 模型故障定位并允许恢复后，仅验证探索
 node tooling/testing/ui/browser-use-smoke.mjs --check explore --model qwen3.8-flash-next/qwen3.8-flash-next
@@ -59,19 +63,19 @@ node tooling/testing/ui/browser-use-smoke.mjs --check explore --model qwen3.8-fl
 | --- | --- |
 | Python / browser-use 安装与锁定 | 安装和按锁同步成功；107 个包一致；最近定向初始化成功 |
 | Node 进程协议单测 | 9 项通过：成功确认、非零退出、缺终值、收尾未知、taskId 错误、终值后多余消息、正常取消协议、超时、不响应取消的有界终止。使用模拟进程，不等于真实浏览器取消通过 |
-| Python 模拟行为检查 | 当前 10 项通过，包含模型异常链脱敏且不重交，以及选定模型直连但保留其他代理／既有例外。均使用模拟调用，不替代真实供应商验证 |
+| Python 模拟行为检查 | 探针共 11 项通过（10 项整组通过，新增动作 schema 检查单独通过）。依赖组件共 8 项通过（首次 7 项正常，截图历史检查因测试数据漏传 history 报错，补齐后该项定向通过）。包含严格启动次数、断线不创建任务、默认行为保留、状态截图请求与持久化关闭；不把组件模拟等同于真实故障 profile 验收 |
 | CLI 范围检查 | 非法 scope、explore 缺模型、参数缺值均在创建任务／浏览器前拒绝；独立 replay 的正常入口实际通过 |
 | 现有后台登录 | 临时本地账号成功登录，现有 `login.cjs` 返回 saved；导出文件权限 `0600` |
 | 真实 browser-use 初始化 | 旧错误见历史报告；最近定向诊断成功到达 browser-ready 并正常取消，后续完整检查的三个 Python 探针也均到达 browser-ready。旧超时暂未复现，不能宣称已确认其根因 |
 | AI 同名按钮与异步观察、稳定目标轨迹 | 最新定向 explore 通过：3 个决策分别为 navigate、click、done；实际仅点击 Beta 一次。动作前临时 index=6 对应 role=button、name=Detail，其祖先 TR 的 data-row=Beta；保存动作结果及 before-2 / before-3 截图。done 前 DOM 确认异步结果可见，不仅相信模型自报 |
 | browser-use 中的真实身份、Playwright 独立回放 | 最新 explore 的点击和结束前均从 DOM 观察到 smoke-reviewer；独立 replay 已用新 Playwright 浏览器确认相同身份、只点 Beta 并等待 Beta · ready。两个检查分别执行，不把手写回放路径冒充 AI 探索生成用例，也没有生成或发布正式 case |
 | 真实取消和注入模型错误停止 | 已通过：初始化后 cancel 返回 cancelled、零退出和浏览器收尾确认；注入错误只尝试一次、零动作、退出 1 且收尾确认。注入负例没有调用真实模型 |
-| 指定真实模型 | 官方 ModelRuntime 认证仅在内存交接。API=openai-completions、input=text、reasoning=false。已验证 ChatOpenAI 默认 strict JSON schema、use_vision=False 能完成该受控目标，3 次成功调用返回 total_tokens 合计 17886；未返回金额，不推算费用。此前失败调用是否到达供应商和费用仍未知；不能扩大为全部任务或其他模型兼容 |
+| 指定真实模型 | 官方 ModelRuntime 认证仅在内存交接。API=openai-completions、input=text、reasoning=false。补丁版、strict JSON schema、text-only 和三种动作的最新探索成功，3 次调用返回 total_tokens 合计 18297。其前一次范围拦截运行消耗 11594 total_tokens；金额未返回。此前连接失败请求是否计费仍未知；不能扩大为其他模型或全部场景兼容 |
 | 语法与差异检查 | Node / Python 语法检查通过；未用语法检查替代运行时检查 |
 
 ## 内部行为核对与后续门槛
 
-核对对象为该锁定版本所安装源码的公开参数与实现；没有修改 `node_modules` 或 Python 安装包。
+核对对象为上游固定源码及经用户批准构建的补丁版；依赖通过包管理器正常安装，未手改 node_modules 或 site-packages。
 
 | 行为 | 默认值或实现事实 | 本探针处理 / 尚缺验证 |
 | --- | --- | --- |
@@ -79,15 +83,15 @@ node tooling/testing/ui/browser-use-smoke.mjs --check explore --model qwen3.8-fl
 | 决策与动作失败 | `max_failures=5`、`final_response_after_failure=True` | 设为 1 / False；`on_step_end` 发现错误即终止；真实浏览器＋注入模型错误负例通过，所选模型错误也在零动作时终止 |
 | 多动作 | `max_actions_per_step=5` | 设为 1；适配器拒绝空动作及多动作响应，避免进入 SDK 空动作二次请求 |
 | 额外模型处理 | `use_judge=True`、planning 和 message_compaction 默认开启 | 关闭这些额外处理；最多 8 决策步、每次调用 45 秒、探针工作预算 180 秒 |
-| 启动失败内部重试 | `LocalBrowserWatchdog._launch_browser(max_retries=3)` 在部分 profile 错误时改临时目录重试；未找到公开关闭参数 | 正式接入前须解决；本轮是否触发此分支未记录，不能声称无重试 |
-| 连接故障纠偏 | BrowserSession 私有断线回调直接创建最多 3 次的自动重连任务；Agent 错误处理还会等待它 | Browser 构造参数和 BrowserProfile 无公开关闭开关。BrowserReconnectingEvent 派发后未等待处理器便执行 reconnect，不能靠异步监听保证零重连；不改私有回调 |
-| 截图 | `_prepare_context()` 即使 use_vision=False 也请求截图，历史流程写截图文件 | bridge 的 TMPDIR 已使实际 SDK 截图落在任务 private 中，file_system_path 只控制 Agent 文件区。没有公开开关停止默认逐步截图；不能把路径隔离等同于最小采集 |
-| 视频 / 会话 / 云同步 | 各有独立配置 | 不启用视频、GIF、会话文本导出；禁用遥测与云同步；SDK 自己的截图仍须单独处理 |
+| 启动失败内部重试 | 上游默认最多 3 次 | 补丁公开 launch_max_attempts，探针设为 1。模拟 profile 错误时只尝试一次、不创建备用目录并保留原错误；默认恢复行为单独验证保留 |
+| 连接故障纠偏 | 上游断线自动创建重连任务，Agent 还可能等待恢复 | 补丁公开 auto_reconnect，探针设为 False；关闭实际 CDP 后零重连、零模型调用／动作，收到 ConnectionClosed 即停止并确认浏览器收尾 |
+| 截图 | 上游即使 use_vision=False 也默认逐步采集并持久化 | 补丁公开 capture_screenshots，探针设为 False 且 use_vision=False；仅在 click / done 前手动采集，最新 SDK 截图目录为空，关键证据存在 |
+| 视频 / 会话 / 云同步 | 各有独立配置 | 不启用视频、GIF、会话文本导出；禁用遥测与云同步，默认逐步截图也已单独关闭 |
 | 登录态 | StorageStateWatchdog 实现 cookies、localStorage / sessionStorage 恢复 | 本次 cookies + localStorage 的身份交接已通过；未见 IndexedDB 恢复逻辑，sessionStorage 未单独实际验证，不扩大到其他项目认证 |
 
-不覆盖 Pi 原生重试设置，不用私有对象补丁关闭 browser-use 行为。受控场景中的真实初始化、身份交接、同名目标及异步结果、异常停止和实际取消均已有通过记录；正式接入前仍须解决上表的内部启动恢复、重连和最小采集约束，本轮不推进阶段 2。
+不覆盖 Pi 原生重试设置，不用私有对象 monkey patch。受控场景中的真实初始化、身份交接、同名目标及异步结果、异常停止、取消和三个新增运行时控制均已有通过记录。后续可以按方案进入阶段 2；本轮只交付补丁运行时和独立探针，未更改正式入口。
 
-后续只读核对确认 0.13.14 仍是 PyPI 最新版，不能承诺通过普通升级获得这些开关。当前版本的公开接口缺口、源码依据和可评审的最小依赖变更要求见 [运行时缺口](browser-use-runtime-gaps.md)。没有为弥补缺口修改安装包、注入私有回调或再发起模型请求。
+官方 0.13.14 没有这些开关；新增能力及其维护责任属于本仓库批准的补丁版，详见 [补丁运行时](browser-use-runtime-gaps.md)，不把它写成上游官方承诺。
 
 ## 错误报告
 
@@ -170,3 +174,32 @@ node tooling/testing/ui/browser-use-smoke.mjs --check explore --model qwen3.8-fl
 2026-11-06（Asia/Shanghai，具体时分未记录），用户继续 → `functions.exec` / `exec_command` → Python `psutil.net_connections(kind="tcp")` 预期取得全机监听列表，实际因 `proc_pidinfo` 权限被 macOS 拒绝，退出 1，关键错误为 `psutil.AccessDenied(pid=82265)`。未使用技能；只调用 1 次，无任务编号。已停止该检查，没有提权、重放或换接口尝试获取同等受限列表；没有写入。它没有取得代理监听者或连接恢复证据，不能据此认定代理进程故障。后续仅独立读取系统代理类型、进程名称、已知日志目录及模型地址分类；不依赖该受限结果，最终依据用户确认的预期路由实施修正。
 
 同轮 `rg --files` 搜索 `Library/Logs` 与 `Library/Application Support` 的代理日志返回部分路径，退出 2；命令使用 `--no-messages`，具体遍历错误未记录，不能推断全部目录均已搜索或具体权限原因。已停止该广域搜索，没有重跑；随后仅检查返回的已知目录，旧 Clash 日志不含该模型主机，也不能用于判断本次代理是否恢复。无业务写入，影响仅为日志搜索不完整；若未来必须取得被遗漏的日志，应先确认准确位置及访问条件。本次验证成功不依赖这些缺失日志。
+
+### 补丁版构建与本轮验证
+
+用户明确允许维护最小依赖补丁后实施；时间为 2026-11-06，Asia/Shanghai。未使用技能，未加载任何 SKILL.md。实际工具为 functions.exec / exec_command 和 write_stdin；下载采用 Python urllib，构建／同步采用 uv 与 Git，未直接编辑已安装包。
+
+| 检查 | 时间、编号与结果 |
+| --- | --- |
+| 固定来源与构建 | 校验上游 sdist 后，在隔离源码上应用 patch。上游、patch、wheel 哈希见 upstream.json；6 个构建依赖固定并带哈希。两次独立构建相同，规范化补丁的空白上下文后另一次从新源码构建也匹配同一 wheel 哈希；未以修改 wheel 绕过校验 |
+| 正常安装 | uv pip sync --require-hashes 仅替换 browser-use 为 0.13.14+swqa.1，其他 106 个运行依赖不变。uv pip check 检查 107 个包兼容 |
+| 组件与探针 | 依赖组件 8 项、探针 11 项已通过；分组和测试数据错误的修正方式见本节后文。未例行重跑无关测试 |
+| 实际断线负例 | 17:05:58–17:06:04；session_id=2521，taskId=disconnect-probe，scope=disconnect，summary.status=passed。受控关闭实际 CDP；探针保留 failed / ConnectionClosed / 退出 1，CLI 依据该预期负例确认零重连、零调用、零动作和收尾成功，不把探针失败写成业务成功 |
+| 实际取消 | 17:07:17–17:07:21；session_id=20410，taskId=cancel-probe，scope=init，passed。新补丁版正常启动后取消，零退出并确认收尾 |
+| 模型错误负例 | 17:08:09–17:08:13；session_id=91409，taskId=error-probe，scope=error，passed。只注入一次错误、零动作、退出 1、确认收尾；未请求真实模型 |
+| Qwen 首次补丁版探索 | 17:09:35–17:09:48；session_id=89794，taskId=explore，scope=explore，failed。具体错误与恢复依据见下文；停止后未立即重交 |
+| 一次定向恢复 | 17:13:45–17:14:05；session_id=29290，taskId=explore，scope=explore，passed。3 次正常决策、3 条动作记录、reconnectAttempts=0、cleanupConfirmed=true；仅 Beta 一次请求，身份及异步结果可见。默认截图目录为空，before-2.png / before-3.png 均存在 |
+
+对应原始目录依次为 qa/ui/browser-use-smoke/run-paNirF、run-Ng4ufe、run-E3me90、run-kHjkj0、run-tZd15C；各有 summary.json，失败／负例另有 process-result.json，探索保留 actions.jsonl。产物、私有登录态和 profile 均继续忽略，不提交 wheel、构建目录或认证。此次未重跑与新补丁无关的独立手写 Playwright 回放，也未把旧回放当成新生成候选的验证。
+
+### 本轮异常与恢复依据
+
+| 项目 | 事实与处置 |
+| --- | --- |
+| 补丁生成定位保护 | 2026-11-06（Asia/Shanghai，具体时分未记录），exec_command 的临时 Python 生成器在替换 agent/service.py 的截图判断时发现相同片段出现 2 次，AssertionError、退出 1。生成立即停止；部分修改仅在被忽略的临时源码，未写出完整 patch、未安装或启动浏览器。依据源码将定位限定为 Store screenshot and get path 历史持久化块后，仅做一次定向生成，成功产出 6 文件补丁；构建脚本随后从干净上游源码检查／应用该 patch 并通过哈希校验。无凭据或业务写入，原临时源码保留 |
+| 组件测试数据错误 | exec_command / Python tests/helpers/browser-use-runtime.check.py 首次运行 8 项，截图历史检查的两组子例因 AgentHistoryList 缺少必填 history 字段报 ValidationError，退出 1；这是测试构造错误，不是预期负例。已核对公开模型契约并补传 history=[]，只重跑该检查 1 次（截图开启／关闭两组），通过；其余 7 项的原通过记录保留。无模型或浏览器写入，不据此判断依赖不兼容 |
+| 补丁格式检查 | git diff --cached --check 报 patch 上下文的 space before tab；2026-11-06（Asia/Shanghai，具体时分未记录）。原因是 unified diff 必需的上下文空格位于上游 Tab 缩进之前，不是补丁引入的源码缩进。已停止提交，增加仅限 patches/*.patch 的 whitespace=-space-before-tab 属性，保留其他空白检查；再次检查通过。patch 的实际可应用性和 wheel 哈希另由干净构建验证，没有修改源码或跳过构建校验 |
+| Qwen 探索失败链路 | 用户批准 → functions.exec / exec_command → CLI 本地登录（成功）→ 官方 Pi ModelRuntime 内存认证 → bridge / Python / 补丁版 browser-use → Qwen（2 次有用量返回）→ 第一轮导航成功 → 第二轮 before 回调拒绝范围外动作（失败）→ on_step_end 停链路 → 浏览器关闭。session_id=89794，taskId=explore；原错误 unsupported-probe-action，外层 RuntimeError，退出 1；modelCalls=2、actions=1、reconnectAttempts=0、cleanupConfirmed=true |
+| 已确认原因与缺证据 | 运行时回调只接受 navigate / click / done，但 Agent 仍暴露完整默认工具 schema，允许模型选择随后会被拦截的动作。该范围不一致已确认；原记录没有保存被拒动作名和参数，不能编造具体动作、不能认定与关闭截图存在因果关系。没有执行第二个动作或业务点击，11594 total_tokens 有返回，金额未知 |
+| 修正与一次恢复 | 使用 Tools 的公开 exclude_actions 参数排除其他全部默认动作，保留运行时回调守卫；新离线检查验证 schema 正好包含三种允许动作，后续错误也只记录安全的动作名。已改变的是模型可选择的动作集合，没有换模型、改预期或放宽操作范围。该明确修正后仅执行一次 --check explore；session_id=29290，原始结果 run-tZd15C/summary.json 为 passed，3 次调用共 18297 total_tokens。没有第二次自动恢复 |
+| 影响与后续 | 原失败与成功结果分别保留；均只针对临时本地页面，没有真实业务写入。无须补发旧请求或清理未知写入。三个获批运行时开关已在声明的组件／实际场景范围通过；后续按方案接通正式任务和工具仍是独立工作，不宣称所有异常、所有模型或真实项目都已验收 |

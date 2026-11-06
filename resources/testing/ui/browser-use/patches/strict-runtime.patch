@@ -1,0 +1,126 @@
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -2,7 +2,7 @@
+ name = "browser-use"
+ description = "Open-source browser agent + hosted cloud browsers for AI agents, from $0.02/browser-hour"
+ authors = [{ name = "Gregor Zunic" }]
+-version = "0.13.14"
++version = "0.13.14+swqa.1"
+ readme = "README.md"
+ requires-python = ">=3.11,<4.0"
+ classifiers = [
+--- a/browser_use/browser/profile.py
++++ b/browser_use/browser/profile.py
+@@ -608,6 +608,8 @@
+ 	# Session/connection configuration
+ 	cdp_url: str | None = Field(default=None, description='CDP URL for connecting to existing browser instance')
+ 	is_local: bool = Field(default=False, description='Whether this is a local browser instance')
++	launch_max_attempts: int = Field(default=3, ge=1, description='Maximum local browser launch attempts.')
++	auto_reconnect: bool = Field(default=True, description='Reconnect automatically after an unexpected CDP disconnect.')
+ 	use_cloud: bool = Field(
+ 		default=False,
+ 		description='Use browser-use cloud browser service instead of local browser',
+--- a/browser_use/browser/watchdogs/local_browser_watchdog.py
++++ b/browser_use/browser/watchdogs/local_browser_watchdog.py
+@@ -90,7 +90,7 @@
+ 			self.event_bus.dispatch(BrowserKillEvent())
+
+ 	@observe_debug(ignore_input=True, ignore_output=True, name='launch_browser_process')
+-	async def _launch_browser(self, max_retries: int = 3) -> tuple[psutil.Process, str]:
++	async def _launch_browser(self, max_retries: int | None = None) -> tuple[psutil.Process, str]:
+ 		"""Launch browser process and return (process, cdp_url).
+
+ 		Handles launch errors by falling back to temporary directories if needed.
+@@ -100,6 +100,8 @@
+ 		"""
+ 		# Keep track of original user_data_dir to restore if needed
+ 		profile = self.browser_session.browser_profile
++		if max_retries is None:
++			max_retries = profile.launch_max_attempts
+ 		self._original_user_data_dir = str(profile.user_data_dir) if profile.user_data_dir else None
+ 		self._temp_dirs_to_cleanup = []
+
+--- a/browser_use/browser/session.py
++++ b/browser_use/browser/session.py
+@@ -2379,6 +2379,13 @@
+ 				f'{f": {type(exc).__name__}: {exc}" if exc else " (connection closed)"}'
+ 			)
+
++			if not self.browser_profile.auto_reconnect:
++				self.event_bus.dispatch(BrowserErrorEvent(
++					error_type='ConnectionClosed',
++					message='CDP connection closed; automatic reconnection is disabled',
++				))
++				return
++
+ 			# Fire auto-reconnect as an asyncio task
+ 			try:
+ 				loop = asyncio.get_running_loop()
+--- a/browser_use/agent/views.py
++++ b/browser_use/agent/views.py
+@@ -60,6 +60,7 @@
+ 	"""Configuration options for the Agent"""
+
+ 	use_vision: bool | Literal['auto'] = True
++	capture_screenshots: bool = True
+ 	vision_detail_level: Literal['auto', 'low', 'high'] = 'auto'
+ 	save_conversation_path: str | Path | None = None
+ 	save_conversation_path_encoding: str | None = 'utf-8'
+--- a/browser_use/agent/service.py
++++ b/browser_use/agent/service.py
+@@ -168,6 +168,7 @@
+ 		output_model_schema: type[AgentStructuredOutput] | None = None,
+ 		extraction_schema: dict | None = None,
+ 		use_vision: bool | Literal['auto'] = True,
++		capture_screenshots: bool = True,
+ 		save_conversation_path: str | Path | None = None,
+ 		save_conversation_path_encoding: str | None = 'utf-8',
+ 		max_failures: int = 5,
+@@ -213,6 +214,9 @@
+ 		enable_signal_handler: bool = True,
+ 		**kwargs,
+ 	):
++		if not capture_screenshots and use_vision is not False:
++			raise ValueError('capture_screenshots=False requires use_vision=False')
++
+ 		# Validate llm_screenshot_size
+ 		if llm_screenshot_size is not None:
+ 			if not isinstance(llm_screenshot_size, tuple) or len(llm_screenshot_size) != 2:
+@@ -393,6 +397,7 @@
+
+ 		self.settings = AgentSettings(
+ 			use_vision=use_vision,
++			capture_screenshots=capture_screenshots,
+ 			vision_detail_level=vision_detail_level,
+ 			save_conversation_path=save_conversation_path,
+ 			save_conversation_path_encoding=save_conversation_path_encoding,
+@@ -1093,9 +1098,9 @@
+
+ 		self.logger.debug(f'🌐 Step {self.state.n_steps}: Getting browser state...')
+ 		# Always take screenshots for all steps
+-		self.logger.debug('📸 Requesting browser state with include_screenshot=True')
++		self.logger.debug(f'📸 Requesting browser state with include_screenshot={self.settings.capture_screenshots}')
+ 		browser_state_summary = await self.browser_session.get_browser_state_summary(
+-			include_screenshot=True,  # always capture even if use_vision=False so that cloud sync is useful (it's fast now anyway)
++			include_screenshot=self.settings.capture_screenshots,
+ 			include_recent_events=self.include_recent_events,
+ 		)
+ 		if browser_state_summary.screenshot:
+@@ -1269,7 +1274,7 @@
+ 		# Handle browser closed/disconnected errors
+ 		if self._is_connection_like_error(error):
+ 			# If reconnection is in progress, wait for it instead of stopping
+-			if self.browser_session.is_reconnecting:
++			if self.browser_session.browser_profile.auto_reconnect and self.browser_session.is_reconnecting:
+ 				wait_timeout = self.browser_session.RECONNECT_WAIT_TIMEOUT
+ 				self.logger.warning(
+ 					f'🔄 Connection error during reconnection, waiting up to {wait_timeout}s for reconnect: {error}'
+@@ -1750,7 +1755,7 @@
+
+ 		# Store screenshot and get path
+ 		screenshot_path = None
+-		if browser_state_summary.screenshot:
++		if self.settings.capture_screenshots and browser_state_summary.screenshot:
+ 			self.logger.debug(
+ 				f'📸 Storing screenshot for step {self.state.n_steps}, screenshot length: {len(browser_state_summary.screenshot)}'
+ 			)

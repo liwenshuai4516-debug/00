@@ -1,6 +1,6 @@
 """阶段 1 探针：仅允许受控本地页面，不注册到正式 Agent 工具。"""
 import asyncio
-import base64
+from importlib.metadata import version
 import json
 import logging
 import os
@@ -18,8 +18,14 @@ os.environ.update({
     "BROWSER_USE_CLOUD_HINTS": "false",
 })
 logging.disable(logging.CRITICAL)
-from browser_use import Agent, Browser, ChatOpenAI, Tools
+from browser_use import Agent, Browser, BrowserProfile, ChatOpenAI, Tools
 import psutil
+
+PROBE_EXCLUDED_ACTIONS = [
+    "search", "go_back", "wait", "input", "upload_file", "switch", "close", "extract",
+    "search_page", "find_elements", "scroll", "send_keys", "find_text", "screenshot",
+    "save_as_pdf", "dropdown_options", "select_dropdown", "write_file", "replace_file", "read_file", "evaluate",
+]
 
 
 def configure_loopback_proxy_bypass(direct_model_host=None):
@@ -110,14 +116,17 @@ class ProbeModel:
 
 
 async def run(message):
+    if version("browser-use") != "0.13.14+swqa.1":
+        raise RuntimeError("patched-runtime-required")
     configure_loopback_proxy_bypass(message.get("directModelHost"))
     output = Path(message["output"])
     evidence = output / "evidence"
     evidence.mkdir(exist_ok=True)
     mode = message.get("mode", "explore")
-    browser = Browser(executable_path=message["chromium"], headless=True,
+    browser = Browser(browser_profile=BrowserProfile(launch_max_attempts=1, auto_reconnect=False,
+                                                    user_data_dir=str(output / "private" / "profile")),
+                      executable_path=message["chromium"], headless=True,
                       storage_state=message["storageState"],
-                      user_data_dir=str(output / "private" / "profile"),
                       downloads_path=str(output / "private" / "downloads"),
                       allowed_domains=["127.0.0.1"], enable_default_extensions=False,
                       keep_alive=False, auto_download_pdfs=False)
@@ -128,6 +137,21 @@ async def run(message):
     cancelled = False
     result = {"status": "failed"}
     step_errors = []
+    reconnect_attempts = 0
+    browser_fault = asyncio.get_running_loop().create_future()
+
+    def on_browser_error(event):
+        if not browser_fault.done():
+            browser_fault.set_result(event.error_type)
+
+    def on_reconnecting(event):
+        nonlocal reconnect_attempts
+        reconnect_attempts += 1
+        if not browser_fault.done():
+            browser_fault.set_result("unexpected-reconnect")
+
+    browser.event_bus.on("BrowserErrorEvent", on_browser_error)
+    browser.event_bus.on("BrowserReconnectingEvent", on_reconnecting)
     stage = "browser-start"
     reader = asyncio.StreamReader()
     transport, _ = await asyncio.get_running_loop().connect_read_pipe(
@@ -140,7 +164,7 @@ async def run(message):
         name = next(iter(data))
         # 小验证只需要导航、同名按钮点击和完成；拒绝坐标、脚本及其他动作。
         if name not in ("navigate", "click", "done"):
-            raise ValueError("unsupported-probe-action")
+            raise ValueError(f"unsupported-probe-action:{name}")
         if name == "navigate" and data[name].get("url") != message["url"]:
             raise ValueError("unexpected-probe-url")
         target = state.dom_state.selector_map.get(action.get_index())
@@ -157,9 +181,13 @@ async def run(message):
             ancestors.append(describe(parent))
             parent = parent.parent_node
         ref = None
-        if state.screenshot and (name in ("click", "done") or step == 1):
+        if name in ("click", "done"):
+            # 默认逐步截图已关闭；仅在声明的关键节点主动留证。
+            screenshot = await browser.take_screenshot(full_page=False)
+            if not screenshot:
+                raise ValueError("missing-key-evidence")
             ref = f"evidence/before-{step}.png"
-            (output / ref).write_bytes(base64.b64decode(state.screenshot))
+            (output / ref).write_bytes(screenshot)
         pending = {"stepId": str(step), "url": state.url, "action": data,
                    "target": describe(target), "ancestors": ancestors,
                    "observed": observed, "evidence": ref, "startedAt": time.time()}
@@ -192,8 +220,14 @@ async def run(message):
         stage = "cancel-wait" if mode == "cancel-probe" else "agent-run"
         if mode == "cancel-probe":
             await asyncio.Event().wait()
+        if mode == "disconnect-probe":
+            # 受控负例：关闭实际 CDP 连接，零模型调用地验证停止与收尾。
+            stage = "disconnect-probe"
+            await browser.cdp_client.ws.close()
+            await asyncio.wait_for(asyncio.shield(browser_fault), timeout=5)
+            return {"status": "failed", "reason": "browser-error", "browserError": browser_fault.result()}
         agent = Agent(task=message["goal"], llm=model, browser_session=browser,
-                      register_new_step_callback=before, use_vision=False,
+                      register_new_step_callback=before, use_vision=False, capture_screenshots=False,
                       max_failures=1, final_response_after_failure=False,
                       max_actions_per_step=1, use_judge=False, use_thinking=False,
                       enable_planning=False, message_compaction=False,
@@ -201,7 +235,7 @@ async def run(message):
                       save_conversation_path=None, calculate_cost=False,
                       enable_signal_handler=False, llm_timeout=50, step_timeout=75,
                       file_system_path=str(output / "private" / "files"),
-                      tools=Tools())
+                      tools=Tools(exclude_actions=PROBE_EXCLUDED_ACTIONS))
         history = await agent.run(max_steps=8, on_step_start=step_start, on_step_end=step_end)
         if not history.is_done() or not history.is_successful():
             raise RuntimeError("goal-not-completed")
@@ -219,9 +253,13 @@ async def run(message):
     work = asyncio.create_task(execute())
     cancel = asyncio.create_task(cancellation())
     try:
-        ready, _ = await asyncio.wait([work, cancel], timeout=180,
+        ready, _ = await asyncio.wait([work, cancel, browser_fault], timeout=180,
                                       return_when=asyncio.FIRST_COMPLETED)
-        if cancel in ready or not ready:
+        if browser_fault in ready:
+            work.cancel()
+            await asyncio.gather(work, return_exceptions=True)
+            result = {"status": "failed", "reason": "browser-error", "browserError": browser_fault.result()}
+        elif cancel in ready or not ready:
             cancelled = cancel in ready
             work.cancel()
             try:
@@ -251,6 +289,7 @@ async def run(message):
                 for event in browser.event_bus.event_history.values()
             ]
     finally:
+        browser_fault.cancel()
         cancel.cancel()
         await asyncio.gather(cancel, return_exceptions=True)
         transport.close()
@@ -266,7 +305,7 @@ async def run(message):
         if not cleanup_confirmed:
             result = {**result, "status": "unknown", "reason": "cleanup-unconfirmed"}
         emit("done", **result, modelCalls=model.calls, actions=records, usage=model.usage,
-             cleanupConfirmed=cleanup_confirmed)
+             reconnectAttempts=reconnect_attempts, cleanupConfirmed=cleanup_confirmed)
     return result
 
 

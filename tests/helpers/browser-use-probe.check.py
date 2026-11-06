@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 entry = Path(__file__).resolve().parents[2] / "resources/testing/ui/browser-use/explore.py"
 spec = importlib.util.spec_from_file_location("browser_use_probe", entry)
@@ -15,6 +15,13 @@ probe.task_id = "offline-check"
 
 
 class ProbeChecks(unittest.IsolatedAsyncioTestCase):
+    def test_model_schema_only_exposes_the_three_allowed_actions(self):
+        tools = probe.Tools(exclude_actions=probe.PROBE_EXCLUDED_ACTIONS)
+        schema = tools.registry.create_action_model().model_json_schema()
+        names = {next(iter(schema["$defs"][item["$ref"].split("/")[-1]]["properties"]))
+                 for item in schema["anyOf"]}
+        self.assertEqual(names, {"navigate", "click", "done"})
+
     def test_local_cdp_bypasses_system_socks_without_losing_remote_proxy(self):
         from websockets.uri import get_proxy, parse_uri
         proxies = {"socks": "http://proxy.invalid:1080", "https": "http://proxy.invalid:8080", "no": "existing.invalid"}
@@ -83,7 +90,7 @@ class ProbeChecks(unittest.IsolatedAsyncioTestCase):
     async def exercise_lifecycle(self, cancel=False, cleanup_error=False, startup_error="injected", model=None):
         browser = SimpleNamespace(start=AsyncMock(side_effect=None if cancel else RuntimeError(startup_error)),
                                   kill=AsyncMock(side_effect=RuntimeError("injected") if cleanup_error else None),
-                                  event_bus=SimpleNamespace(event_history={"event": SimpleNamespace(
+                                  event_bus=SimpleNamespace(on=Mock(), event_history={"event": SimpleNamespace(
                                       event_id="event", event_parent_id=None, event_type="BrowserStartEvent", event_status="error",
                                       event_results={"handler": SimpleNamespace(handler_name="BrowserSession.on_BrowserStartEvent",
                                                                              status="error", result="must-not-export")})}))

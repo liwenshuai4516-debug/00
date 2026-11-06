@@ -1,0 +1,10 @@
+{
+  "upstreamVersion": "0.13.14",
+  "version": "0.13.14+swqa.1",
+  "sourceUrl": "https://files.pythonhosted.org/packages/a2/eb/6b9183ec63541c2c7c1a87c30d142806e7fe3a95748ce95f8e37dcab2335/browser_use-0.13.14.tar.gz",
+  "sourceSha256": "9bb2f3d7ea215bf67b415c8e6e546413a3712ac5ea775b223b452189f4582d9d",
+  "patchSha256": "013b067d9cbe0ea697315c817fd1137801846981bbef4cd2e0f7a12e360c89a5",
+  "wheel": "browser_use-0.13.14+swqa.1-py3-none-any.whl",
+  "wheelSha256": "5ccb9664e8e186ffac273ead41108bf95ec4071153ff58cd0af56acc0c2042c7",
+  "license": "MIT"
+}
