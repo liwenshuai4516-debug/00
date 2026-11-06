@@ -116,6 +116,8 @@ async function probe(mode, state, model) {
   await fs.mkdir(path.join(directory, "private"), { recursive: true, mode: 0o700 });
   const message = { type: "start", taskId: mode, mode, output: directory,
     chromium: chromium.executablePath(), url, storageState: state, model,
+    // 用户已确认该内网模型应直连；其他模型沿用既有代理设置。
+    directModelHost: model && realModel === "qwen3.8-flash-next/qwen3.8-flash-next" ? new URL(model.base_url).hostname : null,
     goal: `Open ${url}. Confirm identity smoke-reviewer. Click the Detail button in the Beta row exactly once. Observe the asynchronous status Beta · ready, then finish successfully. Do not click Alpha. Do not use coordinates, scripts, extraction, wait actions or any other website. Use one action per decision.` };
   const task = startProbe({ python: path.join(runtime, "browser-use/.venv/bin/python"), message,
     onEvent(event) {

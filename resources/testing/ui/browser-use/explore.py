@@ -22,14 +22,15 @@ from browser_use import Agent, Browser, ChatOpenAI, Tools
 import psutil
 
 
-def configure_loopback_proxy_bypass():
-    # macOS 的系统代理也会被 websockets 自动读取；仅在子进程内绕过本机地址。
+def configure_loopback_proxy_bypass(direct_model_host=None):
+    # macOS 的系统代理也会被 websockets 自动读取；只在子进程内配置直连例外。
     # 先保留已解析的代理，避免只设置 no_proxy 后遮蔽系统的外网代理。
     proxies = urllib.request.getproxies()
     for scheme, address in proxies.items():
         if scheme != "no":
             os.environ.setdefault(f"{scheme}_proxy", address)
-    bypass = ",".join(filter(None, [proxies.get("no"), "127.0.0.1", "localhost", "::1"]))
+    # 仅对用户确认应直连的模型主机追加例外，不把全部内网或外网改为直连。
+    bypass = ",".join(filter(None, [proxies.get("no"), "127.0.0.1", "localhost", "::1", direct_model_host]))
     os.environ["no_proxy"] = bypass
     os.environ["NO_PROXY"] = bypass
 
@@ -109,7 +110,7 @@ class ProbeModel:
 
 
 async def run(message):
-    configure_loopback_proxy_bypass()
+    configure_loopback_proxy_bypass(message.get("directModelHost"))
     output = Path(message["output"])
     evidence = output / "evidence"
     evidence.mkdir(exist_ok=True)

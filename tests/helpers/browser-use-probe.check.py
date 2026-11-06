@@ -28,6 +28,16 @@ class ProbeChecks(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNone(get_proxy(parse_uri(f"ws://{host}:1234/")))
                 self.assertEqual(get_proxy(parse_uri("wss://remote.invalid/")), "socks5h://proxy.invalid:1080")
 
+    def test_selected_model_bypasses_proxy_without_changing_other_routes(self):
+        proxies = {"https": "http://proxy.invalid:8080", "no": "existing.invalid"}
+        with patch.dict(os.environ, {}, clear=True), patch.object(probe.urllib.request, "getproxies", return_value=proxies):
+            probe.configure_loopback_proxy_bypass("model.internal.invalid")
+            with patch.object(probe.urllib.request, "getproxies", side_effect=probe.urllib.request.getproxies_environment):
+                self.assertTrue(probe.urllib.request.proxy_bypass("model.internal.invalid"))
+                self.assertTrue(probe.urllib.request.proxy_bypass("existing.invalid"))
+                self.assertFalse(probe.urllib.request.proxy_bypass("remote.invalid"))
+                self.assertEqual(probe.urllib.request.getproxies()["https"], proxies["https"])
+
     async def test_empty_response_stops_before_sdk_retry(self):
         model = probe.ProbeModel(None, "explore")
         model.client = SimpleNamespace(ainvoke=AsyncMock(return_value=SimpleNamespace(
