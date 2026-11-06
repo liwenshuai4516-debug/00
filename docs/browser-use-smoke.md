@@ -2,13 +2,14 @@
 
 验证日期：2026-11-06，Asia/Shanghai。范围对应 [实施方案](browser-use-playwright-plan.md)第 4 节和阶段 1。
 
-**结论：独立验证入口已接入，阶段 1 未通过。** 首次离线检查在 browser-use 浏览器初始化阶段返回 `RuntimeError`，已停止该链路，未重试、未调用真实模型。不能据此认定 browser-use 与当前 Chromium 不兼容，也不能进入正式工具、旧入口替换或版本发布阶段。
+**当前结论：独立验证入口已接入，阶段 1 仍未通过。** 首次初始化的 `RuntimeError` 经续跑诊断确认与 macOS 系统 SOCKS 代理有关；增加本机地址绕过后，一次有界恢复验证改为 `BrowserStartEvent` 30 秒超时。已停止浏览器链路，没有真实模型请求，不进入阶段 2。具体调用与原始结果见文末错误报告。
 
 ## 入口和边界
 
 - `tooling/testing/ui/browser-use-smoke.mjs`：受控本地页面、现有后台登录导出、探针编排和独立 Playwright 回放检查。
 - `resources/testing/ui/browser-use/bridge.cjs`：Node → Python JSON Lines；核对 taskId、终值、退出码和浏览器收尾；取消 5 秒后仍未退出则终止进程组，结果不冒充正常取消。
 - 同目录 `explore.py`：公开 `Browser`、`Agent`、`ChatOpenAI`、`Tools` 和回调接口；记录动作前目标、业务行祖先、动作结果与证据引用。仅允许本地页面的导航、点击、结束。
+- Python 子进程将已解析的环境／系统代理保留在内存环境中，再为 `127.0.0.1`、`localhost`、`::1` 设置绕过，防止本机 CDP 被送到系统 SOCKS 代理。不修改 macOS 代理设置，也不写出代理地址。初始化失败保留脱敏错误、栈位置和子事件状态；不序列化事件参数或处理结果。
 - 探针未注册到正式 Pi 工具、IPC 或界面。既有 UI 测试流程未替换，真实项目配置、账号、会话与 `.env` 未读取。
 - 选择真实模型后，通过 Pi 1.4.0 的公开 `ModelRuntime.create()`、`getModel()`、`getAuth()` 取得最少参数，经 stdin 内存交接。不直接解析认证文件，不支持未验证的 OAuth、订阅和其他 API，不自动换模型。
 - 自动登录使用临时账号和本地服务，导出的状态权限为 `0600`。完整结果与浏览器文件位于已忽略的 `qa/ui/browser-use-smoke/`，其中 `private/` 不应分发。
@@ -28,7 +29,7 @@ resources/testing/ui/browser-use/.venv/bin/python tests/helpers/browser-use-prob
 
 探针预设复用现有 Playwright **1.64.1** 的 Chromium **156.0.8078.4**（revision **1248**），不自动安装另一份浏览器。现有 `resources/testing/ui/node_modules` 和该 Chromium 须预先准备好。
 
-以下是故障排清后的验证入口；本轮停止后没有再次执行：
+以下是故障排清后的完整验证入口；续跑仅做定向诊断和一次初始化恢复，没有再次执行完整入口：
 
 ```sh
 # 离线取消、注入错误、后台登录与独立回放检查
@@ -46,9 +47,9 @@ node tooling/testing/ui/browser-use-smoke.mjs --model qwen3.8-flash-next/qwen3.8
 | --- | --- |
 | Python / browser-use 安装与锁定 | 安装和按锁同步成功；107 个包一致；尚未证明浏览器初始化成功 |
 | Node 进程协议单测 | 9 项通过：成功确认、非零退出、缺终值、收尾未知、taskId 错误、终值后多余消息、正常取消协议、超时、不响应取消的有界终止。使用模拟进程，不等于真实浏览器取消通过 |
-| Python 模拟行为检查 | 6 项通过：空动作与多动作响应拒绝、重复调用阻止、用量保留、初始化错误终止、取消后收尾、收尾失败标记未知。使用模拟浏览器与模型，未重跑故障浏览器链路 |
+| Python 模拟行为检查 | 当前 8 项通过：空动作与多动作响应拒绝、重复调用阻止、用量保留、初始化错误终止、取消后收尾、收尾失败标记未知，以及系统 SOCKS 代理下本机绕过／外网代理保留和诊断认证脱敏。初始化负例也验证事件诊断不含处理结果。未连接真实模型或网站 |
 | 现有后台登录 | 临时本地账号成功登录，现有 `login.cjs` 返回 saved；导出文件权限 `0600` |
-| 真实 browser-use 初始化 | 失败：`RuntimeError`，0 次模型调用、0 个探索动作；进程退出码 1 |
+| 真实 browser-use 初始化 | 首次和定向诊断为 SOCKS 依赖错误；绕过修正后的一次恢复验证为 `BrowserStartEvent` 30 秒超时。各次均 0 次模型调用、0 个探索动作、退出码 1，清理回执 confirmed |
 | 同名按钮与异步观察、稳定目标轨迹 | 未执行，受初始化失败阻塞 |
 | browser-use 中的真实身份、Playwright 独立回放 | 未执行；导出成功不等于两端交接通过 |
 | 真实取消和注入模型错误停止 | 未执行：取消探针尚未达到 browser-ready，注入错误探针随后被阻断 |
@@ -88,3 +89,21 @@ node tooling/testing/ui/browser-use-smoke.mjs --model qwen3.8-flash-next/qwen3.8
 ### 首次源码搜索
 
 2026-11-06（Asia/Shanghai，秒级时间未记录），`exec_command` 中的 zsh 路径通配符 `src/main/services/ui-testing*` 未匹配，退出码 1，关键错误为 `no matches found`。未使用技能。已停止该条搜索，依据文件枚举取得真实路径后，使用 `src/main/capabilities/ui-testing` 做一次只读核对成功；没有业务写入、没有浏览器重试，影响仅为首次搜索不完整。
+
+### 续跑：代理诊断与一次恢复验证
+
+用户明确要求继续执行后，沿用原报告的恢复条件，只针对初始化，不重跑登录、错误探针、模型或回放。时间均为 2026-11-06，Asia/Shanghai；起止依据本机任务目录创建时间与结果文件写入时间。
+
+| 项目 | 事实 |
+| --- | --- |
+| 任务与结论 | 15:50:36–15:50:42 定向诊断定位 SOCKS 代理错误；15:53:03–15:53:40 一次恢复验证仍失败，已停止此链路及阶段 2 |
+| 调用链路 | 用户继续 → `functions.exec` / `exec_command` 的临时 Node 驱动 → 已有 `bridge.cjs` → `explore.py` → `Browser.start()` → 当前 Chromium / 本机 CDP；原进程使用 `write_stdin` 有限查询。未使用技能，未加载 `SKILL.md` |
+| 工具与参数 | 驱动直接读取助手先前生成的临时登录态，复用原 Chromium；mode=cancel-probe，URL 为该临时状态的本机 origin。没有重新访问真实项目配置或认证。诊断工具 session_id=38054、taskId=initialization-diagnosis；恢复工具 session_id=21841、taskId=initialization-recovery |
+| 诊断原文 | `Failed to establish CDP connection to browser: python-socks is required to use a SOCKS proxy`；栈定位到 `BrowserSession.connect()`；退出码 1，modelCalls=0，actions=0，cleanupConfirmed=true |
+| 原因核对 | 环境中没有 proxy 变量，但标准库从 macOS 读到 http / https / socks 配置；websockets 对本机 URI 选到了 socks5h。没有输出代理地址或凭据。缺少 python-socks 是已确认的直接失败条件，不能据此认定 Chromium 不兼容 |
+| 修复与验证依据 | 子进程内保留已解析代理，添加本机 bypass；模拟代理和真实标准库／websockets 路由解析证明本机直连、远端仍用原代理。已改变的是本机 CDP 代理选择；不通过加装 SOCKS 依赖把本机流量继续发往代理 |
+| 一次恢复的实际结果 | `Event handler ... BrowserSession.on_BrowserStartEvent ... timed out after 30.0s and interrupted any processing of 4 child events`；退出码 1，modelCalls=0，actions=0，cleanupConfirmed=true。该次未再出现原 SOCKS 依赖错误，但仍未达到 browser-ready，不能宣称初始化修复成功 |
+| 证据 | `qa/ui/browser-use-smoke/diagnose-ZkeT8W/process-result.json`、`qa/ui/browser-use-smoke/recovery-t11zC7/process-result.json`；原始产物继续保留在已忽略目录，不覆盖首次结果 |
+| 已执行处置与次数 | 本次 1 次定向诊断、修复明确代理条件后 1 次恢复验证，累计实际初始化调用 3 次（含首次）。SDK 内部尝试次数未记录。恢复仍失败后停止，没有加长超时、另换浏览器、重建同等会话或重跑整批。只读检查结束后未见匹配的探索 / Chrome for Testing 活动进程 |
+| 超时根因与缺证据 | 只能确认启动事件处理器超时及 4 个子事件被中断，具体卡住的子事件和处理器待确认。现有结果没有该次事件明细，不断言网络、Chromium 或登录态是根因。新增的事件状态采集尚未对真实超时运行，只在模拟负例中核对格式和内容边界 |
+| 影响与恢复 | 没有真实模型费用或真实业务写入；认证交接、同名按钮、异步结果、实际取消和回放仍未完成。后续应先取得启动子事件及处理器状态，定位并修复明确前置条件，再做有界验证；不能仅调整超时后重跑整套小验证 |

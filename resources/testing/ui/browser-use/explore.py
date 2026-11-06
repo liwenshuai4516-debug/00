@@ -5,9 +5,11 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import sys
 import time
 import traceback
+import urllib.request
 
 os.environ.update({
     "ANONYMIZED_TELEMETRY": "false",
@@ -18,6 +20,18 @@ os.environ.update({
 logging.disable(logging.CRITICAL)
 from browser_use import Agent, Browser, ChatOpenAI, Tools
 import psutil
+
+
+def configure_loopback_proxy_bypass():
+    # macOS 的系统代理也会被 websockets 自动读取；仅在子进程内绕过本机地址。
+    # 先保留已解析的代理，避免只设置 no_proxy 后遮蔽系统的外网代理。
+    proxies = urllib.request.getproxies()
+    for scheme, address in proxies.items():
+        if scheme != "no":
+            os.environ.setdefault(f"{scheme}_proxy", address)
+    bypass = ",".join(filter(None, [proxies.get("no"), "127.0.0.1", "localhost", "::1"]))
+    os.environ["no_proxy"] = bypass
+    os.environ["NO_PROXY"] = bypass
 
 
 def emit(kind, **values):
@@ -72,6 +86,7 @@ class ProbeModel:
 
 
 async def run(message):
+    configure_loopback_proxy_bypass()
     output = Path(message["output"])
     evidence = output / "evidence"
     evidence.mkdir(exist_ok=True)
@@ -197,6 +212,22 @@ async def run(message):
         result = {"status": "failed", "reason": type(error).__name__, "stage": stage,
                   "frames": [{"file": Path(f.filename).name, "line": f.lineno,
                               "function": f.name} for f in frames]}
+        if stage == "browser-start":
+            # 此阶段尚未发送模型请求；只保存本地初始化错误并移除认证值。
+            detail = re.sub(r"((?:https?|socks5h?)://)[^/@\s]+@", r"\1[redacted]@", str(error))
+            config = message.get("model") or {}
+            for secret in [config.get("api_key"), *(config.get("default_headers") or {}).values()]:
+                if isinstance(secret, str) and secret:
+                    detail = detail.replace(secret, "[redacted]")
+            result["detail"] = detail[:2000]
+            # 关闭会清空事件历史；仅保留状态，不序列化参数、Cookie 或处理结果。
+            result["startupEvents"] = [
+                {"id": event.event_id, "parentId": event.event_parent_id,
+                 "type": event.event_type, "status": event.event_status,
+                 "handlers": [{"name": item.handler_name, "status": item.status}
+                              for item in event.event_results.values()]}
+                for event in browser.event_bus.event_history.values()
+            ]
     finally:
         cancel.cancel()
         await asyncio.gather(cancel, return_exceptions=True)

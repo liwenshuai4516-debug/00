@@ -15,6 +15,19 @@ probe.task_id = "offline-check"
 
 
 class ProbeChecks(unittest.IsolatedAsyncioTestCase):
+    def test_local_cdp_bypasses_system_socks_without_losing_remote_proxy(self):
+        from websockets.uri import get_proxy, parse_uri
+        proxies = {"socks": "http://proxy.invalid:1080", "https": "http://proxy.invalid:8080", "no": "existing.invalid"}
+        with patch.dict(os.environ, {}, clear=True), patch.object(probe.urllib.request, "getproxies", return_value=proxies):
+            probe.configure_loopback_proxy_bypass()
+            self.assertEqual(os.environ["https_proxy"], proxies["https"])
+            self.assertIn("existing.invalid", os.environ["no_proxy"])
+            # 真实 urllib / websockets 解析环境，不连接任何服务器。
+            with patch.object(probe.urllib.request, "getproxies", side_effect=probe.urllib.request.getproxies_environment):
+                for host in ["127.0.0.1", "localhost", "[::1]"]:
+                    self.assertIsNone(get_proxy(parse_uri(f"ws://{host}:1234/")))
+                self.assertEqual(get_proxy(parse_uri("wss://remote.invalid/")), "socks5h://proxy.invalid:1080")
+
     async def test_empty_response_stops_before_sdk_retry(self):
         model = probe.ProbeModel(None, "explore")
         model.client = SimpleNamespace(ainvoke=AsyncMock(return_value=SimpleNamespace(
@@ -43,9 +56,13 @@ class ProbeChecks(unittest.IsolatedAsyncioTestCase):
         self.assertIs(await model.ainvoke([]), response)
         self.assertEqual(model.usage, [{"total_tokens": 10}])
 
-    async def exercise_lifecycle(self, cancel=False, cleanup_error=False):
-        browser = SimpleNamespace(start=AsyncMock(side_effect=None if cancel else RuntimeError("injected")),
-                                  kill=AsyncMock(side_effect=RuntimeError("injected") if cleanup_error else None))
+    async def exercise_lifecycle(self, cancel=False, cleanup_error=False, startup_error="injected", model=None):
+        browser = SimpleNamespace(start=AsyncMock(side_effect=None if cancel else RuntimeError(startup_error)),
+                                  kill=AsyncMock(side_effect=RuntimeError("injected") if cleanup_error else None),
+                                  event_bus=SimpleNamespace(event_history={"event": SimpleNamespace(
+                                      event_id="event", event_parent_id=None, event_type="BrowserStartEvent", event_status="error",
+                                      event_results={"handler": SimpleNamespace(handler_name="BrowserSession.on_BrowserStartEvent",
+                                                                             status="error", result="must-not-export")})}))
         read_fd, write_fd = os.pipe()
         records = []
         def emit(kind, **values):
@@ -56,7 +73,7 @@ class ProbeChecks(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as directory, os.fdopen(read_fd) as stream:
                 with patch.object(probe, "Browser", return_value=browser), patch.object(probe.sys, "stdin", stream), patch.object(probe, "emit", side_effect=emit):
                     result = await probe.run({"output": directory, "chromium": "unused", "storageState": {},
-                                              "mode": "cancel-probe", "url": "http://127.0.0.1:1/"})
+                                              "mode": "cancel-probe", "url": "http://127.0.0.1:1/", "model": model})
             return browser, result, records
         finally:
             os.close(write_fd)
@@ -66,6 +83,9 @@ class ProbeChecks(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["stage"], "browser-start")
         self.assertTrue(result["frames"])
+        self.assertEqual(result["detail"], "injected")
+        self.assertEqual(result["startupEvents"][0]["type"], "BrowserStartEvent")
+        self.assertNotIn("result", result["startupEvents"][0]["handlers"][0])
         self.assertEqual(records[-1]["modelCalls"], 0)
         self.assertTrue(records[-1]["cleanupConfirmed"])
         browser.start.assert_awaited_once()
@@ -81,6 +101,13 @@ class ProbeChecks(unittest.IsolatedAsyncioTestCase):
         _, result, records = await self.exercise_lifecycle(cleanup_error=True)
         self.assertEqual(result["status"], "unknown")
         self.assertFalse(records[-1]["cleanupConfirmed"])
+
+    async def test_startup_diagnostics_redact_proxy_and_model_credentials(self):
+        model = {"model": "offline", "api_key": "test-secret", "default_headers": {"X-Test": "header-secret"}}
+        _, result, records = await self.exercise_lifecycle(
+            startup_error="socks5h://user:password@proxy.invalid test-secret header-secret", model=model)
+        self.assertEqual(result["detail"], "socks5h://[redacted]@proxy.invalid [redacted] [redacted]")
+        self.assertEqual(records[-1]["modelCalls"], 0)
 
 
 if __name__ == "__main__":
