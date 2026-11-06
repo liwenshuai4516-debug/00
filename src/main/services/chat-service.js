@@ -253,7 +253,7 @@ function createChatService(
     if (request.session) {
       const current = request.session.desktopRuntime?.session ?? request.session;
       current.desktopCancelUi?.();
-      await current.abort();
+      await Promise.all([current.desktopSubagents?.stop(), current.abort()]);
     }
   }
 

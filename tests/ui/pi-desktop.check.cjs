@@ -51,6 +51,7 @@ async function main() {
   ), () => cwd, async () => {});
   registerAgentIpc(ipcMain, service, { isBusy: () => false }, {}, {}, {}, {}, {}, {}, {
     readConfiguration: async () => ({ modelsPath: path.join(agentDir, "models.json") }),
+    readCatalog: async () => ({ modelsPath: path.join(agentDir, "models.json"), providers: [], options: { api: [], thinkingLevels: [], inputs: ["text"] } }),
   });
   let win, passed = 0;
   const errors = [], network = [];
@@ -77,6 +78,8 @@ async function main() {
       document.addEventListener('compositionstart',()=>window.nativeEvents.starts++,true);
       document.addEventListener('compositionend',()=>window.nativeEvents.ends++,true);
       const {createExtensionUi}=await import('./components/extension-ui.js');
+      const {createSidebarShell}=await import('./components/sidebar-shell.js');
+      window.sidebar=createSidebarShell({sidebar:document.querySelector('#app-sidebar'),toggle:document.querySelector('#sidebar-toggle')});
       window.canEdit=true;window.inputEvents=0;
       const input=document.querySelector('#message-input');input.addEventListener('input',()=>window.inputEvents++);
       window.ui=createExtensionUi(window.agent,input,{canEdit:()=>window.canEdit});await window.ui.ready;
@@ -201,6 +204,25 @@ async function main() {
     await click("[data-pi-reload]");
     await wait(`document.querySelector('[data-pi-status]').textContent==='资源已重新加载。'`);
     await check("卸载后重载不再加载已移除包", `!document.querySelector('[data-pi-resources]').textContent.includes('本地包技能')&&document.querySelector('[data-pi-reload-notice]').hidden`);
+    // 仅构造历史状态夹具，验证生产扩展、IPC 和页面展示；执行由 SDK 集成测试覆盖。
+    const current = await service.getSession();
+    for (const [id, label, status] of [["fixture-completed", "核对接口契约", "completed"], ["fixture-unknown", "检查界面断言 <img src=x onerror=alert(1)>", "running"]]) {
+      current.sessionManager.appendCustomEntry("desktop-subagent", { owner: current.sessionId, id, label, mode: "spawn", permissionMode: "read-only" });
+      current.sessionManager.appendCustomEntry("desktop-subagent-state", { owner: current.sessionId, id, status, output: "离线界面夹具结果", notified: true });
+    }
+    await current.desktopReloadResources();
+    await click("#model-settings-dialog [data-close]");
+    await wait(`[...document.querySelectorAll('.extension-widgets')].some(e=>e.textContent.includes('执行结果待确认'))`);
+    await check("子任务历史状态经真实 IPC 恢复，标签按文本安全显示", `[...document.querySelectorAll('.extension-widgets')].some(e=>e.textContent.includes('核对接口契约 · 已完成')&&e.textContent.includes('<img src=x onerror=alert(1)>')) && !document.querySelector('.extension-widgets img')`);
+    for (const width of [1280, 390]) {
+      win.setSize(width, 860);
+      // 生产侧栏有 300ms 宽度过渡；两帧不足以证明最终可用宽度。
+      await wait(`Math.abs(document.querySelector('#app-sidebar').getBoundingClientRect().width-${width === 390 ? 56 : 280})<1`);
+      await run(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+      await check(`子任务状态 ${width} 宽度无横向溢出`, `[...document.querySelectorAll('.extension-widgets')].every(e=>e.scrollWidth<=e.clientWidth+1)`);
+      await check(`子任务状态 ${width} 宽度保留阅读空间`, `document.querySelector('.chat-main').clientWidth>=${width === 390 ? 300 : 900}`);
+      if (process.env.PI_UI_ARTIFACT_DIR) await fs.writeFile(path.join(process.env.PI_UI_ARTIFACT_DIR, `subagents-${width}.png`), (await win.webContents.capturePage()).toPNG());
+    }
     assert.deepEqual(network, []);
     assert.deepEqual(errors, []);
     console.log(`Pi 桌面 ${passed} 项页面检查通过。`);

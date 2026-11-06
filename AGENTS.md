@@ -130,6 +130,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - [关闭与重启验收](docs/window-close-acceptance.md)
 - [无历史待确认发送的查看与清理](docs/unsent-send-review.md)
 - [任务清单与任务栏](docs/todo-dock.md)
+- [子智能体](docs/subagents.md)
 - [内置 UI 测试](docs/ui-testing-runtime.md)与[测试报告](docs/test-reports.md)
 
 本文件只维护长期约定、当前未完项和必要验收边界。旧阶段方案、完成记录、临时目录和测试明细保留于 Git 历史及对应功能文档；`docs/pi-skills-packages-plan.md` 是废止索引，旧 `*-step.md` 的“下一步”“尚未接入”不能作为当前开发指令。

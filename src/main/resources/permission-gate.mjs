@@ -9,6 +9,8 @@ const READ_ONLY_TOOLS = new Set([
   "search_workspace_text",
   "get_current_time",
   "todo_write",
+  "list_agents",
+  "interrupt_agent",
   "qa_ui_project",
   "web_search",
   "web_fetch",

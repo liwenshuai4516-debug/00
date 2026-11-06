@@ -119,6 +119,7 @@ export async function createPiResources({
   permissionController,
   permissionMode,
   workspaceChanges,
+  subagentExtension,
 }) {
   // 与内置 MCP 等扩展统一使用官方目录；环境变量仍可覆盖其位置。
   const agentDir = getAgentDir();
@@ -138,6 +139,7 @@ export async function createPiResources({
     ],
     // 采用官方内置扩展身份，保留配置禁用与第三方替换语义。
     extensionFactories: [
+      ...(subagentExtension ? [{ name: "desktop-subagents", factory: subagentExtension, builtin: true, replaceable: true }] : []),
       {
         name: "codemode",
         factory: createCodemodeExtension(),

@@ -13,7 +13,7 @@ async function closePiSession(session, reason = "quit", targetSessionFile) {
   state.pending = Promise.resolve().then(async () => {
     const started = performance.now();
     session.desktopCancelUi?.();
-    await session.abort?.();
+    await Promise.all([session.desktopSubagents?.stop(true), session.abort?.()]);
     if (!state.shutdownSent && !session.desktopRuntimeInvalidated) {
       await session.extensionRunner?.emit({ type: "session_shutdown", reason, targetSessionFile });
       state.shutdownSent = true;

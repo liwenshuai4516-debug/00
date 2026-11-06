@@ -25,7 +25,7 @@ test("有效配置能初始化及新建真实 Pi 会话，不请求模型", asyn
       // 核对 Pi 1.4 的模型运行时、地址覆盖与工具权限，不请求模型。
       assert.equal(first.model.baseUrl, "https://example.invalid/v1");
       assert.equal(first.modelRuntime.getModel("openai", "gpt-4").baseUrl, first.model.baseUrl);
-      assert.deepEqual(first.getActiveToolNames(), ["read", "bash", "edit", "write", "todo_write"]);
+      assert.deepEqual(first.getActiveToolNames().sort(), ["read", "bash", "edit", "write", "todo_write", "subagent", "subagent_fork", "send_message", "list_agents", "interrupt_agent"].sort());
       assert.notEqual(
         first.getAllTools().find(tool => tool.name === "read").sourceInfo.source,
         "sdk",

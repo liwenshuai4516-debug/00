@@ -110,6 +110,7 @@ const extensionLabels = {
   "builtin:codemode": { name: "代码执行", description: "通过代码组合和执行工具调用，处理需要多个步骤的任务。" },
   "builtin:tool-search": { name: "工具搜索", description: "按需查找可用工具，让智能体使用当前任务所需的能力。" },
   "builtin:mcp": { name: "MCP 服务连接", description: "连接 MCP 服务，将服务提供的工具接入当前会话。" },
+  "builtin:desktop-subagents": { name: "子智能体", description: "独立子会话、并行委派、消息控制与结果汇总。" },
   "pi-subagents": { name: "子智能体协作", description: "将任务委派给子智能体，支持单项委派和脚本化的多智能体工作流。" },
   "pi-mcp-adapter": { name: "MCP 适配器", description: "为 Pi 接入 MCP 服务及其工具。" },
   "chrome-profile-bridge": { name: "Chrome 浏览器连接", description: "经你明确授权后，让 Pi 使用已登录的 Chrome 浏览器配置。" },

@@ -16,6 +16,7 @@ import requestStatus from "./adapters/request-status.js";
 import { bindDesktopRuntime } from "./resources/desktop-session-runtime.mjs";
 import { TEST_AGENT_PROMPT } from "./prompts/test-agent-prompt.mjs";
 import { todoWriteTool } from "./tools/todo-write.mjs";
+import { createSubagentManager, createSubagentExtension, createSubagentReplyExtension } from "./resources/subagents.mjs";
 
 const { formatToolResult, toHistory } = messageAdapter;
 const { createOutputEventAdapter } = outputAdapter;
@@ -99,20 +100,45 @@ export async function createPiAgent(
 
   recordStage("目录与会话状态");
   // 完全权限同时信任项目资源；只影响本次会话的加载决定，不写入 ProjectTrustStore。
-  const permissionMode = resourceOptions?.permissionController?.currentMode?.({
+  const permissionMode = resourceOptions?.subagentParent?.permissionMode ?? resourceOptions?.permissionController?.currentMode?.({
     sessionId: sessionManager.getSessionId?.(),
     workspace: workspaceRoot,
   }) ?? "ask";
+  let parentSession;
+  const subagents = resourceOptions?.subagentParent ? null : createSubagentManager({
+    getParent: () => parentSession,
+    createChild: (sessionManager, child) => createPiAgent(
+      sessionManager.getSessionDir(), false, undefined, workspaceRoot, startupModel,
+      undefined, undefined, undefined, {
+        ...resourceOptions,
+        runtimeTarget: { sessionManager, sessionStartEvent: { type: "session_start", reason: "resume" } },
+        subagentParent: child,
+        delegatedPrompt: promptSnapshot?.testAgentPrompt ?? resourceOptions?.delegatedPrompt,
+        // 子级固定权限快照；无 UI 的 ask 模式按原门禁契约拒绝需要审批的操作。
+        permissionController: { currentMode: () => child.permissionMode },
+        askProjectTrust: async () => ({ trusted: parentSession.settingsManager.isProjectTrusted() }),
+        createUiContext: undefined,
+        uiTestingRuntime: undefined,
+        workspaceChanges: undefined,
+        onDiagnostics: async items => {
+          if (items.some(item => item.type === "error")) throw new Error("子会话资源加载失败，请检查 Pi 扩展配置。");
+        },
+      },
+    ),
+  });
   const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
     await createPiResources({
       cwd: workspaceRoot,
-      appendSystemPrompt: [promptSnapshot?.testAgentPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT],
+      appendSystemPrompt: [promptSnapshot?.testAgentPrompt ?? resourceOptions?.delegatedPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT],
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
       uiTestingRuntime: resourceOptions?.uiTestingRuntime,
       permissionController: resourceOptions?.permissionController,
       permissionMode,
       workspaceChanges: resourceOptions?.workspaceChanges,
+      subagentExtension: subagents ? createSubagentExtension(subagents, () => resourceOptions?.permissionController?.currentMode?.({
+        sessionId: parentSession.sessionId, workspace: workspaceRoot,
+      }) ?? "ask") : createSubagentReplyExtension(resourceOptions.subagentParent.sendToParent),
     });
   recordStage("资源与扩展发现（含项目信任）");
 
@@ -172,8 +198,10 @@ export async function createPiAgent(
     resourceLoader,
     sessionManager,
     sessionStartEvent: resourceOptions?.runtimeTarget?.sessionStartEvent,
+    ...(resourceOptions?.subagentParent ? { thinkingLevel: resourceOptions.subagentParent.thinkingLevel } : {}),
   });
-
+  parentSession = session;
+  session.desktopSubagents = subagents;
   session.desktopReloadResources = async () => {
     session.desktopResourceDiagnostics = [];
     await session.reload();
@@ -197,6 +225,20 @@ export async function createPiAgent(
   session.desktopSessionOrigin = source;
   // 只在主进程保留本会话的实际快照，页面通过专用接口读取必要字段。
   if (promptSnapshot) session.desktopPromptSnapshot = promptSnapshot;
+
+  if (resourceOptions?.subagentParent) {
+    try {
+      await session.bindExtensions({ mode: "json", onError: error => {
+        session.desktopSubagentError = new Error(`子会话扩展错误：${error.error}`);
+        void session.abort();
+      } });
+      session.desktopResourceDiagnostics = await reportDiagnostics();
+      if (session.desktopSubagentError) throw session.desktopSubagentError;
+    } catch (error) {
+      await sessionLifecycle.closePiSession(session);
+      throw error;
+    }
+  }
 
   if (!resourceOptions?.runtimeTarget) {
     try {

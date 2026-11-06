@@ -86,7 +86,7 @@ if (scenario === "resources") {
       assert.ok(!prompt.includes("SKILL_BODY_MARKER"));
       const tools = session.agent.state.tools;
       // 桌面会话总是追加 todo_write；其余仍由 Pi 的默认工具选择决定。
-      assert.deepEqual(session.getActiveToolNames(), ["read", "bash", "edit", "write", "todo_write"]);
+      assert.deepEqual(session.getActiveToolNames().sort(), ["read", "bash", "edit", "write", "todo_write", "subagent", "subagent_fork", "send_message", "list_agents", "interrupt_agent"].sort());
       const read = tools.find(t => t.name === "read");
       const result = await read.execute("read", { path: path.join(linked, "assets", "data.json") });
       assert.match(JSON.stringify(result.content), /ok/);
@@ -183,8 +183,8 @@ if (scenario === "settings") {
   await put(path.join(agentDir, "settings.json"), JSON.stringify({ defaultTools: ["read"], retry: { enabled: false } }));
   const session = await create();
   try {
-    // defaultTools 约束原生工具；桌面的 todo_write 由 customTools 追加。
-    assert.deepEqual(session.getActiveToolNames(), ["read", "todo_write"]);
+    // defaultTools 约束原生工具；桌面自定义及扩展工具仍按 Pi 默认登记。
+    assert.deepEqual(session.getActiveToolNames().sort(), ["read", "todo_write", "subagent", "subagent_fork", "send_message", "list_agents", "interrupt_agent"].sort());
     assert.equal(session.settingsManager.getRetrySettings().enabled, false);
   } finally { await lifecycle.closePiSession(session); }
   await put(path.join(agentDir, "settings.json"), "broken json");

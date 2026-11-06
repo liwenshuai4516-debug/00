@@ -140,6 +140,23 @@ test("生成期间停止会调用 abort，并忽略停止后的文本", async ()
   assert.equal(abortCalls, 1);
   assert.equal(service.isBusy(), false);
 });
+
+test("停止并发中止父子任务，等待子任务清理后才返回", async () => {
+  const started = Promise.withResolvers();
+  const aborted = Promise.withResolvers();
+  const released = Promise.withResolvers();
+  const session = {
+    desktopSubagents: { async stop() { await aborted.promise; released.resolve(); } },
+    async abort() { aborted.resolve(); await released.promise; },
+  };
+  const service = createChatService({ getSession: async () => session }, async () => async () => {
+    started.resolve(); await released.promise;
+  });
+  const pending = service.send("委派任务", () => {}, () => {});
+  await started.promise;
+  await service.stop();
+  assert.deepEqual(await pending, { stopped: true });
+});
 test("工具生成的草稿被登记到实际请求会话", async () => {
   const events = [];
 

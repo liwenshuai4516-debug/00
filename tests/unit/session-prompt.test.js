@@ -38,7 +38,7 @@ test("真实 SDK 中新旧会话、空会话恢复和旧历史采用正确提示
       try {
         assert.ok(first.systemPrompt.includes("职责 A"));
         assert.ok(first.systemPrompt.includes("Pi 原生语义"));
-        assert.deepEqual(first.getActiveToolNames(), ["read", "bash", "edit", "write", "todo_write"]);
+        assert.deepEqual(first.getActiveToolNames().sort(), ["read", "bash", "edit", "write", "todo_write", "subagent", "subagent_fork", "send_message", "list_agents", "interrupt_agent"].sort());
         // 只写临时本地历史，使 SDK 产生可恢复文件。
         first.sessionManager.appendMessage({ role: "user", content: "临时历史", timestamp: Date.now() });
         firstPath = first.sessionFile;

@@ -22,6 +22,7 @@ export async function bindDesktopRuntime(initial, createReplacement, resourceOpt
   async function replace(operation) {
     // SDK 替换会释放旧会话；先确认设置落盘，失败时不进入替换。
     await runtime.session.settingsManager.flush();
+    await runtime.session.desktopSubagents?.stop();
     try {
       return await operation();
     } catch (error) {
@@ -42,7 +43,13 @@ export async function bindDesktopRuntime(initial, createReplacement, resourceOpt
     await session.bindExtensions({
       mode: uiContext ? "rpc" : "json",
       uiContext,
-      abortHandler: () => (resourceOptions.cancelPendingUi ?? resourceOptions.cancelUi)?.(session.sessionId),
+      abortHandler: () => {
+        (resourceOptions.cancelPendingUi ?? resourceOptions.cancelUi)?.(session.sessionId);
+        // ctx.abort() 也必须同时结束子任务，否则收尾边界仍会等待它们。
+        void Promise.all([session.desktopSubagents?.stop(), session.abort()]).catch(error => {
+          session.desktopOnExtensionError({ extensionPath: "builtin:desktop-subagents", event: "abort", error: error.message });
+        });
+      },
       shutdownHandler: resourceOptions.shutdown,
       commandContextActions: {
         waitForIdle: () => runtime.session.waitForIdle(),

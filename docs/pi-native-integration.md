@@ -103,6 +103,8 @@ R4：服务器确认上传成功后显示“上传成功”和文件名；服务
 
 不传入自定义工具允许名单或替代 read。默认启用 read、bash、edit、write，尊重 `defaultTools`；扩展工具也遵循 Pi 登记及启用语义。edit 的参数为 `path` 和 `edits: [{ oldText, newText }]`。
 
+桌面内置 `desktop-subagents` 扩展追加子智能体创建、分叉、消息、列表和停止工具，通过 Pi 公开收尾边界等待子任务并回传结果；不改变原生工具选择。使用、权限与恢复边界见[子智能体](subagents.md)。
+
 原生 edit/write 和命令可直接改动文件，成功后不再等待草稿保存。工作目录是相对路径基准，不限制绝对路径或命令的访问范围。旧草稿的存储、审阅和历史记录仍可使用，其限制不适用于原生工具。
 
 模型与凭据改由官方 ModelRuntime 读取 models.json、auth.json 和环境变量；Provider 扩展按公开登记 API 接入。新对话优先 Pi 设置中的默认模型，.env 仅作后备；恢复时使用历史登记的供应商和模型。会话仍通过 sessionManager 使用应用的真实目录绑定与历史。原私有模型配置、凭据服务与 OAuth 页面已移除，详见 [模型与供应商](model-management.md)。

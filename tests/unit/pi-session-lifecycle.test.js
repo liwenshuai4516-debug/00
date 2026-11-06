@@ -2,6 +2,17 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { closePiSession } = require("../../src/main/resources/pi-session-lifecycle.js");
 
+test("关闭并发停止父模型和子任务，等两者清理完成才销毁", async () => {
+  const cancelled = Promise.withResolvers();
+  let released = false;
+  const session = {
+    desktopSubagents: { async stop(close) { assert.equal(close, true); await cancelled.promise; released = true; } },
+    async abort() { cancelled.resolve(); },
+    dispose() { assert.equal(released, true); },
+  };
+  await closePiSession(session);
+});
+
 test("等待扩展清理和设置落盘后再 dispose，并发关闭只执行一次", async () => {
   const calls = [];
   let release;
