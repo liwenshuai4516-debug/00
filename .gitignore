@@ -1,6 +1,8 @@
 .env
 .env.*
 !.env.example
+# macOS 目录元数据
+.DS_Store
 # 本机项目配置包含账号密码，仅提交不含真实数据的示例。
 /config/projects.local.json
 /config/projects.local.json.*.tmp
