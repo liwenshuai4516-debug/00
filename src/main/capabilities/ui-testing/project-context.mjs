@@ -60,13 +60,13 @@ export async function prepareDataDirectory(cwd, expectedWorkspaceRoot) {
   };
 }
 
-export async function resolveProject(runtime, { targetUrl, projectId, projectName, expectedWorkspaceRoot }, cwd) {
+export async function resolveProject(runtime, { targetUrl, projectId, projectName, expectedWorkspaceRoot }, cwd, prepare = prepareDataDirectory) {
   if (!runtime.projectConfig) throw new Error("宿主尚未接入项目数据配置。");
   const target = new URL(targetUrl);
   if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) {
     throw new Error("测试地址必须使用 HTTP/HTTPS，且不能内嵌账号密码。");
   }
-  const directories = await prepareDataDirectory(cwd, expectedWorkspaceRoot);
+  const directories = await prepare(cwd, expectedWorkspaceRoot);
   const store = projectStorage.createProjectStore(runtime.projectConfig);
   const projects = await store.list();
   const candidates = [];
@@ -98,6 +98,7 @@ export async function resolveProject(runtime, { targetUrl, projectId, projectNam
   const assetName = `${clean(data.name)}__${clean(route)}__${suffix}`;
   return {
     ...directories, projectId: project.id, projectName: data.name,
+    projectWorkspace: project.workspaceDir,
     address: data.address, targetUrl: target.href, assetName,
     credentialsConfigured: Boolean(data.account && data.password),
     missingConfiguration: [!data.account && "account", !data.password && "password"].filter(Boolean),

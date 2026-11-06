@@ -1,4 +1,4 @@
-"""阶段 1 探针：仅允许受控本地页面，不注册到正式 Agent 工具。"""
+"""探针与阶段 2 只读探索；共用严格运行时和进程协议。"""
 import asyncio
 from importlib.metadata import version
 import json
@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 import urllib.request
+from urllib.parse import urlsplit
 
 os.environ.update({
     "ANONYMIZED_TELEMETRY": "false",
@@ -26,6 +27,52 @@ PROBE_EXCLUDED_ACTIONS = [
     "search_page", "find_elements", "scroll", "send_keys", "find_text", "screenshot",
     "save_as_pdf", "dropdown_options", "select_dropdown", "write_file", "replace_file", "read_file", "evaluate",
 ]
+
+
+def matches_control(target, ancestors, rule):
+    if target is None:
+        return False
+    if rule.get("role") and target.get("role") != rule["role"]:
+        return False
+    if rule.get("name") and target.get("name") != rule["name"]:
+        return False
+    if not all(target["attributes"].get(k) == v for k, v in rule.get("attributes", {}).items()):
+        return False
+    container = rule.get("ancestor", {}).get("attributes")
+    return not container or any(all(node["attributes"].get(k) == v for k, v in container.items()) for node in ancestors)
+
+
+def project_url(message, address):
+    base, url = urlsplit(message["address"]), urlsplit(address)
+    prefix = base.path.rstrip("/")
+    return (url.scheme in ("http", "https") and url.netloc == base.netloc and url.scheme == base.scheme
+            and not url.username and not url.password
+            and (not prefix or url.path == prefix or url.path.startswith(prefix + "/")))
+
+
+def readonly_guard(message, data, target, ancestors, visible):
+    name = next(iter(data))
+    values = data[name]
+    contract = message["contract"]
+    observed = {"identityConfirmed": contract["identity"]["text"] in visible,
+                "completionConfirmed": all(text in visible for text in contract["completionTexts"])}
+    if name == "navigate":
+        if not project_url(message, values.get("url", "")):
+            raise ValueError("outside-project-navigation")
+    elif name == "done":
+        if not all(observed.values()) or values.get("success") is not True:
+            raise ValueError("identity-or-business-result-not-observed")
+    else:
+        if "coordinate_x" in values or "coordinate_y" in values or values.get("clear") is False:
+            raise ValueError("coordinate-or-append-forbidden")
+        if not observed["identityConfirmed"]:
+            raise ValueError("identity-not-observed")
+        rules = [rule for rule in contract["controls"] if rule["action"] == name and matches_control(target, ancestors, rule)]
+        if not rules:
+            raise ValueError("undeclared-readonly-control")
+        if name != "click" and not any(values.get("text") in rule.get("values", []) for rule in rules):
+            raise ValueError("undeclared-filter-value")
+    return observed
 
 
 def configure_loopback_proxy_bypass(direct_model_host=None):
@@ -123,12 +170,13 @@ async def run(message):
     evidence = output / "evidence"
     evidence.mkdir(exist_ok=True)
     mode = message.get("mode", "explore")
+    readonly = message.get("workflow") == "browser-use-playwright"
     browser = Browser(browser_profile=BrowserProfile(launch_max_attempts=1, auto_reconnect=False,
                                                     user_data_dir=str(output / "private" / "profile")),
                       executable_path=message["chromium"], headless=True,
                       storage_state=message["storageState"],
                       downloads_path=str(output / "private" / "downloads"),
-                      allowed_domains=["127.0.0.1"], enable_default_extensions=False,
+                      allowed_domains=[urlsplit(message["url"]).hostname] if readonly else ["127.0.0.1"], enable_default_extensions=False,
                       keep_alive=False, auto_download_pdfs=False)
     model = ProbeModel(message.get("model"), mode)
     pending = None
@@ -163,25 +211,32 @@ async def run(message):
         data = action.model_dump(exclude_none=True, exclude_unset=True)
         name = next(iter(data))
         # 小验证只需要导航、同名按钮点击和完成；拒绝坐标、脚本及其他动作。
-        if name not in ("navigate", "click", "done"):
+        allowed = ("navigate", "click", "input", "select_dropdown", "done") if readonly else ("navigate", "click", "done")
+        if name not in allowed:
             raise ValueError(f"unsupported-probe-action:{name}")
-        if name == "navigate" and data[name].get("url") != message["url"]:
+        if not readonly and name == "navigate" and data[name].get("url") != message["url"]:
             raise ValueError("unexpected-probe-url")
         target = state.dom_state.selector_map.get(action.get_index())
-        if name == "click" and target is None:
+        if name not in ("navigate", "done") and target is None:
             raise ValueError("missing-target")
         visible = state.dom_state.llm_representation()
         observed = {"identityConfirmed": "smoke-reviewer" in visible,
                     "asyncResultVisible": "Beta · ready" in visible}
-        if name == "done" and not all(observed.values()):
+        if not readonly and name == "done" and not all(observed.values()):
             raise ValueError("business-result-not-observed")
         ancestors = []
         parent = target.parent_node if target else None
         while parent is not None and len(ancestors) < 6:
             ancestors.append(describe(parent))
             parent = parent.parent_node
+        if readonly:
+            if name != "navigate" and not project_url(message, state.url):
+                raise ValueError("outside-project-page")
+            if target and target.attributes.get("type") == "password":
+                raise ValueError("password-input-forbidden")
+            observed = readonly_guard(message, data, describe(target), ancestors, visible)
         ref = None
-        if name in ("click", "done"):
+        if name != "navigate":
             # 默认逐步截图已关闭；仅在声明的关键节点主动留证。
             screenshot = await browser.take_screenshot(full_page=False)
             if not screenshot:
@@ -226,7 +281,11 @@ async def run(message):
             await browser.cdp_client.ws.close()
             await asyncio.wait_for(asyncio.shield(browser_fault), timeout=5)
             return {"status": "failed", "reason": "browser-error", "browserError": browser_fault.result()}
-        agent = Agent(task=message["goal"], llm=model, browser_session=browser,
+        goal = message["goal"]
+        if readonly:
+            goal += "\nFrozen read-only contract: " + json.dumps(message["contract"], ensure_ascii=False)
+            goal += "\nOpen " + message["url"] + ". Use only declared controls and allowed values. Never submit business writes. Check identity and completion texts before done. One action per decision."
+        agent = Agent(task=goal, llm=model, browser_session=browser,
                       register_new_step_callback=before, use_vision=False, capture_screenshots=False,
                       max_failures=1, final_response_after_failure=False,
                       max_actions_per_step=1, use_judge=False, use_thinking=False,
@@ -235,8 +294,8 @@ async def run(message):
                       save_conversation_path=None, calculate_cost=False,
                       enable_signal_handler=False, llm_timeout=50, step_timeout=75,
                       file_system_path=str(output / "private" / "files"),
-                      tools=Tools(exclude_actions=PROBE_EXCLUDED_ACTIONS))
-        history = await agent.run(max_steps=8, on_step_start=step_start, on_step_end=step_end)
+                      tools=Tools(exclude_actions=[name for name in PROBE_EXCLUDED_ACTIONS if not readonly or name not in ("input", "select_dropdown")]))
+        history = await agent.run(max_steps=message["contract"]["budget"]["maxSteps"] if readonly else 8, on_step_start=step_start, on_step_end=step_end)
         if not history.is_done() or not history.is_successful():
             raise RuntimeError("goal-not-completed")
         return {"status": "completed"}
@@ -253,7 +312,7 @@ async def run(message):
     work = asyncio.create_task(execute())
     cancel = asyncio.create_task(cancellation())
     try:
-        ready, _ = await asyncio.wait([work, cancel, browser_fault], timeout=180,
+        ready, _ = await asyncio.wait([work, cancel, browser_fault], timeout=message["contract"]["budget"]["timeoutMs"] / 1000 if readonly else 180,
                                       return_when=asyncio.FIRST_COMPLETED)
         if browser_fault in ready:
             work.cancel()
@@ -313,7 +372,8 @@ if __name__ == "__main__":
     initial = json.loads(sys.stdin.readline())
     task_id = initial["taskId"]
     try:
-        if initial.get("type") != "start" or not initial["url"].startswith("http://127.0.0.1:"):
+        readonly = initial.get("workflow") == "browser-use-playwright"
+        if initial.get("type") != "start" or (not readonly and not initial["url"].startswith("http://127.0.0.1:")):
             raise ValueError("local-probe-only")
         final = asyncio.run(run(initial))
         sys.exit(0 if final["status"] in ("completed", "cancelled") else 1)

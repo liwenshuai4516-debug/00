@@ -156,11 +156,24 @@ async function run(taskFile) {
     }
   }
   const counts = {};
+  if (task.workflow === "browser-use-playwright") {
+    if (tests.length !== task.caseFiles.length || task.caseFiles.some((file) => tests.filter((test) => path.resolve(task.caseDir, test.file) === file).length !== 1)) {
+      problems.push("每个版本必须有且只有一个实际测试结果。");
+    }
+    for (const test of tests.filter((item) => item.status === "passed")) {
+      for (const name of ["qa-initial-state", "qa-business-result"]) {
+        if (!test.attachments.some((item) => item.name === name && item.contentType === "image/png" && item.path)) {
+          problems.push(`缺少必要截图：${name}`);
+        }
+      }
+    }
+  }
   for (const test of tests) counts[test.status] = (counts[test.status] ?? 0) + 1;
   const passed = exitCode === 0 && !cancelled && problems.length === 0 && tests.length > 0 && tests.every((test) => test.status === "passed");
   const summary = {
     schema: "qa-report/v1",
     kind: "ui",
+    ...(task.workflow ? { workflow: task.workflow, purpose: task.purpose, revisions: task.revisions } : {}),
     runId: task.runId, status: cancelled ? "cancelled" : passed ? "passed" : report && problems.length === 0 ? "failed" : "incomplete",
     startedAt, finishedAt: new Date().toISOString(), targetUrl: task.targetUrl,
     project: task.project ?? null, workspace: task.workspace, dataDir: task.dataDir ?? null,

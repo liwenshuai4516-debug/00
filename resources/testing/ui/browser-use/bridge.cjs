@@ -2,7 +2,7 @@ const { spawn } = require("node:child_process");
 const { createInterface } = require("node:readline");
 const path = require("node:path");
 
-// 阶段 1 专用进程桥；done 必须与退出、浏览器收尾同时成立。
+// 探针与只读探索共用进程桥；done 必须与退出、浏览器收尾同时成立。
 function startProbe({ python, message, onEvent = () => {}, timeoutMs = 190000, cancelGraceMs = 5000 }) {
   const child = spawn(python, [path.join(__dirname, "explore.py")], {
     detached: process.platform !== "win32",

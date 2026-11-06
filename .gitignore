@@ -15,6 +15,8 @@ node_modules/
 # UI/接口测试运行证据与浏览器临时输出
 /qa/ui/recordings/
 /qa/ui/runs/
+/qa/ui/tasks/
+/qa/ui/.workflow.lock
 /qa/api/runs/
 /.playwright-cli/
 /test-results/
