@@ -20,6 +20,9 @@ node_modules/
 # 客户端内置测试运行环境的构建产物
 /resources/testing/ui/bin/
 /resources/testing/ui/browsers/
+/resources/testing/ui/browser-use/.venv/
+__pycache__/
+/qa/ui/browser-use-smoke/
 /dist/
 # WaterMate 客户端运行时数据：会话历史、笔记、凭据与沙箱临时目录，禁止入库
 /.watermate/
