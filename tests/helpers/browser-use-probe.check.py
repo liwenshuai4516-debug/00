@@ -56,6 +56,20 @@ class ProbeChecks(unittest.IsolatedAsyncioTestCase):
         self.assertIs(await model.ainvoke([]), response)
         self.assertEqual(model.usage, [{"total_tokens": 10}])
 
+    async def test_model_failure_preserves_redacted_cause_without_replaying(self):
+        model = probe.ProbeModel(None, "explore")
+        model.config = {"api_key": "test-secret", "default_headers": {"Authorization": "Bearer header-secret"}}
+        error = RuntimeError("provider rejected test-secret Bearer header-secret")
+        error.status_code = 400
+        error.__cause__ = ValueError("socks5h://user:password@proxy.invalid")
+        model.client = SimpleNamespace(ainvoke=AsyncMock(side_effect=error))
+        with self.assertRaises(RuntimeError):
+            await model.ainvoke([])
+        self.assertEqual(model.error[0]["statusCode"], 400)
+        self.assertEqual(model.error[0]["detail"], "provider rejected [redacted] [redacted]")
+        self.assertEqual(model.error[1]["detail"], "socks5h://[redacted]@proxy.invalid")
+        model.client.ainvoke.assert_awaited_once()
+
     async def exercise_lifecycle(self, cancel=False, cleanup_error=False, startup_error="injected", model=None):
         browser = SimpleNamespace(start=AsyncMock(side_effect=None if cancel else RuntimeError(startup_error)),
                                   kill=AsyncMock(side_effect=RuntimeError("injected") if cleanup_error else None),

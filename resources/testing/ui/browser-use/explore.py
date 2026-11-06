@@ -38,6 +38,23 @@ def emit(kind, **values):
     print(json.dumps({"type": kind, "taskId": task_id, **values}), flush=True)
 
 
+def redact(text, config):
+    text = re.sub(r"((?:https?|socks5h?)://)[^/@\s]+@", r"\1[redacted]@", text)
+    for secret in [config.get("api_key"), *(config.get("default_headers") or {}).values()]:
+        if isinstance(secret, str) and secret:
+            text = text.replace(secret, "[redacted]")
+    return text
+
+
+def describe_error(error, config):
+    causes = []
+    while error is not None and len(causes) < 4:
+        causes.append({"type": type(error).__name__, "statusCode": getattr(error, "status_code", None),
+                       "detail": redact(str(error), config)[:2000]})
+        error = error.__cause__
+    return causes
+
+
 def describe(node):
     if node is None:
         return None
@@ -60,6 +77,8 @@ class ProbeModel:
         self.calls = 0
         self.step_calls = 0
         self.usage = []
+        self.error = None
+        self.config = config or {}
         self.client = ChatOpenAI(**config, max_retries=0, timeout=45,
                                  temperature=0, frequency_penalty=None) if config else None
         if config:
@@ -77,7 +96,11 @@ class ProbeModel:
         if self.mode == "error-probe":
             # 预期负例，不请求真实模型，也不执行浏览器写操作。
             raise RuntimeError("injected-model-error")
-        response = await self.client.ainvoke(messages, output_format=output_format, **kwargs)
+        try:
+            response = await self.client.ainvoke(messages, output_format=output_format, **kwargs)
+        except Exception as error:
+            self.error = describe_error(error, self.config)
+            raise
         self.usage.append(response.usage.model_dump() if response.usage else None)
         actions = getattr(response.completion, "action", None)
         if not actions or len(actions) != 1 or not actions[0].model_dump(exclude_none=True):
@@ -103,6 +126,7 @@ async def run(message):
     owned = []
     cancelled = False
     result = {"status": "failed"}
+    step_errors = []
     stage = "browser-start"
     reader = asyncio.StreamReader()
     transport, _ = await asyncio.get_running_loop().connect_read_pipe(
@@ -155,6 +179,7 @@ async def run(message):
             records += 1
             pending = None
         if not results or any(r.error for r in results):
+            step_errors.extend(redact(r.error, model.config)[:2000] for r in results if r.error)
             agent.stop()
             raise RuntimeError("step-failed-chain-stopped")
 
@@ -210,16 +235,12 @@ async def run(message):
         # 模型错误正文可能含请求内容；保留类型和栈位置以便诊断。
         frames = traceback.extract_tb(error.__traceback__)
         result = {"status": "failed", "reason": type(error).__name__, "stage": stage,
+                  "modelError": model.error, "stepErrors": step_errors,
                   "frames": [{"file": Path(f.filename).name, "line": f.lineno,
                               "function": f.name} for f in frames]}
         if stage == "browser-start":
             # 此阶段尚未发送模型请求；只保存本地初始化错误并移除认证值。
-            detail = re.sub(r"((?:https?|socks5h?)://)[^/@\s]+@", r"\1[redacted]@", str(error))
-            config = message.get("model") or {}
-            for secret in [config.get("api_key"), *(config.get("default_headers") or {}).values()]:
-                if isinstance(secret, str) and secret:
-                    detail = detail.replace(secret, "[redacted]")
-            result["detail"] = detail[:2000]
+            result["detail"] = redact(str(error), model.config)[:2000]
             # 关闭会清空事件历史；仅保留状态，不序列化参数、Cookie 或处理结果。
             result["startupEvents"] = [
                 {"id": event.event_id, "parentId": event.event_parent_id,

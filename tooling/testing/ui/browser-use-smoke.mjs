@@ -13,10 +13,18 @@ const runtime = path.join(root, "resources/testing/ui");
 const { chromium } = require(path.join(runtime, "node_modules/@playwright/test"));
 const { startProbe } = require(path.join(runtime, "browser-use/bridge.cjs"));
 const args = process.argv.slice(2);
-const realModel = args[0] === "--model" ? args[1] : null;
-if (args.length && (!realModel || args.length !== 2 || !realModel.includes("/"))) {
-  throw new Error("用法：node tooling/testing/ui/browser-use-smoke.mjs [--model provider/model]");
+let realModel = null;
+let check = "all";
+for (let index = 0; index < args.length; index += 2) {
+  if (args[index] === "--model") realModel = args[index + 1];
+  else if (args[index] === "--check") check = args[index + 1];
+  else throw new Error("未知参数；支持 --model provider/model、--check all|init|error|explore|replay");
+  if (!args[index + 1]) throw new Error("参数缺少值");
 }
+assert.ok(["all", "init", "error", "explore", "replay"].includes(check), "未知检查范围");
+assert.ok(!realModel || realModel.includes("/"), "模型须为 provider/model");
+assert.ok(check !== "explore" || realModel, "探索检查必须指定模型");
+const selected = (stage) => check === "all" || check === stage;
 const outputRoot = path.join(root, "qa/ui/browser-use-smoke");
 await fs.mkdir(outputRoot, { recursive: true });
 const output = await fs.mkdtemp(path.join(outputRoot, "run-"));
@@ -60,7 +68,7 @@ await once(server, "listening");
 const url = `http://127.0.0.1:${server.address().port}/app`;
 const storageFile = path.join(privateDir, "state.json");
 const summary = { startedAt: new Date().toISOString(), platform: `${process.platform}/${process.arch}`,
-  model: realModel, output, checks: {}, exceptions: [] };
+  model: realModel, scope: check, output, checks: {}, exceptions: [] };
 let browser;
 let login;
 
@@ -124,21 +132,25 @@ try {
   const state = await prepareLogin();
   summary.checks.loginExport = "passed";
   // 离线取消和负例先验证；两者均不调用真实模型。
-  const cancelled = await probe("cancel-probe", state);
-  assert.equal(cancelled.terminal.status, "cancelled");
-  summary.checks.cancel = cancelled.terminal;
-  try {
-    await probe("error-probe", state);
-    assert.fail("注入错误不应成功");
-  } catch (error) {
-    assert.equal(error.result?.terminal?.status, "failed");
-    assert.equal(error.result.terminal.modelCalls, 1);
-    assert.equal(error.result.terminal.actions, 0);
-    assert.equal(error.result.terminal.cleanupConfirmed, true);
-    assert.equal(error.result.code, 1);
-    summary.checks.failStop = "passed: one call, zero actions, browser closed";
+  if (selected("init")) {
+    const cancelled = await probe("cancel-probe", state);
+    assert.equal(cancelled.terminal.status, "cancelled");
+    summary.checks.cancel = cancelled.terminal;
   }
-  if (realModel) {
+  if (selected("error")) {
+    try {
+      await probe("error-probe", state);
+      assert.fail("注入错误不应成功");
+    } catch (error) {
+      assert.equal(error.result?.terminal?.status, "failed");
+      assert.equal(error.result.terminal.modelCalls, 1);
+      assert.equal(error.result.terminal.actions, 0);
+      assert.equal(error.result.terminal.cleanupConfirmed, true);
+      assert.equal(error.result.code, 1);
+      summary.checks.failStop = "passed: one call, zero actions, browser closed";
+    }
+  }
+  if (selected("explore") && realModel) {
     phase = "explore";
     const model = await resolveModel(realModel);
     const explored = await probe("explore", state, model);
@@ -154,17 +166,19 @@ try {
     assert.equal(done?.observed?.identityConfirmed, true);
     assert.equal(done?.observed?.asyncResultVisible, true);
     summary.checks.stableTarget = "passed";
-  } else summary.checks.explore = "not-run: model not selected";
-  phase = "replay";
-  browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ storageState: state });
-  const page = await context.newPage();
-  await page.goto(url);
-  assert.equal(await page.getByTestId("identity").textContent(), "smoke-reviewer");
-  await page.locator('[data-row="Beta"]').getByRole("button", { name: "Detail", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: "Beta · ready" }).waitFor();
-  assert.deepEqual(clicks.filter(c => c.phase === "replay").map(c => c.id), ["Beta"]);
-  summary.checks.independentReplay = "passed";
+  } else if (selected("explore")) summary.checks.explore = "not-run: model not selected";
+  if (selected("replay")) {
+    phase = "replay";
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ storageState: state });
+    const page = await context.newPage();
+    await page.goto(url);
+    assert.equal(await page.getByTestId("identity").textContent(), "smoke-reviewer");
+    await page.locator('[data-row="Beta"]').getByRole("button", { name: "Detail", exact: true }).click();
+    await page.getByRole("status").filter({ hasText: "Beta · ready" }).waitFor();
+    assert.deepEqual(clicks.filter(c => c.phase === "replay").map(c => c.id), ["Beta"]);
+    summary.checks.independentReplay = "passed";
+  }
   summary.status = "passed";
 } catch (error) {
   summary.status = "failed";
@@ -176,5 +190,5 @@ try {
   await new Promise(resolve => server.close(resolve));
   summary.finishedAt = new Date().toISOString();
   await fs.writeFile(path.join(output, "summary.json"), JSON.stringify(summary, null, 2));
-  console.log(JSON.stringify({ status: summary.status, checks: Object.keys(summary.checks), output }));
+  console.log(JSON.stringify({ status: summary.status, scope: check, checks: Object.keys(summary.checks), output }));
 }
