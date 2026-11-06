@@ -14,7 +14,7 @@
 - 模型调用失败保留脱敏异常链、可用状态码与 SDK 步骤错误，禁止重交；`modelCalls` 是适配器的调用尝试数（包含注入负例），不等于服务器已接收请求数，计费用量缺失时仍为未知。
 - 探针未注册到正式 Pi 工具、IPC 或界面。既有 UI 测试流程未替换，真实项目配置、账号、会话与 `.env` 未读取。
 - 选择真实模型后，通过 Pi 1.4.0 的公开 `ModelRuntime.create()`、`getModel()`、`getAuth()` 取得最少参数，经 stdin 内存交接。不直接解析认证文件，不支持未验证的 OAuth、订阅和其他 API，不自动换模型。
-- 自动登录使用临时账号和本地服务，导出的状态权限为 `0600`。探针结果、选定截图与浏览器 profile 位于已忽略的 `qa/ui/browser-use-smoke/`，其中 `private/` 不应分发。SDK 还自行向系统临时目录的 `browser_use_agent_*` 写逐步截图；`file_system_path` 不覆盖它的截图目录，尚未解决最小采集。
+- 自动登录使用临时账号和本地服务，导出的状态权限为 `0600`。探针结果、选定截图与浏览器 profile 位于已忽略的 `qa/ui/browser-use-smoke/`，其中 `private/` 不应分发。SDK 还自行向临时目录的 `browser_use_agent_*` 写逐步截图；bridge 已将子进程 TMPDIR 指向本任务 private，实际两张 SDK 截图也都在该目录内。file_system_path 不覆盖它的截图目录；路径隔离已确认，但关闭逐步采集及重复持久化仍未解决。
 
 ## 版本和准备方式
 
@@ -80,12 +80,14 @@ node tooling/testing/ui/browser-use-smoke.mjs --check explore --model qwen3.8-fl
 | 多动作 | `max_actions_per_step=5` | 设为 1；适配器拒绝空动作及多动作响应，避免进入 SDK 空动作二次请求 |
 | 额外模型处理 | `use_judge=True`、planning 和 message_compaction 默认开启 | 关闭这些额外处理；最多 8 决策步、每次调用 45 秒、探针工作预算 180 秒 |
 | 启动失败内部重试 | `LocalBrowserWatchdog._launch_browser(max_retries=3)` 在部分 profile 错误时改临时目录重试；未找到公开关闭参数 | 正式接入前须解决；本轮是否触发此分支未记录，不能声称无重试 |
-| 连接故障纠偏 | Agent 错误处理存在 reconnect 分支 | 尚未验证能否通过公开接口满足首次异常停止，不能承诺关闭全部内部恢复 |
-| 截图 | `_prepare_context()` 即使 use_vision=False 也请求截图，历史流程写截图文件 | 正式接入前仍须解决逐步持久化。SDK 截图写入系统临时 agent_directory，而非传入的 file_system_path；不能只关 GIF 和会话导出就宣称最小采集 |
+| 连接故障纠偏 | BrowserSession 私有断线回调直接创建最多 3 次的自动重连任务；Agent 错误处理还会等待它 | Browser 构造参数和 BrowserProfile 无公开关闭开关。BrowserReconnectingEvent 派发后未等待处理器便执行 reconnect，不能靠异步监听保证零重连；不改私有回调 |
+| 截图 | `_prepare_context()` 即使 use_vision=False 也请求截图，历史流程写截图文件 | bridge 的 TMPDIR 已使实际 SDK 截图落在任务 private 中，file_system_path 只控制 Agent 文件区。没有公开开关停止默认逐步截图；不能把路径隔离等同于最小采集 |
 | 视频 / 会话 / 云同步 | 各有独立配置 | 不启用视频、GIF、会话文本导出；禁用遥测与云同步；SDK 自己的截图仍须单独处理 |
 | 登录态 | StorageStateWatchdog 实现 cookies、localStorage / sessionStorage 恢复 | 本次 cookies + localStorage 的身份交接已通过；未见 IndexedDB 恢复逻辑，sessionStorage 未单独实际验证，不扩大到其他项目认证 |
 
 不覆盖 Pi 原生重试设置，不用私有对象补丁关闭 browser-use 行为。受控场景中的真实初始化、身份交接、同名目标及异步结果、异常停止和实际取消均已有通过记录；正式接入前仍须解决上表的内部启动恢复、重连和最小采集约束，本轮不推进阶段 2。
+
+后续只读核对确认 0.13.14 仍是 PyPI 最新版，不能承诺通过普通升级获得这些开关。当前版本的公开接口缺口、源码依据和可评审的最小依赖变更要求见 [运行时缺口](browser-use-runtime-gaps.md)。没有为弥补缺口修改安装包、注入私有回调或再发起模型请求。
 
 ## 错误报告
 
