@@ -22,6 +22,12 @@ description: 编排只读或已授权隔离写的 UI 探索、候选生成、完
 
 ## 冻结任务约定
 
+生成前按用户范围建立覆盖清单：检查项编号、功能、输入条件、预期来源、计划 caseId；已有设计稿逐项映射，未能执行的检查项保留原因，不因工具受阻从清单删除。用例数由独立检查项推导，不设固定数量。
+
+一次探索任务只对应一个独立用例目标和一种输入条件。查询命中、查询无结果、重置、翻页分别建任务；组合筛选验证条件交集时可作为一个目标。一个目标可以有多个必要预期和断言，例如无结果查询同时检查总数为零、无数据行及空态；不能把多个独立功能放进 expected 后用“一例一 test”代替拆分。只有用户明确要求端到端流程时才保留跨功能链，并在标题和覆盖清单标明 E2E。
+
+每例自行准备身份、初态和数据，必须可单独执行且不依赖其他用例的执行顺序、残留状态或造数结果。登录、导航和必要数据准备属于本例前置。例如重置用例可先建立筛选状态，但不附带验证查询命中与空结果两个业务目标。
+
 使用当前会话真实工作目录。先从用户目标与可信资料确定 targetUrl、项目、角色、身份定位器与文本、初态和预期。每条 expected 必须包含唯一 id、text、source.kind（user/rule/baseline）与可定位的 source.reference。页面明确规则可以作为 rule，观察到的实际结果不能倒推预期。
 
 调用 qa_ui_explore 时提供 contract：
@@ -40,6 +46,8 @@ description: 编排只读或已授权隔离写的 UI 探索、候选生成、完
 3. case.json 使用 qa-ui-case/v1，包含 caseId/taskId、project{id,name}、title、modulePath 数组、targetUrl、role、initialState、dataStrategy、cleanup、expected、steps{text,stepId}、assertions{kind,expectedId,text}。modulePath 按业务目录书写，例如 `["合同管理", "经营合同"]`，用于用例面板的目录树；不要用“只读”“冒烟”等测试类型代替业务目录。项目、预期和前置沿用任务，不修改为探索实际值。stepId 必须引用成功动作；每条预期至少有 business 引用。
 4. 一例一 test，使用 @playwright/test 的 test/expect，稳定业务定位器和 web-first 断言。独立核对身份与初态，附 qa-initial-state 截图；完成业务结果断言后附 qa-business-result 截图。无凭据、skip、吞错、固定 sleep、first/nth 或临时 ref。
 5. 调用 qa_ui_save_candidate({taskId,caseId})，静态检查并冻结 revision，不执行。candidate 模式到此交付。候选冻结后不得直接修改 revision。
+
+保存要求 case.expected 与 task.contract.expected 完全一致。发现任务已混合多个业务目标时，不在候选阶段删掉预期、伪造轨迹或复制同一混合脚本改名凑数；保留原任务，回到覆盖清单拆分目标并各自取得真实探索证据，遵守原任务范围和异常停止规则。
 
 ## 隔离写操作
 
@@ -69,4 +77,4 @@ description: 编排只读或已授权隔离写的 UI 探索、候选生成、完
 
 首次错误停止依赖链并保留 task/run、日志和已生成文件。读取原因，只有明确修复前置条件后才允许一次恢复验证；仍失败立即报告，不换工具、模型、账号或新建等价任务绕过。取消等待原任务终值；清理未知保留锁，不自行删锁。写入结果未知先只读核实，不重复提交。
 
-交付 taskId/caseId/revision/runId、预期来源、完成阶段、真实状态、证据路径与未覆盖项。生成、静态检查、独立验证和发布分别报告；未执行不写通过。报告格式加载 qa-test-report。
+交付 taskId/caseId/revision/runId、预期来源、完成阶段、真实状态、证据路径与未覆盖项。逐项更新覆盖清单，分别统计设计条目、候选、已验证和已发布用例；受阻或待确认条目不计为已生成或通过，只交付部分时明确范围。生成、静态检查、独立验证和发布分别报告；未执行不写通过。报告格式加载 qa-test-report。

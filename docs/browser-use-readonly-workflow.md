@@ -21,6 +21,8 @@ Python 只暴露 navigate/click/input/select_dropdown/done。动作前按实际�
 
 ## 文件契约与发布门槛
 
+用例的业务粒度、独立执行要求、覆盖数量及设置中的规则维护入口见 [UI 用例粒度与规则维护](ui-case-rules.md)。先拆业务目标再冻结探索任务；每个文件一个 test 只是结构约束，不代表独立功能已拆分。
+
 ```text
 qa/ui/tasks/<taskId>/task.json
 qa/ui/tasks/<taskId>/actions.jsonl
