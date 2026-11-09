@@ -1,10 +1,10 @@
 # browser-use + Playwright：阶段 2 只读闭环
 
-核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。开发入口及独立执行 CLI 已接入，离线集成验证通过；真实 Qwen 首次请求超时，真实探索后的整链验收尚未通过。阶段 3 已接入 CLI、执行技能、用例与报告面板及对应 IPC；生产扩展和其他技能仍待替换，整体未完成。两面板定向检查通过，共用侧栏检查与 Chromium 缓存异常见下方记录。
+核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。生产入口、独立 CLI、用例/报告面板及对应 IPC 已统一为新版只读工作流，定向离线验证通过。真实 Qwen 首次请求超时，真实探索后的整链验收尚未通过。两面板历史检查通过，共用侧栏检查与 Chromium 缓存异常保留下方记录。
 
 ## 已接入的链路
 
-开发扩展工厂为 `src/main/capabilities/ui-testing/workflow-extension.mjs` 的 `createReadOnlyWorkflowExtension(runtime)`，通过官方 `DefaultResourceLoader.extensionFactories` 加载。`runtime` 沿用 `resolveUiTestingRuntime` 的路径，可传宿主已有的官方 `modelRuntime`。生产 `pi-resources.mjs` 仍登记旧扩展；本阶段不同时加载两组工具，不提供运行时切换开关。
+生产扩展工厂为 src/main/capabilities/ui-testing/extension.mjs 的 createUiTestingExtension(runtime)，由 pi-resources.mjs 通过官方 DefaultResourceLoader.extensionFactories 登记。createPiAgent 为每个会话复制运行时，并在官方模型目录刷新后注入该会话的 ModelRuntime；四工具闭包共用此引用。旧开发扩展已删除，不再保留两组入口或 MCP 设置过滤。
 
 | 工具 | 行为 |
 | --- | --- |
@@ -49,7 +49,7 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 
 批次在工作区锁内固定准确版本、文件哈希及 `sourceTaskIds`，检查用例与已完成只读探索任务的项目、目标和角色一致。批量执行须项目、目标地址、角色及可见身份标识一致，否则在登录前拒绝；不同范围须拆批。每批仅后台登录一次，共用私有状态，再由原执行器运行准确脚本并保存原生报告。退出 0 仅表示全部通过；失败、取消、incomplete 和参数错误均退出 1。SIGINT/SIGTERM 传给共享执行器收尾，状态未知时保留锁与现场。
 
-`qa-ui-execute` 及用例面板生成的执行提示已同步为此入口。旧生产录制工具尚未替换，不能将旧资产交给新 CLI。当前 CLI 从开发仓库加载共享实现，安装包资源布局及跨平台运行未验收。
+`qa-ui-execute` 及用例面板生成的执行提示已同步为此入口。旧生产录制工具已移除，旧资产不交给新 CLI。当前 CLI 从开发仓库加载共享实现，安装包资源布局及跨平台运行未验收。
 
 ## 版本用例面板
 
@@ -96,6 +96,19 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 - 真实 Qwen：通过开发扩展的 `qa_ui_explore` 发起 1 次请求，0 动作，随后因超时停止。未保存候选、未执行 Playwright、未发布，也未发起第二次真实请求。
 
 离线测试通过不代替真实探索验收。真实调用恢复前，本阶段标记为“代码与离线闭环就绪，真实探索整链待验”，不宣称阶段 2 全部验收完成。
+
+2026-11-09 生产入口收尾：prompt-content、ui-project-context、ui-testing-runtime、ui-readonly-workflow 四组定向测试共 9 项通过、0 失败/跳过。真实 createPiAgent 工厂使用临时模型与认证配置，验证四工具、三 UI 技能及报告技能只登记一次、禁用资源与第三方 MCP 替换语义、设置文件未改写及原生工具保留；生产工具实际完成协议探索、候选冻结、本地 Chromium 定向验证、发布和正式回归。后台登录另覆盖公开页、验证码不提交、正确凭据单次提交及 cookie/localStorage、认证失败不重试、权限和清理。探索进程为显式离线协议夹具，不请求真实模型；未扩大为真实业务验收。补充移走临时磁盘模型登记后，生产工具仍通过会话运行时完成闭环；与正式 CLI 的定向检查合计 4 项通过（含重跑的 1 项闭环）。权限门禁 7 项通过，五份相关技能结构检查通过。按不同测试计，本轮共 19 项通过、无失败或跳过。
+
+## 本轮编辑调用异常及恢复
+
+| 项目 | 记录 |
+| --- | --- |
+| 任务与结论 | 2026-11-09，Asia/Shanghai（具体时刻未记录），阶段 3 收尾编辑调用曾在执行前解析失败；本轮另一次文档补丁被拒绝，相关调用均未产生部分写入，现已完成替换并验证 |
+| 调用链路 | 用户修复目标 → 文件检查/编辑 → functions.exec → exec_command 或 apply_patch；没有下游服务请求。技能仅使用 /Users/liyingjun/.codex/skills/.system/skill-creator/SKILL.md 核对本地技能文案，未执行 UI 工作流技能 |
+| 工具与结果 | 历史脚本文本解析错误含 Unexpected identifier、base is not defined，未进入 shell；本轮 apply_patch 返回 invalid patch: multiple operations target docs/ui-testing-runtime.md，原文未改动；调用编号未记录 |
+| 已确认原因 | 脚本文本嵌套引用方式不正确；补丁工具不允许同路径删除再新增。并非应用运行故障。无证据表明存在模型或浏览器新故障 |
+| 处置与依据 | 停止依赖编辑，核对文件后改用无插值原文脚本和单次原文件更新；修正传递方式后的写入成功，生产入口定向测试 9 项通过。未重放历史真实模型请求 |
+| 影响与恢复 | 未发送模型/业务请求，未产生结果未知的外部写入；历史应用故障保持原记录。编辑链路已恢复，无需用户补充操作 |
 
 ## 异常报告 A：截图附件格式不满足文件证据契约（已修正）
 

@@ -3,7 +3,6 @@ const { defineConfig } = require("@playwright/test");
 
 const casesDir = process.env.QA_UI_CASES_DIR;
 const outputDir = process.env.QA_UI_OUTPUT_DIR;
-const recording = process.env.QA_UI_PHASE === "record";
 
 if (!casesDir || !outputDir) {
   throw new Error("缺少宿主提供的测试目录或输出目录。");
@@ -18,8 +17,7 @@ module.exports = defineConfig({
   forbidOnly: true,
   timeout: 30_000,
 
-  // 官方录制通过暂停 seed 测试维持页面，不能套用正式批次时限。
-  globalTimeout: recording ? 0 : 600_000,
+  globalTimeout: 600_000,
 
   expect: {
     timeout: 10_000,

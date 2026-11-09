@@ -126,13 +126,15 @@ export async function createPiAgent(
       },
     ),
   });
+  // 每个会话独立持有运行时引用，探索复用此会话的官方模型和认证。
+  const uiTestingRuntime = resourceOptions?.uiTestingRuntime ? { ...resourceOptions.uiTestingRuntime } : undefined;
   const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
     await createPiResources({
       cwd: workspaceRoot,
       appendSystemPrompt: [promptSnapshot?.testAgentPrompt ?? resourceOptions?.delegatedPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT],
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
-      uiTestingRuntime: resourceOptions?.uiTestingRuntime,
+      uiTestingRuntime,
       permissionController: resourceOptions?.permissionController,
       permissionMode,
       workspaceChanges: resourceOptions?.workspaceChanges,
@@ -184,6 +186,7 @@ export async function createPiAgent(
     if (savedSelection) error.code = "PI_SAVED_MODEL_UNAVAILABLE";
     throw error;
   }
+  if (uiTestingRuntime) uiTestingRuntime.modelRuntime = runtime;
   recordStage("模型目录与认证");
 
   // 不传 tools/excludeTools：沿用 Pi 的默认工具及 defaultTools 配置。

@@ -9,7 +9,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const runFile = promisify(execFile);
 
-for (const scenario of ["resources", "recording", "replay", "login-batch", "auto-login"]) {
+for (const scenario of ["resources", "auto-login"]) {
   test(`内置 UI 测试：${scenario}（临时目录，不请求模型）`, async (t) => {
     const runtime = resolveUiTestingRuntime({ isPackaged: false }, path.resolve(__dirname, "../.."));
     if (scenario !== "resources" && (process.platform === "win32" ||
@@ -18,8 +18,8 @@ for (const scenario of ["resources", "recording", "replay", "login-batch", "auto
       return;
     }
     const base = await realpath(await mkdtemp(path.join(os.tmpdir(), "ui-runtime-")));
-    // 官方 MCP 子进程退出时仍可能收尾写入 trace，允许临时目录删除重试。
-    t.after(() => rm(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+    let passed = false;
+    t.after(() => passed ? rm(base, { recursive: true, force: true }) : process.stdout.write("保留检查现场：" + base + "\n"));
     const result = await runFile(process.execPath, [
       "--require", path.resolve(__dirname, "../helpers/pi-test-isolation.cjs"),
       path.resolve(__dirname, "../helpers/ui-testing-runtime-check.mjs"), base, scenario,
@@ -30,5 +30,6 @@ for (const scenario of ["resources", "recording", "replay", "login-batch", "auto
       maxBuffer: 2 * 1024 * 1024,
     });
     assert.equal(result.stderr, "");
+    passed = true;
   });
 }

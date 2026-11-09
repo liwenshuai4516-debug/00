@@ -5,7 +5,8 @@ import http from "node:http";
 import { once } from "node:events";
 import { createHash } from "node:crypto";
 import { ModelRuntime, DefaultResourceLoader, SettingsManager, SessionManager, createAgentSession } from "@mariozechner/pi-coding-agent";
-import { createReadOnlyWorkflowExtension } from "../../src/main/capabilities/ui-testing/workflow-extension.mjs";
+import { createUiTestingExtension } from "../../src/main/capabilities/ui-testing/extension.mjs";
+import { createPiAgent } from "../../src/main/pi-agent.mjs";
 import { createReadOnlyWorkflow } from "../../src/main/capabilities/ui-testing/workflow.mjs";
 import paths from "../../src/main/capabilities/ui-testing/runtime-paths.js";
 import lifecycle from "../../src/main/resources/pi-session-lifecycle.js";
@@ -47,7 +48,6 @@ let modelRuntime;
 if (real) modelRuntime = await ModelRuntime.create({ refreshOnCreate: false, allowModelNetwork: false });
 else {
   await write(path.join(agentDir, "models.json"), { providers: { fixture: { baseUrl: "https://fixture.invalid/v1", api: "openai-completions", apiKey: "fixture-key-not-real", models: [{ id: "fixture-model", name: "Fixture", reasoning: false, input: ["text"], contextWindow: 32768, maxTokens: 4096 }] } } });
-  modelRuntime = await ModelRuntime.create({ authPath: path.join(agentDir, "auth.json"), modelsPath: path.join(agentDir, "models.json"), modelsStorePath: path.join(agentDir, "models-store.json"), refreshOnCreate: false, allowModelNetwork: false });
   // 协议夹具显式替代 Python；不声称发生真实探索或真实模型请求。
   const python = path.join(base, "protocol-fixture.cjs");
   await fs.writeFile(python, `#!${process.execPath}
@@ -64,7 +64,7 @@ emit({type:'done',status:'completed',actions:4,modelCalls:0,cleanupConfirmed:tru
 `, { mode: 0o700 });
   runtime.browserPython = python;
 }
-runtime.modelRuntime = modelRuntime;
+if (real) runtime.modelRuntime = modelRuntime;
 const contract = {
   mode: "complete", goal: "Open the target URL, confirm fixture-reviewer. Fill Filter with Beta. Confirm only the Beta row remains visible. Click Detail in the Beta row exactly once. Observe Beta · ready and finish successfully. Do not click Alpha.",
   role: "reviewer", identity: { selector: '[data-testid="identity"]', text: "fixture-reviewer" },
@@ -76,20 +76,30 @@ const contract = {
   provider: real ? "qwen3.8-flash-next" : "fixture", modelId: real ? "qwen3.8-flash-next" : "fixture-model",
   budget: { maxSteps: 8, timeoutMs: 180000 },
 };
-const settingsManager = SettingsManager.inMemory();
-const resourceLoader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager,
-  noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
-  extensionFactories: [{ name: "readonly-development", factory: createReadOnlyWorkflowExtension(runtime) }],
-});
-await resourceLoader.reload();
-const model = modelRuntime.getModel(contract.provider, contract.modelId);
-assert.ok(model, "指定模型必须已登记");
-const { session } = await createAgentSession({ cwd: workspace, agentDir, modelRuntime, model, settingsManager, resourceLoader, sessionManager: SessionManager.inMemory(workspace) });
+let session;
+if (real) {
+  const settingsManager = SettingsManager.inMemory();
+  const resourceLoader = new DefaultResourceLoader({ cwd: workspace, agentDir, settingsManager,
+    noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+    extensionFactories: [{ name: "desktop-ui-testing", factory: createUiTestingExtension(runtime) }],
+  });
+  await resourceLoader.reload();
+  const model = modelRuntime.getModel(contract.provider, contract.modelId);
+  assert.ok(model, "指定模型必须已登记");
+  ({ session } = await createAgentSession({ cwd: workspace, agentDir, modelRuntime, model, settingsManager, resourceLoader, sessionManager: SessionManager.inMemory(workspace) }));
+} else {
+  session = await createPiAgent(path.join(base, "sessions"), false, undefined, workspace,
+    { provider: "fixture", modelId: "fixture-model" }, undefined, undefined, undefined, { uiTestingRuntime: runtime });
+  assert.ok(session.desktopServices.modelRuntime.getModel("fixture", "fixture-model"));
+  // 撤下磁盘登记，确保生产工具使用会话已注入的运行时，而非重新加载配置。
+  await fs.rename(path.join(agentDir, "models.json"), path.join(base, "fixture-models.saved.json"));
+  runtime.modelRuntime = session.desktopServices.modelRuntime;
+}
 let calls = 0;
 const call = async (name, params, signal) => {
   const tool = session.agent.state.tools.find((item) => item.name === name);
   assert.ok(tool, `官方 SDK 必须登记 ${name}`);
-  const result = await tool.execute(`check-${++calls}`, params, signal);
+  const result = await tool.execute(`check-${++calls}`, params, signal, undefined, { cwd: workspace });
   assert.ok(!result.isError, JSON.stringify(result));
   return result.details;
 };

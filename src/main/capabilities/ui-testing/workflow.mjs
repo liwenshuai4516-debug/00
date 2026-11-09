@@ -164,7 +164,7 @@ async function modelConfig(contract, suppliedRuntime) {
 }
 
 async function login(runtime, project, contract, signal) {
-  const entry = await openLogin(runtime, project.targetUrl, signal, { headed: false });
+  const entry = await openLogin(runtime, project.targetUrl, signal);
   try {
     const credentials = await readCredentials(runtime, project);
     const result = await entry.auto(credentials, { authenticated: contract.identity.selector }, signal);

@@ -1,214 +1,67 @@
 # 客户端内置 UI 测试
 
-当前处于入口替换中：2026-11-09，独立 `execute.cjs` 与 `qa-ui-execute` 已切换为只执行 `qa/ui/cases/<caseId>/` 中的正式版本，复用新只读工作流。用例与报告面板及对应 IPC 已接入新版分页、只读详情和删除保护。生产扩展与其他技能仍使用旧 Playwright Test MCP 录制入口，阶段 3 整体未完成。下文旧录制说明仅适用于该入口，旧资产不能搭配新 CLI 或新版用例/报告面板；完整边界见 [只读闭环](browser-use-readonly-workflow.md)。
+2026-11-09，生产会话已切换到 browser-use 探索、Playwright 独立验证与版本发布链路。当前只支持只读测试；写操作、多角色、已有用例自动修复和安装包验收不在本阶段范围。真实 Qwen 首次探索超时，真实模型生成到发布的整链尚未验收。详细证据和历史异常见 [只读闭环](browser-use-readonly-workflow.md)。
 
-已有执行器支持后台登录、原生 JSON/HTML、统一摘要及证据清单；运行依赖由客户端准备，被测工作目录不需要自行安装。
+## 入口和资源
 
-## 代码分工
+通过 Pi 1.4.0 官方扩展工厂登记一次 builtin:desktop-ui-testing，尊重禁用与替换；不再过滤用户 MCP 配置或强制启用内置 MCP。每个生产会话将自身的官方 ModelRuntime 传给工作流，模型与认证仅在后端使用。
+
+| 工具 | 行为 |
+| --- | --- |
+| qa_ui_explore | 根据真实工作区与地址匹配项目，后台登录并执行只读探索，返回 taskId 和轨迹 |
+| qa_ui_save_candidate | 检查任务草稿、来源与步骤，冻结准确 revision，不执行 |
+| qa_ui_run | validate 验证候选，regression 仅执行当前正式版本 |
+| qa_ui_publish | 核对真实 passed 结果、版本哈希、证据与清理后更新正式引用 |
+
+内置 UI 技能为 qa-ui-basic、qa-ui-assertion、qa-ui-execute，共用报告技能 qa-test-report。旧意图/录制技能及旧 project/login/prepare/finalize 工具已移除；旧平铺资产和录制日志不迁移、不作为新版来源。已有会话需重新加载资源或新建会话才使用更新入口。
 
 | 位置 | 职责 |
 | --- | --- |
-| `src/main/capabilities/ui-testing/extension.mjs` | `qa_ui_project`、`qa_ui_login`、`qa_ui_prepare`、`qa_ui_finalize`、官方 MCP 登记和日志保存 |
-| 同目录 `project-context.mjs` | 项目地址匹配、输入冲突检查、当前工作区数据目录与命名 |
-| 同目录 `login-session.mjs` | 私有登录目录、登录子进程和会话关闭清理 |
-| 同目录 `runtime-paths.js` | 开发和发布资源定位 |
-| `resources/testing/ui/login.cjs` | 独立可见 Chromium、登录判断/自动登录/人工接管、私有 storageState 导出 |
-| `resources/testing/ui/run.cjs` | 批次执行、取消、清理、摘要与清单 |
-| `resources/testing/ui/playwright.config.cjs` | 单 worker、零重试、报告和证据策略 |
-| `resources/testing/ui/skills/qa-ui-intent/SKILL.md` | 意图识别与不改变原意的提示补全：输出 original/intent/completedPrompt/missing/route |
-| `resources/testing/ui/skills/qa-ui-basic/SKILL.md` | 按意图裁剪的七步编排、共享约束和阶段交接；具体录制/回放/报告操作委派给执行技能 |
-| `resources/testing/ui/skills/qa-ui-record/SKILL.md` | 录制与脚本整理：断言来源、定位器、数据隔离、等待方式 |
-| `resources/testing/ui/skills/qa-ui-execute/SKILL.md` | 按 caseId 单项/批量/定时执行，不录制、不改脚本 |
-| `resources/testing/ui/skills/qa-ui-assertion/SKILL.md` | 独立断言规则：来源、业务/守卫、数据不变量、编辑同步、失败判定 |
-| `resources/testing/reporting/SKILL.md` | `qa-test-report`：UI 与接口共用的报告状态、通过条件和交付规则 |
-| `resources/testing/ui/execute.cjs` | 新正式版本 CLI：选择项目及 case，调用共享只读工作流，不读取旧平铺资产 |
-| `src/main/capabilities/ui-testing/workflow.mjs` | 新资产候选、验证、发布与正式回归；CLI 和 `qa_ui_run` 共用执行核心 |
-| `src/main/services/test-data-service.js` | 新版用例每页 50 条、准确 revision 详情及哈希核对；整例删除复用共享锁；保留其他测试文件 |
-| `src/main/services/test-report-service.js` | 聚合 `qa/ui/runs` 与 `qa/api/runs` 的 `qa-report/v1` 摘要，校验路径与大小 |
-| `src/renderer/components/right-sidebar-panel.js` | 新版用例搜索分页、只读版本、正式执行提示与整例删除；报告列表、类型筛选和按需详情 |
-| `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
+| src/main/capabilities/ui-testing/extension.mjs | 四工具、技能发现、关闭时取消并等待任务收尾 |
+| 同目录 workflow.mjs | 候选、验证、发布、正式回归及工作区锁 |
+| 同目录 project-context.mjs、login-session.mjs | 项目边界、后台登录、私有临时状态 |
+| resources/testing/ui/browser-use/ | 固定 Python/browser-use 探索及协议 |
+| resources/testing/ui/run.cjs、playwright.config.cjs | 独立回放、取消、原生报告、快照和清单 |
+| resources/testing/ui/execute.cjs | 正式版本 CLI，共享工作流执行核心 |
+| src/main/services/test-data-service.js、test-report-service.js | 用例与报告分页、准确详情和删除检查 |
+| tooling/testing/ui/prepare-runtime.cjs | 准备当前平台 Node、Python、Playwright 和浏览器 |
 
-## 录制工具与 MCP 模式
+开发资源位于 resources/testing/ui 和 resources/testing/reporting；发布路径分别为 process.resourcesPath/testing/ui、testing/reporting。运行依赖、浏览器、认证与证据不提交。发布需完整复制对应资源；当前未做安装包或跨平台验收。
 
-`qa_ui_prepare(mode=record)` 通过 `pi.registerMcpServer("desktop-playwright-test", ...)` 启动官方 Playwright Test MCP。该注册依赖**内置 MCP** 的 `direct` 暴露，工具名应为 `mcp__desktop_playwright_test__generator_setup_page`、`browser_click`、`browser_verify_*` 等。
+## 只读任务
 
-这些工具不是会话启动时就登记的：必须先完成 `qa_ui_login`（saved 或 not-required），再成功调用 `qa_ui_prepare(mode=record)`，`browser_*` / `generator_*` 才会出现。准备前的工具清单里没有它们属于正常状态，不能据此判定工具缺失或直接报 blocked；prepare 已成功返回但工具仍未出现时，才按实际错误停止。
+先声明目标 URL、项目、角色、可见身份、可重复初态、业务预期与 user/rule/baseline 来源。contract.mode 区分 explore、candidate、complete；分别到探索、候选保存、验证发布阶段结束。已有正式用例回归加载执行技能，不重新探索。
 
-如果 Pi 设置了 `-builtin:mcp` 并安装 `pi-mcp-adapter`，适配器会把运行时注册降级为 proxy-only，不暴露上述直连工具，`qa_ui_finalize` 也会因缺少 `generator-log-*.json` 拒绝登记。带 UI 测试运行时的 SW-QA 会话会在设置读取层过滤该适配器并重新启用内置 MCP；只影响当前应用会话，不改用户的全局 `settings.json`，也不影响其他客户端。因此全局存在 `-builtin:mcp` 本身不会让本流程失去录制工具；不要据此改用其他浏览器技能。
+dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/select_dropdown 控件与输入值须明确，使用稳定定位和业务容器；探索最多 12 步、180 秒，明确指定已有 Pi provider/modelId，不自动换模型。缺少会改变业务目标、身份或预期的信息时先澄清。页面实际结果不能倒推预期。
 
-`pi-playwright`、`pi-chrome` 是独立的用户技能包，使用各自的 Playwright 与浏览器版本（例如 chromium-1247），与内置运行时的 `@playwright/test` 1.64.1 / chromium-1248 不同。它们不能替代或复核本流程，也不会产生可 `qa_ui_finalize` 的官方生成日志；缺少其对应浏览器时应运行该包自己的 setup，或移除该包。`pi-playwright` CLI 默认以 git 根目录或工作区名作为会话名，同一工作区的不同聊天会共用浏览器会话和 `/tmp/pi-playwright/<session>` 产物；这是该技能自身行为，不属于应用会话隔离，因此录制和复核都不要使用它。
+项目配置仍在客户端 config/projects.local.json，见 [项目前置数据](project-data.md)。按 origin 和完整路径段匹配，最长范围优先；同等候选须明确项目。产物写当前会话真实工作区 qa/ui，不根据工作区名称猜系统。凭据由后端使用，不返回模型或写入脚本。
 
-修改后必须**新开会话/重启客户端**，已启动的会话不会重新加载扩展。验证方式是 prepare 后会话工具清单出现上述 `mcp__desktop_playwright_test__*`，或准备后录制目录生成 `generator-log-*.json`。
+自动登录仅后台执行一次。公开页不提交凭据；验证码/MFA、跨域认证、未知表单、登录失败或身份无法确认时停止，无人工接管窗口。已验证 cookie/localStorage 交接，IndexedDB 状态尚不支持。每次回放创建独立上下文并核对身份和初态，结束删除私有状态。
 
-`projectRef`、登录态引用和官方 MCP 工具都是当前会话的内存状态。会话恢复/切换、扩展 reload 或上下文压缩后，它们会失效；必须重新执行 `qa_ui_project → qa_ui_login → qa_ui_prepare`（新 caseId），不能复用旧 refs 或旧录制日志。录制期间不要使用 `compress` 等上下文压缩/会话替换功能。
+## 文件与通过条件
 
-登录态按 `projectRef` 管理：`qa_ui_login(auto)` 对每个 `projectRef` 只尝试一次；`saved` 可复用于多次 record 准备，但一次 `qa_ui_prepare(mode=run)` 会绑定该登录态，第二次 run 准备会被拒绝。prepare/login 报登录态失效、已绑定批次或目标站点不符时，不要原样重试；重新 `qa_ui_project` 获取新 `projectRef`，再登录和准备。回放命令失败后不要重新 prepare 同一 case 来重试，先读 summary；需要新批次时重新走完整前置链路。
+- qa/ui/tasks/<taskId>/：任务约定、动作轨迹、必要证据及 drafts/<caseId>/case.spec.cjs、case.json。
+- qa/ui/cases/<caseId>/：asset.json、revisions/0001/ 等冻结版本；currentRevision 仅指向验证通过的正式版本。
+- qa/ui/runs/<runId>/：原生 JSON/HTML、summary、源码快照、截图与 manifest。
 
-自动登录、录制和回放默认无头执行，不打开前端浏览器；只有用户明确要求现场观察时才传 `headed=true`。`qa_ui_login(auto)` 遇到验证码/MFA 默认静默返回 manual-required，不主动弹窗；manual-required 后不要用同一 `projectRef` 重复 auto，需要人工接管时用 `start` + `complete`，或重新 `qa_ui_project` 后再 auto headed=true。
+一例一 test，业务断言覆盖固定预期并引用真实成功步骤。先核对独立初态、附 qa-initial-state PNG，再断言业务结果并附 qa-business-result PNG；附件必须保存为可核对的文件。静态检查不代表执行通过。validate 只允许完整测试任务，每个 revision 仅一次定向验证；只有实际 passed、退出 0、哈希一致、必要证据齐全且清理成功才发布。回归不修改资产。
 
-已有 `*.seed.spec.cjs` 的 caseId 不能再次用于 record（prepare 会以“同名 case 已存在”拒绝）；中断后请用新的 caseId 重新 prepare，旧种子和空录制目录仅作中间产物保留，不能据此 finalize。
+同工作区跨实例串行；取消直接交给原任务并等待终值。首次异常停止依赖链，保留任务和日志；明确修复前置条件后才允许一次恢复验证。收尾未知保留锁和现场，不自行删锁、换模型或新建等价任务绕过。
 
-通过 Pi 1.4.0 的官方资源加载器登记一次 `builtin:desktop-ui-testing`；允许禁用或替换，不覆盖原生工具或添加关键词路由。开发资源在 `resources/testing/ui` 与 `resources/testing/reporting`；发布分别读取 `process.resourcesPath/testing/ui`、`testing/reporting`。Node、浏览器、node_modules 和运行证据不提交。打包后需完整复制对应平台资源；本次没有进行安装包验收。
+## 正式版本 CLI
 
-## 独立断言规则（2026-11-04）
+运行 resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB。
 
-断言能力从录制技能中拆到 `qa-ui-assertion`，录制流程本身不变：`qa-ui-record` 仍在原步骤写断言，只把规则正文改为引用该技能。
+--project 接受项目编号或唯一名称；配置默认 config/projects.local.json，可用 --config 指定。--cases 与 --all 二选一，只执行 currentRevision。同批必须项目、目标、角色和身份一致；每批登录一次，记录准确 revisions/sourceTaskIds。最终 JSON 输出 runId/status/summaryFile/counts/cleanup；全部通过退出 0，其余退出 1。SIGINT/SIGTERM 交给共享执行器收尾。无账号发现、外部登录态、地址覆盖或自动修复参数，不读取 .env 或调用模型。外部调度可调用该入口，真实项目定时运行尚未验收。
 
-- 来源：用户需求/用例说明 → 页面规则；默认标「页面规则」
-- 区分 business 与 guard；至少一条业务结果断言
-- 列表/筛选用不变量：总数 > 0、总数等于行数、每行满足条件；不硬编码「共 N 条」
-- 断言编辑需同步 spec、`.asset.json`、`.md` 和 `sha256`，不能只改展示
-- 失败判定：操作正确但 Expected/Received 只差数据量/动态值，按断言问题；筛选未生效、请求缺参数按录制或产品问题
+## 用例和报告面板
 
-## 独立执行入口（2026-11-09）
+用例面板只读取新版 qa-ui-asset/v1，完整枚举、筛选排序后每页 50 条；展开才读取准确 revision 和核对哈希。正式内容只读，候选独立标示；只有正式版本可生成精确 CLI 提示，插入输入框但不发送。整例删除需确认，在共享锁内检查过期版本和归属，tasks/runs 保留。其他 qa/data 普通文件保留原单文件操作。
 
-`qa-ui-execute` 只执行新目录已发布的只读正式版本：
+UI 报告只接收 qa-report/v1、kind=ui、workflow=browser-use-playwright 和有效版本来源；API 报告保持兼容。列表及逐例详情每页 50 条，全批失败摘要记录总数及前 5 条，不因分页改统计。删除在共享锁内核对活动任务与有效用例来源/验证引用，必要来源不可删。细节见 [测试报告](test-reports.md)。
 
-```bash
-resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB
-```
+## 验证边界
 
-- `--project` 接受项目编号或唯一名称；配置默认 `config/projects.local.json`，可用 `--config` 指定文件，工作目录取项目配置的真实目录。
-- `--cases` 精确选择 caseId，或以 `--all` 选择该项目全部正式用例；只读 `currentRevision`，不执行候选或旧平铺格式。
-- 同批必须项目、目标地址、角色和可见身份标识一致，否则在登录前拒绝；需按范围拆批。
-- 与 `qa_ui_run` 共用来源/哈希检查、工作区锁、后台登录、私有状态、取消和报告。每批固定准确 revisions 与 sourceTaskIds，生成 `qa/ui/runs/run-*`，每批登录一次。
-- 最后一行 JSON 输出 `runId`、`status`、`revisions`、`summaryFile`、`testCount`、`counts`、`cleanup` 等；全部通过退出 0，失败、取消、incomplete 或参数错误退出 1。
-- 不读取 `.env`、不动态发现账号、不调用模型、不修改资产；旧标题筛选、账号选择、外部登录态及地址覆盖参数已移除，未知参数直接拒绝。
-- SIGINT/SIGTERM 交给共享执行器收尾；收尾未知保留锁和现场，失败不自动重试。验证码/MFA/身份不符按登录结果停止，不自动弹窗或换账号。
+本轮生产入口、项目上下文、提示词和后台登录定向测试 9 项通过、无失败或跳过。真实生产工厂创建临时官方 SDK 会话，确认四工具及四技能只登记一次、禁用和第三方 MCP 替换语义不变；离线探索协议夹具连接真实本地 Chromium，验证候选、发布、正式回归、拒绝边界、取消与清理。未读取真实认证，未请求模型。
 
-CLI 可由外部调度调用，当前开发入口从仓库加载共享实现；安装包资源布局、跨平台及真实项目定时运行尚未验收。用例面板已生成新版 CLI 提示；生产旧工具及报告契约仍待替换，本节不表示旧录制链已整体迁移。
-
-## 用例面板（2026-11-09）
-
-右侧「测试数据」按项目读取 `qa/ui/cases/<caseId>/`，只展示 `qa-ui-asset/v1`。完整枚举、按模块/标题/编号排序并筛选后，每页 50 条；不先截取前 200 个目录。搜索用例编号、标题、模块或角色，展开才读取准确 revision 的详情与文件哈希。
-
-正式说明优先，后续候选单独标示；详情可切换版本，只读展示步骤、固定预期及来源、business/guard 断言、初态、task 与验证 run。最近状态仅关联同项目、真实工作区、准确正式 revision 的新版 regression；候选验证结果不充当正式回归。只有正式用例可生成精确 `--project` / `--cases` 执行提示，插入输入框但不发送；候选没有执行入口。
-
-删除需确认整个 case 的全部版本永久删除。主进程 idle 互斥与共享工作区锁内核对列表 assetHash、说明哈希及项目/task 归属；有活动任务、遗留锁或版本变化时拒绝。历史 tasks/runs 保留。其他 `qa/data` 文件保留单文件删除，旧 UI 平铺目录不再展示或编辑。旧步骤/断言编辑、流程标记、批量移除 spec 中 test 的接口已退出。
-
-定向服务/IPC/共享工作流检查 23 项通过，独立用例页面 16 项断言通过且已核对截图；缓存初始化仍报错，共用侧栏检查停在旧模型设置断言，没有完成。详细证据和恢复条件见 [实现与异常记录](browser-use-readonly-workflow.md)。本次没有真实模型请求或真实业务验收。
-
-## 测试提示词（录制）
-
-录制类任务建议在首条消息写清：目标 URL、环境授权、角色、范围、预期来源。环境授权是写操作的前提：只有用户明确说“测试环境/测试库/可以造数/允许写操作”，或项目配置明确授权时，Skill 才允许新增、编辑、删除、提交、审批和造数；只说“生成测试用例”时模型会保守地只做只读，并在“未覆盖”中说明写操作未执行，这不是工具阻塞。页面模板“UI 用例录制”已包含这些字段。
-
-```text
-请对 http://… 录制可回放的 UI 测试用例并登记到当前项目。
-环境：测试环境，已授权新增、编辑、删除、提交、审批和造数；写操作使用唯一前缀并在结束清理。
-角色与范围：【如 项目管理系统管理员 / 合同管理·经营合同】
-预期：统计卡无需求公式时按页面规则、接口字段和列表数据复算并标注假设；不要整块未覆盖。
-先盘点筛选项、工具栏、行操作、分页、统计卡和详情/回款计划入口；使用 qa_ui_project → qa_ui_login → qa_ui_prepare 和官方录制工具，最后 qa_ui_finalize 登记；不要只输出设计文档。
-```
-
-## 旧生产录制流程（2026-11-04，待替换）
-
-旧生产技能尚未同步到新工作流，以下记录现有工具行为，不是新 CLI 的操作规程。旧用例回放须沿用 `qa_ui_prepare(mode=run)` 返回的执行命令，不委派已替换的 `qa-ui-execute`；新目录正式版本使用上一节入口。
-
-旧编排按意图裁剪：只录制走步骤 1–5，只执行走 1–3 + 6–7，录制并回放走 1–7。用户确认目标为测试环境时视为业务层授权；工具层仍按当前应用权限模式逐次确认或放行。业务预期默认采用页面规则并标注来源。
-
-旧入口在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理由 `/skill:qa-ui-record` 提供，报告由 `qa-test-report` 提供。现有编排中对执行技能的旧引用仍待删除，不能据此让新 CLI 读取旧格式。登录及资产准备的关键条件同时由工具检查，没有宿主关键词路由。
-
-进入编排前先加载 `qa-ui-intent`：它保留用户原话，识别动作/对象/范围和交付物，输出 `intent`、`completedPrompt`、`missing` 和 `route`。补全只能显式化隐含范围与流程约束，不能把“录制”改成“执行”、把审批子集扩大成全页面，或把只生成 case 改成完整多角色审批。审批子集录制走 `qa-ui-record` 的“审批子集补全模式”，使用新 caseId 生成独立资产，非审批区域标本次范围外。
-
-| 步骤 | 实际行为与完成条件 |
-| --- | --- |
-| 1. 工作区检查 | 使用当前会话 cwd；qa_ui_project 在同一次调用中校验真实路径、目录边界、`qa/data/ui/cases` 创建/复用和写入探针；没有工作区则先选择，不自动用安装目录 |
-| 2. 项目和前置数据检查 | 同一次 qa_ui_project 调用将 URL、可选 projectId/projectName 与本机配置比对，返回脱敏项目上下文、workspace/dataDir/caseDir 和目录动作；Agent 核验相关业务输入、初态、角色和预期来源 |
-| 3. 判断登录 | qa_ui_login(action=auto, projectRef) 检查表单，按需使用配置凭据登录一次；公开页面返回 not-required，认证成功返回 saved，异常返回 manual-required |
-| 4. 真实录制 | `qa-ui-basic` 委派 `qa-ui-record`：功能面盘点、`qa_ui_prepare(mode=record)`、官方工具现场操作、逐步骤断言、生成日志、脚本和 browser_close 均由录制技能执行 |
-| 5. 整理与持久化 | `qa-ui-record` 负责脚本、用例说明、元数据和 finalize 自检；`qa_ui_finalize` 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
-| 6. 独立回放 | 旧资产使用 `qa_ui_prepare(mode=run)` 返回的命令调用 `run.cjs`，不交给新 CLI 或已替换的 `qa-ui-execute` |
-| 7. 输出结果 | `qa-ui-basic` 委派 `qa-test-report`：按 `qa-report/v1` 规则交付；UI 批次读取原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
-
-旧流程的步骤 1 和 2 由同一个 `qa_ui_project` 调用完成，不再单独准备工作区目录。录制、断言和报告技能仍沿用旧格式，后续须与生产扩展一起替换；此处不宣称新旧资产互通。
-
-项目配置仍使用客户端源码根目录的 `config/projects.local.json`，不复制到被测工作区。配置位置与手工编辑约定见 [项目前置数据](project-data.md)。账号密码由后端及独立登录进程使用，不返回模型，不写脚本或报告；不要让 Agent 用原生 read/bash 读取真实配置。目录/地址就绪不表示业务前置数据已正确，返回的 businessDataStatus=not-validated 明示这个边界。
-
-例如，用户给出 `http://192.168.90.224:8238/pms/OperationContract`，若已配置项目地址为同 origin 的根路径，就匹配该项目；协议、端口或主机不同则不匹配。路径按完整段边界匹配，最长范围优先；多个同等候选必须给 projectId，用户名称冲突也停止，不能随意选择账号。当前实现不会用工作区名称猜目标系统。
-
-项目目录和测试存储目录分别处理：目标项目可登记其他工作目录，本次产物仍写当前会话工作区。新脚本使用 `qa/data/ui/cases/项目名称__页面路径__短摘要.spec.cjs`，同名重复录制自动增加版本；路由 hash 纳入路径命名，查询参数保留在任务 URL、不作为目录名。中文及文件长度做路径处理，旧资产不会被覆盖。
-
-qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。用例说明还必须包含 `qa-ui-case/v1` 元数据块（schema、caseId、project.id、page、modulePath、role、dataPolicy、cases[].steps、cases[].assertions），工具校验后把 caseMeta、caseCount、assertionCount 写入 .asset.json；缺失或字段不合规拒绝登记。每个 case 必须有 1-50 条执行步骤；步骤是旧说明元数据。`modulePath` 是可选的 1-6 段实际导航层级（如 `["合同管理", "经营合同"]`）。该旧格式已退出右侧用例面板，不再提供步骤/断言编辑或旧资产兼容展示。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
-
-自动登录默认识别唯一的账号、密码及登录按钮，可用 selectors.account/password/submit/authenticated 提供实际页面定位器；应优先提供明确的登录后角色或页面标识。默认检查目标路由可达且登录表单消失，不足以证明角色权限，录制前仍需通过页面核验。自动登录同 origin 内执行一次，验证码/MFA、跨域认证、无法确定的表单或失败时默认关闭无头窗口并返回具体受阻原因，不重复提交；只有用户明确传 `headed=true` 才保留可见窗口供接管。用户解决后 complete 即可交接；自动与手动流程都默认保存私有临时登录态，不再逐次确认，回放结束或会话关闭时删除。
-
-旧资产可省略 projectRef，沿用 qa/ui/cases 的单文件或多文件入口，不做迁移。本次新录制流程必须走项目检查和资产登记。一个脚本可以有多个 test，同一页面的多份脚本可用 caseIds 组成批次，不能与 caseId 同时提供。
-
-正式回放命令使用原生 bash，批次上限 600 秒，timeout 可用 660 秒留出收尾。录制准备不返回可执行命令，不使用关闭报告器的 MCP test_run 代替官方 CLI。已授权录制和回放不逐阶段重复确认；只有事实缺失、冲突或认证受阻才暂停依赖步骤。
-
-登录态按目标 origin 交接，保存适用 cookie 和该 origin 的 localStorage/IndexedDB，不支持 sessionStorage 或其他 origin 的状态。工具只确认已保存，实际身份、有效期和权限由页面前置断言验证。SSO 登录须回到目标 origin 再保存。URL 不允许内嵌账号密码。
-
-临时目录在系统临时目录下 `qa-ui-auth-*`，目录权限 0700、状态文件 0600，不进入项目证据。绑定信息仅在本地任务内部使用，不返回状态内容。拒绝保存、显式 cancel、正常会话关闭/重载均回收；回放成功、失败、正常取消都删除，摘要记录 deleted/not-needed/failed。失败清理不能判批次通过。强制杀死、系统崩溃/断电无法保证收尾；会话仍在时可用 loginId cancel，已丢失会话需核对该临时目录，不承诺自动恢复或跨会话复用。
-
-## 批次产物与判断
-
-新项目资产在 `qa/data/ui/cases/`，旧资产仍在 `qa/ui/cases/`，录制日志在 `qa/ui/recordings/<id>/`；每次回放写独立的 `qa/ui/runs/<id>/`，独占标记禁止同一任务重复执行。
-每个新资产由 `<caseId>.spec.cjs`、`<caseId>.md` 和 `<caseId>.asset.json` 组成；`.asset.json` 的 caseMeta（模块层级、执行步骤、用例类型、优先级、标签、断言来源）用于后续分类管理，脚本 SHA-256 用于回放前校验。
-
-| 产物 | 内容 |
-| --- | --- |
-| `task.json` | 所选脚本、准备时哈希、运行状态和路径；执行收尾移除私有状态路径 |
-| `results.json`、`html/` | 官方原生结果与 HTML，不重写失败或统计 |
-| `summary.json`、`summary.md` | 批次范围、起止时间、退出码、逐例状态/耗时/错误/证据、清理状态和版本 |
-| `sources/` | 执行前所选脚本、用例说明、资产索引、配置及执行器副本 |
-| `project-context.json` | 项目名称/编号、地址、工作区和本次范围，不含凭据 |
-| `manifest.json` | 证据相对路径、大小与 SHA-256；不包含私有登录态、task 或清单自身 |
-| `stdout.log`、`stderr.log`、`artifacts/` | 原生进程输出和原生附件 |
-
-准备 run 时记录脚本 SHA-256，执行前拒绝变更，执行后复核脚本、用例说明、资产索引、配置、执行器；版本记录包括实际 Node/Playwright。它不是依赖锁定或整个导入依赖闭包的快照，被测系统部署版本仍为未知。
-
-只有原生报告完整、所选文件均有测试结果、至少一条测试、全部实际 passed、命令成功且无原生错误/附件缺失/版本变化/清理问题，批次才为 passed。保留 failed、flaky、skipped、expected-failure、cancelled、not-run 等状态；缺少报告为 incomplete，测试数为 null，不当成零测试通过。取消不冒充断言失败。失败根因需依据业务来源另行判断，不能由断言失败直接推定产品缺陷。
-
-未使用私有登录态时 trace 保留步骤，关闭 DOM、网络快照和源码。**带登录态的录制及回放关闭 trace**：Playwright trace 的 context-options 会保存 storageState 内容，仅关闭网络快照不足以避免归档凭据。仍提供原生 JSON/HTML 和失败截图，摘要通过 tracePolicy 明示该限制；测试错误、截图及业务日志仍需按业务数据管理。登录过程不产生录制证据。
-
-旧的根级 npm 脚本入口指向不存在的执行器，已移除；旧 `config/` 测试配置同步删除。当前唯一准备入口是内置工具及返回的批次命令。POSIX shell 已验证，Windows 命令适配尚未验证。
-
-## 项目业务技能（如多角色审批）
-
-随客户端分发的 UI 测试技能由 `resources_discover` 注册；`qa-approval-workflow` 属于**项目业务技能**，默认只在当前会话 cwd 的 `.pi/skills/` 下发现，不在内置 UI 技能列表中。测试工作区没有 `.pi/skills/qa-approval-workflow` 时，模型看不到它，不能用 `/skill:qa-approval-workflow` 或其他方式加载。
-
-把它安装到实际测试工作区：
-
-```bash
-mkdir -p "/path/to/project/.pi/skills"
-cp -R .pi/skills/qa-approval-workflow \
-  "/path/to/project/.pi/skills/"
-```
-
-然后新开会话或重启客户端，并在资源面板确认技能已登记。项目资源还受项目信任控制：未信任时项目 `.pi/skills` 可能不加载；需要按项目信任流程确认。
-
-必须复制完整技能目录，包括 `references/审批流人员对照表-流程模型×部门.md`。审批技能优先读取本次任务提供的对照表，否则按需读取内置原文快照，按「流程模型 × 发起部门」选择完整审批链；不依赖外部 WorkBuddy 路径，不默认启用可选节点，也不把未逐流程核实的人员映射当成已验收结果。账号仍从用户管理解析，模型标识、缺失人员、开关及实际待办从相应配置/详情页核对。
-
-审批技能是“多角色审批执行规程”，不是用例生成器；加载它不会自动生成审批 case。`qa-ui-record` 已要求：页面只要出现提交、审批、同意、驳回、确认、上传定稿等入口，就必须生成入口/权限/状态/校验 case；完整多角色审批才需要加载 `qa-approval-workflow`。因此“技能未安装”不等于“可以跳过审批入口”。生成审批子集 case 前必须确认当前登录账号是详情页当前节点处理人；不是则改用审批人账号或拆分批次，不能把“无审批按钮”写成通过。
-
-## 测试报告（UI 与接口共用）
-
-`run.cjs` 现在在 `summary.json` 写入 `schema: "qa-report/v1"` 和 `kind: "ui"`；接口测试执行器后续使用同一结构写入 `qa/api/runs/<runId>/summary.json`，`kind` 为 `api`。公共字段、状态和通过条件见 [测试报告](test-reports.md)，Agent 交付规则由 `qa-test-report` 技能负责。
-
-右侧栏「测试报告」由主进程 `test-report-service.js` 聚合两个运行目录：
-
-- 只读取项目工作区固定目录，逐层拒绝符号链接，跳过隐藏目录、损坏或超过 2 MiB 的摘要；完整排序筛选后每页 50 份，顶部统计覆盖全部有效报告。
-- UI 核对 `qa-report/v1`、`browser-use-playwright`、用途、项目/真实工作区/runId，以及准确 caseIds/revisions/sourceTaskIds；旧 UI 不推断、不转换，接口旧摘要仍可读。
-- 模块取摘要 `modulePath`/`module` 或执行时冻结的 `caseModules`，不回看旧资产。详情显示候选验证/正式回归、准确版本与来源 task；逐例默认折叠，每页 50 条，全批失败摘要不受当前页影响。附件只返回名称和类型。
-- 面板不重跑、不改写报告；删除需确认，UI 在 idle 互斥和共享工作区锁内核对归属，拒绝未收尾、版本验证引用和坏索引，保留来源任务。接口旧批次可无 task，但坏/链接 task 或 running 拒绝删除。修复关联尚未实现。
-
-2026-11-09 新版报告定向验证：报告服务、IPC、项目服务及共享只读工作流 23 项通过，独立 Electron 页面 18 项断言通过；无真实模型请求。首次页面夹具错误触发刷新，修正后一次恢复通过，Chromium 缓存日志仍未解决。截图及异常 E、G 见 [实现记录](browser-use-readonly-workflow.md)。
-
-## 历史验证（2026-11-04）
-
-本节保留旧生产入口的验证事实；其中 UI 旧摘要推断已于 2026-11-09 退出，不能作为新版报告契约的验证。
-
-命令：`node --test tests/unit/ui-project-context.test.js tests/unit/ui-testing-runtime.test.js tests/unit/test-report-service.test.js`，以及 `./node_modules/.bin/electron tests/ui/test-reports.check.cjs`。浏览器项依赖已准备的内置环境，缺失时明确跳过。全部在临时目录和本地 HTTP 页面进行，不请求模型、不访问真实业务站点、不读取用户认证。
-
-- 真实 Pi SDK 下无运行环境、启用、官方禁用的工具/技能登记；`qa-test-report` 与 UI 技能按同一开关出现或消失。
-- 测试报告服务聚合 UI/API 摘要、按时间排序、推断旧批次类型，拒绝无效类型、路径穿越、缺失文件和符号链接；面板检查覆盖类型筛选、详情、逐例错误和无效批次提示。
-- 真实 Pi SDK 中项目匹配、后端使用模拟账号自动登录（无 UI 确认接管）、可见官方 MCP 页面准备/点击/生成日志/写脚本、语法和资产登记、独立回放、私有状态删除，原生报告通过且不再次提交登录。
-- 不同主机/协议/端口、最长路径、同范围歧义、工作区内写入、目录越界链接与同名文件、配置更新和中文长文件名。
-- 公开页面无需账号、验证码不提交、失败只提交一次、清理及工作区切换阻断；缺少资产登记不能回放。
-- 路径含中文、空格、单引号；目标脚本过滤排除 seed/其他文件；单文件通过与失败、新旧批次隔离、原生 HTML/trace/失败截图。
-- 独立可见登录窗口；临时页面模拟已登录状态，核对私有权限、cookie/localStorage 在新上下文中生效；拒绝保存、显式取消、会话关闭均删除，回收浏览器临时资料。
-- 两文件四测试准确汇总 2 通过、1 失败、1 跳过；清单逐项哈希复核且无模拟认证值、无登录 trace；重复执行拒绝、所选空脚本不判通过；脚本准备后变更记 incomplete；执行中 SIGTERM 取消仍生成摘要、删除私有状态。
-
-本轮项目识别、UI 运行时、报告服务及原有项目数据检查均通过。验证包含无人工确认的自动登录→官方录制→登记→回放，但没有读取真实 projects.local.json、没有登录用户提供的业务地址。
-
-这些是自动集成检查。临时站点验证模拟账号密码，不替代真实项目账号有效性、用户输入验证码、SSO、外部站点真实角色、Electron 自然语言技能选择或打包后的人工验收。2026-11-03 的历史业务回放仍为 5 通过、1 失败，不因能力补足改写结论。
+此前用例/报告面板独立检查通过；Chromium 缓存异常与共用侧栏旧模型设置断言仍保留原记录，本轮未重跑或宣称已修复。真实模型整链、真实业务、跨 frame、IndexedDB、写操作、多角色和安装包均未扩大为已验收能力。

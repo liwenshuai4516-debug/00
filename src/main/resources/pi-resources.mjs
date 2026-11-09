@@ -74,42 +74,6 @@ async function resolveTrust({
   return trusted;
 }
 
-// UI 测试扩展用 registerMcpServer 注册官方录制工具，依赖内置 MCP 的 direct 暴露。
-// pi-mcp-adapter 会把运行时注册降级为 proxy-only，工具名不会以 mcp__<server>__<tool> 出现；
-// 因此只在带 UI 测试运行时的会话中移除适配器并重新启用内置 MCP，不改用户的全局设置文件。
-export function enableBuiltinMcpForUiTesting(settingsManager) {
-  // 包管理器直接读 getGlobalSettings()/getProjectSettings()，applyOverrides 只影响 getSettings()，
-  // 且 reload 会重读文件。这里在读取层过滤：UI 测试会话不加载 proxy-only 适配器，
-  // 并去掉 -builtin:mcp，让官方 registerMcpServer 的 direct 工具正常登记。
-  const marker = Symbol.for("dsh.uiTestingMcpFilterPatched");
-  if (settingsManager[marker]) return false;
-  settingsManager[marker] = true;
-
-  const filter = (settings) => {
-    const extensions = (settings.extensions ?? []).filter((entry) => entry !== "-builtin:mcp");
-    const packages = (settings.packages ?? []).filter((entry) => !String(entry).includes("pi-mcp-adapter"));
-    return {
-      ...settings,
-      extensions,
-      packages,
-    };
-  };
-
-  const changed = (() => {
-    const current = settingsManager.getSettings();
-    const next = filter(current);
-    return next.extensions.length !== (current.extensions ?? []).length ||
-      next.packages.length !== (current.packages ?? []).length;
-  })();
-  const readGlobal = settingsManager.getGlobalSettings.bind(settingsManager);
-  const readProject = settingsManager.getProjectSettings.bind(settingsManager);
-  const readEffective = settingsManager.getSettings.bind(settingsManager);
-  settingsManager.getGlobalSettings = () => filter(readGlobal());
-  settingsManager.getProjectSettings = () => filter(readProject());
-  settingsManager.getSettings = () => filter(readEffective());
-  return changed;
-}
-
 export async function createPiResources({
   cwd,
   appendSystemPrompt,
@@ -126,7 +90,6 @@ export async function createPiResources({
   const settingsManager = SettingsManager.create(cwd, agentDir, {
     projectTrusted: false,
   });
-  if (uiTestingRuntime) enableBuiltinMcpForUiTesting(settingsManager);
   const trustDiagnostics = [];
   const resourceLoader = new DefaultResourceLoader({
     cwd,

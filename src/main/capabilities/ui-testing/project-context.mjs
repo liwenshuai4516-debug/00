@@ -1,6 +1,6 @@
 import path from "node:path";
 import { realpath, stat, mkdir, writeFile, unlink } from "node:fs/promises";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import projectStorage from "../../storage/project-store.js";
 
 export function matchesAddress(address, targetUrl) {
@@ -26,7 +26,7 @@ export async function prepareDataDirectory(cwd, expectedWorkspaceRoot) {
   };
   const createdDirectories = [];
   let current = workspace;
-  for (const part of ["qa", "data", "ui", "cases"]) {
+  for (const part of ["qa", "ui", "cases"]) {
     current = path.join(current, part);
     try {
       const resolved = await realpath(current);
@@ -51,7 +51,7 @@ export async function prepareDataDirectory(cwd, expectedWorkspaceRoot) {
   return {
     workspace,
     workspaceRoot: workspace,
-    dataDir: path.join(workspace, "qa/data"),
+    dataDir: path.join(workspace, "qa/ui"),
     caseDir: current,
     workspaceStatus: "ready",
     directoryAction: createdDirectories.length > 0 ? "created" : "reused",
@@ -84,22 +84,10 @@ export async function resolveProject(runtime, { targetUrl, projectId, projectNam
   }
   const { project, data } = candidates[0];
   if (projectName && projectName !== data.name) throw new Error("用户提供的项目名称与地址匹配结果不一致，请核对项目。");
-  const clean = (value) => {
-    const text = value.normalize("NFC").replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^_+|_+$/g, "");
-    let name = "";
-    for (const character of text) {
-      if (name.length >= 60 || Buffer.byteLength(name + character) > 64) break;
-      name += character;
-    }
-    return name || "root";
-  };
-  const route = target.pathname + (target.hash.startsWith("#/") ? target.hash.slice(1) : "");
-  const suffix = createHash("sha256").update(project.id + target.origin + route).digest("hex").slice(0, 10);
-  const assetName = `${clean(data.name)}__${clean(route)}__${suffix}`;
   return {
     ...directories, projectId: project.id, projectName: data.name,
     projectWorkspace: project.workspaceDir,
-    address: data.address, targetUrl: target.href, assetName,
+    address: data.address, targetUrl: target.href,
     credentialsConfigured: Boolean(data.account && data.password),
     missingConfiguration: [!data.account && "account", !data.password && "password"].filter(Boolean),
     businessDataStatus: "not-validated",

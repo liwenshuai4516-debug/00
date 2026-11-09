@@ -17,10 +17,10 @@ function receive(child, expected, signal, timeout = 30_000) {
       if (message.status === expected || message.event === expected) finish(null, message);
       else if (message.status === "error") finish(new Error(message.message));
     };
-    const onExit = () => finish(new Error("登录窗口已关闭，请重新开始。"));
+    const onExit = () => finish(new Error("后台登录进程已关闭，请重新开始。"));
     const onError = () => finish(new Error("登录进程启动失败。"));
     const onAbort = () => finish(new Error("登录操作已取消。"));
-    const timer = setTimeout(() => finish(new Error("登录窗口响应超时。")), timeout);
+    const timer = setTimeout(() => finish(new Error("后台登录进程响应超时。")), timeout);
     child.on("message", onMessage);
     child.once("exit", onExit);
     child.once("error", onError);
@@ -29,7 +29,7 @@ function receive(child, expected, signal, timeout = 30_000) {
   });
 }
 
-export async function openLogin(runtime, targetUrl, signal, options = {}) {
+export async function openLogin(runtime, targetUrl, signal) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "qa-ui-auth-"));
   await chmod(directory, 0o700);
   const child = fork(runtime.login, [targetUrl], {
@@ -39,7 +39,6 @@ export async function openLogin(runtime, targetUrl, signal, options = {}) {
       ...process.env,
       NODE_PATH: runtime.modules,
       PLAYWRIGHT_BROWSERS_PATH: runtime.browsers,
-      QA_UI_LOGIN_HEADED: options.headed === true ? "1" : "0",
     },
     stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
@@ -49,19 +48,12 @@ export async function openLogin(runtime, targetUrl, signal, options = {}) {
     origin: new URL(targetUrl).origin,
     status: "open",
     async auto(credentials, selectors, signal) {
-      if (!child.connected) throw new Error("登录窗口已关闭，请重新登录。");
+      if (!child.connected) throw new Error("后台登录进程已关闭，请重新登录。");
       const waiting = receive(child, "auto-result", signal, 60_000);
       child.send({ action: "auto", credentials, selectors, file: entry.file });
       const message = await waiting;
       if (message.status === "saved") entry.status = "saved";
       return message;
-    },
-    async save(signal) {
-      if (!child.connected) throw new Error("登录窗口已关闭，请重新登录。");
-      const waiting = receive(child, "saved", signal);
-      child.send({ action: "save", file: entry.file });
-      await waiting;
-      entry.status = "saved";
     },
     async cleanup() {
       let forced = false;
@@ -78,7 +70,7 @@ export async function openLogin(runtime, targetUrl, signal, options = {}) {
       }
       await rm(directory, { recursive: true, force: true });
       entry.status = "deleted";
-      if (forced) throw new Error("私有文件已删除，但登录窗口被强制结束，浏览器收尾状态未知。");
+      if (forced) throw new Error("私有文件已删除，但后台登录进程被强制结束，浏览器收尾状态未知。");
     },
   };
   try {

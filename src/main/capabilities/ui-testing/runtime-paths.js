@@ -25,8 +25,6 @@ function resolveUiTestingRuntime(app, projectRoot) {
     runner: path.join(directory, "run.cjs"),
     browserPython: path.join(directory, "browser-use/.venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"),
     skill: path.join(directory, "skills/qa-ui-basic/SKILL.md"),
-    intentSkill: path.join(directory, "skills/qa-ui-intent/SKILL.md"),
-    recordSkill: path.join(directory, "skills/qa-ui-record/SKILL.md"),
     executeSkill: path.join(directory, "skills/qa-ui-execute/SKILL.md"),
     assertionSkill: path.join(directory, "skills/qa-ui-assertion/SKILL.md"),
     reportSkill: path.join(path.dirname(directory), "reporting/SKILL.md"),

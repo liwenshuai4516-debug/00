@@ -4,7 +4,7 @@ const { writeFile, chmod } = require("node:fs/promises");
 let browser;
 (async () => {
   const target = new URL(process.argv[2]);
-  browser = await chromium.launch({ headless: process.env.QA_UI_LOGIN_HEADED !== "1" });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
   browser.on("disconnected", () => process.exit(0));
@@ -52,7 +52,7 @@ let browser;
       }
       const action = await password.evaluate((element) => element.form?.action || location.href);
       if (new URL(action, page.url()).origin !== target.origin) return { status: "manual-required", reason: "登录表单提交到其他站点，需要人工核对。" };
-      // 凭据仅通过私有 IPC 进入此进程，不经过录制器、工具结果或磁盘脚本。
+      // 凭据仅通过私有 IPC 进入此进程，不经过模型、工具结果或磁盘脚本。
       await context.route("**/*", (route) => new URL(route.request().url()).origin === target.origin ? route.continue() : route.abort());
       await account.fill(message.credentials.account, { timeout: 5000 });
       await password.fill(message.credentials.password, { timeout: 5000 });
@@ -77,19 +77,11 @@ let browser;
       if (["saved", "not-required"].includes(result.status)) await browser.close();
       return;
     }
-    if (message.action !== "save") return;
-    try {
-      await save(message.file);
-      process.send({ status: "saved" });
-      await browser.close();
-    } catch {
-      process.send({ status: "error", message: "登录态未保存，请回到目标站点并重新检查。" });
-    }
   });
   await page.goto(target.href);
   process.send({ status: "ready" });
 })().catch(async () => {
-  if (process.connected) process.send({ status: "error", message: "可见登录窗口启动失败。" });
+  if (process.connected) process.send({ status: "error", message: "后台登录进程启动失败。" });
   await browser?.close();
   process.exit(1);
 });

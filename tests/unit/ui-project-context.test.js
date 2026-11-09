@@ -31,14 +31,13 @@ test("项目按 origin/路径范围识别，数据只写当前工作区，返回
   assert.equal(project.directoryAction, "created");
   assert.ok(project.createdDirectories.includes(path.join(workspace, "qa")));
   assert.deepEqual(project.cleanupPending, []);
-  assert.equal(project.caseDir, path.join(workspace, "qa/data/ui/cases"));
+  assert.equal(project.caseDir, path.join(workspace, "qa/ui/cases"));
   assert.deepEqual(await fs.readdir(other), []);
   assert.ok(!JSON.stringify(project).includes("private-"));
   const reused = await resolveProject(runtime, { targetUrl: "http://127.0.0.1:8238/pms/OperationContract" }, workspace);
   assert.equal(reused.directoryAction, "reused");
   assert.deepEqual(reused.createdDirectories, []);
-  assert.equal(reused.dataDir, path.join(workspace, "qa/data"));
-  assert.match(project.assetName, /^项目管理系统__pms_OperationContract__/);
+  assert.equal(reused.dataDir, path.join(workspace, "qa/ui"));
   await assert.rejects(resolveProject(runtime, { targetUrl: project.targetUrl, projectName: "错误的项目" }, workspace), /名称.*不一致/);
   assert.equal((await readCredentials(runtime, project)).password, "private-password");
   for (const targetUrl of ["http://127.0.0.1:8239/pms/OperationContract", "https://127.0.0.1:8238/pms/OperationContract", "http://other.invalid:8238/pms"]) {
@@ -76,17 +75,14 @@ test("工作区未绑定、不匹配、路径冲突和越界链接不创建外�
   assert.equal(await fs.readFile(path.join(workspace, "qa"), "utf8"), "keep");
 });
 
-test("配置变更阻断旧交接，损坏配置不泄露原文，文件命名稳定且避免过长", async (t) => {
+test("配置变更阻断旧交接，损坏配置不泄露原文", async (t) => {
   const { workspace, runtime, projects, save } = await setup(t);
   const { resolveProject, readCredentials } = await context;
   const params = { targetUrl: "http://127.0.0.1:8238/很长的中文路径" };
   const first = await resolveProject(runtime, params, workspace);
-  assert.equal((await resolveProject(runtime, params, workspace)).assetName, first.assetName);
   projects[0].name = "系统".repeat(30);
   await save();
   await assert.rejects(readCredentials(runtime, first), /配置已变更/);
-  const long = await resolveProject(runtime, { targetUrl: "http://127.0.0.1:8238/" + "路径".repeat(100) }, workspace);
-  assert.ok(Buffer.byteLength(long.assetName + "__1234567890123-abcdef.seed.spec.cjs") < 255);
   await fs.writeFile(runtime.projectConfig, '{"projects":private-password}');
   await assert.rejects(resolveProject(runtime, params, workspace), (error) => {
     assert.ok(!String(error.stack).includes("private-password"));

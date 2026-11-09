@@ -11,7 +11,6 @@ const READ_ONLY_TOOLS = new Set([
   "todo_write",
   "list_agents",
   "interrupt_agent",
-  "qa_ui_project",
   "web_search",
   "web_fetch",
   "glob",
