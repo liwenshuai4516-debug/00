@@ -33,7 +33,7 @@ export function createUiTestingExtension(runtime) {
     const workflow = createReadOnlyWorkflow(runtime);
     const active = new Map();
     pi.on("resources_discover", () => ({
-      skillPaths: [runtime.skill, runtime.assertionSkill, runtime.executeSkill, runtime.reportSkill],
+      skillPaths: [runtime.skill, runtime.designSkill, runtime.assertionSkill, runtime.executeSkill, runtime.reportSkill],
     }));
     const register = (name, description, parameters, method) => pi.registerTool({
       name, label: name, description, parameters, executionMode: "sequential",

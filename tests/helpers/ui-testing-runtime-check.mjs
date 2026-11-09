@@ -49,9 +49,10 @@ if (scenario === "resources") {
       assert.equal(tools.filter(name => name.startsWith("qa_ui_")).length, 4 * expected);
       for (const name of ["read", "bash", "edit", "write"]) assert.ok(tools.includes(name), name);
       const skills = session.resourceLoader.getSkills().skills;
-      for (const name of ["qa-ui-basic", "qa-ui-execute", "qa-ui-assertion", "qa-test-report"]) {
+      for (const name of ["qa-ui-basic", "qa-ui-case-design", "qa-ui-execute", "qa-ui-assertion", "qa-test-report"]) {
         assert.equal(skills.filter(item => item.name === name).length, expected, name);
       }
+      if (expected) assert.equal(skills.find(item => item.name === "qa-ui-case-design").filePath, runtime.designSkill);
       for (const name of ["qa-ui-intent", "qa-ui-record"]) assert.equal(skills.filter(item => item.name === name).length, 0);
       const manager = session.desktopServices.settingsManager;
       assert.deepEqual(manager.getGlobalSettings(), settings);
