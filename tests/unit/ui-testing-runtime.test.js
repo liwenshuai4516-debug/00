@@ -33,3 +33,18 @@ for (const scenario of ["resources", "auto-login"]) {
     passed = true;
   });
 }
+
+test("内置运行时核验覆盖 Python 与固定 browser-use 补丁版本", async (t) => {
+  const repo = path.resolve(__dirname, "../..");
+  const runtime = resolveUiTestingRuntime({ isPackaged: false }, repo);
+  if (![runtime.node, runtime.testCli, runtime.browsers, runtime.browserPython, runtime.verify].every(existsSync)) {
+    t.skip("需要已准备的 Node、浏览器与 browser-use 运行时。");
+    return;
+  }
+  const result = await runFile(runtime.node, [runtime.verify], { encoding: "utf8", timeout: 120_000 });
+  const info = JSON.parse(result.stdout.trim());
+  const upstream = require(path.join(runtime.directory, "browser-use/upstream.json"));
+  assert.equal(info.browserUse, upstream.version);
+  assert.match(info.python, /^3\.\d+\.\d+/);
+  assert.equal(info.platform, process.platform);
+});

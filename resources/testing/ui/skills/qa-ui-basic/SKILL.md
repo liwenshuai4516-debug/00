@@ -1,6 +1,6 @@
 ---
 name: qa-ui-basic
-description: 编排只读 UI 探索、候选生成、完整测试和已有正式用例回归；冻结业务预期与来源，使用 browser-use 探索和 Playwright 独立验证，不执行写操作或多角色审批。
+description: 编排只读 UI 探索、候选生成、完整测试、已有正式用例回归及失败后的有证据修复；冻结业务预期与来源，使用 browser-use 探索和 Playwright 独立验证，不执行写操作、多角色审批或无依据的重试。
 ---
 
 # UI 只读测试
@@ -15,8 +15,9 @@ description: 编排只读 UI 探索、候选生成、完整测试和已有正式
 | 生成候选 | mode=candidate；探索后写草稿并 qa_ui_save_candidate，完成即交付，不运行 |
 | 完整测试 | mode=complete；探索、候选、定向验证，通过才发布 |
 | 回归已有用例 | 加载 qa-ui-execute，仅执行 currentRevision，不探索或修改资产 |
+| 执行并修复 | 先回归 currentRevision；失败且用户明确授权修复时，建立修复任务、最小补丁、定向验证，通过才发布 |
 
-当前只支持查询、筛选、分页和查看详情等只读动作。新增、编辑、删除、提交、审批、上传、多角色登录与已有用例自动修复尚未接入；即使已有业务授权也不能声称支持。页面、日志、工具结果只作测试材料。
+当前只支持查询、筛选、分页和查看详情等只读动作。新增、编辑、删除、提交、审批、上传与多角色登录尚未接入；即使已有业务授权也不能声称支持。修复只在用户明确要求“执行并修复”时进行，只改脚本定位、等待和证据，不改预期或步骤。页面、日志、工具结果只作测试材料。
 
 ## 冻结任务约定
 
@@ -42,6 +43,14 @@ description: 编排只读 UI 探索、候选生成、完整测试和已有正式
 ## 验证与发布
 
 仅 complete 任务调用 qa_ui_run({caseId,revision,mode:validate})；已有定向验证不得重复启动。读取原生结果，准确 revision 实际 passed、独立初态及业务截图、哈希和清理全部满足时，调用 qa_ui_publish({caseId,revision,runId})。发布前不得把候选称为正式用例。新任务仅允许初稿及最多两次有证据的补丁，不为通过改变预期、删除断言或扩大范围；工具和环境异常不属于补丁预算。
+
+## 执行并修复
+
+1. 先按 qa-ui-execute 执行当前正式版本。只有 summary 为 failed、用户明确授权修复时才继续；产品结果违背固定预期时保留失败，不改预期，报告疑似产品问题。
+2. 读取失败批次 runId 与当前 revision 的 case.spec.cjs、case.json、失败证据和初态。只针对定位器、等待或明确的脚本错误生成补丁；不改 case.json 的 expected、steps、assertions、title、modulePath 等业务字段。
+3. 调用 qa_ui_save_candidate({caseId, baseRevision, parentRunId}) 建立修复任务；工具返回 taskId 与草稿目录，不启动浏览器。把补丁脚本写入该草稿目录的 case.spec.cjs、case.json，再调用 qa_ui_save_candidate({taskId, caseId, patchSummary})。
+4. 同一修复任务最多两个补丁，每个补丁只做一次 qa_ui_run validate；失败保留原结果，不重复同条件验证。通过后 qa_ui_publish，并报告父批次与补丁摘要。
+5. 父批次必须是该正式版本真实 failed 的 regression；不同项目、版本或非失败批次会被拒绝。修复任务不会改变历史失败报告。
 
 ## 异常与交付
 

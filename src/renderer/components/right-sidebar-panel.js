@@ -789,7 +789,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     const section = element("div", { class: "case-version-detail" });
     const version = element("select", { class: "right-panel__select", "aria-label": `选择版本 ${item.caseId}` });
     for (const entry of detail.revisions) version.append(element("option", { value: entry.revision,
-      text: `${entry.revision} · ${entry.revision === detail.currentRevision ? "当前正式" : entry.validatedRunId ? "历史已验证" : "候选"}` }));
+      text: `${entry.revision} · ${entry.revision === detail.currentRevision ? "当前正式" : entry.validatedRunId ? "历史已验证" : "候选"}${entry.parentRunId ? " · 修复" : ""}` }));
     version.value = detail.revision;
     version.addEventListener("change", () => void loadCaseDetail(item, version.value));
     section.append(version);
@@ -808,7 +808,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       addList(label, (meta.assertions ?? []).filter((entry) => entry.kind === kind), (entry) => `${entry.text}${entry.expectedId ? `；预期 ${entry.expectedId}` : ""}`);
     }
     const entry = detail.revisions.find((entry) => entry.revision === detail.revision);
-    section.append(element("p", { class: "case-context", text: `来源任务：${entry.taskId}；验证批次：${entry.validatedRunId ?? entry.validationRunId ?? "未验证"}` }));
+    section.append(element("p", { class: "case-context", text: `来源任务：${entry.taskId}；验证批次：${entry.validatedRunId ?? entry.validationRunId ?? "未验证"}${entry.parentRunId ? `；修复自 ${entry.parentRunId}${entry.patchSummary ? `；补丁：${entry.patchSummary}` : ""}` : ""}` }));
     return section;
   }
 
@@ -1155,6 +1155,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         class: "report-card__title",
         text: reportTitle(report),
       }),
+      ...(report.parentRunId ? [element("span", { class: "report-repair", text: "修复" })] : []),
       element("span", {
         class: "case-run",
         dataset: { status: report.status },
@@ -1294,6 +1295,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (detail.workflow === "browser-use-playwright") {
       facts.append(fact("用途", detail.purpose === "validate" ? "候选验证" : "正式回归"));
     }
+    if (detail.parentRunId) facts.append(fact("修复来源", detail.parentRunId));
+    if (detail.patchSummary) facts.append(fact("补丁说明", detail.patchSummary));
     box.append(facts);
 
     if (detail.targetUrl) {

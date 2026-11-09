@@ -33,7 +33,7 @@ qa/ui/runs/<runId>/{task.json,summary.json,summary.md,results.json,manifest.json
 qa/ui/runs/<runId>/{html,sources,artifacts}/
 ```
 
-`case.json` 使用 `qa-ui-case/v1`，包含 caseId/title/project/modulePath/targetUrl/role/taskId、与任务相同的 initialState/dataStrategy/cleanup/expected、引用真实成功 `stepId` 的 steps，以及覆盖每条 expected.id 的 business assertions。完整示例见 `tests/helpers/ui-readonly-workflow.check.mjs`。保存后的 revision 不原地修改；同一新建任务最多初稿加两个补丁，已有用例的修复任务留到阶段 4。
+`case.json` 使用 `qa-ui-case/v1`，包含 caseId/title/project/modulePath/targetUrl/role/taskId、与任务相同的 initialState/dataStrategy/cleanup/expected、引用真实成功 `stepId` 的 steps，以及覆盖每条 expected.id 的 business assertions。完整示例见 `tests/helpers/ui-readonly-workflow.check.mjs`。保存后的 revision 不原地修改；同一新建任务最多初稿加两个补丁。已有用例的修复任务见下节。
 
 候选必须实际包含一个 test 和 expect，并提供 `qa-initial-state`、`qa-business-result` 两个 PNG 附件。截图需先保存到 `testInfo.outputPath(...)`，再用 `testInfo.attach(name, { path, contentType: "image/png" })` 附加，保证清单可核验独立文件；仅内嵌 base64 的附件不满足本阶段发布要求。成功回放记录 `workflow: "browser-use-playwright"`、purpose 和准确 revisions。
 
@@ -69,9 +69,28 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 
 列表完整排序、类型筛选后每页 50 份，统计覆盖全部有效报告；逐例每页 50 条，全批失败总数和前 5 条失败摘要独立返回。页面展示用途、准确版本和来源 task，保护同项目与切项目的迟到请求。单摘要 2 MiB，逐层拒绝链接，附件只返回名称与类型。
 
-UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属；prepared/running、遗留锁、损坏版本索引及任何 revision 的 validationRunId/validatedRunId 引用都会阻止删除。只删除无引用的运行目录，保留来源 tasks；不实现任务删除或阶段 4 的修复关联。接口旧批次可无 task，损坏/链接 task 或 running 拒绝删除。详见 [测试报告](test-reports.md)。
+UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属；prepared/running、遗留锁、损坏版本索引及任何 revision 的 validationRunId/validatedRunId 引用都会阻止删除。只删除无引用的运行目录，保留来源 tasks；仍被修复任务引用为父批次的报告也会阻止删除；任务删除尚未实现。接口旧批次可无 task，损坏/链接 task 或 running 拒绝删除。详见 [测试报告](test-reports.md)。
 
 ![报告用途、版本来源与全批失败摘要](images/test-report-versions.png)
+
+## 已有用例的修复任务与父批次关联
+
+阶段 4 的首个切片已接入，仍只支持只读用例。执行正式回归失败且用户明确授权修复后，Pi 读取失败批次、当前 revision、脚本和证据，只改脚本定位、等待与证据；不改变业务预期、步骤、断言说明、标题、模块或初态。写操作、修复后的自动决策与定时调度仍不在本切片范围。
+
+```text
+1. qa_ui_run {caseId, revision, mode: "regression"} → 失败批次 runId（保留原报告）
+2. qa_ui_save_candidate {caseId, baseRevision, parentRunId}
+   → 建立 kind=repair 的任务，返回 taskId 与 drafts/<caseId> 草稿目录；不启动浏览器、不产生 actions.jsonl
+3. 写草稿 case.spec.cjs 与 case.json（业务字段与原 revision 一致），调用
+   qa_ui_save_candidate {taskId, caseId, patchSummary} → 新 revision
+4. qa_ui_run {caseId, revision, mode: "validate"} → qa_ui_publish
+```
+
+修复任务建立时核对：父批次是同工作区、同项目、该 caseId 与原 revision 的真实 failed regression；目标必须仍是当前正式版本且有已验证 runId；用例来自完成且只读的原任务。同一失败批次只建立一个修复任务，后续补丁沿用原 taskId，每个任务最多两个补丁、每个 revision 只能验证一次；正式版本已变化时拒绝继续。
+
+修复 revision 的 `asset.json` 条目记录 `baseRevision`、`baseTaskId`、`parentRunId` 和可选 `patchSummary`，`case.json.taskId` 仍保留原探索任务。验证批次摘要带 `parentRunId` 与 `patchSummary`；报告列表显示“修复”标记，详情展示修复来源和补丁说明，历史失败报告不合并改写。父批次被修复任务引用时不能删除；删除用例时按原探索任务编号校验修复版本。
+
+验证：`node --test tests/unit/ui-repair-workflow.test.js` 1 项通过，使用受控本地 Chromium 真实执行回归失败、修复任务建立、两个补丁、定向验证与发布，覆盖非失败父批次、错误 revision、预期/步骤/断言/标题/任务编号篡改、重复建任务、补丁预算和删除保护；`node --test tests/unit/test-report-service.test.js` 8 项通过（含修复字段）；报告页面检查 19 项通过（含修复标记与来源）。修复运行仍使用显式夹具脚本，不代表真实模型生成补丁已验收。
 
 ## 验证记录
 

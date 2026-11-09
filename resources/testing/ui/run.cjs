@@ -173,7 +173,9 @@ async function run(taskFile) {
   const summary = {
     schema: "qa-report/v1",
     kind: "ui",
-    ...(task.workflow ? { workflow: task.workflow, purpose: task.purpose, revisions: task.revisions, sourceTaskIds: task.sourceTaskIds, caseModules: task.caseModules } : {}),
+    ...(task.workflow ? { workflow: task.workflow, purpose: task.purpose, revisions: task.revisions, sourceTaskIds: task.sourceTaskIds,
+      caseModules: task.caseModules, ...(task.parentRunId ? { parentRunId: task.parentRunId } : {}),
+      ...(task.patchSummary ? { patchSummary: task.patchSummary } : {}) } : {}),
     runId: task.runId, status: cancelled ? "cancelled" : passed ? "passed" : report && problems.length === 0 ? "failed" : "incomplete",
     startedAt, finishedAt: new Date().toISOString(), targetUrl: task.targetUrl,
     project: task.project ?? null, workspace: task.workspace, dataDir: task.dataDir ?? null,
@@ -188,6 +190,7 @@ async function run(taskFile) {
     `项目：${task.project?.name ?? "未登记"}；工作区：${task.workspace}。`,
     `范围：${task.caseIds.join(", ")}。统计：${JSON.stringify(counts)}。`, "",
     `运行环境：Node ${versions.node}；Playwright ${versions.playwright ?? "未知"}。`,
+    ...(task.parentRunId ? [`修复来源：${task.parentRunId}${task.patchSummary ? `；补丁：${task.patchSummary}` : ""}。`] : []),
     task.authFile ? "本批次关闭 trace，避免归档私有登录态。" : "trace 保留步骤，不含 DOM、网络快照和源码。", "",
     "| 用例 | 状态 | 耗时（毫秒） |", "| --- | --- | --- |",
     ...tests.map((test) => `| ${test.title.replaceAll("|", "\\|").replaceAll("\n", " ")} | ${test.status} | ${test.durationMs ?? "未知"} |`),

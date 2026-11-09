@@ -85,7 +85,7 @@ export async function removeUiCase(cwd, { projectId, caseId, assetHash }) {
       const metaBytes = await fs.readFile(await fileAt(root.caseDir, caseId, "revisions", entry.revision, "case.json"));
       check(hash(metaBytes) === entry.hashes?.["case.json"], "用例说明已变更，请保留现场并核对版本。");
       const meta = JSON.parse(metaBytes);
-      check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && meta.taskId === entry.taskId && meta.project?.id === projectId, "用例不属于所选项目或来源不匹配。");
+      check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && (meta.taskId === entry.taskId || meta.taskId === entry.baseTaskId) && meta.project?.id === projectId, "用例不属于所选项目或来源不匹配。");
     }
     await fs.rm(path.join(root.caseDir, caseId), { recursive: true });
     return { caseId };
@@ -106,6 +106,15 @@ export async function removeUiReport(cwd, { projectId, runId }) {
     check(task.runId === runId && task.workflow === workflow && task.project?.id === projectId && task.workspace === root.workspace,
       "测试批次任务归属无效，不能删除。");
     check(!["prepared", "running"].includes(task.status), "测试批次正在执行或未收尾，不能删除。");
+    for (const entry of await fs.readdir(path.join(root.base, "tasks"), { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      check(entry.isDirectory() && !entry.isSymbolicLink(), "存在无效任务目录，无法确认报告引用。");
+      let related;
+      // 非修复任务或历史目录不参与引用判断；无法解析的任务不是有效修复来源。
+      try { related = await json(await fileAt(root.base, "tasks", entry.name, "task.json")); }
+      catch { continue; }
+      check(!(related?.kind === "repair" && related.repair?.parentRunId === runId), "报告仍被修复任务引用，不能删除。");
+    }
     for (const entry of await fs.readdir(root.caseDir, { withFileTypes: true })) {
       if (entry.name.startsWith(".")) continue;
       check(entry.isDirectory() && !entry.isSymbolicLink(), "存在无效用例目录，无法确认报告引用。");
@@ -237,8 +246,13 @@ export function createReadOnlyWorkflow(runtime) {
       const { task } = await boundTask(root, selected.entry.taskId);
       check(task.status === "completed" && task.contract.dataStrategy === "read-only" && task.contract.cleanup === "none", "当前仅执行已完成只读探索的用例。");
       check(selected.meta.schema === "qa-ui-case/v1" && selected.meta.caseId === selected.asset.caseId &&
-        selected.meta.taskId === task.taskId && selected.meta.project?.id === task.project.id &&
+        (selected.meta.taskId === task.taskId || (task.kind === "repair" && selected.meta.taskId === task.repair.baseTaskId)) &&
+        selected.meta.project?.id === task.project.id &&
         selected.meta.targetUrl === task.targetUrl && selected.meta.role === task.contract.role, "版本说明与来源任务不一致。");
+      if (task.kind === "repair") {
+        check(selected.entry.baseRevision === task.repair.baseRevision && selected.entry.parentRunId === task.repair.parentRunId &&
+          selected.entry.baseTaskId === task.repair.baseTaskId, "修复版本与修复任务不匹配。");
+      }
       check(mode !== "validate" || task.contract.mode === "complete", "任务只允许生成候选，未授权独立回放。");
       check(mode !== "regression" || (selected.asset.currentRevision === selected.entry.revision && text(selected.entry.validatedRunId)), "普通回归只能执行当前正式版本，不能执行候选。");
       tasks.push(task);
@@ -266,6 +280,8 @@ export function createReadOnlyWorkflow(runtime) {
       caseFiles: selections.map((item) => item.files["case.spec.cjs"]), assetFiles: selections.map((item) => item.files["case.json"]),
       caseHashes: Object.fromEntries(selections.flatMap((item) => Object.entries(item.files).map(([name, file]) => [file, item.entry.hashes[name]]))),
       config: runtime.config, testCli: runtime.testCli, modules: runtime.modules, browsers: runtime.browsers,
+      parentRunId: mode === "validate" && task.kind === "repair" ? task.repair.parentRunId : undefined,
+      patchSummary: mode === "validate" ? selections[0].entry.patchSummary : undefined,
       resultsFile: path.join(runDir, "results.json"), htmlReport: path.join(runDir, "html/index.html"),
       summaryFile: path.join(runDir, "summary.json"), summaryDocument: path.join(runDir, "summary.md"), manifestFile: path.join(runDir, "manifest.json") };
     const taskFile = path.join(runDir, "task.json");
@@ -300,6 +316,50 @@ export function createReadOnlyWorkflow(runtime) {
       }
     }
   }
+  // 已有用例的修复任务不启动探索浏览器；由首次保存根据原 revision 与失败父批次建立约定。
+  async function createRepairTask(root, { caseId, baseRevision, parentRunId }) {
+    check(text(baseRevision) && /^\d{4}$/.test(baseRevision), "建立修复任务必须提供原 revision。");
+    id(parentRunId);
+    const selected = await revision(root, caseId, baseRevision);
+    check(selected.asset.currentRevision === baseRevision, "只能修复当前正式版本。");
+    check(text(selected.entry.validatedRunId), "修复对象必须是已验证并发布的正式版本。");
+    const baseTask = await boundTask(root, selected.entry.taskId);
+    check(baseTask.task.status === "completed" && baseTask.task.contract.mode === "complete", "修复对象必须来自完整测试任务。");
+    check(selected.meta.dataStrategy === "read-only" && selected.meta.cleanup === "none", "修复任务当前只支持只读用例。");
+    const summary = await json(await fileAt(root.base, "runs", parentRunId, "summary.json"));
+    const runTask = await json(await fileAt(root.base, "runs", parentRunId, "task.json"));
+    check(summary.schema === "qa-report/v1" && summary.kind === "ui" && summary.workflow === workflow &&
+      summary.workspace === root.workspace && summary.project?.id === baseTask.task.project.id &&
+      summary.purpose === "regression" && summary.status === "failed" && summary.runId === parentRunId &&
+      Array.isArray(summary.caseIds) && summary.caseIds.includes(caseId) &&
+      summary.revisions?.[caseId] === baseRevision, "父批次必须是该正式版本失败的新版回归批次。");
+    check(runTask.runId === parentRunId && runTask.workflow === workflow && runTask.workspace === root.workspace && runTask.purpose === "regression",
+      "父批次任务归属无效。");
+    for (const item of await fs.readdir(path.join(root.base, "tasks"), { withFileTypes: true })) {
+      if (!item.isDirectory() || item.name.startsWith(".")) continue;
+      let existing;
+      try { existing = await json(await fileAt(root.base, "tasks", item.name, "task.json")); }
+      catch (error) { if (error.code !== "ENOENT") throw error; continue; }
+      check(!(existing.kind === "repair" && existing.repair?.caseId === caseId && existing.repair?.parentRunId === parentRunId),
+        "该失败批次已建立修复任务，请沿用原 taskId 继续补丁。");
+    }
+    const taskId = `task-${randomUUID()}`;
+    const dir = await directory(root.base, "tasks", taskId);
+    await directory(dir, "drafts");
+    await directory(dir, "drafts", caseId);
+    const task = {
+      schema: "qa-ui-task/v1", workflow, kind: "repair", taskId, workspace: root.workspace,
+      project: structuredClone(baseTask.task.project), targetUrl: baseTask.task.targetUrl,
+      contract: { mode: "complete", goal: baseTask.task.contract.goal, role: selected.meta.role,
+        identity: structuredClone(baseTask.task.contract.identity), expected: structuredClone(selected.meta.expected),
+        initialState: selected.meta.initialState, dataStrategy: "read-only", cleanup: "none" },
+      repair: { caseId, baseRevision, baseTaskId: baseTask.task.taskId, parentRunId },
+      status: "completed", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+    };
+    await writeJson(path.join(dir, "task.json"), task);
+    return { taskId, caseId, status: "repair-task", baseRevision, parentRunId, draftDirectory: path.join(dir, "drafts", caseId) };
+  }
+
   return {
     async explore(cwd, params, signal, onEvent = () => {}) {
       validateContract(params.contract);
@@ -353,11 +413,15 @@ export function createReadOnlyWorkflow(runtime) {
         return { taskId, status: terminal.status, taskDirectory: dir, actions: terminal.actions };
       });
     },
-    async saveCandidate(cwd, { taskId, caseId }, signal) {
+    async saveCandidate(cwd, params, signal) {
       return exclusive(cwd, async (root) => {
         signal?.throwIfAborted();
+        const caseId = params.caseId;
         id(caseId);
-        const { task, dir } = await boundTask(root, taskId);
+        if (!text(params.taskId)) return createRepairTask(root, { caseId, baseRevision: params.baseRevision, parentRunId: params.parentRunId });
+        const { task, dir } = await boundTask(root, params.taskId);
+        const repair = task.kind === "repair" ? task.repair : null;
+        if (repair) check(repair.caseId === caseId, "修复任务与用例不匹配。");
         check(task.status === "completed" && task.contract.mode !== "explore", "只有允许生成候选且完成探索的任务可以保存。");
         const draft = path.join(dir, "drafts");
         const scriptFile = await fileAt(draft, caseId, "case.spec.cjs");
@@ -365,14 +429,23 @@ export function createReadOnlyWorkflow(runtime) {
         const script = await fs.readFile(scriptFile, "utf8");
         const metaData = await fs.readFile(metaFile);
         const meta = JSON.parse(metaData);
-        check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && meta.taskId === taskId && meta.project?.id === task.project.id &&
+        check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && meta.project?.id === task.project.id &&
           meta.targetUrl === task.targetUrl && meta.role === task.contract.role, "用例身份、项目、目标和探索任务必须一致。");
         check(text(meta.title) && Array.isArray(meta.modulePath) && meta.modulePath.length > 0 && meta.modulePath.every(text), "用例缺少标题或模块。");
         for (const key of ["initialState", "dataStrategy", "cleanup"]) check(meta[key] === task.contract[key], `用例 ${key} 不能改变任务约定。`);
         check(JSON.stringify(meta.expected) === JSON.stringify(task.contract.expected), "候选不能更改已冻结的预期与来源。");
-        const actions = (await fs.readFile(await fileAt(dir, "actions.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
-        const known = new Set(actions.filter((item) => item.result?.length && item.result.every((result) => !result.error)).map((item) => item.stepId));
-        check(Array.isArray(meta.steps) && meta.steps.length > 0 && meta.steps.every((step) => text(step.text) && known.has(step.stepId)), "每个用例步骤必须引用本任务真实成功步骤。");
+        if (repair) {
+          check(meta.taskId === repair.baseTaskId, "修复候选必须保留原探索任务编号。");
+          const base = await revision(root, caseId, repair.baseRevision);
+          for (const key of ["title", "modulePath", "targetUrl", "role", "initialState", "dataStrategy", "cleanup", "expected", "steps", "assertions"]) {
+            check(JSON.stringify(meta[key]) === JSON.stringify(base.meta[key]), `修复补丁不能改变 ${key}；只允许修改脚本定位、等待和证据。`);
+          }
+        } else {
+          check(meta.taskId === params.taskId, "用例身份、项目、目标和探索任务必须一致。");
+          const actions = (await fs.readFile(await fileAt(dir, "actions.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+          const known = new Set(actions.filter((item) => item.result?.length && item.result.every((result) => !result.error)).map((item) => item.stepId));
+          check(Array.isArray(meta.steps) && meta.steps.length > 0 && meta.steps.every((step) => text(step.text) && known.has(step.stepId)), "每个用例步骤必须引用本任务真实成功步骤。");
+        }
         check(Array.isArray(meta.assertions) && task.contract.expected.every((expected) => meta.assertions.some((item) => item.kind === "business" && item.expectedId === expected.id && text(item.text))), "每条业务预期必须有业务断言引用。");
         check((script.match(/\btest\s*\(/g) ?? []).length === 1 && /\bexpect\s*\(/.test(script), "每个脚本必须有且只有一个 test，包含明确断言。");
         check(!/\b(?:skip|fixme|fail|only|waitForTimeout|setTimeout|setInterval|nth|first|last)\s*\(|\bwhile\s*\(|\bcatch\b|\b(?:password|api_key|Authorization)\s*[:=]|element[-_]?\d+|\bref\s*[:=]\s*["']e\d+/.test(script), "发现跳过、吞异常、固定等待、任意行、临时 ref 或明显凭据。");
@@ -387,7 +460,12 @@ export function createReadOnlyWorkflow(runtime) {
         catch (error) { if (error.code !== "ENOENT") throw error; }
         asset ??= { schema: "qa-ui-asset/v1", caseId, revisions: [], currentRevision: null };
         check(asset.schema === "qa-ui-asset/v1" && asset.caseId === caseId, "拒绝覆盖旧格式资产。");
-        check(asset.revisions.length < 3 && asset.revisions.every((item) => item.taskId === taskId), "阶段 2 仅新建用例，同任务最多初稿及两个补丁；已有用例修复留到阶段 4。");
+        if (repair) {
+          check(asset.currentRevision === repair.baseRevision, "正式版本已变化，修复任务不能继续保存补丁。");
+          check(asset.revisions.filter((item) => item.taskId === params.taskId).length < 2, "每个修复任务最多两个候选补丁。");
+        } else {
+          check(asset.revisions.length < 3 && asset.revisions.every((item) => item.taskId === params.taskId), "阶段 2 仅新建用例，同任务最多初稿及两个补丁；已有用例修复请使用修复任务。");
+        }
         const number = String(asset.revisions.length + 1).padStart(4, "0");
         const revisions = await directory(caseDir, "revisions");
         const destination = path.join(revisions, number);
@@ -395,9 +473,14 @@ export function createReadOnlyWorkflow(runtime) {
         const hashes = { "case.spec.cjs": hash(script), "case.json": hash(metaData) };
         await fs.writeFile(path.join(destination, "case.spec.cjs"), script, { flag: "wx" });
         await fs.writeFile(path.join(destination, "case.json"), metaData, { flag: "wx" });
-        asset.revisions.push({ revision: number, taskId, hashes, validatedRunId: null });
+        const entry = repair
+          ? { revision: number, taskId: params.taskId, baseRevision: repair.baseRevision, baseTaskId: repair.baseTaskId, parentRunId: repair.parentRunId, hashes, validatedRunId: null }
+          : { revision: number, taskId: params.taskId, hashes, validatedRunId: null };
+        if (text(params.patchSummary)) entry.patchSummary = params.patchSummary.trim().slice(0, 300);
+        asset.revisions.push(entry);
         await writeJson(assetFile, asset);
-        return { caseId, revision: number, status: "candidate", hashes };
+        return { caseId, revision: number, status: "candidate", hashes,
+          ...(repair ? { baseRevision: repair.baseRevision, parentRunId: repair.parentRunId } : {}) };
       });
     },
     async run(cwd, { caseId, revision: number, mode }, signal) {

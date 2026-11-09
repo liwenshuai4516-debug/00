@@ -49,7 +49,7 @@ async function metaAt(workspace, projectId, caseId, entry, script = false) {
   const bytes = await boundedRead(await at(workspace, ...parts, "case.json"), 512 * 1024);
   check(hash(bytes) === entry.hashes?.["case.json"], "用例说明已变更，请保留现场并核对版本。");
   const meta = JSON.parse(bytes);
-  check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && meta.taskId === entry.taskId && meta.project?.id === projectId, "用例说明与项目或来源不匹配。");
+  check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && (meta.taskId === entry.taskId || meta.taskId === entry.baseTaskId) && meta.project?.id === projectId, "用例说明与项目或来源不匹配。");
   check(typeof meta.title === "string" && Array.isArray(meta.modulePath), "用例标题或模块无效。");
   if (script) {
     const source = await boundedRead(await at(workspace, ...parts, "case.spec.cjs"), 512 * 1024);
@@ -159,7 +159,8 @@ function createTestDataService(projectStore) {
     check(entry, "未登记该用例版本，请刷新。");
     const meta = await metaAt(workspace, projectId, caseId, entry, true);
     return { caseId, revision, assetHash, currentRevision: asset.currentRevision,
-      revisions: asset.revisions.map(({ revision, taskId, validatedRunId, validationRunId }) => ({ revision, taskId, validatedRunId, validationRunId })), meta };
+      revisions: asset.revisions.map(({ revision, taskId, validatedRunId, validationRunId, baseRevision, parentRunId, patchSummary }) =>
+        ({ revision, taskId, validatedRunId, validationRunId, baseRevision, parentRunId, patchSummary })), meta };
   }
 
   async function removeCase(projectId, caseId, assetHash) {

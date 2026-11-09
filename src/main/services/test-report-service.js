@@ -158,6 +158,8 @@ function normalizeReport(summary, kind, id, summaryPath, modifiedAt) {
     kind,
     workflow: text(summary?.workflow, 80),
     purpose: text(summary?.purpose, 40),
+    parentRunId: text(summary?.parentRunId, 200),
+    patchSummary: text(summary?.patchSummary, 300),
     status: deriveStatus(summary, tests),
     startedAt,
     finishedAt,

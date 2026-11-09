@@ -1,10 +1,12 @@
 # 客户端内置 UI 测试
 
-2026-11-09，生产会话已切换到 browser-use 探索、Playwright 独立验证与版本发布链路。当前只支持只读测试；写操作、多角色、已有用例自动修复和安装包验收不在本阶段范围。2026-11-09 11:03，真实模型（qwen3.8-flash-next）在受控本地页面完成探索→候选→定向验证→发布→正式回归整链；真实模型生成候选脚本、真实业务站点、写操作与安装包仍未验收。详细证据和历史异常见 [只读闭环](browser-use-readonly-workflow.md)。
+2026-11-09，生产会话已切换到 browser-use 探索、Playwright 独立验证与版本发布链路。当前只支持只读测试；写操作、多角色和安装包验收不在本阶段范围。已有只读用例的修复任务与父批次关联已接入：不启动探索浏览器，最多两个补丁，业务预期与步骤冻结。2026-11-09 11:03，真实模型（qwen3.8-flash-next）在受控本地页面完成探索→候选→定向验证→发布→正式回归整链；真实模型生成候选脚本、真实业务站点、写操作与安装包仍未验收。详细证据和历史异常见 [只读闭环](browser-use-readonly-workflow.md)。
 
 ## 入口和资源
 
 通过 Pi 1.4.0 官方扩展工厂登记一次 builtin:desktop-ui-testing，尊重禁用与替换；不再过滤用户 MCP 配置或强制启用内置 MCP。每个生产会话将自身的官方 ModelRuntime 传给工作流，模型与认证仅在后端使用。
+
+内置运行时核验 `verify.cjs`（`prepare-runtime.cjs` 末尾调用）在 Node、Playwright、Chromium 之外，还检查 browser-use Python 运行时存在、平台一致、Python ≥ 3.11 且版本等于 `browser-use/upstream.json` 的固定补丁版；缺 Python 运行时或版本不符直接失败，不会只凭 Node 侧检查通过。
 
 | 工具 | 行为 |
 | --- | --- |

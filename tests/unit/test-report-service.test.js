@@ -179,6 +179,21 @@ test("接口报告删除仍保留旧无任务格式，但不能忽略活动、�
   assert.deepEqual(await c.service.remove(c.project.id, "api", "api"), { kind: "api", id: "api" });
 });
 
+test("修复批次保留父批次与补丁摘要，普通批次为空", async (t) => {
+  const c = await setup(t);
+  await writeSummary(c, "ui", "repair-run", { purpose: "validate", parentRunId: "run-failed", patchSummary: "修正结果定位器" });
+  const listed = (await c.service.list(c.project.id)).reports[0];
+  assert.equal(listed.parentRunId, "run-failed");
+  assert.equal(listed.patchSummary, "修正结果定位器");
+  const detail = await c.service.get(c.project.id, "ui", "repair-run");
+  assert.equal(detail.parentRunId, "run-failed");
+  assert.equal(detail.patchSummary, "修正结果定位器");
+  await writeSummary(c, "ui", "plain-run", { finishedAt: "2026-11-09T08:00:00Z" });
+  const plain = (await c.service.list(c.project.id)).reports.find((item) => item.id === "plain-run");
+  assert.equal(plain.parentRunId, "");
+  assert.equal(plain.patchSummary, "");
+});
+
 test("空目录返回稳定分页，项目缺失明确拒绝", async (t) => {
   const c = await setup(t);
   const result = await c.service.list(c.project.id);

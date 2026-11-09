@@ -92,6 +92,7 @@ async function main() {
     await run(`[...document.querySelectorAll('.right-panel__card')].find((button)=>button.textContent.includes('测试报告')).click()`);
     await wait(`document.querySelectorAll('.report-card').length===50`);
     await check("报告列表每页50条，总数包含后续页", `document.querySelector('.report-summary').textContent.includes('53')&&document.querySelector('[aria-label="报告列表分页"]').textContent.includes('第 1 / 2 页')&&window.__reportFixture.stats().details.length===0`);
+    await check("修复批次显示修复标记", `document.querySelectorAll('.report-card')[1].querySelector('.report-repair')?.textContent==='修复'`);
     await check("类型数量基于完整集合", `[...document.querySelectorAll('.report-filter__button')].map((node)=>node.textContent).join(',')==='全部53,UI52,接口1'`);
     await check("报告名称使用模块与日期", `document.querySelector('.report-card[data-kind="api"] .report-card__title').textContent==='采购合同 2026-11-04'`);
     await run(`document.querySelector('[aria-label="报告列表分页"] button:last-child').click()`);
@@ -105,7 +106,7 @@ async function main() {
     await run(`(()=>{const head=document.querySelectorAll('.report-card__head')[1];head.focus();head.click();})()`);
     await wait(`document.querySelector('.report-detail')!==null`);
     await check("详情按需读取，结论与失败摘要覆盖全部103条", `(()=>{const body=document.querySelector('.report-detail');return window.__reportFixture.stats().details.length===1&&body.querySelector('.report-verdict__rate').textContent==='99%'&&body.textContent.includes('共 103 个用例')&&body.textContent.includes('失败与异常（1）')&&body.textContent.includes('T103 合同列表加载')&&body.textContent.includes('expect(received).toBe(expected)')&&body.textContent.includes('failure.png')&&body.querySelector('.report-cases').querySelectorAll('.report-test').length===50&&!body.textContent.includes('本次没有失败');})()`);
-    await check("详情展示准确版本、来源、用途与证据边界", `(()=>{const body=document.querySelector('.report-detail');return body.textContent.includes('正式回归')&&body.querySelector('.report-sources').textContent.includes('case-a · 版本 0002 · 来源 task-source')&&body.textContent.includes('Node 22.19.0')&&body.textContent.includes('已关闭（私有登录态）')&&body.textContent.includes('附件缺失：failure.png');})()`);
+    await check("详情展示准确版本、来源、用途与证据边界", `(()=>{const body=document.querySelector('.report-detail');return body.textContent.includes('候选验证')&&body.textContent.includes('修复来源')&&body.textContent.includes('run-parent-failure')&&body.textContent.includes('修正结果定位器')&&body.querySelector('.report-sources').textContent.includes('case-a · 版本 0002 · 来源 task-source')&&body.textContent.includes('Node 22.19.0')&&body.textContent.includes('已关闭（私有登录态）')&&body.textContent.includes('附件缺失：failure.png');})()`);
     await check("展开保留标题焦点且逐例默认折叠", `document.activeElement===document.querySelectorAll('.report-card__head')[1]&&!document.querySelector('.report-cases').open`);
     await run(`new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
     if (process.env.TEST_REPORTS_SCREENSHOT_PATH) await writeFile(process.env.TEST_REPORTS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
