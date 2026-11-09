@@ -1,6 +1,6 @@
 # browser-use + Playwright：阶段 2 只读闭环
 
-核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。生产入口、独立 CLI、用例/报告面板及对应 IPC 已统一为新版只读工作流，定向离线验证通过。真实 Qwen 首次请求超时，真实探索后的整链验收尚未通过。本次两面板及共用侧栏检查通过，缓存初始化已修复；报告页退出时的 GPU 日志仍保留下方记录。
+核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。生产入口、独立 CLI、用例/报告面板及对应 IPC 已统一为新版只读工作流，定向离线验证通过。2026-11-09 11:03 真实 Qwen 整链重验通过（真实模型探索 → 候选冻结 → 定向验证 → 发布 → 正式回归）；此前首次真实请求超时保留在报告 B，首次恢复暴露的工作区内重复 Playwright 解析问题见报告 I。本次两面板及共用侧栏检查通过，缓存初始化已修复；报告页退出时的 GPU 日志仍保留下方记录。
 
 ## 已接入的链路
 
@@ -95,7 +95,7 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 - `resources/testing/ui/browser-use/.venv/bin/python tests/helpers/browser-use-readonly.check.py`：7 项通过，覆盖只读动作 schema、同名按钮业务行、身份、限定输入、写控件/坐标拒绝、项目 URL 和完成信号。
 - 真实 Qwen：通过开发扩展的 `qa_ui_explore` 发起 1 次请求，0 动作，随后因超时停止。未保存候选、未执行 Playwright、未发布，也未发起第二次真实请求。
 
-离线测试通过不代替真实探索验收。真实调用恢复前，本阶段标记为“代码与离线闭环就绪，真实探索整链待验”，不宣称阶段 2 全部验收完成。
+离线测试通过不代替真实探索验收。该次真实调用失败，本阶段在当时标记为“代码与离线闭环就绪，真实探索整链待验”；该待验状态已于 2026-11-09 11:03 真实整链重验通过，见下节。
 
 2026-11-09 生产入口收尾：prompt-content、ui-project-context、ui-testing-runtime、ui-readonly-workflow 四组定向测试共 9 项通过、0 失败/跳过。真实 createPiAgent 工厂使用临时模型与认证配置，验证四工具、三 UI 技能及报告技能只登记一次、禁用资源与第三方 MCP 替换语义、设置文件未改写及原生工具保留；生产工具实际完成协议探索、候选冻结、本地 Chromium 定向验证、发布和正式回归。后台登录另覆盖公开页、验证码不提交、正确凭据单次提交及 cookie/localStorage、认证失败不重试、权限和清理。探索进程为显式离线协议夹具，不请求真实模型；未扩大为真实业务验收。补充移走临时磁盘模型登记后，生产工具仍通过会话运行时完成闭环；与正式 CLI 的定向检查合计 4 项通过（含重跑的 1 项闭环）。权限门禁 7 项通过，五份相关技能结构检查通过。按不同测试计，本轮共 19 项通过、无失败或跳过。
 
@@ -211,3 +211,28 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 | 原因与证据 | `SharedImageManager::ProduceMemory: Trying to Produce a Memory representation from a non-existent mailbox.` 出现三次，完整日志 `/tmp/swqa-reports-recovery-20261109.log`。已确认出现于 PASS 汇总后；产生原因及是否与退出顺序有关仍待确认，不能仅据此判为网络、权限或产品渲染失败 |
 | 已执行处置 | 仅只读检查报告夹具退出顺序，未改启动参数或重跑报告页；保留原日志，停止此独立 GPU 排查链路。侧栏与用例页本轮没有该日志 |
 | 影响与恢复 | 页面断言有效、无真实数据写入或结果未知；本次未扩大为 GPU 生命周期修复。若后续需消除此日志，应先取得 Chromium/Electron 的可复现退出诊断及公开契约依据，再定向修正并验证，不原样重复启动 |
+
+## 2026-11-09 真实模型整链重验
+
+使用者明确授权使用既有已登记模型做一次真实整链验收。本轮未读取或输出凭据正文，未访问真实业务站点，只在隔离临时目录运行受控本地页面；候选脚本仍是显式编写的夹具，不是模型生成脚本。
+
+| 项目 | 记录 |
+| --- | --- |
+| 前置探活 | `qwen3.8-flash-next/qwen3.8-flash-next` 认证来自已配置的 openai-completions 兼容 Provider（非 OAuth/订阅）。一次最小请求返回 HTTP 200，8 个 completion token 耗时 36.1 秒，usage 正常；说明报告 B 的超时条件已不成立，具备一次有界恢复验证的依据。 |
+| 首次真实运行 | 2026-11-09 10:57:48–10:58:19 UTC+08:00，`node tests/helpers/ui-readonly-workflow.check.mjs <隔离目录> real`。真实模型探索成功：taskId=`task-0139ad54-80a9-4ea9-ad7c-8606f6e7d85c`，4 次模型调用、4 个动作（navigate/input/click/done），生成 3 张动作证据 PNG，身份与完成信号均经运行时核对，cleanupConfirmed=true。随后的定向验证批次 `run-e3fedac0-56c3-43de-b1a1-3dfe03295506` 为 incomplete，发布与正式回归未执行。 |
+| 首次失败原因 | 验证子进程报 `Requiring @playwright/test second time` 和 `No tests found`。用例工作区位于仓库内，脚本就近解析到仓库根的 `node_modules/@playwright/test`，而 `playwright.config.cjs` 解析到 `resources/testing/ui/node_modules` 的随包副本；同进程加载两份 Playwright 触发其全局防护，配置加载失败，因而没有测试结果。与模型、浏览器断言和真实页面无关。 |
+| 最小修复 | `resources/testing/ui/run.cjs` 启动测试 CLI 时增加 `--require playwright-resolve.cjs`，把 `@playwright/test`、`playwright`、`playwright-core` 统一解析到随包依赖；该解析器一并纳入批次 sources 归档。未改动模型、超时、浏览器或断言逻辑。 |
+| 回归验证 | `tests/unit/execute-cli.test.js` 的工作区加入一份会抛错的 `@playwright/test` 占位依赖。移除修复时该用例失败（已观察），加回修复后 `node --test --test-concurrency=1 tests/unit/execute-cli.test.js tests/unit/ui-readonly-workflow.test.js` 4 项通过、0 失败，含真实回放、发布、取消收尾与离线模型闭环。 |
+| 恢复结果 | 修复后在新隔离目录重跑一次，2026-11-09 11:03:08–11:03:36 全链通过：真实模型探索 taskId=`task-c3b660c7-a135-4c92-b420-8c4cc029a22a`（4 次模型调用、4 个动作、4 段 usage，cleanupConfirmed=true）；定向验证 `run-cce7a3d7-12ca-478f-adda-f34593c92951` 1 个实际 passed、退出 0、cleanup=deleted；发布写入 `qa-ui-asset/v1` 正式引用 0001（validationRunId 与 validatedRunId 均指向该批次）；正式回归 passed。两次验证截图 `qa-initial-state`、`qa-business-result` 均为独立 PNG 并纳入清单；纯只读访问记录为 3 次 Beta，无 Alpha 点击。 |
+| 边界 | 本次只证明该模型在该受控页面上的探索与整链闭环，真实业务站点、跨 frame、IndexedDB、写操作、自动修复及模型生成候选脚本仍未验证。真实现场保留在 `qa/ui/browser-use-smoke/stage2-real-20261109-105736/`（首次失败）与 `stage2-real-20261109-110217/`（恢复通过），均被忽略且不含凭据。 |
+
+## 异常报告 I：工作区内重复 Playwright 解析导致验证批次无结果（已修复）
+
+| 项目 | 记录 |
+| --- | --- |
+| 任务与结论 | 2026-11-09 10:58:19 UTC+08:00，真实模型整链验收在定向验证阶段停止；真实探索已完成，发布与回归未执行，批次为 incomplete |
+| 调用链路 | 用户授权真实整链验收 → `ui-readonly-workflow.check.mjs ... real` → 官方 SDK 四工具 → `qa_ui_explore`（真实 Qwen，成功）→ `qa_ui_save_candidate`（成功）→ `qa_ui_run`/`workflow.mjs`/`run.cjs` → 随包 node + Playwright CLI（失败）；未使用技能 |
+| 工具与参数 | `node tests/helpers/ui-readonly-workflow.check.mjs <base> real`，模型 `qwen3.8-flash-next/qwen3.8-flash-next`，受控本地页面；失败 runId=`run-e3fedac0-56c3-43de-b1a1-3dfe03295506`，任务编号 `task-0139ad54-80a9-4ea9-ad7c-8606f6e7d85c`；退出 1 |
+| 原因与证据 | 失败批次 `summary.json` 的 problems 记录 `Requiring @playwright/test second time` 与 `No tests found`；对照实验确认：脚本位于仓库工作区内时解析到仓库根副本，配置解析到随包副本；把同一脚本复制到仓库外目录后不再出现该错误。已确认是重复解析问题，不是模型超时、浏览器断言失败或页面缺陷 |
+| 已执行处置 | 首次异常即停止后续发布与回归；只读检查运行器、配置与 Node 解析后以最小解析补丁修复，并新增占位依赖回归用例；先确认移除修复时用例失败、加回后通过，再做一次真实整链恢复验证。未重放首次失败批次 |
+| 影响与恢复 | 首次失败批次保留原结果，不更新正式引用；真实探索证据与任务记录保留。恢复运行全链通过，未发生业务写入或结果未知操作；需用户补充的信息：无 |

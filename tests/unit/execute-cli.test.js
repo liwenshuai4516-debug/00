@@ -57,6 +57,10 @@ test("CLI 真实回放：正式版本批次、拒绝边界、失败与取消收�
   t.after(() => passed ? fs.rm(base, { recursive: true, force: true }) : process.stdout.write(`保留 CLI 检查现场：${base}\n`));
   const workspace = path.join(base, "中文 workspace ' test");
   await fs.mkdir(workspace);
+  // 工作区自带 Playwright 时，用例脚本不得就近加载它而混用两份实现。
+  await fs.mkdir(path.join(workspace, "node_modules/@playwright/test"), { recursive: true });
+  await fs.writeFile(path.join(workspace, "node_modules/@playwright/test/package.json"), '{"name":"@playwright/test","version":"0.0.0-decoy","main":"index.js"}');
+  await fs.writeFile(path.join(workspace, "node_modules/@playwright/test/index.js"), 'throw new Error("用例不应加载工作区自带的 @playwright/test");');
   let mode = "pass";
   let ready;
   let loginCount = 0;
