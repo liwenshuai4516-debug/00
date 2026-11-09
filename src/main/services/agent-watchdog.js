@@ -1,7 +1,7 @@
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const STOP_GRACE_MS = 30 * 1000;
 
-// 只监督当前请求，不重放请求，也不把取消信号当成已经停止。
+// 只负责当前一次运行的计时；继续任务由持有发送锁的恢复链路处理。
 function createAgentWatchdog({ onTimeout, onUnresponsive, isWaitingForInput }) {
   let idleTimer;
   let stopTimer;

@@ -78,7 +78,7 @@ export async function createPiAgent(
 
     promptSnapshot = savedState?.promptSnapshot;
     if (!promptSnapshot) {
-      const defaults = await promptSettingsStore.read();
+      const defaults = resumeOptions?.promptSnapshot ?? await promptSettingsStore.read();
       const candidate = {
         ...defaults,
         // 恢复旧历史或旧空会话时，不能冒充已知其原提示词。
@@ -99,6 +99,15 @@ export async function createPiAgent(
   }
 
   recordStage("目录与会话状态");
+  if (resumeOptions?.permissionSourceSessionId && resourceOptions?.permissionController?.save) {
+    // 自动交接延续同一任务的权限，不回退到新对话默认，也不扩大原授权。
+    const mode = resourceOptions.permissionController.currentMode({
+      sessionId: resumeOptions.permissionSourceSessionId, workspace: workspaceRoot,
+    });
+    await resourceOptions.permissionController.save({
+      mode, scope: "session", sessionId: sessionManager.getSessionId(), workspace: workspaceRoot,
+    });
+  }
   // 完全权限同时信任项目资源；只影响本次会话的加载决定，不写入 ProjectTrustStore。
   const permissionMode = resourceOptions?.subagentParent?.permissionMode ?? resourceOptions?.permissionController?.currentMode?.({
     sessionId: sessionManager.getSessionId?.(),
@@ -177,7 +186,7 @@ export async function createPiAgent(
   if (runtime.getError()) throw new Error("Pi 模型配置加载失败，请检查 models.json 和 Provider 扩展。");
   const defaultProvider = settingsManager.getDefaultProvider();
   const defaultModel = settingsManager.getDefaultModel();
-  const selection = savedSelection ?? (defaultProvider && defaultModel
+  const selection = savedSelection ?? resumeOptions?.modelSelection ?? (defaultProvider && defaultModel
     ? { provider: defaultProvider, modelId: defaultModel }
     : startupModel.provider && startupModel.modelId ? startupModel : undefined);
   const model = selection ? runtime.getModel(selection.provider, selection.modelId) : undefined;
@@ -201,6 +210,7 @@ export async function createPiAgent(
     resourceLoader,
     sessionManager,
     sessionStartEvent: resourceOptions?.runtimeTarget?.sessionStartEvent,
+    ...(resumeOptions?.thinkingLevel ? { thinkingLevel: resumeOptions.thinkingLevel } : {}),
     ...(resourceOptions?.subagentParent ? { thinkingLevel: resourceOptions.subagentParent.thinkingLevel } : {}),
   });
   parentSession = session;

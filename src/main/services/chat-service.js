@@ -1,5 +1,6 @@
 const { createProposalStore } = require("./proposal-store.js");
 const { createAgentWatchdog } = require("./agent-watchdog.js");
+const { parseWatchdogCommand, runWithWatchdog } = require("./watchdog-recovery.js");
 
 // 延迟加载 Pi，并返回真正执行发送的函数。
 async function loadDefaultSender() {
@@ -47,6 +48,14 @@ function createChatService(
     return request.stopPromise;
   }
 
+  async function setWatchdogEnabled(session, enabled) {
+    if (sessionStateStore) {
+      await sessionStateStore.update(session.sessionId, session.sessionManager.getCwd(),
+        state => ({ ...state, watchdogEnabled: enabled }));
+    }
+    session.desktopWatchdogEnabled = enabled;
+  }
+
   async function send(
     text,
     onText,
@@ -91,11 +100,13 @@ function createChatService(
     let workspaceDir;
     let registrationWarning;
     let completionStatus;
-    let watchdog;
 
     try {
       const sendMessage = await loadSender();
       const session = await sessionService.getSession();
+      request.originSessionId = session.sessionId;
+      request.watchdogEnabled = session.desktopWatchdogEnabled ??
+        (sessionStateStore ? (await sessionStateStore.load(session.sessionId))?.watchdogEnabled === true : false);
       const requestCwd = session.sessionManager?.getCwd?.() ?? "";
 
       // 记录本轮改动；关闭代码工作视图时页面不请求，主进程也不拍快照。
@@ -135,102 +146,62 @@ function createChatService(
       // 初始化或消费期间停止时，仍完成草稿收尾，但不调用模型。
       if (!request.stopped) {
         request.session = session;
-        watchdog = request.watchdog = createWatchdog({
-          isWaitingForInput: () => {
-            const current = session.desktopRuntime?.session ?? session;
-            return current.desktopHasPendingUi?.() || current.desktopSubagents?.isWaitingForInput?.();
-          },
-          onTimeout: () => {
-            request.watchdogTriggered = true;
-            request.stopped = true;
-            onStatus("看门狗检测到连续 10 分钟无进展，正在停止；已完成内容保留，不会自动重发。");
-            void abortRequest(request).catch(() => {
-              onStatus("看门狗停止失败，结果未确认。请保留现场并检查工具状态；不会启动重复任务。");
-            });
-          },
-          onUnresponsive: () => onStatus("看门狗已等待停止 30 秒，工具退出仍未确认；会话保持锁定，请检查工具或重启应用后核对历史。"),
-        });
-        session.desktopAgentProgress = watchdog.touch;
+        const command = parseWatchdogCommand(text);
+        if (command) {
+          await setWatchdogEnabled(session, command.enabled);
+          request.watchdogEnabled = command.enabled;
+          onStatus(command.enabled ? "看门狗已启动：无进展时自动继续，上下文过长时自动交接到新对话。" : "看门狗自动恢复已关闭。");
+        }
 
         try {
-          const senderResult = await sendMessage(
-            session,
-            text.trim(),
-            (delta) => {
-              if (!request.stopped) {
-                if (delta) watchdog.touch();
-                onText(delta);
-              }
-            },
-            (event) => {
-              if (request.stopped) return;
-              watchdog.touch();
-
-              if (
-                event.type === "end" &&
-                ["propose_workspace_edit", "propose_workspace_create"].includes(
-                  event.name,
-                ) &&
-                !event.isError &&
-                event.proposal
-              ) {
-                let proposal;
-
-                try {
-                  proposal = proposalStore.add(
-                    session.sessionId,
-                    event.proposal,
-                  );
-                } catch (error) {
-                  // 存储失败作为应用错误展示，不公布保存按钮。
-                  onToolEvent({
-                    type: "end",
-                    // 登记失败也属于原工具调用，页面需要更新原记录。
-                    toolCallId: event.toolCallId,
-                    name: "登记文件草稿",
-                    isError: true,
-                    text: `草稿未登记，无法保存：${error.message}`,
-                  });
+          const task = command ? command.task : text.trim();
+          const senderResult = task ? await runWithWatchdog({
+            request, text: task, sendMessage, createWatchdog, abortRequest, sessionService,
+            setEnabled: setWatchdogEnabled,
+            callbacks: {
+              onText,
+              onToolEvent: (event) => {
+                if (
+                  event.type === "end" &&
+                  ["propose_workspace_edit", "propose_workspace_create"].includes(
+                    event.name,
+                  ) &&
+                  !event.isError &&
+                  event.proposal
+                ) {
+                  let proposal;
+                  try {
+                    proposal = proposalStore.add(
+                      request.session.sessionId,
+                      event.proposal,
+                    );
+                  } catch (error) {
+                    // 存储失败作为应用错误展示，不公布保存按钮。
+                    onToolEvent({
+                      type: "end",
+                      // 登记失败也属于原工具调用，页面需要更新原记录。
+                      toolCallId: event.toolCallId,
+                      name: "登记文件草稿",
+                      isError: true,
+                      text: `草稿未登记，无法保存：${error.message}`,
+                    });
+                    return;
+                  }
+                  onToolEvent({ ...event, proposal });
                   return;
                 }
-
-                onToolEvent({ ...event, proposal });
-                return;
-              }
-
-              onToolEvent(event);
+                onToolEvent(event);
+              },
+              onStatus,
+              onOutputEvent,
             },
-            // 停止后的状态不能覆盖页面上的停止提示。
-            (status) => {
-              if (!request.stopped) {
-                watchdog.touch();
-                onStatus(status);
-              }
-            },
-            // 中止后的工具结束与 agent_settled 仍是有效收尾，不随文本一起丢弃。
-            (output) => {
-              if (!request.stopped && output.type !== "queue_update") watchdog.touch();
-              onOutputEvent(output);
-            },
-          );
-          if (request.stopPromise) await request.stopPromise;
-          if (request.watchdogTriggered) throw new Error("无进展超时。");
+          }) : { completionStatus: command.enabled
+            ? "看门狗已启动：无进展时自动继续，上下文过长时自动交接到新对话。"
+            : "看门狗自动恢复已关闭。" };
           completionStatus = senderResult?.completionStatus;
-        } catch (error) {
-          // 异常也先终止父子链路；不让遗留任务与下一次发送同时运行。
-          await abortRequest(request);
-          // 主动停止产生的中断不作为请求失败展示。
-          if (request.watchdogTriggered) {
-            throw new Error("看门狗已停止本轮无进展的运行，会话已恢复可操作。请核对历史和工具结果后手动继续；不会自动重发。", { cause: error });
-          }
-          if (!request.stopped) throw error;
         } finally {
-          watchdog.dispose();
-          delete session.desktopAgentProgress;
-          const current = session.desktopRuntime?.session;
-          if (current) delete current.desktopAgentProgress;
           try {
-            const actual = session.desktopRuntime?.session ?? session;
+            const actual = request.session?.desktopRuntime?.session ?? request.session ?? session;
             await sessionService.syncSessionRegistration?.(actual.sessionId);
           } catch (error) {
             // 本地登记失败不改变已经完成的请求结果；保留快照供后续核对。
@@ -239,7 +210,7 @@ function createChatService(
         }
       }
 
-      const actual = session.desktopRuntime?.session ?? session;
+      const actual = request.session?.desktopRuntime?.session ?? request.session ?? session;
       const result = {
         ...((actual !== session || session.desktopHistoryChanged === true) ? { sessionChanged: true } : {}),
         stopped: request.stopped,
@@ -272,7 +243,7 @@ function createChatService(
       // 消费后异常不能证明远端未处理；保留快照，页面不可自动重发。
       return {
         stopped: request.stopped,
-        ...(request.session?.desktopRuntime && request.session.desktopRuntime.session !== request.session ? { sessionChanged: true } : {}),
+        ...(request.session && (request.session.sessionId !== request.originSessionId || request.session.desktopRuntime?.session && request.session.desktopRuntime.session !== request.session) ? { sessionChanged: true } : {}),
         outcome: "unconfirmed",
         draft: consumed,
         error: error.message,
@@ -298,8 +269,17 @@ function createChatService(
     const request = activeRequest;
     if (!request || !request.session) throw new Error("当前没有正在生成的回复。");
     if (typeof text !== "string" || text.trim() === "") throw new Error("请输入插话内容。");
+    const command = parseWatchdogCommand(text);
+    if (command && !command.task) {
+      const current = request.session.desktopRuntime?.session ?? request.session;
+      await setWatchdogEnabled(current, command.enabled);
+      request.watchdogEnabled = command.enabled;
+      request.watchdog?.touch();
+      return { queued: false, status: command.enabled ? "看门狗已启动，将自动恢复当前任务。" : "看门狗自动恢复已关闭。" };
+    }
     const steerMessage = await loadSteer();
     const result = await steerMessage(request.session, text);
+    request.instructions = `${request.instructions ?? ""}\n${text}`;
     return { queued: result?.disposition === "queued" };
   }
 

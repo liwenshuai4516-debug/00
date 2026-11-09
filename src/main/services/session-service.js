@@ -979,6 +979,45 @@ function createSessionService(
     // 返回实际创建的编号，供页面关联该会话的输入草稿。
     return nextSession.sessionId;
   }
+
+  // 仅由持有发送锁的看门狗调用；旧运行必须已停止，不改变手动新建的默认模型语义。
+  async function continueInNewSession(previous) {
+    await waitForCleanup();
+    if ((await getSession()) !== previous || previous.isIdle === false) {
+      throw new Error("原会话仍在运行或已变化，无法自动交接。");
+    }
+    const model = previous.model;
+    if (!model?.provider || !model?.id) throw new Error("原模型选择缺失，无法自动交接。");
+    const next = await createAgent(sessionDir, false, undefined, previous.sessionManager.getCwd(), undefined, {
+      modelSelection: { provider: model.provider, modelId: model.id },
+      thinkingLevel: previous.thinkingLevel,
+      promptSnapshot: previous.desktopPromptSnapshot,
+      permissionSourceSessionId: previous.sessionId,
+    });
+    try {
+      if (next.model?.provider !== model.provider || next.model?.id !== model.id ||
+          next.sessionManager.getCwd() !== previous.sessionManager.getCwd()) {
+        throw new Error("自动交接的目录或模型不匹配，已保留原会话。");
+      }
+      if (sessionStateStore) {
+        await sessionStateStore.update(next.sessionId, next.sessionManager.getCwd(), state => ({
+          ...state, watchdogEnabled: true,
+        }));
+      }
+    } catch (error) {
+      await closePiSession(next);
+      throw error;
+    }
+    // 清理成功后才发布新会话；清理失败不启动新的推理。
+    try {
+      await closePiSession(previous, "new", next.sessionFile);
+    } catch (error) {
+      await closePiSession(next);
+      throw error;
+    }
+    sessionPromise = Promise.resolve(observeSession(next));
+    return next;
+  }
   // 后续只由 IPC 的互斥入口调用，避免与生成或保存交叉执行。
   async function switchWorkspace(workspaceDir) {
     await waitForCleanup();
@@ -1125,6 +1164,7 @@ function createSessionService(
     previewSession,
     openSession,
     newChat,
+    continueInNewSession,
     switchWorkspace,
     openWorkspace,
     renameSession,

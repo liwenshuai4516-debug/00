@@ -30,6 +30,20 @@ test("首次读取返回 null，不创建状态目录", async (t) => {
   await assert.rejects(fs.stat(directory), { code: "ENOENT" });
 });
 
+test("看门狗开关与输入并发保存互不覆盖，非法开关不落盘", async t => {
+  const { store, workspaceDir } = await setup(t);
+  await store.saveDraft("a", workspaceDir, "原输入", 0);
+  await Promise.all([
+    store.update("a", workspaceDir, state => ({ ...state, watchdogEnabled: true })),
+    store.saveDraft("a", workspaceDir, "新输入", 1),
+  ]);
+  const state = await store.load("a");
+  assert.equal(state.watchdogEnabled, true);
+  assert.equal(state.draft.text, "新输入");
+  await assert.rejects(store.update("a", workspaceDir, current => ({ ...current, watchdogEnabled: "true" })), /看门狗开关/);
+  assert.deepEqual(await store.load("a"), state);
+});
+
 test("保留原文与空输入，重建实例可读取，读取等待已有写入", async (t) => {
   const { directory, workspaceDir, store } = await setup(t);
   const text = " \t中文  \r\n\n末行\r ";

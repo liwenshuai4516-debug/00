@@ -50,11 +50,12 @@ test("进展重置超时，等待用户期间不取消，结束交互后重新�
   assert.equal(cancelled, 0);
 });
 
-async function fixture(t, sender) {
+async function fixture(t, sender, enabled = true) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "agent-watchdog-"));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const store = createSessionStateStore(directory);
   await store.saveDraft("a", directory, "原始任务", 0);
+  await store.update("a", directory, state => ({ ...state, watchdogEnabled: enabled }));
   const entered = Promise.withResolvers(), finish = Promise.withResolvers();
   let aborts = 0, sends = 0, childStops = 0;
   const session = {
@@ -74,7 +75,20 @@ async function fixture(t, sender) {
     counts: () => ({ aborts, sends, childStops }) };
 }
 
-test("超时停止父子任务并释放会话，保留发送快照和后续输入，不自动重发", async t => {
+test("未启动或已关闭看门狗时，十分钟无输出也不自动停止或继续", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = await fixture(t, undefined, false);
+  const pending = f.send();
+  await f.entered.promise;
+  t.mock.timers.tick(idleMs * 3);
+  assert.equal(f.counts().aborts, 0);
+  assert.equal(f.counts().sends, 1);
+  assert.equal(f.service.isBusy(), true);
+  f.finish.resolve();
+  assert.equal((await pending).outcome, "completed");
+});
+
+test("超时停止父子任务后自动继续，完成后清理发送快照并保留后续输入", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const f = await fixture(t);
   const pending = f.send();
@@ -82,16 +96,16 @@ test("超时停止父子任务并释放会话，保留发送快照和后续输�
   await f.store.saveDraft("a", f.directory, "下一条输入", 2);
   t.mock.timers.tick(idleMs);
   const result = await pending;
-  assert.equal(result.stopped, true);
-  assert.equal(result.outcome, "unconfirmed");
-  assert.match(result.error, /看门狗已停止.*手动继续/);
+  assert.equal(result.stopped, false);
+  assert.equal(result.outcome, "completed");
+  assert.match(result.completionStatus, /自动恢复 1 次/);
   assert.equal(f.service.isBusy(), false);
-  assert.deepEqual(f.counts(), { aborts: 1, sends: 1, childStops: 1 });
+  assert.deepEqual(f.counts(), { aborts: 1, sends: 2, childStops: 1 });
   const state = await f.store.load("a");
-  assert.equal(state.pendingSend.text, "原始任务");
+  assert.equal(state.pendingSend, null);
   assert.equal(state.draft.text, "下一条输入");
   t.mock.timers.tick(idleMs * 2);
-  assert.equal(f.statuses.length, 1, "结束后不再报告未响应");
+  assert.equal(f.statuses.length, 2, "结束后不再报告未响应");
 });
 
 test("停止未退出时维持互斥锁，拒绝重复生成；迟到退出后才恢复可用", async t => {
@@ -110,7 +124,7 @@ test("停止未退出时维持互斥锁，拒绝重复生成；迟到退出后�
   f.finish.resolve();
   assert.equal(f.service.isBusy(), true, "发送函数返回也必须等停止确认");
   abortGate.resolve();
-  assert.equal((await pending).outcome, "unconfirmed");
+  assert.equal((await pending).outcome, "completed");
   assert.equal(f.service.isBusy(), false);
 });
 
@@ -155,8 +169,8 @@ test("子任务进展、工具输出和思考事件均延后超时；正常完�
   assert.equal(f.session.desktopAgentProgress, undefined);
 });
 
-test("异常结束先停止遗留父子任务，保留快照，不自动重试", async t => {
-  const f = await fixture(t, async () => { throw new Error("模拟异常终止"); });
+test("未启动看门狗时异常先停止遗留父子任务，保留快照，不自动重试", async t => {
+  const f = await fixture(t, async () => { throw new Error("模拟异常终止"); }, false);
   const result = await f.send();
   assert.equal(result.outcome, "unconfirmed");
   assert.match(result.error, /模拟异常终止/);

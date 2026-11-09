@@ -48,6 +48,9 @@ function createSessionStateStore(directory) {
     }
 
     // 旧记录没有来源证明，保持未登记；不能据此认定它是空会话。
+    if (state.watchdogEnabled !== undefined && typeof state.watchdogEnabled !== "boolean") {
+      throw new Error("看门狗开关记录无效。");
+    }
     if (state.registration !== undefined) {
       validateRegistration(state.registration);
     }

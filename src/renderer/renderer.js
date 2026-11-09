@@ -1864,6 +1864,20 @@ form.addEventListener("submit", async (event) => {
 
   // 生成中提交：进入待发送队列，本轮结束后自动发送，不打断当前请求。
   if (pageBusy && !closing) {
+    if (/^(启动|停止|关闭)看门狗[。！!]?\s*$/.test(submitted) && pageGenerating) {
+      try {
+        const result = await window.agent.steerMessage(submitted);
+        if (input.value.trim() === submitted) {
+          input.value = "";
+          input.dispatchEvent(new Event("input"));
+        }
+        addMessage("status", result.status);
+        setRequestStatus(result.status);
+      } catch (error) {
+        addMessage("error", error.message);
+      }
+      return;
+    }
     if (parseHostCommand(submitted)) {
       setRequestStatus("生成中，内置命令请等待本轮结束。");
       return;
