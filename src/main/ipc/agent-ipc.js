@@ -284,6 +284,11 @@ function registerAgentIpc(
   ipcMain.handle("agent:get-test-case", (_event, projectId, caseId, revision) =>
     projectService.getTestCase(projectId, caseId, revision),
   );
+  ipcMain.handle("agent:move-test-case", (_event, projectId, caseId, folder, assetHash) => {
+    return runIdleOperation(() =>
+      projectService.moveTestCase(projectId, caseId, folder, assetHash),
+    );
+  });
   ipcMain.handle("agent:delete-test-case", (_event, projectId, caseId, assetHash) => {
     return runIdleOperation(() =>
       projectService.deleteTestCase(projectId, caseId, assetHash),

@@ -96,7 +96,22 @@ async function main() {
     await run(`[...document.querySelectorAll('.right-panel__card')].find((button)=>button.textContent.includes('测试数据')).click()`);
     await wait(`document.querySelector('.case-catalog')!==null`);
 
-    await check("列表每页 50 条并显示正式版本、候选和回归状态", `document.querySelectorAll('.case-card').length===50&&document.querySelector('.case-catalog__summary').textContent.includes('52 条')&&document.querySelector('.case-card').textContent.includes('正式 0001')&&document.querySelector('.case-card').textContent.includes('新候选 0002')&&document.querySelector('.case-card').textContent.includes('最近回归 通过')`);
+    await check("目录树按模块路径分组并显示数量", `(()=>{const tree=document.querySelector('.case-folders');const count=(folder)=>tree.querySelector('[data-folder="'+folder+'"] .case-folder__count')?.textContent;return Boolean(tree)&&['合同管理','经营合同','系统管理','权限'].every((name)=>tree.textContent.includes(name))&&count('合同管理')==='50'&&count('合同管理/经营合同')==='50'&&count('系统管理')==='2'&&count('系统管理/权限')==='2';})()`);
+    await run(`[...document.querySelectorAll('.case-folder__name')].find((button)=>button.textContent.trim()==='系统管理').click()`);
+    await wait(`document.querySelectorAll('.case-card').length===2&&document.querySelector('.case-catalog__path')?.textContent.includes('系统管理')`);
+    await check("选择父目录后只显示该目录用例并重置分页", `(async()=>{const last=(await window.agent.getTestStats()).lists.at(-1);return document.querySelector('[data-stat="条"] strong').textContent==='2'&&document.querySelector('[data-stat="正式"] strong').textContent==='2'&&last.folder==='系统管理'&&last.page===1;})()`);
+    await run(`[...document.querySelectorAll('.case-folder__name')].find((button)=>button.textContent.trim()==='经营合同').click()`);
+    await wait(`document.querySelectorAll('.case-card').length===50&&document.querySelector('.case-catalog__path')?.textContent.includes('经营合同')`);
+    await check("子目录筛选并显示可返回的面包屑", `(async()=>{const last=(await window.agent.getTestStats()).lists.at(-1);const crumbs=document.querySelector('.case-crumbs');return document.querySelector('[data-stat="条"] strong').textContent==='50'&&crumbs.textContent.includes('全部用例')&&crumbs.textContent.includes('合同管理')&&crumbs.textContent.includes('经营合同')&&last.folder==='合同管理/经营合同'&&last.page===1;})()`);
+    if (process.env.TEST_DATA_CATALOG_FOLDER_SCREENSHOT_PATH) {
+      await run(`new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await writeFile(process.env.TEST_DATA_CATALOG_FOLDER_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    }
+    await run(`document.querySelector('.case-folder[data-folder=""] .case-folder__name').click()`);
+    await wait(`document.querySelectorAll('.case-card').length===50&&document.querySelector('[data-stat="条"] strong')?.textContent==='52'`);
+    await check("返回全部用例并恢复完整统计", `document.querySelector('[data-stat="正式"] strong').textContent==='51'&&document.querySelector('[data-stat="含候选"] strong').textContent==='2'&&!document.querySelector('.case-crumbs')`);
+    await check("列表每页 50 条并显示正式版本、候选和回归状态", `document.querySelectorAll('.case-card').length===50&&document.querySelector('[data-stat="条"] strong').textContent==='52'&&document.querySelector('.case-card').textContent.includes('正式 0001')&&document.querySelector('.case-card').textContent.includes('新候选 0002')&&document.querySelector('.case-card').textContent.includes('最近回归 通过')`);
     await check("列表不预取详情并移除旧编辑、标记入口", `(async()=>{const stats=await window.agent.getTestStats();return stats.details===0&&document.querySelectorAll('.case-card__body,.case-editor,.case-card__workflow').length===0;})()`);
     await run(`document.querySelector('.case-card__head').click()`);
     await wait(`document.querySelector('.case-version-detail')!==null`);
@@ -120,7 +135,7 @@ async function main() {
       await wait(`document.getElementById('body').getAttribute('aria-busy')==='false'`);
     };
     await search('仅候选');
-    await check("搜索传到服务端并重置第一页", `(async()=>{const last=(await window.agent.getTestStats()).lists.at(-1);return last.page===1&&last.query==='仅候选'&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-catalog__pager').textContent.includes('第 1 / 1 页');})()`);
+    await check("搜索传到服务端并重置第一页", `(async()=>{const last=(await window.agent.getTestStats()).lists.at(-1);return last.page===1&&last.query==='仅候选'&&last.folder===''&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-catalog__pager').textContent.includes('第 1 / 1 页');})()`);
     await run(`document.querySelector('.case-card__head').click()`);
     await wait(`document.querySelector('.case-version-detail')!==null`);
     await run(`[...document.querySelectorAll('.case-card__edit')].find(button=>button.textContent==='删除整个用例').click()`);
@@ -142,6 +157,13 @@ async function main() {
     await search('');
     await run(`document.querySelector('[data-case-id="contracts"] .case-card__head').click()`);
     await wait(`document.querySelector('.case-version-detail')!==null`);
+    await run(`[...document.querySelectorAll('.case-card__edit')].find((button)=>button.textContent==='设置目录').click()`);
+    await wait(`document.querySelector('.case-folder-form__input')!==null`);
+    await run(`(()=>{const input=document.querySelector('.case-folder-form__input');input.value='合同管理/风险';input.form.requestSubmit();})()`);
+    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('已设置目录')`);
+    await check("设置目录后目录树与卡片路径更新", `(async()=>{const move=(await window.agent.getTestStats()).moves[0];return move.folder==='合同管理/风险'&&move.caseId==='contracts'&&document.querySelector('[data-folder="合同管理/风险"]')!==null&&document.querySelector('[data-case-id="contracts"]')?.textContent.includes('合同管理 / 风险');})()`);
+    await run(`document.querySelector('[data-case-id="contracts"] .case-card__head').click()`);
+    await wait(`document.querySelector('[data-case-id="contracts"] .case-version-detail')!==null`);
     await run(`(()=>{const select=document.querySelector('.case-version-detail select');select.value='0002';select.dispatchEvent(new Event('change'));const env=document.querySelector('[aria-label="选择项目环境"]');env.value='b';env.dispatchEvent(new Event('change'));})()`);
     await wait(`document.querySelector('.case-catalog__summary')?.textContent.includes('0 条')`);
     await run(`new Promise(resolve=>setTimeout(resolve,150))`);

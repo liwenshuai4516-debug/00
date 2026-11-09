@@ -58,7 +58,7 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 
 ## 用例和报告面板
 
-用例面板只读取新版 qa-ui-asset/v1，完整枚举、筛选排序后每页 50 条；展开才读取准确 revision 和核对哈希。正式内容只读，候选独立标示；只有正式版本可生成精确 CLI 提示，插入输入框但不发送。整例删除需确认，在共享锁内检查过期版本和归属，tasks/runs 保留。其他 qa/data 普通文件保留原单文件操作。
+用例面板只读取新版 qa-ui-asset/v1，完整枚举后按 `modulePath` 生成目录树、统计并筛选，再每页 50 条；目录树支持折叠、面包屑和当前目录搜索。展开才读取准确 revision 和核对哈希。正式内容只读，候选独立标示；只有正式版本可生成精确 CLI 提示，插入输入框但不发送。「设置目录」只写 `asset.json` 的可选 `folder`，不改 revision，并在共享锁内用 assetHash 防止覆盖并发变化；整例删除需确认，在共享锁内检查过期版本和归属，tasks/runs 保留。其他 qa/data 普通文件保留原单文件操作。
 
 UI 报告只接收 qa-report/v1、kind=ui、workflow=browser-use-playwright 和有效版本来源；API 报告保持兼容。列表及逐例详情每页 50 条，全批失败摘要记录总数及前 5 条，不因分页改统计。删除在共享锁内核对活动任务与有效用例来源/验证引用，必要来源不可删。细节见 [测试报告](test-reports.md)。
 

@@ -309,6 +309,8 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke("agent:delete-test-data", projectId, relativePath),
   getTestCase: (projectId, caseId, revision) =>
     ipcRenderer.invoke("agent:get-test-case", projectId, caseId, revision),
+  moveTestCase: (projectId, caseId, folder, assetHash) =>
+    ipcRenderer.invoke("agent:move-test-case", projectId, caseId, folder, assetHash),
   deleteTestCase: (projectId, caseId, assetHash) =>
     ipcRenderer.invoke("agent:delete-test-case", projectId, caseId, assetHash),
 

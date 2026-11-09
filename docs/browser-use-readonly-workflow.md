@@ -53,15 +53,19 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 
 ## 版本用例面板
 
-右侧「测试数据」只将 `qa/ui/cases/<caseId>/asset.json` 的 `qa-ui-asset/v1` 纳入 UI 用例列表；无索引、旧 schema 和旧平铺资产不展示、不迁移。先完整枚举新格式目录，按模块、标题、caseId 排序并筛选，再每页 50 条；搜索范围是编号、标题、模块和角色。列表不携带步骤、预期或断言；展开时按准确 revision 读取详情，同时核对说明与脚本 SHA-256。
+右侧「测试数据」只将 `qa/ui/cases/<caseId>/asset.json` 的 `qa-ui-asset/v1` 纳入 UI 用例列表；无索引、旧 schema 和旧平铺资产不展示、不迁移。先完整枚举新格式目录，按目录、标题、caseId 排序并筛选，再每页 50 条；搜索范围是编号、标题、目录和角色。列表不携带步骤、预期或断言；展开时按准确 revision 读取详情，同时核对说明与脚本 SHA-256。
+
+目录设计参考了 GitHub 上较活跃的测试管理项目：[MeterSphere](https://github.com/metersphere/metersphere)（约 13.6k stars，模块树带数量、用例列表与统计）、[TestLink](https://github.com/TestLinkOpenSourceTRMS/testlink-code)（约 1.6k，项目/套件/用例层级）、[Kiwi TCMS](https://github.com/kiwitcms/Kiwi)（约 1.3k，用例、计划与运行分离）、[WHartTest](https://github.com/MGdaasLab/WHartTest)（约 1.1k，项目/模块、列表与脑图视图）、[AgileTC](https://github.com/didi/AgileTC)（约 728，用例集与目录管理）和 [Nitrate](https://github.com/Nitrate/Nitrate)（约 307，计划/用例/运行与搜索）。本面板只取适合右侧栏的目录树、计数、面包屑、范围搜索和汇总，不引入完整平台的计划、评审、脑图或多角色能力。
+
+「用例目录」按 `case.json` 的 `modulePath` 生成层级树；既支持 `["合同管理", "经营合同"]`，也把 `"合同管理/经营合同"` 拆成两级。目录树显示父目录及下级用例数，可折叠、按目录筛选并显示面包屑；面板汇总显示当前目录的正式数和含新候选数，父目录包含全部下级用例。选中目录后搜索只作用于当前目录；返回「全部用例」恢复完整列表。组织目录可以写入 `asset.json` 的可选 `folder` 字段，不改变 revision 内容和哈希；详情中的「设置目录」用 `/` 分隔层级，留空则回退到 `modulePath`。存储仍保持 `qa/ui/cases/<caseId>` 平铺，避免移动目录破坏版本引用、报告来源和删除校验。
 
 有正式版本时列表采用正式说明，展示后续未发布候选；只有候选时展示最新候选。详情可切换已登记版本，只读展示初态、数据策略、步骤、固定预期及来源、business/guard 断言和来源 task/验证 run。最近结果只关联同项目、真实工作区、准确 caseId/revision/脚本的新版 regression 摘要，不混入 validate 或其他版本结果。
 
 只有正式用例提供「生成执行提示」，向输入框插入精确 `--project` 和 `--cases`，不自动发送；查看候选详情不改变正式执行目标。旧步骤/断言编辑、流程标记、批量删除 test 及 grep 入口已退出。删除需确认整个 case 的所有版本永久删除；主进程 idle 互斥及共享工作区锁内核对列表 assetHash、版本说明哈希、项目和 task 归属，版本变化或活动任务会阻止删除；tasks/runs 保留。其他 `qa/data` 普通文件仍可列表和单文件删除，最多展示 500 个并提示截断，排除旧 `ui/cases`。
 
-接口为 `listTestData(projectId, { page, query })`、`getTestCase(projectId, caseId, revision)`、`deleteTestCase(projectId, caseId, assetHash)` 及普通文件的 `deleteTestData`。页面使用请求编号、项目和详情请求对象核对迟到结果。
+接口为 `listTestData(projectId, { page, query, folder })`、`getTestCase(projectId, caseId, revision)`、`moveTestCase(projectId, caseId, folder, assetHash)`、`deleteTestCase(projectId, caseId, assetHash)` 及普通文件的 `deleteTestData`。目录最多 8 级、每级 80 字符；移动目录使用 assetHash 防止覆盖并发版本变化，且只改组织字段，不改 revision。页面使用请求编号、项目和详情请求对象核对迟到结果。
 
-![用例版本与只读详情](images/test-data-versions.png)
+![用例目录、版本与只读详情](images/test-data-versions.png)
 
 ## 新版报告面板
 
@@ -142,6 +146,8 @@ contract.writeAuthorization = { kind: "user" | "rule" | "baseline", reference: "
 2026-11-09 用例面板：`node --test tests/unit/test-data-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js tests/unit/ui-readonly-workflow.test.js`，23 项通过、0 失败/跳过。覆盖 205 例完整排序筛选分页、正式/候选隔离、准确详情与回归、哈希/项目/链接拒绝、旧资产隔离、普通文件、锁/过期删除拒绝、整例删除及历史保留、IPC 转发与互斥；共享工作流仍使用离线模型协议夹具及本地 Chromium。
 
 `TEST_DATA_CATALOG_SCREENSHOT_PATH=docs/images/test-data-versions.png node_modules/.bin/electron tests/ui/test-data-catalog.check.cjs`（实际截图参数为仓库绝对路径）：16 项断言通过，退出 0。覆盖每页 50 条、按需版本详情、来源只读、正式执行提示、候选无执行、筛选分页、删除确认、普通文件、切换项目后的迟到详情和无横向溢出；截图已视觉核对。首次及补齐缓存目录后的一次恢复检查均有 Chromium 缓存错误，不能视为环境检查完全通过。共用 `sidebar-layout.check.cjs` 两次均退出 1，恢复后仍停在旧模型设置断言，尚未到用例区域；不扩大为共用侧栏通过。详见报告 D–F。本轮未请求真实模型。
+
+2026-11-09 用例目录：用例面板接入 `modulePath` 目录树、目录筛选、面包屑、统计和 `asset.json` 组织目录字段。`node --test tests/unit/test-data-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js` 24 项通过、0 失败；`node --test tests/unit/prompt-content.test.js` 2 项通过。`node_modules/.bin/electron tests/ui/test-data-catalog.check.cjs` 21 项断言通过、退出 0，覆盖目录树计数、父/子目录筛选、面包屑、返回全部、搜索、设置目录后树和卡片更新、分页、删除及迟到响应；截图 `docs/images/test-data-versions.png` 已更新。共用 `sidebar-layout.check.cjs` 79 项通过；退出时仍出现一次 Chromium 缓存目录日志，按既有报告 E 的边界保留，不据此宣称环境完全无异常。本轮未请求真实模型。
 
 2026-11-09：`node --test --test-concurrency=1 tests/unit/execute-cli.test.js tests/unit/ui-readonly-workflow.test.js`，4 项通过、0 跳过。CLI 在含中文、空格及单引号的临时目录实际调用 Chromium，覆盖双用例正式版本选择、候选隔离、单次登录、来源记录、执行不改资产、项目/角色/来源/哈希/链接拒绝、跨实例锁、真实业务断言失败退出及 SIGTERM 取消与私有状态清理。来源任务和候选为显式文件夹具，保存、验证、发布及回放实际执行；不代表 browser-use 或真实模型生成已通过。执行技能文案定向检查 `node --test tests/unit/prompt-content.test.js`，7 项通过。本轮未请求真实模型。
 

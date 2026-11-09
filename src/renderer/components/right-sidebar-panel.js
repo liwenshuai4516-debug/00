@@ -131,9 +131,12 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let editingId = null;
   let data = null;
   let caseQuery = "";
+  let caseFolder = "";
+  let movingCaseId = null;
   let casePage = 1;
   let dataRequest = 0;
   const expandedCases = new Set();
+  const collapsedCaseFolders = new Set();
   const caseDetails = new Map();
   let reportsData = null;
   let reportKindFilter = "all";
@@ -268,9 +271,12 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (selectedId !== previousSelectedId) {
       data = null;
       caseQuery = "";
+      caseFolder = "";
+      movingCaseId = null;
       casePage = 1;
       dataRequest += 1;
       expandedCases.clear();
+      collapsedCaseFolders.clear();
       caseDetails.clear();
       reportsData = null;
       reportKindFilter = "all";
@@ -287,13 +293,14 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (!projectId) { data = null; return; }
     let next;
     try {
-      next = { projectId, ...(await api().listTestData(projectId, { page: casePage, query: caseQuery })) };
+      next = { projectId, ...(await api().listTestData(projectId, { page: casePage, query: caseQuery, folder: caseFolder })) };
     } catch (error) {
       next = { projectId, items: [], error: errorMessage(error) };
     }
     if (selectedId === projectId && request === dataRequest) {
       data = next;
       casePage = next.catalog?.page ?? casePage;
+      if (Array.isArray(next.catalog?.folder)) caseFolder = next.catalog.folder.join("/");
       expandedCases.clear();
       caseDetails.clear();
     }
@@ -676,8 +683,11 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         selectedId = select.value;
         data = null;
         caseQuery = "";
+        caseFolder = "";
+        movingCaseId = null;
         casePage = 1;
         expandedCases.clear();
+        collapsedCaseFolders.clear();
         caseDetails.clear();
         void refreshData();
       });
@@ -704,14 +714,114 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     content.append(panel);
   }
 
+  function folderKey(pathParts) {
+    return pathParts.join("\u001f");
+  }
+
+  function selectCaseFolder(pathParts) {
+    const next = (Array.isArray(pathParts) ? pathParts : String(pathParts ?? "").split("/")).map((part) => part.trim()).filter(Boolean).join("/");
+    if (next === caseFolder) return;
+    caseFolder = next;
+    movingCaseId = null;
+    casePage = 1;
+    expandedCases.clear();
+    caseDetails.clear();
+    // 选中子目录时展开其所有父目录，避免结果藏在折叠节点内。
+    const parts = next ? next.split("/") : [];
+    for (let index = 1; index <= parts.length; index += 1) {
+      collapsedCaseFolders.delete(folderKey(parts.slice(0, index)));
+    }
+    void refreshData();
+  }
+
+  function renderCaseFolders(catalog) {
+    const folders = Array.isArray(catalog.folders) ? catalog.folders : [];
+    const allTotal = Number.isFinite(catalog.allTotal) ? catalog.allTotal : catalog.total;
+    const section = element("section", { class: "case-folders", "aria-label": "用例目录" });
+    section.append(element("div", { class: "case-folders__head" },
+      element("span", { class: "case-folders__title", text: "用例目录" }),
+      element("span", { class: "case-folders__total", text: `${allTotal} 条用例` }),
+    ));
+    const tree = element("div", { class: "case-folders__tree", role: "tree", "aria-label": "用例目录" });
+    const rootSelected = caseFolder === "";
+    tree.append(element("div", { class: "case-folder", role: "treeitem", "aria-level": "1",
+      dataset: { selected: String(rootSelected), folder: "" } },
+      element("span", { class: "case-folder__toggle-placeholder", "aria-hidden": "true" }),
+      element("button", { type: "button", class: "case-folder__name", "aria-current": rootSelected ? "true" : undefined, disabled: busy,
+        onclick: () => selectCaseFolder("") },
+      icon("files"), element("span", { class: "case-folder__label", text: "全部用例" })),
+      element("span", { class: "case-folder__count", text: String(allTotal) }),
+    ));
+    if (folders.length > 0) {
+      const branch = element("div", { class: "case-folder__children", role: "group" });
+      const add = (nodes, depth) => {
+        for (const node of nodes) {
+          const key = folderKey(node.path);
+          const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+          const expanded = hasChildren && !collapsedCaseFolders.has(key);
+          const selected = caseFolder === node.path.join("/");
+          branch.append(element("div", { class: "case-folder", role: "treeitem", "aria-level": String(depth + 1),
+            "aria-expanded": hasChildren ? String(expanded) : undefined,
+            style: `padding-left:${depth * 14}px`, dataset: { selected: String(selected), folder: node.path.join("/") } },
+          hasChildren
+            ? element("button", { type: "button", class: "case-folder__toggle", disabled: busy,
+              "aria-label": `${expanded ? "收起" : "展开"} ${node.name}`,
+              onclick: () => {
+                if (expanded) collapsedCaseFolders.add(key);
+                else collapsedCaseFolders.delete(key);
+                render();
+              } }, icon("chevron-right"))
+            : element("span", { class: "case-folder__toggle-placeholder", "aria-hidden": "true" }),
+          element("button", { type: "button", class: "case-folder__name", "aria-current": selected ? "true" : undefined,
+            disabled: busy, title: node.path.join(" / "), onclick: () => selectCaseFolder(node.path) },
+          icon("folder"), element("span", { class: "case-folder__label", text: node.name })),
+          element("span", { class: "case-folder__count", text: String(node.count) }),
+          ));
+          if (expanded) add(node.children, depth + 1);
+        }
+      };
+      add(folders, 1);
+      tree.append(branch);
+    }
+    section.append(tree);
+    return section;
+  }
+
+  function renderCaseCrumbs(catalog) {
+    const pathParts = Array.isArray(catalog.folder) ? catalog.folder : [];
+    if (pathParts.length === 0) return null;
+    const crumbs = element("nav", { class: "case-crumbs", "aria-label": "当前用例目录" });
+    crumbs.append(element("button", { type: "button", class: "case-crumbs__item", text: "全部用例", disabled: busy,
+      onclick: () => selectCaseFolder("") }));
+    for (let index = 0; index < pathParts.length; index += 1) {
+      crumbs.append(element("span", { class: "case-crumbs__sep", "aria-hidden": "true", text: "/" }));
+      const current = index === pathParts.length - 1;
+      crumbs.append(element("button", { type: "button", class: "case-crumbs__item", disabled: busy,
+        "aria-current": current ? "page" : undefined,
+        onclick: () => selectCaseFolder(pathParts.slice(0, index + 1)) }, pathParts[index]));
+    }
+    return crumbs;
+  }
+
   function renderCaseCatalog(catalog) {
     const section = element("section", { class: "case-catalog" });
+    const pathParts = Array.isArray(catalog.folder) ? catalog.folder : [];
+    const folderLabel = pathParts.length > 0 ? pathParts.join(" / ") : "全部用例";
+    const stat = (value, label) => element("span", { class: "case-catalog__stat", dataset: { stat: label } },
+      element("strong", { text: String(value) }), label);
     section.append(element("div", { class: "case-catalog__summary" },
       element("span", { class: "case-catalog__project", text: "UI 版本用例" }),
-      element("span", { text: `${catalog.total} 条 · 每页 ${catalog.pageSize} 条` }),
-      element("span", { text: "内容只读" }),
+      element("span", { class: "case-catalog__policy", text: "内容只读" }),
+      element("span", { class: "case-catalog__path", text: `目录：${folderLabel}` }),
+      stat(catalog.total, "条"),
+      stat(catalog.verified ?? 0, "正式"),
+      stat(catalog.candidates ?? 0, "含候选"),
+      element("span", { class: "case-catalog__page-note", text: `每页 ${catalog.pageSize} 条` }),
     ));
-    const search = element("input", { type: "search", class: "case-catalog__search", "aria-label": "搜索用例", placeholder: "用例、模块、角色或编号", value: caseQuery, maxlength: 200, disabled: busy });
+    section.append(renderCaseFolders(catalog));
+    const search = element("input", { type: "search", class: "case-catalog__search", "aria-label": "搜索用例",
+      placeholder: pathParts.length > 0 ? `搜索「${pathParts.at(-1)}」中的用例…` : "搜索用例、目录、角色或编号",
+      value: caseQuery, maxlength: 200, disabled: busy });
     const form = element("form", { class: "case-catalog__search-form" }, search,
       element("button", { type: "submit", class: "case-card__edit", text: "搜索", disabled: busy }));
     form.addEventListener("submit", (event) => {
@@ -721,6 +831,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       void refreshData();
     });
     section.append(form);
+    const crumbs = renderCaseCrumbs(catalog);
+    if (crumbs) section.append(crumbs);
     const pager = element("div", { class: "case-catalog__pager" });
     const turn = (page) => { casePage = page; void refreshData(); };
     pager.append(
@@ -729,11 +841,55 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       element("button", { type: "button", class: "case-card__edit", text: "下一页", disabled: busy || catalog.page >= catalog.pages, onclick: () => turn(catalog.page + 1) }),
     );
     section.append(pager);
-    if (!catalog.cases.length) section.append(element("p", { class: "case-catalog__empty", text: "暂无匹配的新版本用例。" }));
+    if (!catalog.cases.length) {
+      section.append(element("p", { class: "case-catalog__empty", text: pathParts.length > 0 ? "当前目录没有匹配的用例。" : "暂无匹配的新版本用例。" }));
+      if (pathParts.length > 0) section.append(element("button", { type: "button", class: "case-card__edit", text: "查看全部用例",
+        disabled: busy, onclick: () => selectCaseFolder("") }));
+    }
     const list = element("div", { class: "case-catalog__list" });
     for (const item of catalog.cases) list.append(renderCaseCard(item));
     section.append(list);
     return section;
+  }
+
+  function renderCaseFolderForm(item) {
+    const current = (item.folderPath ?? item.modulePath ?? []).join("/");
+    const form = element("form", { class: "case-folder-form" });
+    const input = element("input", { type: "text", class: "case-folder-form__input", maxlength: 640,
+      value: current, placeholder: "合同管理/经营合同", "aria-label": "目标用例目录", disabled: busy });
+    form.append(
+      element("label", { class: "case-folder-form__label", text: "设置用例目录" }),
+      input,
+      element("div", { class: "case-folder-form__actions" },
+        element("button", { type: "submit", class: "case-card__edit", text: "保存目录", disabled: busy }),
+        element("button", { type: "button", class: "case-card__edit", text: "取消", disabled: busy,
+          onclick: () => { movingCaseId = null; render(); } }),
+      ),
+      element("p", { class: "case-folder-form__hint", text: "用 / 分隔层级，例如 合同管理/经营合同；留空恢复按用例模块路径。" }),
+    );
+    let saving = false;
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (saving) return;
+      const projectId = selectedId;
+      if (!projectId) return;
+      saving = true;
+      busy = true;
+      for (const control of form.querySelectorAll("input, button")) control.disabled = true;
+      try {
+        const result = await api().moveTestCase(projectId, item.caseId, input.value, item.assetHash);
+        if (selectedId !== projectId) return;
+        await loadData();
+        setStatus(`已设置目录「${result.folder.length > 0 ? result.folder.join(" / ") : "按用例模块"}」。`);
+      } catch (error) {
+        setStatus(errorMessage(error), true);
+      } finally {
+        busy = false;
+        movingCaseId = null;
+        render();
+      }
+    });
+    return form;
   }
 
   function renderCaseCard(item) {
@@ -749,7 +905,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       element("span", { class: "case-card__name", text: item.title }),
       element("span", { class: "case-card__status", text: item.currentRevision ? `正式 ${item.currentRevision}` : "候选" }),
     ),
-    element("span", { class: "case-version-meta", text: `${item.modulePath.join(" / ")} · ${item.role}` }),
+    element("span", { class: "case-version-meta", text: `${(item.folderPath ?? item.modulePath).join(" / ") || "未分类"} · ${item.role}` }),
     element("span", { class: "case-version-meta", text: [item.candidates.length ? `新候选 ${item.candidates.join("、")}` : "", item.lastResult ? `最近回归 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}` : "暂无当前正式版本回归结果"].filter(Boolean).join(" · ") }),
     );
     card.append(head);
@@ -761,8 +917,11 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       else body.append(renderCaseDetail(item, detail));
       const actions = element("div", { class: "case-card__edit-actions" });
       if (item.runnable) actions.append(element("button", { type: "button", class: "case-card__edit", text: "生成执行提示", disabled: busy, onclick: () => insertCaseRunPrompt(item) }));
+      actions.append(element("button", { type: "button", class: "case-card__edit", text: "设置目录", disabled: busy,
+        onclick: () => { movingCaseId = movingCaseId === item.caseId ? null : item.caseId; render(); } }));
       actions.append(element("button", { type: "button", class: "case-card__edit case-card__edit--danger", text: "删除整个用例", disabled: busy, onclick: () => void deleteVersionedCase(item) }));
       body.append(actions);
+      if (movingCaseId === item.caseId) body.append(renderCaseFolderForm(item));
       card.append(body);
     }
     return card;
@@ -795,6 +954,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     section.append(version);
     const meta = detail.meta;
     section.append(element("p", { class: "case-context", text: `${item.caseId} · ${meta.targetUrl} · ${meta.role}` }),
+      element("p", { class: "case-context", text: `目录：${(item.folderPath ?? meta.modulePath ?? []).join(" / ") || "未分类"}` }),
       element("p", { class: "case-context", text: `初态：${meta.initialState}；数据：${meta.dataStrategy}；清理：${meta.cleanup}${meta.writeAuthorization ? `；写授权：${meta.writeAuthorization.kind} · ${meta.writeAuthorization.reference}${meta.residualAuthorization ? `；残留授权：${meta.residualAuthorization.kind} · ${meta.residualAuthorization.reference}` : ""}` : ""}` }));
     const addList = (label, entries, describe) => {
       section.append(element("h4", { class: "case-steps__label", text: `${label} ${entries.length}` }));
@@ -1005,9 +1165,12 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       selectedId = select.value;
       data = null;
       caseQuery = "";
+      caseFolder = "";
+      movingCaseId = null;
       casePage = 1;
       dataRequest += 1;
       expandedCases.clear();
+      collapsedCaseFolders.clear();
       caseDetails.clear();
       reportsData = null;
       reportKindFilter = "all";

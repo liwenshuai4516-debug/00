@@ -62,6 +62,51 @@ test("先对全部用例排序筛选再分页，超过 200 条仍可访问末页
   assert.deepEqual((await fs.readdir(path.join(workspace, "qa/ui"))).sort(), ["cases"]);
 });
 
+test("用例目录按 modulePath 生成完整树、统计与筛选，分页基于筛选结果", async (t) => {
+  const { service, save } = await setup(t);
+  await save("contract-list", { modulePath: ["合同管理", "经营合同"] });
+  await save("contract-detail", { modulePath: ["合同管理", "经营合同"] });
+  await save("purchase", { modulePath: ["合同管理/采购合同"] });
+  await save("permission", { formal: true, modulePath: ["系统管理", "权限"] });
+  await save("uncategorized", { modulePath: [] });
+  const all = await service.list("p1");
+  assert.equal(all.catalog.allTotal, 5);
+  assert.equal(all.catalog.total, 5);
+  assert.equal(all.catalog.verified, 1);
+  assert.equal(all.catalog.candidates, 4);
+  const contract = all.catalog.folders.find((node) => node.name === "合同管理");
+  assert.deepEqual(contract.path, ["合同管理"]);
+  assert.equal(contract.count, 3);
+  assert.equal(contract.children.find((node) => node.name === "经营合同").count, 2);
+  assert.equal(contract.children.find((node) => node.name === "采购合同").count, 1);
+  assert.equal(all.catalog.folders.find((node) => node.name === "系统管理").verified, 1);
+  assert.equal(all.catalog.folders.find((node) => node.name === "未分类").count, 1);
+
+  const nested = await service.list("p1", { folder: "合同管理/经营合同" });
+  assert.deepEqual(nested.catalog.folder, ["合同管理", "经营合同"]);
+  assert.equal(nested.catalog.total, 2);
+  assert.equal(nested.catalog.allTotal, 5);
+  assert.deepEqual(nested.catalog.cases.map((item) => item.caseId).sort(), ["contract-detail", "contract-list"]);
+  const queried = await service.list("p1", { folder: "合同管理", query: "采购" });
+  assert.equal(queried.catalog.total, 1);
+  assert.equal(queried.catalog.cases[0].caseId, "purchase");
+  assert.equal((await service.list("p1", { folder: "不存在" })).catalog.total, 0);
+  for (const folder of ["../x", "合同管理//经营合同", "x".repeat(81), 123]) {
+    await assert.rejects(service.list("p1", { folder }), /目录/);
+  }
+
+  const permission = all.catalog.cases.find((item) => item.caseId === "permission");
+  const moved = await service.moveCase("p1", "permission", "合同管理/经营合同", permission.assetHash);
+  assert.deepEqual(moved.folder, ["合同管理", "经营合同"]);
+  assert.deepEqual((await service.getCase("p1", "permission", "0001")).folder, ["合同管理", "经营合同"]);
+  assert.equal((await service.list("p1", { folder: "合同管理/经营合同" })).catalog.total, 3);
+  await assert.rejects(service.moveCase("p1", "permission", "系统管理/权限", permission.assetHash), /已变化/);
+  await assert.rejects(service.moveCase("p1", "permission", "../x", moved.assetHash), /目录/);
+  const reset = await service.moveCase("p1", "permission", "", moved.assetHash);
+  assert.deepEqual(reset.folder, []);
+  assert.deepEqual((await service.getCase("p1", "permission", "0001")).folder, ["系统管理", "权限"]);
+});
+
 test("正式版本和新候选分开，展开准确版本并核对脚本及说明哈希", async (t) => {
   const { service, save } = await setup(t);
   await save("demo", { formal: true });
@@ -129,6 +174,7 @@ test("拒绝越界、目录、链接及未登记项目或 revision", async (t) =
   await assert.rejects(service.list("missing"), /未找到/);
   await fs.symlink(directory, path.join(workspace, "qa/ui/cases/link"));
   await assert.rejects(service.getCase("p1", "link", "0001"), /符号链接/);
+  await assert.rejects(service.moveCase("p1", "link", "合同管理", "0".repeat(64)), /符号链接/);
   await fs.mkdir(path.join(workspace, "qa/data"), { recursive: true });
   await fs.symlink(directory, path.join(workspace, "qa/data/link"));
   await assert.rejects(service.remove("p1", "link/asset.json"), /符号链接/);

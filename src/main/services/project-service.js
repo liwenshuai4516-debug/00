@@ -76,6 +76,10 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return testData.getCase(projectId, caseId, revision);
   }
 
+  function moveTestCase(projectId, caseId, folder, assetHash) {
+    return testData.moveCase(projectId, caseId, folder, assetHash);
+  }
+
   function deleteTestCase(projectId, caseId, assetHash) {
     return testData.removeCase(projectId, caseId, assetHash);
   }
@@ -104,6 +108,7 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     listTestData,
     deleteTestData,
     getTestCase,
+    moveTestCase,
     deleteTestCase,
     listTestReports,
     getTestReport,

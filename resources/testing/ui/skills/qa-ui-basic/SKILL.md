@@ -37,7 +37,7 @@ description: 编排只读或已授权隔离写的 UI 探索、候选生成、完
 
 1. 调用一次 qa_ui_explore，保留返回 taskId、任务目录、终值与清理状态。仅 completed 才继续；explore 模式到此结束。
 2. 加载 qa-ui-assertion，读取任务 actions.jsonl 中的真实成功动作及任务约定。用当前文件工具在返回任务目录的 drafts/<caseId>/ 写 case.spec.cjs 与 case.json；脚本是根据轨迹生成的候选，不能称为官方录制器产物。
-3. case.json 使用 qa-ui-case/v1，包含 caseId/taskId、project{id,name}、title、modulePath 数组、targetUrl、role、initialState、dataStrategy、cleanup、expected、steps{text,stepId}、assertions{kind,expectedId,text}。项目、预期和前置沿用任务，不修改为探索实际值。stepId 必须引用成功动作；每条预期至少有 business 引用。
+3. case.json 使用 qa-ui-case/v1，包含 caseId/taskId、project{id,name}、title、modulePath 数组、targetUrl、role、initialState、dataStrategy、cleanup、expected、steps{text,stepId}、assertions{kind,expectedId,text}。modulePath 按业务目录书写，例如 `["合同管理", "经营合同"]`，用于用例面板的目录树；不要用“只读”“冒烟”等测试类型代替业务目录。项目、预期和前置沿用任务，不修改为探索实际值。stepId 必须引用成功动作；每条预期至少有 business 引用。
 4. 一例一 test，使用 @playwright/test 的 test/expect，稳定业务定位器和 web-first 断言。独立核对身份与初态，附 qa-initial-state 截图；完成业务结果断言后附 qa-business-result 截图。无凭据、skip、吞错、固定 sleep、first/nth 或临时 ref。
 5. 调用 qa_ui_save_candidate({taskId,caseId})，静态检查并冻结 revision，不执行。candidate 模式到此交付。候选冻结后不得直接修改 revision。
 

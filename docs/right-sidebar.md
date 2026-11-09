@@ -110,9 +110,7 @@
 node --test tests/unit/project-environment.test.js tests/unit/test-data-service.test.js tests/unit/test-report-service.test.js tests/unit/file-preview-service.test.js tests/unit/workspace-tree-service.test.js tests/unit/browser-url.test.js
 ```
 
-用例面板本轮定向检查：服务/IPC/项目服务及共享工作流 23 项通过；独立页面 16 项断言通过，覆盖 50 条分页、按需版本详情、来源只读、正式执行提示、候选无执行、筛选分页、删除确认、普通文件删除、切换项目迟到响应及无横向溢出。服务检查还覆盖 205 例完整排序分页、哈希/链接/归属拒绝、旧资产隔离、整例删除与历史保留。使用临时模拟接口和本地页面，不读取真实认证或请求模型。
-
-共用 `sidebar-layout.check.cjs` 本轮未通过：补齐模型 catalog 模拟接口后，仍停在旧设置断言，尚未到用例区域；已停止恢复检查。独立用例页两次均有 Chromium 缓存初始化日志，补齐目录未消除，不能将断言通过扩大为环境无异常。详见 [异常与恢复条件](browser-use-readonly-workflow.md)。
+用例面板本轮定向检查：`node --test tests/unit/test-data-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js` 24 项通过；独立页面 21 项断言通过，覆盖目录树计数、父/子目录筛选、面包屑、返回全部、设置目录、50 条分页、按需版本详情、来源只读、正式执行提示、候选无执行、搜索、删除确认、普通文件删除、切换项目迟到响应及无横向溢出。服务检查还覆盖 205 例完整排序分页、目录树完整枚举与统计、组织目录写入、哈希/链接/归属拒绝、旧资产隔离、整例删除与历史保留。共用 `sidebar-layout.check.cjs` 79 项通过；退出时仍有一次 Chromium 缓存目录日志，不把页面断言通过扩大为环境完全无异常。使用临时模拟接口和本地页面，不读取真实认证或请求模型。详见 [异常与恢复条件](browser-use-readonly-workflow.md)。
 
 报告面板本轮定向检查：报告服务、IPC、项目服务及共享工作流 23 项通过；独立报告页面 18 项断言通过，覆盖列表与逐例分页、跨整批失败摘要、用途/版本/来源、迟到请求、删除确认和统计刷新、焦点及无溢出。首次页面夹具错误触发刷新而超时，修正后一次恢复通过；Chromium 缓存日志仍未解决。仅使用临时数据和本地页面，无真实模型请求。详见 [异常记录 E、G](browser-use-readonly-workflow.md)。
 
@@ -122,7 +120,7 @@ node --test tests/unit/project-environment.test.js tests/unit/test-data-service.
 
 ![项目环境列表](images/right-sidebar-environments.png)
 
-![用例版本与只读详情](images/test-data-versions.png)
+![用例目录、版本与只读详情](images/test-data-versions.png)
 
 ![报告用途、版本来源与全批失败摘要](images/test-report-versions.png)
 
@@ -132,7 +130,7 @@ node --test tests/unit/project-environment.test.js tests/unit/test-data-service.
 
 - 真实指针拖拽、真实系统目录选择和真实配置写入未在自动检查中代替人工验收；测试使用临时配置和临时数据目录。
 - 项目环境密码是本机明文配置，不是加密凭据库；页面不回填已存密码，也不代表自动登录一定成功。
-- 用例内容按 revision 只读，允许二次确认后整例删除全部版本；不原地修改正式说明或 spec。旧资产不展示、不迁移；生产录制入口和其他技能仍待替换，不把面板接入称为整条工作流已切换。
+- 用例内容按 revision 只读，允许二次确认后整例删除全部版本；「设置目录」只写 `asset.json` 的组织字段，不修改正式说明、spec 或 revision 哈希。旧资产不展示、不迁移；生产录制入口和其他技能仍待替换，不把面板接入称为整条工作流已切换。
 - 测试报告内容只读；允许二次确认后删除无版本引用且已收尾的 UI 批次目录，不重跑、不改写原始摘要。报告详情依赖 `summary.json`，缺失或损坏时只能提示，不能从其他文件推断通过。修复任务关联尚未实现。
 - 文件预览只读单文件，不支持搜索、行号定位、图片/PDF 或二进制；Markdown 内嵌图片仍按文字展示。
 - 文件树没有搜索、多选或拖拽，也不显示忽略规则以外的隐藏文件策略；符号链接一律不展示。
