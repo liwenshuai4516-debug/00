@@ -142,7 +142,7 @@ test("隔离写新建与清理", async ({ page }, testInfo) => {
   await fs.writeFile(path.join(readDir, "drafts/read-case/case.spec.cjs"), spec(true));
   await write(path.join(readDir, "drafts/read-case/case.json"),
     { ...metadata, caseId: "read-case", taskId: readTaskId, dataStrategy: "read-only", cleanup: "none" });
-  await assert.rejects(api.saveCandidate(workspace, { taskId: readTaskId, caseId: "read-case" }), /只读用例不能声明写操作授权/);
+  await assert.rejects(api.saveCandidate(workspace, { taskId: readTaskId, caseId: "read-case" }), /只读用例不能声明写操作/);
 
   const candidate = await api.saveCandidate(workspace, { taskId, caseId });
   const validation = await api.run(workspace, { caseId, revision: candidate.revision, mode: "validate" });

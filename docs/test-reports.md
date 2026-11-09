@@ -54,7 +54,7 @@ UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应
 
 执行器写入 `schema`、`kind`、`runId`、`status`、`startedAt`、`finishedAt`、`testCount`、`counts`、`tests`。新版 UI 另须声明 `workflow: "browser-use-playwright"`、`purpose: "validate" | "regression"`、项目编号、真实工作区、非重复 `caseIds`，以及与 caseIds 准确对应的四位字符串 `revisions` 和 `sourceTaskIds`；服务核对项目、工作区与批次目录归属后才展示。
 
-`modulePath`（或字符串 `module`）可选，报告名称优先使用它，其次采用执行时冻结的 `caseModules`，仍无法确定时回退到 runId；不再回看旧 case 资产。接口测试可用 `tests[]` 表达接口场景，`file` 写脚本或场景相对路径。修复批次的 validate 摘要可带 `parentRunId`（该正式版本真实失败的 regression 批次）和 `patchSummary`（补丁说明）；列表显示“修复”标记，详情展示修复来源与补丁说明。隔离写批次另记录 `dataStrategy: "isolated-write"`、`dataCleanup: "in-test"` 和 `writeAuthorization{kind,reference}`；详情展示数据策略与写授权来源。删除 UI 报告时，仍被任一修复任务引用为父批次的报告不能删除。
+`modulePath`（或字符串 `module`）可选，报告名称优先使用它，其次采用执行时冻结的 `caseModules`，仍无法确定时回退到 runId；不再回看旧 case 资产。接口测试可用 `tests[]` 表达接口场景，`file` 写脚本或场景相对路径。修复批次的 validate 摘要可带 `parentRunId`（该正式版本真实失败的 regression 批次）和 `patchSummary`（补丁说明）；列表显示“修复”标记，详情展示修复来源与补丁说明。隔离写批次另记录 `dataStrategy: "isolated-write"`、`dataCleanup: "in-test" | "residual"`、`writeAuthorization{kind,reference}`，声明残留时另有 `residualAuthorization{kind,reference}`；详情展示数据策略、写授权与残留授权来源。删除 UI 报告时，仍被任一修复任务引用为父批次的报告不能删除。
 
 ## 状态与通过条件
 

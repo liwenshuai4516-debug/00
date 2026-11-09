@@ -9,7 +9,7 @@ description: 按 caseId 或项目执行已发布的 UI 正式版本，读取原�
 
 - 仅执行 `qa/ui/cases/<caseId>/asset.json` 的 `currentRevision`；该版本须有 `validatedRunId`，且 `case.spec.cjs`、`case.json` 与登记哈希一致。
 - 一例一 test。按 caseId 选择，不按标题正则筛选，不读取旧平铺资产，不迁移旧数据。
-- 只读任务要求 `dataStrategy=read-only`；用户明确授权的隔离写任务要求 `isolated-write` 且 `cleanup=in-test`，并按任务记录的写授权执行。普通回归不修改预期、版本、正式引用或已有结果；发现数据未清理时报告残留，不做自动重放。
+- 只读任务要求 `dataStrategy=read-only`；用户明确授权的隔离写任务为 `isolated-write`，`cleanup=in-test` 或已声明的 `residual`，并按任务记录的写授权执行。残留模式的用例每次回归都会新增数据，执行前确认用户仍接受；普通回归不修改预期、版本、正式引用或已有结果，发现数据未清理时报告残留，不做自动重放。
 - 使用项目已配置账号后台登录，每批新建私有状态和回放上下文；不动态发现业务账号、不切换用户、不读取 `.env` 或让模型查看真实配置。
 - 目录和登录成功不等于业务身份正确；脚本必须核对任务声明的身份、初态与业务预期。
 

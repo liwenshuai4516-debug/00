@@ -161,7 +161,7 @@ async function run(taskFile) {
       problems.push("每个版本必须有且只有一个实际测试结果。");
     }
     const evidenceNames = ["qa-initial-state", "qa-business-result",
-      ...(task.dataStrategy === "isolated-write" ? ["qa-cleanup"] : [])];
+      ...(task.dataStrategy === "isolated-write" ? [task.dataCleanup === "residual" ? "qa-residue" : "qa-cleanup"] : [])];
     for (const test of tests.filter((item) => item.status === "passed")) {
       for (const name of evidenceNames) {
         if (!test.attachments.some((item) => item.name === name && item.contentType === "image/png" && item.path)) {
@@ -179,7 +179,8 @@ async function run(taskFile) {
       caseModules: task.caseModules, ...(task.parentRunId ? { parentRunId: task.parentRunId } : {}),
       ...(task.patchSummary ? { patchSummary: task.patchSummary } : {}),
       dataStrategy: task.dataStrategy, dataCleanup: task.dataCleanup,
-      ...(task.writeAuthorization ? { writeAuthorization: task.writeAuthorization } : {}) } : {}),
+      ...(task.writeAuthorization ? { writeAuthorization: task.writeAuthorization } : {}),
+      ...(task.residualAuthorization ? { residualAuthorization: task.residualAuthorization } : {}) } : {}),
     runId: task.runId, status: cancelled ? "cancelled" : passed ? "passed" : report && problems.length === 0 ? "failed" : "incomplete",
     startedAt, finishedAt: new Date().toISOString(), targetUrl: task.targetUrl,
     project: task.project ?? null, workspace: task.workspace, dataDir: task.dataDir ?? null,
@@ -195,7 +196,7 @@ async function run(taskFile) {
     `范围：${task.caseIds.join(", ")}。统计：${JSON.stringify(counts)}。`, "",
     `运行环境：Node ${versions.node}；Playwright ${versions.playwright ?? "未知"}。`,
     ...(task.parentRunId ? [`修复来源：${task.parentRunId}${task.patchSummary ? `；补丁：${task.patchSummary}` : ""}。`] : []),
-    ...(task.dataStrategy ? [`数据策略：${task.dataStrategy}；清理：${task.dataCleanup ?? "未声明"}${task.writeAuthorization ? `；写授权：${task.writeAuthorization.kind} · ${task.writeAuthorization.reference}` : ""}。`] : []),
+    ...(task.dataStrategy ? [`数据策略：${task.dataStrategy}；清理：${task.dataCleanup ?? "未声明"}${task.writeAuthorization ? `；写授权：${task.writeAuthorization.kind} · ${task.writeAuthorization.reference}` : ""}${task.residualAuthorization ? `；残留授权：${task.residualAuthorization.kind} · ${task.residualAuthorization.reference}` : ""}。`] : []),
     task.authFile ? "本批次关闭 trace，避免归档私有登录态。" : "trace 保留步骤，不含 DOM、网络快照和源码。", "",
     "| 用例 | 状态 | 耗时（毫秒） |", "| --- | --- | --- |",
     ...tests.map((test) => `| ${test.title.replaceAll("|", "\\|").replaceAll("\n", " ")} | ${test.status} | ${test.durationMs ?? "未知"} |`),

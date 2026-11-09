@@ -292,6 +292,8 @@ UI 用例和报告列表使用每页 50 条、按需详情。目录枚举在过�
 
 2026-11-09 阶段 4 首个切片：只读用例的“执行并修复”与修复关联已接入。`qa_ui_save_candidate` 可根据当前正式版本和真实 failed regression 建立修复任务（不启动探索浏览器），每个任务最多两个补丁；业务预期、步骤、断言与标题等说明字段冻结，只允许脚本定位/等待/证据变化；新 revision 记录 baseRevision、baseTaskId、parentRunId、patchSummary，验证摘要和报告界面展示父批次与补丁说明，父批次被引用时拒绝删除。验证使用受控本地 Chromium 真实回归失败、修复、定向验证与发布，`node --test tests/unit/ui-repair-workflow.test.js` 1 项、报告服务 8 项、报告页面 19 项通过。写操作数据准备、修复后的自动决策、真实模型生成补丁、真实业务与安装包验收仍未完成，阶段 5 未开始。
 
+2026-11-09 真实写操作授权验收：用户明确要求并在测试环境授权写操作。当前版本采购合同草稿无删除入口，用户选择接受残留；新增 `cleanup: "residual"` 受控约定（独立 residualAuthorization、qa-residue 证据、报告展示残留授权），据此完成 `pms-procurement-draft` revision 0001 的真实创建/查询、定向验证（run-c69aaa1f… passed）与发布。测试环境残留两条草稿已登记 draftId 与流程编号；该用例每次回归会新增草稿，不得加入定时回归。提交审批、编辑、删除及其他业务写入仍未验收。
+
 2026-11-09 定时回归真实项目：在项目管理系统（pms）真实经营总览页完成真实模型只读探索、候选生成、定向验证和发布（case `pms-business-overview` revision 0001）。使用临时 launchd 以 60 秒间隔调用独立 CLI 两次，均 passed、退出 0，用例资产哈希未变、工作区锁释放；首次模型请求 502 超时后，探活恢复再做一次有界重试成功。期间修复 SPA 登录守卫空壳被误判为已登录的问题并新增回归场景。应用内调度、失败/取消/并发调度、长期稳定性与跨平台仍未验收，临时调度已移除。
 
 2026-11-09 打包资源布局：独立 CLI 不再硬编码开发仓库路径，`shared.cjs` 在检测到 `resources/testing/ui/lib` 时从随包副本加载宿主模块；`prepare-runtime.cjs` 负责复制 workflow／project-context／login-session／runtime-paths／project-store。新增模拟 `resources` 布局检查，在临时 resources 目录中完成 verify、CLI 参数和受控页面真实回放，`tests/unit/ui-packaged-layout.test.js` 通过。该检查不等同真实安装包、代码签名或跨平台验收。

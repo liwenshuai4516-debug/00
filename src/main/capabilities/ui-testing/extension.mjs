@@ -10,8 +10,11 @@ const contract = Type.Object({
   expected: Type.Array(Type.Object({ id: string, text: string,
     source: Type.Object({ kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string }) }), { minItems: 1 }),
   initialState: string, dataStrategy: Type.Union([Type.Literal("read-only"), Type.Literal("isolated-write")]),
-  cleanup: Type.Union([Type.Literal("none"), Type.Literal("in-test")]),
+  cleanup: Type.Union([Type.Literal("none"), Type.Literal("in-test"), Type.Literal("residual")]),
   writeAuthorization: Type.Optional(Type.Object({
+    kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string,
+  })),
+  residualAuthorization: Type.Optional(Type.Object({
     kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string,
   })),
   completionTexts: Type.Array(string, { minItems: 1 }),

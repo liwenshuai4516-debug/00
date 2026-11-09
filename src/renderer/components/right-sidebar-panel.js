@@ -795,7 +795,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     section.append(version);
     const meta = detail.meta;
     section.append(element("p", { class: "case-context", text: `${item.caseId} · ${meta.targetUrl} · ${meta.role}` }),
-      element("p", { class: "case-context", text: `初态：${meta.initialState}；数据：${meta.dataStrategy}；清理：${meta.cleanup}${meta.writeAuthorization ? `；写授权：${meta.writeAuthorization.kind} · ${meta.writeAuthorization.reference}` : ""}` }));
+      element("p", { class: "case-context", text: `初态：${meta.initialState}；数据：${meta.dataStrategy}；清理：${meta.cleanup}${meta.writeAuthorization ? `；写授权：${meta.writeAuthorization.kind} · ${meta.writeAuthorization.reference}${meta.residualAuthorization ? `；残留授权：${meta.residualAuthorization.kind} · ${meta.residualAuthorization.reference}` : ""}` : ""}` }));
     const addList = (label, entries, describe) => {
       section.append(element("h4", { class: "case-steps__label", text: `${label} ${entries.length}` }));
       const list = element("ol", { class: "case-version-list" });
@@ -1299,6 +1299,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (detail.patchSummary) facts.append(fact("补丁说明", detail.patchSummary));
     if (detail.dataStrategy) facts.append(fact("数据策略", detail.dataCleanup ? `${detail.dataStrategy} · 清理 ${detail.dataCleanup}` : detail.dataStrategy));
     if (detail.writeAuthorization) facts.append(fact("写授权", `${detail.writeAuthorization.kind} · ${detail.writeAuthorization.reference}`));
+    if (detail.residualAuthorization) facts.append(fact("残留授权", `${detail.residualAuthorization.kind} · ${detail.residualAuthorization.reference}`));
     box.append(facts);
 
     if (detail.targetUrl) {

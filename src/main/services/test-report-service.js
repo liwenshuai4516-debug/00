@@ -170,6 +170,7 @@ function normalizeReport(summary, kind, id, summaryPath, modifiedAt) {
     dataStrategy: text(summary?.dataStrategy, 40),
     dataCleanup: text(summary?.dataCleanup, 40),
     writeAuthorization: normalizeWriteAuthorization(summary?.writeAuthorization),
+    residualAuthorization: normalizeWriteAuthorization(summary?.residualAuthorization),
     status: deriveStatus(summary, tests),
     startedAt,
     finishedAt,

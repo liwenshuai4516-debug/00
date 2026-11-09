@@ -196,18 +196,21 @@ test("修复批次保留父批次与补丁摘要，普通批次为空", async (t
 
 test("隔离写批次保留数据策略与写授权", async (t) => {
   const c = await setup(t);
-  await writeSummary(c, "ui", "write-run", { purpose: "validate", dataStrategy: "isolated-write", dataCleanup: "in-test",
-    writeAuthorization: { kind: "user", reference: "受控写夹具" } });
+  await writeSummary(c, "ui", "write-run", { purpose: "validate", dataStrategy: "isolated-write", dataCleanup: "residual",
+    writeAuthorization: { kind: "user", reference: "受控写夹具" },
+    residualAuthorization: { kind: "user", reference: "受控环境接受残留" } });
   const detail = await c.service.get(c.project.id, "ui", "write-run");
   assert.equal(detail.dataStrategy, "isolated-write");
-  assert.equal(detail.dataCleanup, "in-test");
+  assert.equal(detail.dataCleanup, "residual");
   assert.deepEqual(detail.writeAuthorization, { kind: "user", reference: "受控写夹具" });
+  assert.deepEqual(detail.residualAuthorization, { kind: "user", reference: "受控环境接受残留" });
   const listed = (await c.service.list(c.project.id)).reports.find((item) => item.id === "write-run");
   assert.equal(listed.dataStrategy, "isolated-write");
   await writeSummary(c, "ui", "read-run");
   const read = await c.service.get(c.project.id, "ui", "read-run");
   assert.equal(read.dataStrategy, "");
   assert.equal(read.writeAuthorization, null);
+  assert.equal(read.residualAuthorization, null);
 });
 
 test("空目录返回稳定分页，项目缺失明确拒绝", async (t) => {
