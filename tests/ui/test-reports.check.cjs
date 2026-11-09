@@ -1,18 +1,21 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const os = require("node:os");
-const { mkdtemp, readFile, writeFile, rm } = require("node:fs/promises");
+const { mkdtempSync, mkdirSync } = require("node:fs");
+const { readFile, writeFile, rm } = require("node:fs/promises");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow } = require("electron");
 
 app.disableHardwareAcceleration();
 app.on("window-all-closed", () => {});
+// sessionData 必须在 ready 前设置，异步建目录会让 Chromium 抢先初始化。
+const temporary = mkdtempSync(path.join(os.tmpdir(), "test-reports-check-"));
+mkdirSync(path.join(temporary, "user-data"), { recursive: true });
+app.setPath("userData", path.join(temporary, "user-data"));
+app.setPath("sessionData", path.join(temporary, "user-data"));
 
 async function main() {
   const root = path.resolve(__dirname, "../..");
-  const temporary = await mkdtemp(path.join(os.tmpdir(), "test-reports-check-"));
-  app.setPath("userData", path.join(temporary, "user-data"));
-  app.setPath("sessionData", path.join(temporary, "user-data"));
   await app.whenReady();
 
   const indexHtml = await readFile(path.join(root, "src/renderer/index.html"), "utf8");

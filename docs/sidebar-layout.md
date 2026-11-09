@@ -8,6 +8,7 @@
 - 收起后保留 56px 图标轨道：新会话、搜索、项目、最近和底部设置仍可见；点击轨道图标按约定只展开侧栏，不直接执行对应业务。
 - 折叠时外层宽度 300ms 收缩，内层冻结在展开宽度并 150ms 淡出；150ms 后换成轨道，轨道内容从 `translateX(49px)` 滑入。`prefers-reduced-motion` 下直接切换，不播动画。
 - 视口窄于 760px 时自动收成轨道；手动展开只影响当前窄窗，窗口变宽后回到持久化的展开选择。窄窗口打开项目、会话或恢复成功后回到轨道，失败保留入口。
+- 窄窗手动展开侧栏后，聊天页头、标题行与“对话/轨迹”标签允许换行，保持入口可见并避免撑宽页面。
 - 聊天消息、输入区、状态提示与上下文组件共用 `--content-width: min(1440px, 90vw)`，随窗口伸展；侧栏展开时以实际可用宽度为上限，宽屏不再固定为 760px。
 - 宽度与展开状态写入 `localStorage` 的 `agent-client:sidebar`，拖拽期间合并 200ms 写入，初始化时读取恢复。窄窗的临时展开不写入持久化状态。页面检查覆盖写入，重载恢复依赖初始化读取，未单独做重载验收。
 - 滚动条只是指针可供性：指针进入侧栏才显示，离开 2s 后隐藏；滚动容器使用 `scrollbar-gutter: stable`，滑块出现或消失不改变布局。
@@ -31,5 +32,9 @@ node --test tests/unit/session-list.test.js tests/unit/project-service.test.js
 ![侧栏展开态](images/sidebar-layout.png)
 
 ![侧栏轨道态](images/sidebar-rail.png)
+
+2026-11-09 修复后重新完成上述 79 项页面检查；临时 sessionData 在 Electron ready 前设置，日志无原缓存错误。下图为 390px 手动展开侧栏后的实际页面，标签换行且页面无横向溢出（离线模拟数据）。
+
+![窄窗展开态](images/sidebar-narrow-expanded.png)
 
 右侧边栏外壳见 [右侧边栏](right-sidebar.md)。

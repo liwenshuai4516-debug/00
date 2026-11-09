@@ -827,6 +827,7 @@ select option {
 /* 窄窗口由侧栏外壳自动收成 56px 轨道，聊天保持可见。 */
 @media (max-width: 760px) {
   .chat-header {
+    flex-wrap: wrap;
     min-height: 56px;
     padding: 8px 12px;
   }
@@ -835,6 +836,7 @@ select option {
     top: 50px;
   }
   .conversation-heading {
+    flex-wrap: wrap;
     gap: 8px;
   }
   /* 窄窗口 header 使用紧凑按钮，给标题和右侧栏入口留空间。 */

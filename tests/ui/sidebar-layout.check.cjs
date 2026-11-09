@@ -1,18 +1,20 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const os = require("node:os");
-const { mkdtemp, mkdir, rm, writeFile } = require("node:fs/promises");
+const { mkdtempSync, mkdirSync } = require("node:fs");
+const { rm, writeFile } = require("node:fs/promises");
 const http = require("node:http");
 const { app, BrowserWindow, ipcMain } = require("electron");
 app.disableHardwareAcceleration();
 app.on("window-all-closed", () => {});
+// sessionData 必须在 ready 前设置，异步建目录会让 Chromium 抢先初始化。
+const temporary = mkdtempSync(path.join(os.tmpdir(), "sidebar-layout-check-"));
+mkdirSync(path.join(temporary, "user-data"), { recursive: true });
+app.setPath("userData", path.join(temporary, "user-data"));
+app.setPath("sessionData", path.join(temporary, "user-data"));
 
 async function main() {
   const root = path.resolve(__dirname, "../..");
-  const temporary = await mkdtemp(path.join(os.tmpdir(), "sidebar-layout-check-"));
-  await mkdir(path.join(temporary, "user-data", "Shared Dictionary", "cache"), { recursive: true });
-  app.setPath("userData", path.join(temporary, "user-data"));
-  app.setPath("sessionData", path.join(temporary, "user-data"));
   await app.whenReady();
   const projects = [
     { id: "a", name: "演示项目", workspaceDir: "/demo/a" },
@@ -210,7 +212,7 @@ async function main() {
     await click("#session-search-toggle");
     await click("#model-settings-button");
     await wait(`document.getElementById('model-settings-dialog').open&&document.getElementById('model-settings-dialog').getAttribute('aria-busy')==='false'`);
-    await check("设置左侧纵向显示模型、主题与已归档，模型页使用官方配置入口", `document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'&&document.querySelector('#settings-theme-tab').textContent.trim()==='主题'&&document.querySelector('[data-open-models]')!==null&&!document.querySelector('#model-profile-form')&&document.querySelector('#settings-archive-tab').textContent.trim()==='已归档的聊天'&&document.querySelector('[role=tablist]').getAttribute('aria-orientation')==='vertical'`);
+    await check("设置左侧纵向显示模型、主题与已归档，模型页使用官方配置入口", `document.querySelector('#settings-model-tab').getAttribute('aria-selected')==='true'&&document.querySelector('#settings-theme-tab').textContent.trim()==='主题'&&document.querySelector('[data-open-models]')!==null&&!document.querySelector('#model-profile-form')&&document.querySelector('#settings-archive-tab').textContent.trim()==='已归档的聊天'&&document.querySelector('#model-settings-dialog [role=tablist]').getAttribute('aria-orientation')==='vertical'`);
     await click("#model-settings-dialog [data-close]");
     await check("关闭设置返回入口", `!document.getElementById('model-settings-dialog').open&&document.activeElement.id==='model-settings-button'`);
     win.setSize(390, 700);
@@ -298,7 +300,8 @@ async function main() {
       win.setSize(width, 820);
       await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
       if (await run(`document.getElementById('app-sidebar').dataset.collapsed==='true'`)) await click("#sidebar-toggle");
-      await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
+      // 等待 300ms 宽度过渡收尾，再检查稳定布局，避免把展开动画误判为溢出。
+      await wait(`Math.abs(document.getElementById('app-sidebar').getBoundingClientRect().width-parseFloat(document.getElementById('app-sidebar').style.width))<1`);
       await check(`窗口${width}侧栏布局无横向溢出，加号在标题右侧`, `document.documentElement.scrollWidth<=innerWidth&&document.getElementById('app-sidebar').scrollWidth<=document.getElementById('app-sidebar').clientWidth+1&&document.getElementById('add-project-button').getBoundingClientRect().left>document.getElementById('project-list-title').getBoundingClientRect().right`);
     }
     // 窄窗口验证键盘改宽、56px 轨道和图标展开。

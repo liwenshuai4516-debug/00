@@ -1,6 +1,6 @@
 # browser-use + Playwright：阶段 2 只读闭环
 
-核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。生产入口、独立 CLI、用例/报告面板及对应 IPC 已统一为新版只读工作流，定向离线验证通过。真实 Qwen 首次请求超时，真实探索后的整链验收尚未通过。两面板历史检查通过，共用侧栏检查与 Chromium 缓存异常保留下方记录。
+核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。生产入口、独立 CLI、用例/报告面板及对应 IPC 已统一为新版只读工作流，定向离线验证通过。真实 Qwen 首次请求超时，真实探索后的整链验收尚未通过。本次两面板及共用侧栏检查通过，缓存初始化已修复；报告页退出时的 GPU 日志仍保留下方记录。
 
 ## 已接入的链路
 
@@ -155,7 +155,7 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 | 已执行处置 | setup 改为 `fs.realpath(mkdtemp(...))`，在前置条件修正后完成一次定向恢复验证；23 项通过、退出 0 |
 | 影响与恢复 | 仅临时测试数据，无真实业务写入、无结果未知；恢复已完成，未重放正式运行或模型请求 |
 
-## 异常报告 E：Chromium 缓存初始化（未解决）
+## 异常报告 E：Chromium 缓存初始化（已修复，历史保留）
 
 | 项目 | 记录 |
 | --- | --- |
@@ -167,7 +167,7 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 | 报告页本轮观察 | 2026-11-09 09:45:21 与 09:46:43 UTC+08:00 的独立报告页面检查仍有 `Failed to create directory .../Shared Dictionary/cache`、`wrong file structure on disk: 1` 和 `Unable to create cache`；未修改缓存路径或参数。报告页恢复只针对报告 G 的明确夹具错误，不计为缓存恢复成功 |
 | 影响与恢复 | 保留代码及 `docs/images/test-data-versions.png`；仅临时模拟接口，无真实认证/模型/业务写入。页面断言通过不代表 Chromium 环境无异常。后续需先确认缓存失败原因和修复依据，再由用户继续恢复检查；不能原样重复启动 |
 
-## 异常报告 F：共用侧栏旧夹具与断言（未通过）
+## 异常报告 F：共用侧栏旧夹具与断言（已修复，历史保留）
 
 | 项目 | 记录 |
 | --- | --- |
@@ -188,3 +188,26 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 | 原因与证据 | 夹具连续触发两次 focus；产品处理器在 busy 时忽略第二次，测试却等待没有启动的新请求。已确认是测试触发条件错误，没有证据表明产品刷新失败。旧 catch 后 app.quit 也未可靠保留失败退出码。证据为工具输出及 `tests/ui/test-reports.check.cjs`，未另存完整原始日志 |
 | 已执行处置 | 暂停后读取页面/夹具契约，改用公开 panel.open 入口启动更新请求并释放旧列表，核对迟到结果不覆盖；去除多余准备刷新，结束改为 app.exit 保留退出码，失败保留临时现场。前置条件改变后仅一次恢复验证，18 项通过 |
 | 影响与恢复 | 仅临时模拟数据与截图，无真实认证/模型/业务写入，无结果未知。报告页恢复已完成；两次 Chromium 缓存日志仍按 E 保留，未换路径或参数处理，也未重跑共用侧栏或真实 Qwen 链路 |
+
+
+## 2026-11-09 缓存与侧栏修复验证
+
+本次仅修复报告 E/F 相关初始化、检查夹具与窄窗溢出，未增加阶段 4 功能、未请求真实模型、未读取真实认证或写入业务数据；未使用技能。以下记录更新 E/F 的当前结论，保留前文首次失败事实。
+
+| 项目 | 记录 |
+| --- | --- |
+| 缓存原因与处置 | 三份 Electron 页面检查原先异步创建目录后才设置 userData/sessionData。安装包公开 `electron.d.ts` 要求 sessionData 在 ready 前设置；异步文件操作让初始化存在竞争。改为同步创建临时根目录并在首个 await 前设置路径，去除手工建立 Chromium 内部缓存目录。没有改缓存位置策略或启动参数 |
+| 缓存恢复 | `electron tests/ui/test-data-catalog.check.cjs` 16 项、`electron tests/ui/test-reports.check.cjs` 18 项、侧栏最终检查 79 项均通过且退出 0，三份日志均无原 Shared Dictionary/cache 错误。对应日志为 `/tmp/swqa-data-recovery-20261109.log`、`/tmp/swqa-reports-recovery-20261109.log`、`/tmp/swqa-sidebar-recovery-20261109.log`；均通过 functions.exec/exec_command 启动，本轮 task/toolCallId 未记录 |
+| 侧栏首次恢复 | 设置断言限定到设置对话框后通过；等待侧栏宽度过渡稳定后检查。首次恢复继续发现 390px 页面宽 399px；加入只读几何诊断后确认“对话/轨迹”标签栏固定宽度溢出，前 34 项通过后停止。日志 `/tmp/swqa-sidebar-20261109.log` 与 `/tmp/swqa-sidebar-diagnostic-20261109.log` |
+| 侧栏最小修复与恢复 | 窄窗页头和标题行允许换行，视图标签栏限制在父容器宽度并允许换行，保留入口和键盘操作。明确修改前置布局后一次恢复，全部 79 项通过；包含用例面板区域与 390px 展开态无溢出。临时几何诊断已移除，截图 `docs/images/sidebar-narrow-expanded.png` 已视觉核对；宽度动画等待仍保留 |
+| 次数与影响 | 缓存各页面修正后一次恢复；侧栏旧断言恢复发现新溢出，增加诊断定位后才修改产品样式并一次恢复。模拟添加/清单/打开/预览失败是既有预期负例，不作为环境故障。无未知提交或需重放的业务操作，真实 Qwen 超时仍按 B 保留 |
+
+## 异常报告 H：报告页退出时 GPU 日志（待确认）
+
+| 项目 | 记录 |
+| --- | --- |
+| 任务与结论 | 2026-11-09 10:41:16 UTC+08:00，报告页 18 项断言完成后出现 GPU shared-image 日志，进程退出 0；该日志不属于已修复的缓存错误，不能宣称检查环境完全无日志异常 |
+| 调用链路与工具 | 用户修复请求 → functions.exec / exec_command → `electron tests/ui/test-reports.check.cjs` → 临时模拟页面 / Chromium；未使用技能，无模型请求；任务编号与 toolCallId 未记录 |
+| 原因与证据 | `SharedImageManager::ProduceMemory: Trying to Produce a Memory representation from a non-existent mailbox.` 出现三次，完整日志 `/tmp/swqa-reports-recovery-20261109.log`。已确认出现于 PASS 汇总后；产生原因及是否与退出顺序有关仍待确认，不能仅据此判为网络、权限或产品渲染失败 |
+| 已执行处置 | 仅只读检查报告夹具退出顺序，未改启动参数或重跑报告页；保留原日志，停止此独立 GPU 排查链路。侧栏与用例页本轮没有该日志 |
+| 影响与恢复 | 页面断言有效、无真实数据写入或结果未知；本次未扩大为 GPU 生命周期修复。若后续需消除此日志，应先取得 Chromium/Electron 的可复现退出诊断及公开契约依据，再定向修正并验证，不原样重复启动 |

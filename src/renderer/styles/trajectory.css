@@ -3,6 +3,9 @@
 .conversation-tabs {
   display: inline-flex;
   flex: none;
+  flex-wrap: wrap;
+  max-width: 100%;
+  box-sizing: border-box;
   gap: 2px;
   margin-left: 4px;
   padding: 2px;
