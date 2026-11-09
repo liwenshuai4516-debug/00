@@ -111,6 +111,14 @@ contract.writeAuthorization = { kind: "user" | "rule" | "baseline", reference: "
 
 验证使用受控本地页面真实创建与删除数据：`node --test tests/unit/ui-write-workflow.test.js` 1 项通过，覆盖写授权不一致、只读任务携带写授权、缺 QA_RUN_ID、缺 qa-cleanup、两轮数据唯一且清理一致、缺清理证据验证失败且不能发布；报告服务 9 项通过（含数据策略与写授权归一化）；报告页面 19 项通过（含数据策略与写授权展示）。该结果不代表真实业务写入或清理成功。
 
+## 定时回归真实项目验收（2026-11-09）
+
+- 真实项目：项目管理系统（项目编号 `pms`，内网地址与账号来自本机项目配置，不写入文档），工作区 `18-00work space`。该工作区此前没有新版正式用例，只有旧平铺文件；因此先在真实经营总览页完成真实模型只读探索，再生成、验证并发布首个正式用例 `pms-business-overview`（revision 0001）。
+- 真实探索：`qwen3.8-flash-next`，taskId=`task-9783efed-9720-433a-8e30-ace9d57ea672`，2 次模型调用、2 个动作（navigate、done），身份与完成文本由运行时核对。定向验证 `run-943c5f52-f341-42e9-867b-058d397be84e` 1 个实际 passed，发布成功。首次尝试 `task-4635f128-3116-4798-ac95-564c2932953e` 在第一次模型请求 502 超时后停止；探活恢复（同模型 1.4 秒返回）后做了一次有界重试，失败任务保留。
+- 登录修复：SPA 在登录守卫前会短暂渲染身份区，`login.cjs` 曾把它误判为 `not-required` 而跳过登录。现在必须先等目标路由稳定、再确认身份；新增空壳闪现后跳登录页的回归场景，旧实现返回 `not-required`，修复后返回 `saved`。
+- 定时执行：使用临时 launchd 任务（`RunAtLoad`、`StartInterval` 60 秒）调用独立 CLI `execute.cjs --project pms --all`，每次运行重新后台登录并创建新回放上下文，不调用模型、不修改版本。两次触发结果：`run-ad500913-298f-4ec5-859d-25fb6f1a7c6c`、`run-694093c8-908c-49f0-9f68-4938ccbe5a53`，均 passed、退出 0、约 5–7 秒、cleanup=deleted、无 stderr；用例资产哈希前后一致，工作区锁在运行结束后释放。验收完成后已 bootout 并删除 plist 与包装脚本，未常驻调度。
+- 边界：应用内没有调度器，本次只验证外部短间隔调度；未验证失败/取消/并发调度、长期稳定性、跨平台调度或真实业务写操作。日志保留在 `/tmp/swqa-pms-schedule/launchd.log` 与 `launchd.err.log`（临时目录，不作为长期证据）。
+
 ## 验证记录
 
 2026-11-09 报告面板：`node --test tests/unit/test-report-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js tests/unit/ui-readonly-workflow.test.js`，23 项通过、0 失败，退出 0。覆盖 205 批排序筛选分页、103 条逐例及全批失败摘要、新 UI 契约/API 兼容、归属/链接/大小/损坏拒绝、共享锁、两个验证引用字段、活动批次与坏索引保护、删除保留任务及 IPC 参数/互斥；共享闭环使用离线模型协议夹具和受控本地 Chromium。

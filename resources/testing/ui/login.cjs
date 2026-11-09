@@ -24,10 +24,13 @@ let browser;
     const selectors = message.selectors ?? {};
     const password = page.locator(selectors.password || 'input[type="password"]').filter({ visible: true });
     const verified = async () => {
-      if (new URL(page.url()).origin !== target.origin) return false;
+      let current;
+      try { current = new URL(page.url()); } catch { return false; }
+      if (current.origin !== target.origin) return false;
+      // 目标路由必须稳定；SPA 空壳可能短暂渲染身份区后又被守卫重定向到登录页。
+      if (current.pathname !== target.pathname || current.hash !== target.hash) return false;
       if (selectors.authenticated) return page.locator(selectors.authenticated).isVisible();
-      const current = new URL(page.url());
-      return current.pathname === target.pathname && current.hash === target.hash && await password.count() === 0;
+      return await password.count() === 0;
     };
     try {
       // 首屏脚本可能稍后渲染表单；先等待明确登录控件或配置的身份探针。
@@ -35,6 +38,8 @@ let browser;
         password.first().waitFor({ state: "visible", timeout: 5000 }).catch(() => {}),
         selectors.authenticated ? page.locator(selectors.authenticated).waitFor({ state: "visible", timeout: 5000 }).catch(() => {}) : new Promise(() => {}),
       ]);
+      // 等待路由稳定，避免把登录守卫前的空壳误判为已登录。
+      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
       if (await password.count() === 0) {
         if (!await verified()) return { status: "manual-required", reason: "无法确认目标页面或身份，请处理重定向或配置身份标识。" };
         return { status: "not-required", verification: selectors.authenticated ? "configured-marker" : "target-route-without-login-form" };

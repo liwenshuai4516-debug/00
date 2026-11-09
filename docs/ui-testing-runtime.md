@@ -54,7 +54,7 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 
 运行 resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB。
 
---project 接受项目编号或唯一名称；配置默认 config/projects.local.json，可用 --config 指定。--cases 与 --all 二选一，只执行 currentRevision。同批必须项目、目标、角色和身份一致；每批登录一次，记录准确 revisions/sourceTaskIds。最终 JSON 输出 runId/status/summaryFile/counts/cleanup；全部通过退出 0，其余退出 1。SIGINT/SIGTERM 交给共享执行器收尾。无账号发现、外部登录态、地址覆盖或自动修复参数，不读取 .env 或调用模型。外部调度可调用该入口，真实项目定时运行尚未验收。
+--project 接受项目编号或唯一名称；配置默认 config/projects.local.json，可用 --config 指定。--cases 与 --all 二选一，只执行 currentRevision。同批必须项目、目标、角色和身份一致；每批登录一次，记录准确 revisions/sourceTaskIds。最终 JSON 输出 runId/status/summaryFile/counts/cleanup；全部通过退出 0，其余退出 1。SIGINT/SIGTERM 交给共享执行器收尾。无账号发现、外部登录态、地址覆盖或自动修复参数，不读取 .env 或调用模型。外部调度可调用该入口；2026-11-09 已在项目管理系统以临时 launchd 60 秒间隔完成两次真实定时回归（均 passed、资产未变），应用内调度、失败/取消/并发调度和长期稳定性仍未验收。
 
 ## 用例和报告面板
 

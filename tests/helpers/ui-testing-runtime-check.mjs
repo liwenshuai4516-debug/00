@@ -86,6 +86,17 @@ if (scenario === "auto-login") {
         response.setHeader("Set-Cookie", "fixture_identity=private-fixture-token; HttpOnly; Path=/");
         response.writeHead(302, { Location: "/private" }); response.end(); return;
       }
+      if (request.url === "/spa-login" && values.get("username") === "fixture-account" && values.get("password") === "fixture-private-password") {
+        response.setHeader("Set-Cookie", "spa_identity=private-fixture-token; HttpOnly; Path=/");
+        response.writeHead(302, { Location: "/spa" }); response.end(); return;
+      }
+    }
+    if (request.url === "/spa" && request.headers.cookie?.includes("spa_identity=private-fixture-token")) {
+      response.end('<h1>fixture-reviewer</h1><script>localStorage.setItem("role", "reviewer")</script>'); return;
+    }
+    if (request.url === "/spa") {
+      // 登录守卫前的空壳会短暂渲染身份区，随后才跳登录页。
+      response.end('<h1>fixture-reviewer</h1><script>setTimeout(() => { location.href = "/spa-login" }, 100)</script>'); return;
     }
     if (request.url === "/public" || (request.url === "/private" && request.headers.cookie?.includes("fixture_identity=private-fixture-token"))) {
       response.end('<h1>fixture-reviewer</h1><script>localStorage.setItem("role", "reviewer")</script>'); return;
@@ -97,11 +108,11 @@ if (scenario === "auto-login") {
   const origin = "http://127.0.0.1:" + server.address().port;
   const credentials = { account: "fixture-account", password: "fixture-private-password" };
   try {
-    for (const route of ["public", "captcha", "private", "invalid"]) {
+    for (const route of ["public", "captcha", "private", "invalid", "spa"]) {
       const entry = await openLogin(runtime, origin + "/" + route);
       try {
-        const result = await entry.auto(credentials, route === "public" || route === "private" ? { authenticated: "h1" } : {});
-        assert.equal(result.status, route === "public" ? "not-required" : route === "private" ? "saved" : "manual-required", route);
+        const result = await entry.auto(credentials, ["public", "private", "spa"].includes(route) ? { authenticated: "h1" } : {});
+        assert.equal(result.status, route === "public" ? "not-required" : ["private", "spa"].includes(route) ? "saved" : "manual-required", route);
         assert.ok(!JSON.stringify(result).includes(credentials.password));
         if (route === "captcha") { assert.match(result.reason, /验证码/); assert.equal(submissions, 0); }
         if (route === "private") {
@@ -113,6 +124,7 @@ if (scenario === "auto-login") {
           assert.equal(state.origins[0].localStorage[0].value, "reviewer");
         }
         if (route === "invalid") assert.equal(submissions, 2, "失败仅提交一次");
+        if (route === "spa") assert.equal(submissions, 3, "空壳闪现不能跳过登录");
       } finally { await entry.cleanup(); }
       await assert.rejects(fs.access(entry.directory), { code: "ENOENT" });
     }
