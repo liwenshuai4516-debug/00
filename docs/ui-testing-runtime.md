@@ -1,6 +1,6 @@
 # 客户端内置 UI 测试
 
-当前处于入口替换中：2026-11-09，独立 `execute.cjs` 与 `qa-ui-execute` 已切换为只执行 `qa/ui/cases/<caseId>/` 中的正式版本，复用新只读工作流。用例面板及对应 IPC 已切换为新版资产的分页列表、只读详情和整例删除；报告面板的新契约待接入。生产扩展与其他技能仍使用旧 Playwright Test MCP 录制入口。下文旧录制说明仅适用于该入口，旧资产不能搭配新 CLI 或新版用例面板；完整边界见 [只读闭环](browser-use-readonly-workflow.md)。
+当前处于入口替换中：2026-11-09，独立 `execute.cjs` 与 `qa-ui-execute` 已切换为只执行 `qa/ui/cases/<caseId>/` 中的正式版本，复用新只读工作流。用例与报告面板及对应 IPC 已接入新版分页、只读详情和删除保护。生产扩展与其他技能仍使用旧 Playwright Test MCP 录制入口，阶段 3 整体未完成。下文旧录制说明仅适用于该入口，旧资产不能搭配新 CLI 或新版用例/报告面板；完整边界见 [只读闭环](browser-use-readonly-workflow.md)。
 
 已有执行器支持后台登录、原生 JSON/HTML、统一摘要及证据清单；运行依赖由客户端准备，被测工作目录不需要自行安装。
 
@@ -187,13 +187,16 @@ cp -R .pi/skills/qa-approval-workflow \
 
 右侧栏「测试报告」由主进程 `test-report-service.js` 聚合两个运行目录：
 
-- 只读取项目工作区下的固定目录和 `summary.json`，跳过隐藏目录、符号链接、损坏或超过 2 MiB 的摘要；最多返回最近 50 份。
-- 列表返回类型、状态、时间、用例数、统计、模块名称、清理和摘要路径；模块名优先取摘要 `modulePath`/`module`，旧批次从 case 资产回看，前端以「模块 + 完成日期」生成报告名称。
-- 展开时才读取逐例结果，详情最多 100 条，附件只返回名称和类型，不返回绝对路径；默认只展示结论、失败与异常、问题和证据，全部逐例结果折叠。
-- 读取旧批次时缺少 `schema`/`kind` 的摘要按所在目录推断 UI/API；缺失摘要的批次单独计数，不纳入报告。
-- 面板不重跑、不改写原始报告；展开后提供删除整份批次目录的操作，二次确认且拒绝正在执行的批次。报告正文仍可能包含业务数据，按测试数据管理。
+- 只读取项目工作区固定目录，逐层拒绝符号链接，跳过隐藏目录、损坏或超过 2 MiB 的摘要；完整排序筛选后每页 50 份，顶部统计覆盖全部有效报告。
+- UI 核对 `qa-report/v1`、`browser-use-playwright`、用途、项目/真实工作区/runId，以及准确 caseIds/revisions/sourceTaskIds；旧 UI 不推断、不转换，接口旧摘要仍可读。
+- 模块取摘要 `modulePath`/`module` 或执行时冻结的 `caseModules`，不回看旧资产。详情显示候选验证/正式回归、准确版本与来源 task；逐例默认折叠，每页 50 条，全批失败摘要不受当前页影响。附件只返回名称和类型。
+- 面板不重跑、不改写报告；删除需确认，UI 在 idle 互斥和共享工作区锁内核对归属，拒绝未收尾、版本验证引用和坏索引，保留来源任务。接口旧批次可无 task，但坏/链接 task 或 running 拒绝删除。修复关联尚未实现。
 
-## 验证（2026-11-04）
+2026-11-09 新版报告定向验证：报告服务、IPC、项目服务及共享只读工作流 23 项通过，独立 Electron 页面 18 项断言通过；无真实模型请求。首次页面夹具错误触发刷新，修正后一次恢复通过，Chromium 缓存日志仍未解决。截图及异常 E、G 见 [实现记录](browser-use-readonly-workflow.md)。
+
+## 历史验证（2026-11-04）
+
+本节保留旧生产入口的验证事实；其中 UI 旧摘要推断已于 2026-11-09 退出，不能作为新版报告契约的验证。
 
 命令：`node --test tests/unit/ui-project-context.test.js tests/unit/ui-testing-runtime.test.js tests/unit/test-report-service.test.js`，以及 `./node_modules/.bin/electron tests/ui/test-reports.check.cjs`。浏览器项依赖已准备的内置环境，缺失时明确跳过。全部在临时目录和本地 HTTP 页面进行，不请求模型、不访问真实业务站点、不读取用户认证。
 

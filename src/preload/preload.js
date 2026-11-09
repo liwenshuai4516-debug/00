@@ -313,10 +313,10 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke("agent:delete-test-case", projectId, caseId, assetHash),
 
   // 测试报告只读；页面只提交项目编号、类型和批次目录名。
-  listTestReports: (projectId) =>
-    ipcRenderer.invoke("agent:list-test-reports", projectId),
-  getTestReport: (projectId, kind, id) =>
-    ipcRenderer.invoke("agent:get-test-report", projectId, kind, id),
+  listTestReports: (projectId, options) =>
+    ipcRenderer.invoke("agent:list-test-reports", projectId, options),
+  getTestReport: (projectId, kind, id, options) =>
+    ipcRenderer.invoke("agent:get-test-report", projectId, kind, id, options),
   deleteTestReport: (projectId, kind, id) =>
     ipcRenderer.invoke("agent:delete-test-report", projectId, kind, id),
 

@@ -1,6 +1,6 @@
 # browser-use + Playwright：阶段 2 只读闭环
 
-核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。开发入口及独立执行 CLI 已接入，离线集成验证通过；真实 Qwen 首次请求超时，真实探索后的整链验收尚未通过。阶段 3 已接入 CLI、执行技能、用例面板及对应 IPC；生产扩展、其他技能和报告面板的新契约仍待替换。用例面板定向检查通过，共用侧栏检查与 Chromium 缓存异常见下方记录。
+核对时间：2026-11-09，Asia/Shanghai（UTC+08:00）。开发入口及独立执行 CLI 已接入，离线集成验证通过；真实 Qwen 首次请求超时，真实探索后的整链验收尚未通过。阶段 3 已接入 CLI、执行技能、用例与报告面板及对应 IPC；生产扩展和其他技能仍待替换，整体未完成。两面板定向检查通过，共用侧栏检查与 Chromium 缓存异常见下方记录。
 
 ## 已接入的链路
 
@@ -63,7 +63,21 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 
 ![用例版本与只读详情](images/test-data-versions.png)
 
+## 新版报告面板
+
+报告服务完整读取固定目录，UI 仅接受 `qa-report/v1` / `browser-use-playwright`、validate/regression、准确项目/真实工作区/runId/caseIds/revisions/sourceTaskIds；旧 UI 不推断、不转换，API 旧摘要仍可读。模块名称取摘要声明或执行时冻结的 `caseModules`，不回看旧资产。
+
+列表完整排序、类型筛选后每页 50 份，统计覆盖全部有效报告；逐例每页 50 条，全批失败总数和前 5 条失败摘要独立返回。页面展示用途、准确版本和来源 task，保护同项目与切项目的迟到请求。单摘要 2 MiB，逐层拒绝链接，附件只返回名称与类型。
+
+UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属；prepared/running、遗留锁、损坏版本索引及任何 revision 的 validationRunId/validatedRunId 引用都会阻止删除。只删除无引用的运行目录，保留来源 tasks；不实现任务删除或阶段 4 的修复关联。接口旧批次可无 task，损坏/链接 task 或 running 拒绝删除。详见 [测试报告](test-reports.md)。
+
+![报告用途、版本来源与全批失败摘要](images/test-report-versions.png)
+
 ## 验证记录
+
+2026-11-09 报告面板：`node --test tests/unit/test-report-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js tests/unit/ui-readonly-workflow.test.js`，23 项通过、0 失败，退出 0。覆盖 205 批排序筛选分页、103 条逐例及全批失败摘要、新 UI 契约/API 兼容、归属/链接/大小/损坏拒绝、共享锁、两个验证引用字段、活动批次与坏索引保护、删除保留任务及 IPC 参数/互斥；共享闭环使用离线模型协议夹具和受控本地 Chromium。
+
+`TEST_REPORTS_SCREENSHOT_PATH=docs/images/test-report-versions.png node_modules/.bin/electron tests/ui/test-reports.check.cjs`（实际使用截图绝对路径）：修正首次夹具触发错误后，一次恢复 18 项断言通过，退出 0。覆盖 53 份报告列表分页筛选、103 条逐例翻页并返回第一页、全批失败摘要、用途/版本/来源、同项目迟到列表和切项目迟到详情、删除确认及统计刷新、焦点与无溢出；截图已视觉核对。两次均有 Chromium 缓存日志，未新增缓存恢复；共用侧栏旧断言未重跑。详见异常报告 E、G。本轮未请求真实模型。
 
 2026-11-09 用例面板：`node --test tests/unit/test-data-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js tests/unit/ui-readonly-workflow.test.js`，23 项通过、0 失败/跳过。覆盖 205 例完整排序筛选分页、正式/候选隔离、准确详情与回归、哈希/项目/链接拒绝、旧资产隔离、普通文件、锁/过期删除拒绝、整例删除及历史保留、IPC 转发与互斥；共享工作流仍使用离线模型协议夹具及本地 Chromium。
 
@@ -137,6 +151,7 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 | 预期与实际 | 预期本地页面与临时缓存正常；两次均 16 项断言通过、退出 0。首次 `Failed to create directory .../Shared Dictionary/cache` / `wrong file structure on disk: 1` / `Unable to create cache`；恢复后 `Failed to write a new fake index.` / `wrong file structure on disk: 8` / `Unable to create cache` |
 | 原因与证据 | 已确认 Chromium 缓存写入失败，根因待确认；补齐目录并未消除错误，因此不能归因为只缺目录。证据为本轮工具输出，未另存完整日志。共用侧栏还出现 GPU shared-image 日志，因果关系未确认 |
 | 已执行处置 | 首次停止后读取已有夹具契约，补建 `Shared Dictionary/cache`，做一次恢复检查；仍有错误后停止，未再次更换缓存路径、启动参数或重跑该链路 |
+| 报告页本轮观察 | 2026-11-09 09:45:21 与 09:46:43 UTC+08:00 的独立报告页面检查仍有 `Failed to create directory .../Shared Dictionary/cache`、`wrong file structure on disk: 1` 和 `Unable to create cache`；未修改缓存路径或参数。报告页恢复只针对报告 G 的明确夹具错误，不计为缓存恢复成功 |
 | 影响与恢复 | 保留代码及 `docs/images/test-data-versions.png`；仅临时模拟接口，无真实认证/模型/业务写入。页面断言通过不代表 Chromium 环境无异常。后续需先确认缓存失败原因和修复依据，再由用户继续恢复检查；不能原样重复启动 |
 
 ## 异常报告 F：共用侧栏旧夹具与断言（未通过）
@@ -149,3 +164,14 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 | 原因与证据 | 已确认夹具缺 catalog 接口。恢复后只读源码还确认旧断言的 `document.querySelector('[role=tablist]')` 首先匹配 `index.html` 的对话视图标签条，而非设置分类标签条，其没有 aria-orientation；本轮没有修改产品设置功能 |
 | 已执行处置 | 首次停止、读取实际模型页面契约、补齐模拟接口，完成一次恢复验证；仍失败即停止，未继续改断言并重跑。已有缓存/GPU 日志另见报告 E，不据此推断断言失败原因 |
 | 影响与恢复 | 共用侧栏回归结论未通过；新版用例面板 16 项独立断言仍有效。无真实业务写入或未知提交。最小后续修复是将旧断言的 tablist 查询限定到设置对话框，再按用户继续指令及有界规则验证；不能把尚未执行的其他共用检查标为通过 |
+
+## 异常报告 G：报告页夹具刷新触发与退出码（已修正）
+
+| 项目 | 记录 |
+| --- | --- |
+| 任务与结论 | 2026-11-09 09:45:21 UTC+08:00 首次报告页面检查在前 14 项断言通过后，等待刷新按钮恢复超时；停止依赖检查。09:46:43 UTC+08:00 在明确修正夹具后做一次恢复，18 项通过、退出 0 |
+| 调用链路 | 用户继续报告面板接入 → `functions.exec` / `exec_command` → `electron tests/ui/test-reports.check.cjs` → 模拟 preload 与本地 renderer → Chromium；未使用技能，无真实模型请求。截图由 capturePage 保存并经 view_image 核对 |
+| 工具与参数 | `TEST_REPORTS_SCREENSHOT_PATH=/Users/liyingjun/Desktop/SW-QA/17-00/docs/images/test-report-versions.png node_modules/.bin/electron tests/ui/test-reports.check.cjs`。首次输出 FAIL/超时但进程退出 0，与预期失败退出码不符，不能算通过；无任务编号，toolCallId 未记录 |
+| 原因与证据 | 夹具连续触发两次 focus；产品处理器在 busy 时忽略第二次，测试却等待没有启动的新请求。已确认是测试触发条件错误，没有证据表明产品刷新失败。旧 catch 后 app.quit 也未可靠保留失败退出码。证据为工具输出及 `tests/ui/test-reports.check.cjs`，未另存完整原始日志 |
+| 已执行处置 | 暂停后读取页面/夹具契约，改用公开 panel.open 入口启动更新请求并释放旧列表，核对迟到结果不覆盖；去除多余准备刷新，结束改为 app.exit 保留退出码，失败保留临时现场。前置条件改变后仅一次恢复验证，18 项通过 |
+| 影响与恢复 | 仅临时模拟数据与截图，无真实认证/模型/业务写入，无结果未知。报告页恢复已完成；两次 Chromium 缓存日志仍按 E 保留，未换路径或参数处理，也未重跑共用侧栏或真实 Qwen 链路 |

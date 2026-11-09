@@ -80,12 +80,12 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return testData.removeCase(projectId, caseId, assetHash);
   }
 
-  function listTestReports(projectId) {
-    return testReports.list(projectId);
+  function listTestReports(projectId, options) {
+    return testReports.list(projectId, options);
   }
 
-  function getTestReport(projectId, kind, id) {
-    return testReports.get(projectId, kind, id);
+  function getTestReport(projectId, kind, id, options) {
+    return testReports.get(projectId, kind, id, options);
   }
 
   function deleteTestReport(projectId, kind, id) {

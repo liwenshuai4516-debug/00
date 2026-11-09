@@ -137,6 +137,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   const caseDetails = new Map();
   let reportsData = null;
   let reportKindFilter = "all";
+  let reportPage = 1;
+  let reportRequest = 0;
   const expandedReports = new Set();
   const reportDetails = new Map();
   let status = { text: "", error: false };
@@ -272,6 +274,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       caseDetails.clear();
       reportsData = null;
       reportKindFilter = "all";
+      reportPage = 1;
+      reportRequest += 1;
       expandedReports.clear();
       reportDetails.clear();
     }
@@ -931,6 +935,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     view = "reports";
     reportsData = null;
     reportKindFilter = "all";
+    reportPage = 1;
     expandedReports.clear();
     reportDetails.clear();
     setStatus("");
@@ -939,34 +944,30 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   async function refreshReports() {
+    const request = ++reportRequest;
     if (!selectedId) {
       reportsData = null;
       render();
       return;
     }
     const projectId = selectedId;
+    const current = () => selectedId === projectId && request === reportRequest && view === "reports";
     busy = true;
+    reportDetails.clear();
     render();
     try {
-      const result = await api().listTestReports(projectId);
-      if (selectedId === projectId) {
+      const result = await api().listTestReports(projectId, { page: reportPage, kind: reportKindFilter });
+      if (current()) {
         reportsData = { projectId, ...result };
+        reportPage = result.pagination.page;
       }
     } catch (error) {
-      if (selectedId === projectId) {
-        reportsData = {
-          projectId,
-          available: false,
-          reports: [],
-          truncated: false,
-          invalid: 0,
-          totals: reportTotals([]),
-          error: errorMessage(error),
-        };
-      }
+      if (current()) reportsData = { projectId, error: errorMessage(error) };
     } finally {
-      busy = false;
-      if (selectedId === projectId) render();
+      if (request === reportRequest && selectedId === projectId) {
+        busy = false;
+        if (view === "reports") render();
+      }
     }
   }
 
@@ -1010,6 +1011,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       caseDetails.clear();
       reportsData = null;
       reportKindFilter = "all";
+      reportPage = 1;
+      reportRequest += 1;
       expandedReports.clear();
       reportDetails.clear();
       void refreshReports();
@@ -1032,38 +1035,24 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       }));
     } else {
       const reports = Array.isArray(reportsData.reports) ? reportsData.reports : [];
+      const totals = reportsData.totals ?? reportTotals(reports);
+      panel.append(renderReportSummary(totals), renderReportFilters(totals));
       if (reports.length === 0) {
         panel.append(element("p", {
           class: "right-panel__empty",
-          text: reportsData.available
-            ? "当前项目还没有测试报告。执行 UI 或接口测试后，这里会显示批次结果。"
-            : "当前项目还没有测试运行目录（qa/ui/runs、qa/api/runs）。",
+          text: !reportsData.available
+            ? "当前项目还没有测试运行目录（qa/ui/runs、qa/api/runs）。"
+            : "没有该类型的测试报告。",
         }));
       } else {
-        const totals = reportsData.totals?.total === undefined
-          ? reportTotals(reports)
-          : reportsData.totals;
-        panel.append(renderReportSummary(totals), renderReportFilters(totals));
-        const filtered = reportKindFilter === "all"
-          ? reports
-          : reports.filter((report) => report.kind === reportKindFilter);
-        if (filtered.length === 0) {
-          panel.append(element("p", {
-            class: "right-panel__empty",
-            text: "没有该类型的测试报告。",
-          }));
-        } else {
-          const list = element("div", { class: "report-list" });
-          for (const report of filtered) list.append(renderReportCard(report));
-          panel.append(list);
-        }
-        if (reportsData.truncated) {
-          panel.append(element("p", {
-            class: "right-panel__note",
-            text: "测试报告超过 50 份，仅展示最近 50 份。",
-          }));
-        }
+        const list = element("div", { class: "report-list" });
+        for (const report of reports) list.append(renderReportCard(report));
+        panel.append(list);
       }
+      panel.append(renderReportPager(reportsData.pagination, (page) => {
+        reportPage = page;
+        void refreshReports();
+      }, "报告列表分页", busy));
       if (reportsData.invalid > 0) {
         panel.append(element("p", {
           class: "right-panel__note",
@@ -1116,10 +1105,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         type: "button",
         class: "report-filter__button",
         "aria-pressed": String(reportKindFilter === value),
+        disabled: busy,
         onclick: () => {
           if (reportKindFilter === value) return;
           reportKindFilter = value;
-          render();
+          reportPage = 1;
+          expandedReports.clear();
+          void refreshReports();
         },
       },
       element("span", { text: label }),
@@ -1130,12 +1122,23 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     return filters;
   }
 
+  function renderReportPager(page, turn, label, loading = false) {
+    const pager = element("div", { class: "case-catalog__pager", role: "group", "aria-label": label });
+    if (!page) return pager;
+    pager.append(
+      element("button", { type: "button", class: "case-card__edit", text: "上一页", disabled: loading || page.page <= 1, onclick: () => turn(page.page - 1) }),
+      element("span", { text: `第 ${page.page} / ${page.pages} 页 · 共 ${page.total} 条` }),
+      element("button", { type: "button", class: "case-card__edit", text: "下一页", disabled: loading || page.page >= page.pages, onclick: () => turn(page.page + 1) }),
+    );
+    return pager;
+  }
+
   function renderReportCard(report) {
     const key = reportKey(report);
     const expanded = expandedReports.has(key);
     const article = element("article", {
       class: "report-card",
-      dataset: { kind: report.kind, status: report.status },
+      dataset: { kind: report.kind, status: report.status, reportKey: key },
     });
     const head = element("button", {
       type: "button",
@@ -1177,7 +1180,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
     const body = element("div", { class: "report-card__body" });
     body.hidden = !expanded;
-    if (expanded) paintReportBody(body, key);
+    if (expanded && !busy) void loadReportDetail(report, body);
     head.addEventListener("click", () => {
       if (expandedReports.has(key)) {
         expandedReports.delete(key);
@@ -1203,27 +1206,33 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     } else if (cached.error) {
       body.append(element("p", { class: "right-panel__empty", text: `读取失败：${cached.error}` }));
     } else if (cached.detail) {
-      body.append(renderReportDetail(cached.detail));
+      body.append(renderReportDetail(cached.detail, body));
     }
   }
 
-  async function loadReportDetail(report, body) {
+  async function loadReportDetail(report, body, page = null) {
     const key = reportKey(report);
-    if (reportDetails.has(key)) {
+    if (reportDetails.has(key) && page === null) {
       paintReportBody(body, key);
       return;
     }
     const projectId = selectedId;
-    reportDetails.set(key, { loading: true });
+    const pending = { loading: true };
+    reportDetails.set(key, pending);
     paintReportBody(body, key);
+    const current = () => selectedId === projectId && view === "reports" && reportDetails.get(key) === pending;
     try {
-      const detail = await api().getTestReport(projectId, report.kind, report.id);
+      const detail = await api().getTestReport(projectId, report.kind, report.id, { page: page ?? 1 });
       if (!detail || typeof detail !== "object") throw new Error("测试报告内容不可用。");
-      if (selectedId === projectId) reportDetails.set(key, { detail });
+      if (current()) reportDetails.set(key, { detail });
     } catch (error) {
-      if (selectedId === projectId) reportDetails.set(key, { error: errorMessage(error) });
+      if (current()) reportDetails.set(key, { error: errorMessage(error) });
     }
-    if (selectedId === projectId) paintReportBody(body, key);
+    if (selectedId === projectId && view === "reports") {
+      for (const card of content.querySelectorAll(".report-card")) {
+        if (card.dataset.reportKey === key) paintReportBody(card.querySelector(".report-card__body"), key);
+      }
+    }
   }
 
   function reportVerdictText(detail) {
@@ -1234,7 +1243,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     ].filter(Boolean).join(" · ");
   }
 
-  function renderReportDetail(detail) {
+  function renderReportDetail(detail, body) {
     const box = element("div", { class: "report-detail" });
     const statusLabel = RUN_STATUS_LABELS[detail.status] ?? detail.status;
     const segments = reportSegments(detail);
@@ -1282,6 +1291,9 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       fact("清理", CLEANUP_LABELS[detail.cleanup] ?? detail.cleanup),
       fact("Trace", TRACE_POLICY_LABELS[detail.tracePolicy] ?? detail.tracePolicy),
     );
+    if (detail.workflow === "browser-use-playwright") {
+      facts.append(fact("用途", detail.purpose === "validate" ? "候选验证" : "正式回归"));
+    }
     box.append(facts);
 
     if (detail.targetUrl) {
@@ -1298,22 +1310,28 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       }));
     }
 
+    if (detail.selections?.length) {
+      const sources = element("details", { class: "report-sources" }, element("summary", { text: "查看版本与来源" }));
+      for (const item of detail.selections) sources.append(element("p", { class: "report-detail__path", text: `${item.caseId} · 版本 ${item.revision} · 来源 ${item.taskId}` }));
+      box.append(sources);
+    }
     const tests = detail.tests ?? [];
-    const failures = tests.filter((test) => !["passed", "skipped"].includes(test.status));
+    const failures = detail.failures ?? [];
+    const failureCount = detail.failureCount ?? 0;
     box.append(element("p", {
       class: "report-detail__section-title",
-      text: `失败与异常（${failures.length}）`,
+      text: `失败与异常（${failureCount}）`,
     }));
-    if (failures.length === 0) {
+    if (failureCount === 0) {
       box.append(element("p", { class: "report-detail__empty", text: "本次没有失败或异常用例。" }));
     } else {
       const list = element("ol", { class: "report-tests report-tests--failures" });
       for (const test of failures.slice(0, 5)) list.append(renderReportTest(test));
       box.append(list);
-      if (failures.length > 5) {
+      if (failureCount > failures.length) {
         box.append(element("p", {
           class: "right-panel__note",
-          text: `另有 ${failures.length - 5} 条失败或异常，见下方逐例明细。`,
+          text: `另有 ${failureCount - failures.length} 条失败或异常，见下方逐例明细。`,
         }));
       }
     }
@@ -1350,16 +1368,16 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
 
     if (tests.length > 0) {
-      const details = element("details", { class: "report-cases" });
+      const details = element("details", { class: "report-cases", open: detail.pagination.page > 1 });
       details.append(element("summary", {
-        text: `查看全部逐例结果（${tests.length}）`,
+        text: `查看逐例结果（共 ${detail.pagination.total} 条）`,
       }));
       const list = element("ol", { class: "report-tests" });
       for (const test of tests) list.append(renderReportTest(test));
       details.append(list);
-      if (detail.testsTruncated) {
-        details.append(element("p", { class: "right-panel__note", text: "仅展示前 100 条逐例结果。" }));
-      }
+      details.append(renderReportPager(detail.pagination, (page) => {
+        void loadReportDetail(detail, body, page);
+      }, "逐例结果分页"));
       box.append(details);
     } else {
       box.append(element("p", { class: "report-detail__empty", text: "没有逐例结果。" }));
@@ -1376,11 +1394,13 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   }
 
   async function deleteReport(report) {
+    const projectId = selectedId;
     const confirmed = await confirmAction({
       title: "删除测试报告",
-      message: `将删除报告「${reportTitle(report)}」及整个批次目录（摘要、证据、日志），不可恢复。正在执行的批次不会被删除。`,
+      message: `将删除报告「${reportTitle(report)}」及整个批次目录（摘要、证据、日志），不可恢复。正在执行、尚未收尾或仍被用例版本引用的批次不会被删除。`,
       confirmLabel: "删除报告",
     });
+    if (selectedId !== projectId || view !== "reports") return;
     if (!confirmed) {
       setStatus("已取消删除。");
       return;
@@ -1389,16 +1409,12 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     setStatus("正在删除测试报告…");
     render();
     try {
-      await api().deleteTestReport(selectedId, report.kind, report.id);
+      await api().deleteTestReport(projectId, report.kind, report.id);
+      if (selectedId !== projectId || view !== "reports") return;
       const key = reportKey(report);
       expandedReports.delete(key);
       reportDetails.delete(key);
-      const reports = (reportsData?.reports ?? []).filter(
-        (item) => item.kind !== report.kind || item.id !== report.id,
-      );
-      if (reportsData) {
-        reportsData = { ...reportsData, reports, totals: reportTotals(reports) };
-      }
+      await refreshReports();
       setStatus(`已删除测试报告「${reportTitle(report)}」。`);
     } catch (error) {
       setStatus(errorMessage(error), true);

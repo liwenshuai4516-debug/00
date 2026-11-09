@@ -87,46 +87,66 @@ async function main() {
     await check("工作台增加测试报告卡片", `document.querySelectorAll('.right-panel__card').length===5&&[...document.querySelectorAll('.right-panel__card-title')].map((node)=>node.textContent).join(',')==='项目环境,测试数据,测试报告,文件浏览,浏览器'`);
 
     await run(`[...document.querySelectorAll('.right-panel__card')].find((button)=>button.textContent.includes('测试报告')).click()`);
-    await wait(`document.querySelectorAll('.report-card').length===2`);
-
-    await check("报告视图显示项目与统一目录", `document.querySelector('.right-panel__nav-title').textContent==='测试报告 · 演示项目'&&document.querySelector('.right-panel__select').selectedOptions[0].textContent==='演示项目'&&document.querySelector('.right-panel__root-label').textContent==='qa/*/runs'`);
-    await check("顶部显示报告状态统计", `[...document.querySelectorAll('.report-summary__stat')].map((node)=>node.textContent.replace(/\\s+/g,'')).join(',')==='2份报告,1通过,1失败'`);
-    await check("类型筛选显示 UI 与接口数量", `[...document.querySelectorAll('.report-filter__button')].map((node)=>node.textContent.replace(/\\s+/g,'')).join(',')==='全部2,UI1,接口1'`);
-    await check("报告名称使用模块和日期", `document.querySelector('.report-card[data-kind="api"] .report-card__title').textContent==='采购合同 2026-11-04'&&document.querySelector('.report-card[data-kind="ui"] .report-card__title').textContent==='经营合同 2026-11-04'`);
-    await check("报告卡片显示类型、状态、时间与统计", `(()=>{const api=document.querySelector('.report-card[data-kind="api"]');const ui=document.querySelector('.report-card[data-kind="ui"]');return api.querySelector('.report-kind').textContent==='接口'&&api.querySelector('.case-run').textContent==='通过'&&api.querySelector('.report-card__meta').textContent.includes('2 例')&&api.querySelector('.report-card__meta').textContent.includes('通过 2')&&ui.querySelector('.case-run').textContent==='失败'&&ui.querySelector('.report-card__meta').textContent.includes('失败 1');})()`);
-
+    await wait(`document.querySelectorAll('.report-card').length===50`);
+    await check("报告列表每页50条，总数包含后续页", `document.querySelector('.report-summary').textContent.includes('53')&&document.querySelector('[aria-label="报告列表分页"]').textContent.includes('第 1 / 2 页')&&window.__reportFixture.stats().details.length===0`);
+    await check("类型数量基于完整集合", `[...document.querySelectorAll('.report-filter__button')].map((node)=>node.textContent).join(',')==='全部53,UI52,接口1'`);
+    await check("报告名称使用模块与日期", `document.querySelector('.report-card[data-kind="api"] .report-card__title').textContent==='采购合同 2026-11-04'`);
+    await run(`document.querySelector('[aria-label="报告列表分页"] button:last-child').click()`);
+    await wait(`document.querySelectorAll('.report-card').length===3`);
+    await check("报告第二页可达，接口筛选在服务端重新分页", `window.__reportFixture.stats().lists.at(-1).page===2`);
     await run(`[...document.querySelectorAll('.report-filter__button')].find((button)=>button.textContent.includes('接口')).click()`);
-    await check("筛选接口报告", `document.querySelectorAll('.report-card').length===1&&document.querySelector('.report-card').dataset.kind==='api'`);
-    await run(`[...document.querySelectorAll('.report-filter__button')].find((button)=>button.textContent.includes('全部')).click()`);
-    await wait(`document.querySelectorAll('.report-card').length===2`);
-
-    await run(`(()=>{const head=document.querySelector('.report-card[data-kind="ui"] .report-card__head');head.focus();head.click();})()`);
-    await wait(`document.querySelector('.report-card[data-kind="ui"] .report-card__body').textContent.includes('T2 合同列表加载')`);
-    await check("展开报告显示摘要、失败与证据", `(()=>{const card=document.querySelector('.report-card[data-kind="ui"]');const body=card.querySelector('.report-card__body');const details=body.querySelector('.report-cases');return card.querySelector('.report-card__head').getAttribute('aria-expanded')==='true'&&!body.hidden&&body.querySelector('.report-verdict__rate').textContent==='50%'&&body.querySelector('.report-verdict__text').textContent.includes('共 2 个用例')&&body.textContent.includes('结论')&&body.textContent.includes('失败与异常（1）')&&body.textContent.includes('T2 合同列表加载')&&body.textContent.includes('expect(received).toBe(expected)')&&body.textContent.includes('failure.png')&&body.textContent.includes('报告问题')&&body.textContent.includes('附件缺失：failure.png')&&body.textContent.includes('Node 22.19.0')&&body.textContent.includes('已关闭（私有登录态）')&&body.textContent.includes('报告文件：qa/ui/runs/ui-run/summary.json')&&details.open===false&&details.querySelector('summary').textContent.includes('查看全部逐例结果（2）');})()`);
-    await check("报告卡片与详情显示通过率占比条", `(()=>{const ui=document.querySelector('.report-card[data-kind="ui"]');const segments=[...ui.querySelectorAll('.report-card__meter .report-meter__segment')];const verdict=ui.querySelector('.report-verdict__bar');return segments.length===2&&segments[0].dataset.segment==='passed'&&segments[1].dataset.segment==='failed'&&verdict.dataset.empty==='false'&&verdict.querySelectorAll('.report-meter__segment').length===2&&ui.querySelector('.report-verdict__rate-label').textContent==='通过率';})()`);
-    await check("报告摘要显示模块、完成时间与清理事实", `document.querySelector('.report-card[data-kind="ui"] .report-detail__facts').textContent.includes('合同管理 / 经营合同')&&document.querySelector('.report-card[data-kind="ui"] .report-detail__facts').textContent.includes('已删除')`);
-    await check("展开详情后焦点保留在报告标题", `document.activeElement===document.querySelector('.report-card[data-kind="ui"] .report-card__head')`);
-    await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-    if (process.env.TEST_REPORTS_SCREENSHOT_PATH) {
-      await writeFile(process.env.TEST_REPORTS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    }
-
-    await run(`document.querySelector('.report-card[data-kind="ui"] .report-cases > summary').click()`);
-    await check("按需展开全部逐例结果", `document.querySelector('.report-card[data-kind="ui"] .report-cases').open===true&&document.querySelector('.report-card[data-kind="ui"] .report-cases').textContent.includes('T1 登录成功')`);
-    await run(`document.querySelector('.report-card[data-kind="ui"] .report-card__head').click()`);
-    await check("再次点击折叠报告", `document.querySelector('.report-card[data-kind="ui"] .report-card__body').hidden===true&&document.querySelector('.report-card[data-kind="ui"] .report-card__head').getAttribute('aria-expanded')==='false'`);
-
-    await check("无效批次有提示", `document.querySelector('.right-panel__note').textContent.includes('1 个批次缺少有效的 summary.json')`);
-    await check("报告面板没有横向溢出", `document.getElementById('body').scrollWidth<=document.getElementById('body').clientWidth`);
-
-    await run(`document.querySelector('.report-card[data-kind="ui"] .report-card__head').click()`);
-    await wait(`document.querySelector('.report-card[data-kind="ui"] .report-detail__actions')!==null`);
-    await run(`document.querySelector('.report-card[data-kind="ui"] .report-detail__actions .right-panel__action--danger').click()`);
-    await wait(`document.getElementById('confirm').open`);
-    await check("删除报告需要确认整个批次目录", `document.getElementById('right-panel-confirm-message').textContent.includes('整个批次目录')&&document.getElementById('right-panel-confirm-message').textContent.includes('不可恢复')`);
-    await run(`document.querySelector('#confirm [data-confirm]').click()`);
     await wait(`document.querySelectorAll('.report-card').length===1`);
-    await check("删除后移除报告卡片并保留其他报告", `document.querySelectorAll('.report-card').length===1&&document.querySelector('.report-card').dataset.kind==='api'&&document.querySelector('.right-panel__status').textContent.includes('已删除测试报告')`);
+    await check("从后续页筛选接口不遗漏首页之外报告", `document.querySelector('.report-card').dataset.kind==='api'&&window.__reportFixture.stats().lists.at(-1).kind==='api'&&window.__reportFixture.stats().lists.at(-1).page===1`);
+    await run(`[...document.querySelectorAll('.report-filter__button')].find((button)=>button.textContent.includes('全部')).click()`);
+    await wait(`document.querySelectorAll('.report-card').length===50`);
+    await run(`(()=>{const head=document.querySelectorAll('.report-card__head')[1];head.focus();head.click();})()`);
+    await wait(`document.querySelector('.report-detail')!==null`);
+    await check("详情按需读取，结论与失败摘要覆盖全部103条", `(()=>{const body=document.querySelector('.report-detail');return window.__reportFixture.stats().details.length===1&&body.querySelector('.report-verdict__rate').textContent==='99%'&&body.textContent.includes('共 103 个用例')&&body.textContent.includes('失败与异常（1）')&&body.textContent.includes('T103 合同列表加载')&&body.textContent.includes('expect(received).toBe(expected)')&&body.textContent.includes('failure.png')&&body.querySelector('.report-cases').querySelectorAll('.report-test').length===50&&!body.textContent.includes('本次没有失败');})()`);
+    await check("详情展示准确版本、来源、用途与证据边界", `(()=>{const body=document.querySelector('.report-detail');return body.textContent.includes('正式回归')&&body.querySelector('.report-sources').textContent.includes('case-a · 版本 0002 · 来源 task-source')&&body.textContent.includes('Node 22.19.0')&&body.textContent.includes('已关闭（私有登录态）')&&body.textContent.includes('附件缺失：failure.png');})()`);
+    await check("展开保留标题焦点且逐例默认折叠", `document.activeElement===document.querySelectorAll('.report-card__head')[1]&&!document.querySelector('.report-cases').open`);
+    await run(`new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    if (process.env.TEST_REPORTS_SCREENSHOT_PATH) await writeFile(process.env.TEST_REPORTS_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    await run(`document.querySelector('.report-cases > summary').click();document.querySelector('[aria-label="逐例结果分页"] button:last-child').click()`);
+    await wait(`document.querySelector('[aria-label="逐例结果分页"]')?.textContent.includes('第 2 / 3 页')`);
+    await check("逐例第二页保持展开", `document.querySelector('.report-cases').open&&document.querySelector('.report-cases .report-test__name').textContent==='T51 合同列表加载'`);
+    await run(`document.querySelector('[aria-label="逐例结果分页"] button:last-child').click()`);
+    await wait(`document.querySelector('[aria-label="逐例结果分页"]')?.textContent.includes('第 3 / 3 页')`);
+    await check("第100条后结果没有丢失", `document.querySelector('.report-cases').querySelectorAll('.report-test').length===3&&document.querySelector('.report-cases').textContent.includes('T103 合同列表加载')`);
+    await run(`document.querySelector('[aria-label="逐例结果分页"] button:first-child').click()`);
+    await wait(`document.querySelector('[aria-label="逐例结果分页"]')?.textContent.includes('第 2 / 3 页')`);
+    await run(`document.querySelector('[aria-label="逐例结果分页"] button:first-child').click()`);
+    await wait(`document.querySelector('[aria-label="逐例结果分页"]')?.textContent.includes('第 1 / 3 页')`);
+    await check("逐例可返回第一页", `document.querySelector('.report-cases .report-test__name').textContent==='T1 合同列表加载'`);
+    await check("报告面板没有横向溢出", `document.getElementById('body').scrollWidth<=document.getElementById('body').clientWidth`);
+    await check("无效摘要提示保留", `[...document.querySelectorAll('.right-panel__note')].some((node)=>node.textContent.includes('1 个批次缺少有效的 summary.json'))`);
+
+    await run(`window.__reportFixture.holdList();window.dispatchEvent(new Event('focus'))`);
+    await wait(`window.__reportFixture.stats().heldList`);
+    await run(`window.__panel.open()`);
+    await run(`[...document.querySelectorAll('.right-panel__card')].find((button)=>button.textContent.includes('测试报告')).click()`);
+    await wait(`document.querySelectorAll('.report-card').length===50&&!document.querySelector('[aria-label="刷新测试报告"]').disabled`);
+    await run(`window.__reportFixture.releaseList()`);
+    await run(`new Promise((resolve)=>setTimeout(resolve,30))`);
+    await check("同项目迟到列表不覆盖最新请求", `!document.getElementById('body').textContent.includes('迟到列表')`);
+
+    // 重新进入面板后让下一次详情延迟，再切换项目。
+    await run(`window.__reportFixture.holdDetail();document.querySelectorAll('.report-card__head')[1].click()`);
+    await wait(`window.__reportFixture.stats().heldDetail`);
+    await run(`(()=>{const select=document.querySelector('.right-panel__select');select.value='b';select.dispatchEvent(new Event('change'));})()`);
+    await wait(`document.querySelectorAll('.report-card').length===1`);
+    await run(`window.__reportFixture.releaseDetail()`);
+    await run(`new Promise((resolve)=>setTimeout(resolve,30))`);
+    await check("切换项目后的迟到详情不进入新项目", `document.querySelector('.right-panel__nav-title').textContent.includes('另一项目')&&!document.getElementById('body').textContent.includes('迟到详情')&&document.querySelector('.report-detail')===null`);
+    await run(`(()=>{const select=document.querySelector('.right-panel__select');select.value='a';select.dispatchEvent(new Event('change'));})()`);
+    await wait(`document.querySelectorAll('.report-card').length===50`);
+    await run(`document.querySelectorAll('.report-card__head')[1].click()`);
+    await wait(`document.querySelector('.report-detail__actions')!==null`);
+    await run(`document.querySelector('.report-detail__actions button').click()`);
+    await wait(`document.getElementById('confirm').open`);
+    await check("删除确认说明不可恢复和版本引用保护", `(()=>{const message=document.getElementById('right-panel-confirm-message').textContent;return message.includes('整个批次目录')&&message.includes('不可恢复')&&message.includes('仍被用例版本引用');})()`);
+    await run(`document.querySelector('#confirm [data-confirm]').click()`);
+    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('已删除测试报告')`);
+    await check("删除后重新读取完整统计，保留接口报告", `document.querySelector('.report-summary').textContent.includes('52')&&document.querySelectorAll('.report-card').length===50&&document.querySelector('.report-card[data-kind="api"]')!==null&&!document.getElementById('body').textContent.includes('迟到详情')`);
 
     assert.deepEqual(errors, [], "页面不应有 console error");
     console.log(`PASS ${passed} 项检查`);
@@ -134,8 +154,10 @@ async function main() {
     console.error("FAIL", error);
     process.exitCode = 1;
   } finally {
-    await rm(temporary, { recursive: true, force: true, maxRetries: 3 });
-    app.quit();
+    win.destroy();
+    if (!process.exitCode) await rm(temporary, { recursive: true, force: true, maxRetries: 3 });
+    else console.error("保留检查现场：" + temporary);
+    app.exit(process.exitCode ?? 0);
   }
 }
 

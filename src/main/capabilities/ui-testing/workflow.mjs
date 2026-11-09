@@ -92,6 +92,37 @@ export async function removeUiCase(cwd, { projectId, caseId, assetHash }) {
   });
 }
 
+// 只删除无版本引用的运行材料；损坏索引不能被当成“没有引用”。
+export async function removeUiReport(cwd, { projectId, runId }) {
+  id(runId);
+  check(text(projectId), "删除报告参数无效。");
+  return exclusive(cwd, async (root) => {
+    const runFile = await fileAt(root.base, "runs", runId, "summary.json");
+    const summary = await json(runFile);
+    check(summary.schema === "qa-report/v1" && summary.kind === "ui" && summary.workflow === workflow &&
+      summary.runId === runId && summary.project?.id === projectId && summary.workspace === root.workspace,
+    "UI 报告格式或项目/工作区归属无效，不能删除。");
+    const task = await json(await fileAt(root.base, "runs", runId, "task.json"));
+    check(task.runId === runId && task.workflow === workflow && task.project?.id === projectId && task.workspace === root.workspace,
+      "测试批次任务归属无效，不能删除。");
+    check(!["prepared", "running"].includes(task.status), "测试批次正在执行或未收尾，不能删除。");
+    for (const entry of await fs.readdir(root.caseDir, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      check(entry.isDirectory() && !entry.isSymbolicLink(), "存在无效用例目录，无法确认报告引用。");
+      const asset = await json(await fileAt(root.caseDir, entry.name, "asset.json"));
+      check(asset.schema === "qa-ui-asset/v1" && asset.caseId === entry.name && Array.isArray(asset.revisions) && asset.revisions.length > 0,
+        "存在无效版本索引，无法确认报告引用。");
+      for (const revision of asset.revisions) {
+        check(typeof revision.revision === "string" && /^\d{4}$/.test(revision.revision), "版本索引无效，无法确认报告引用。");
+        check(revision.validationRunId !== runId && revision.validatedRunId !== runId,
+          "报告仍被用例版本的验证记录引用；请先删除对应用例，再清理报告。");
+      }
+    }
+    await fs.rm(path.dirname(runFile), { recursive: true });
+    return { kind: "ui", id: runId };
+  });
+}
+
 export function validateContract(contract) {
   check(contract && ["explore", "candidate", "complete"].includes(contract.mode), "任务 mode 必须为 explore、candidate 或 complete。");
   for (const field of ["goal", "role", "initialState"]) check(text(contract[field]), `任务缺少 ${field}。`);
@@ -231,6 +262,7 @@ export function createReadOnlyWorkflow(runtime) {
       workspace: root.workspace, project: task.project, targetUrl: task.targetUrl,
       caseDir: root.caseDir, caseIds: selections.map((item) => item.asset.caseId), revisions: Object.fromEntries(selections.map((item) => [item.asset.caseId, item.entry.revision])),
       sourceTaskIds: Object.fromEntries(selections.map((item) => [item.asset.caseId, item.entry.taskId])),
+      caseModules: Object.fromEntries(selections.map((item) => [item.asset.caseId, item.meta.modulePath])),
       caseFiles: selections.map((item) => item.files["case.spec.cjs"]), assetFiles: selections.map((item) => item.files["case.json"]),
       caseHashes: Object.fromEntries(selections.flatMap((item) => Object.entries(item.files).map(([name, file]) => [file, item.entry.hashes[name]]))),
       config: runtime.config, testCli: runtime.testCli, modules: runtime.modules, browsers: runtime.browsers,

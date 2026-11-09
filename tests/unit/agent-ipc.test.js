@@ -306,3 +306,21 @@ test("版本用例的分页和详情只读转发，整例删除共用空闲互�
   assert.deepEqual(calls, [["list", "p1", options], ["get", "p1", "case1", "0002"], ["delete", "p1", "case1", "hash"]]);
   for (const channel of ["agent:update-test-case-assertions", "agent:update-test-case-steps", "agent:update-test-case-marks", "agent:delete-test-cases"]) assert.equal(handlers.has(channel), false);
 });
+
+test("报告分页与类型筛选只读透传，删除继续受空闲互斥保护", async () => {
+  const handlers = new Map();
+  const calls = [];
+  let busy = true;
+  registerAgentIpc({ handle: (key, value) => handlers.set(key, value) }, {}, { isBusy: () => busy }, null, null, null, null, {
+    listTestReports: (...args) => calls.push(["list", ...args]),
+    getTestReport: (...args) => calls.push(["get", ...args]),
+    deleteTestReport: (...args) => calls.push(["delete", ...args]),
+  });
+  const options = { page: 3, kind: "ui" };
+  handlers.get("agent:list-test-reports")({}, "p1", options);
+  handlers.get("agent:get-test-report")({}, "p1", "ui", "run1", { page: 2 });
+  assert.throws(() => handlers.get("agent:delete-test-report")({}, "p1", "ui", "run1"), /请等待/);
+  busy = false;
+  await handlers.get("agent:delete-test-report")({}, "p1", "ui", "run1");
+  assert.deepEqual(calls, [["list", "p1", options], ["get", "p1", "ui", "run1", { page: 2 }], ["delete", "p1", "ui", "run1"]]);
+});

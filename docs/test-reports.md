@@ -9,7 +9,7 @@
 | UI | `qa/ui/runs/<runId>/summary.json` | `ui` |
 | 接口 | `qa/api/runs/<runId>/summary.json` | `api` |
 
-UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应执行器写入同结构文件。旧 UI 批次没有 `schema`/`kind` 时，报告服务按所在目录推断为 `ui`。
+UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应执行器写入同结构文件。UI 只读取新版 `browser-use-playwright` 报告，旧 UI 摘要不推断、不转换；接口旧摘要仍可读取。
 
 ## 公共字段
 
@@ -17,16 +17,22 @@ UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应
 {
   "schema": "qa-report/v1",
   "kind": "ui",
+  "workflow": "browser-use-playwright",
+  "purpose": "regression",
+  "workspace": "/absolute/project/workspace",
   "runId": "批次编号",
-  "status": "passed",
+  "status": "failed",
   "startedAt": "2026-11-04T06:00:00.000Z",
   "finishedAt": "2026-11-04T06:01:00.000Z",
   "targetUrl": "https://example.test/path",
   "project": { "id": "pms", "name": "项目管理系统" },
   "modulePath": ["合同管理", "经营合同"],
   "caseIds": ["case-a"],
-  "testCount": 2,
-  "counts": { "passed": 1, "failed": 1 },
+  "revisions": { "case-a": "0002" },
+  "sourceTaskIds": { "case-a": "task-a" },
+  "caseModules": { "case-a": ["合同管理", "经营合同"] },
+  "testCount": 1,
+  "counts": { "failed": 1 },
   "cleanup": "deleted",
   "tracePolicy": "disabled-for-private-auth",
   "problems": [],
@@ -46,7 +52,9 @@ UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应
 }
 ```
 
-必填字段为 `schema`、`kind`、`runId`、`status`、`startedAt`、`finishedAt`、`testCount`、`counts`、`tests`。`modulePath`（或字符串 `module`）可选，报告名称优先使用它；UI 旧批次由服务从 case 资产的 `modulePath` 回看，仍无法确定时回退到 runId。接口测试可用 `tests[]` 表达接口场景，`file` 写脚本或场景相对路径。
+执行器写入 `schema`、`kind`、`runId`、`status`、`startedAt`、`finishedAt`、`testCount`、`counts`、`tests`。新版 UI 另须声明 `workflow: "browser-use-playwright"`、`purpose: "validate" | "regression"`、项目编号、真实工作区、非重复 `caseIds`，以及与 caseIds 准确对应的四位字符串 `revisions` 和 `sourceTaskIds`；服务核对项目、工作区与批次目录归属后才展示。
+
+`modulePath`（或字符串 `module`）可选，报告名称优先使用它，其次采用执行时冻结的 `caseModules`，仍无法确定时回退到 runId；不再回看旧 case 资产。接口测试可用 `tests[]` 表达接口场景，`file` 写脚本或场景相对路径。修复任务及其关联尚未实现，不补造 repair 字段。
 
 ## 状态与通过条件
 
@@ -62,11 +70,19 @@ UI 批次由 `resources/testing/ui/run.cjs` 写入；接口测试后续由对应
 
 - 读取当前项目 `qa/ui/runs` 与 `qa/api/runs`，按完成时间倒序聚合；顶部摘要卡显示报告总数、通过/失败/其他批次数量及占比条，项目筛选使用紧凑宽度。
 - 报告名称暂为「模块名称 + 完成日期」（如 `经营合同 2026-11-04`），同一天多次运行由卡片时间区分。
-- 支持「全部 / UI / 接口」胶囊筛选；每张卡片显示类型、状态、完成时间、用例数、逐例统计和通过/失败占比条，左侧色条按批次状态区分。
-- 展开后才读取详情；默认显示大号通过率、结论、模块/完成/耗时/清理等事实栅格、失败与异常清单、报告问题、运行环境、报告路径；全部逐例结果默认折叠在「查看全部逐例结果」中，长报告不直接铺开每条 case。
+- 支持「全部 / UI / 接口」胶囊筛选；完整扫描、排序及类型筛选后每页 50 份，删除后重新读取全量统计并收敛页码。顶部统计始终为全部有效报告，不随当前页变化。每张卡片显示类型、状态、完成时间、用例数、逐例统计和通过/失败占比条。
+- 展开后才读取详情；显示通过率、结论、模块/完成/耗时/清理等事实、新 UI 的候选验证/正式回归用途，以及可折叠的准确版本与来源 task。逐例结果默认折叠，每页 50 条，可返回第一页；失败总数和前 5 条摘要取自整批结果，不受当前逐例页影响。
 - 失败项使用状态色条和等宽错误代码块，文件行号与证据名单独展示；通过/失败/其他比例同时出现在批次摘要、卡片和详情结论区。
-- 主进程只接受项目编号、报告类型和批次目录名；限制 50 份报告、单份摘要 2 MiB、详情 100 条，跳过隐藏目录、符号链接和损坏文件。
-- 报告内容只读；展开后提供「删除报告」，二次确认后删除整个批次目录（摘要、证据、日志），不可恢复。正在执行的批次会被主进程拒绝删除。报告正文仍可能含业务数据，按测试数据管理。
+- 主进程从项目解析固定路径，单份摘要限制 2 MiB，逐层拒绝符号链接，跳过隐藏目录及无效摘要。附件只返回名称与类型。列表接口为 `listTestReports(projectId, { page, kind })`，详情为 `getTestReport(projectId, kind, id, { page })`；均返回 pagination。页面核对项目和请求身份，迟到结果不覆盖当前视图。
+- 报告内容只读；展开后提供「删除报告」，二次确认后删除整个批次目录，不可恢复。UI 删除通过主进程 idle 互斥和共享工作区锁，重新核对 summary/task 归属，拒绝 prepared/running、遗留锁、损坏版本索引及仍被任一 revision 的 validationRunId/validatedRunId 引用的运行；保留来源 tasks 和其他资产。接口旧批次允许无 task，但损坏或链接 task 及 running 批次拒绝删除。报告正文仍可能含业务数据。
+
+## 本轮验证（2026-11-09）
+
+报告服务、IPC、项目服务及共享只读工作流的 23 项定向测试通过，退出 0。覆盖 205 批完整排序筛选分页、103 条结果分页及全批失败摘要、UI 新契约与 API 兼容、归属/链接/大小拒绝、共享锁、验证引用及删除保留任务。共享工作流使用离线模型协议夹具和受控本地 Chromium，无真实模型请求。
+
+独立 Electron 报告页面 18 项断言通过，退出 0，覆盖列表与逐例翻页、用途/版本/来源、迟到请求、删除确认和统计刷新、焦点及无横向溢出。首次页面检查因夹具错误触发焦点刷新而超时，修正触发方式与失败退出码后完成一次恢复验证；Chromium 缓存日志仍未解决，详见 [异常记录 E、G](browser-use-readonly-workflow.md)。
+
+![报告用途、版本来源与全批失败摘要](images/test-report-versions.png)
 
 ## Agent 交付
 

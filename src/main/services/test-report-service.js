@@ -1,15 +1,13 @@
 const path = require("node:path");
-const { readdir, readFile, realpath, stat, lstat, rm } = require("node:fs/promises");
+const { readdir, readFile, realpath, lstat, rm } = require("node:fs/promises");
 
 // UI 与接口测试共用 qa-report/v1 摘要；目录按测试类型分开，页面统一聚合。
 const REPORT_ROOTS = [
   { kind: "ui", segments: ["qa", "ui", "runs"] },
   { kind: "api", segments: ["qa", "api", "runs"] },
 ];
-const MAX_REPORTS = 50;
-const MAX_RUN_DIRECTORIES = 200;
+const PAGE_SIZE = 50;
 const MAX_SUMMARY_BYTES = 2 * 1024 * 1024;
-const MAX_TESTS = 100;
 const MAX_PROBLEMS = 20;
 const MAX_TEXT = 800;
 const REPORT_STATUSES = new Set(["passed", "failed", "incomplete", "cancelled"]);
@@ -63,8 +61,7 @@ function normalizeCaseIds(value) {
   if (!Array.isArray(value)) return [];
   return value
     .map((item) => text(item, 200))
-    .filter(Boolean)
-    .slice(0, 100);
+    .filter(Boolean);
 }
 
 function normalizeModulePath(value) {
@@ -93,40 +90,31 @@ function moduleSummary(paths) {
   };
 }
 
-async function readCaseModule(workspace, caseId) {
-  if (!/^[\p{L}\p{N}_-]{1,180}$/u.test(caseId)) return [];
-  const file = path.join(workspace, "qa", "data", "ui", "cases", `${caseId}.asset.json`);
-  let info;
-  try {
-    info = await lstat(file);
-  } catch {
-    return [];
-  }
-  if (!info.isFile() || info.isSymbolicLink() || info.size > 512 * 1024) return [];
-  try {
-    const asset = JSON.parse(await readFile(file, "utf8"));
-    return normalizeModulePath(asset?.caseMeta?.modulePath);
-  } catch {
-    return [];
-  }
-}
-
-// 报告名称优先使用摘要声明的模块；旧批次回看 case 资产的 modulePath。
-async function resolveModule(summary, workspace, cache) {
+function resolveModule(summary) {
   const direct = normalizeModulePath(summary?.modulePath);
   if (direct.length > 0) return moduleSummary([direct]);
   const declared = text(summary?.module, 200);
   if (declared) return { name: declared, path: [] };
-  const paths = [];
-  for (const caseId of normalizeCaseIds(summary?.caseIds).slice(0, 5)) {
-    let modulePath = cache.get(caseId);
-    if (modulePath === undefined) {
-      modulePath = await readCaseModule(workspace, caseId);
-      cache.set(caseId, modulePath);
-    }
-    if (modulePath.length > 0) paths.push(modulePath);
-  }
-  return moduleSummary(paths);
+  return moduleSummary(Object.values(summary?.caseModules ?? {}).map(normalizeModulePath));
+}
+
+function pagination(total, requested = 1) {
+  if (!Number.isSafeInteger(requested) || requested < 1) throw new Error("报告页码无效。");
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  return { total, page: Math.min(requested, pages), pages, pageSize: PAGE_SIZE };
+}
+
+// 新 UI 报告只认执行器冻结的项目、工作区和准确版本，不推断旧格式。
+function matchesUi(summary, projectId, workspace, runId) {
+  const ids = summary?.caseIds;
+  const objectId = (value) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(value);
+  return summary?.schema === "qa-report/v1" && summary.kind === "ui" &&
+    summary.workflow === "browser-use-playwright" && ["validate", "regression"].includes(summary.purpose) &&
+    summary.project?.id === projectId && summary.workspace === workspace && summary.runId === runId &&
+    REPORT_STATUSES.has(summary.status) && Array.isArray(summary.tests) &&
+    Array.isArray(ids) && ids.length > 0 && new Set(ids).size === ids.length && ids.every((caseId) =>
+      objectId(caseId) && typeof summary.revisions?.[caseId] === "string" && /^\d{4}$/.test(summary.revisions[caseId]) && objectId(summary.sourceTaskIds?.[caseId])) &&
+    Object.keys(summary.revisions ?? {}).length === ids.length && Object.keys(summary.sourceTaskIds ?? {}).length === ids.length;
 }
 
 function normalizeCounts(value, tests) {
@@ -167,7 +155,9 @@ function normalizeReport(summary, kind, id, summaryPath, modifiedAt) {
     id,
     runId: text(summary?.runId, 200) || id,
     schema: text(summary?.schema, 40),
-    kind: REPORT_KINDS.has(summary?.kind) ? summary.kind : kind,
+    kind,
+    workflow: text(summary?.workflow, 80),
+    purpose: text(summary?.purpose, 40),
     status: deriveStatus(summary, tests),
     startedAt,
     finishedAt,
@@ -180,7 +170,6 @@ function normalizeReport(summary, kind, id, summaryPath, modifiedAt) {
     cleanup: text(summary?.cleanup, 40),
     tracePolicy: text(summary?.tracePolicy, 80),
     problemsCount: Array.isArray(summary?.problems) ? summary.problems.length : 0,
-    testsTruncated: tests.length > MAX_TESTS,
     summaryPath,
     modifiedAt,
   };
@@ -254,20 +243,18 @@ function createTestReportService(projectStore) {
 
   async function resolveRoot(workspace, source) {
     const workspaceReal = await realpath(workspace);
-    const root = path.join(workspaceReal, ...source.segments);
-    let resolved;
-    try {
-      resolved = await realpath(root);
-    } catch (error) {
-      if (error.code === "ENOENT") return { workspaceReal, root: null };
-      throw error;
+    let root = workspaceReal;
+    for (const segment of source.segments) {
+      root = path.join(root, segment);
+      let info;
+      try { info = await lstat(root); }
+      catch (error) {
+        if (error.code === "ENOENT") return { workspaceReal, root: null };
+        throw error;
+      }
+      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("测试报告目录无效，不能使用符号链接。");
     }
-    const relative = path.relative(workspaceReal, resolved);
-    if (!relative || isOutside(relative)) {
-      throw new Error("测试报告目录超出项目工作区。");
-    }
-    const info = await stat(resolved);
-    return { workspaceReal, root: info.isDirectory() ? resolved : null };
+    return { workspaceReal, root };
   }
 
   async function readSummary(file, workspaceReal) {
@@ -293,14 +280,15 @@ function createTestReportService(projectStore) {
     };
   }
 
-  async function list(projectId) {
+  async function list(projectId, options = {}) {
+    pagination(0, options.page);
+    const kind = options.kind ?? "all";
+    if (kind !== "all" && !REPORT_KINDS.has(kind)) throw new Error("测试报告类型无效。");
     const project = await resolveProject(projectId);
     const workspaceReal = await realpath(project.workspaceDir);
     const reports = [];
-    const moduleCache = new Map();
     let invalid = 0;
     let available = false;
-    let truncated = false;
 
     for (const source of REPORT_ROOTS) {
       const { root } = await resolveRoot(workspaceReal, source);
@@ -316,16 +304,14 @@ function createTestReportService(projectStore) {
       const candidates = entries.filter(
         (entry) => entry.isDirectory() && !entry.name.startsWith("."),
       );
-      if (candidates.length > MAX_RUN_DIRECTORIES) truncated = true;
-      const directories = candidates.slice(0, MAX_RUN_DIRECTORIES);
-      for (const entry of directories) {
+      for (const entry of candidates) {
         const file = path.join(root, entry.name, "summary.json");
         const parsed = await readSummary(file, workspaceReal);
-        if (!parsed) {
+        if (!parsed || (source.kind === "ui" && !matchesUi(parsed.summary, projectId, workspaceReal, entry.name))) {
           invalid += 1;
           continue;
         }
-        const module = await resolveModule(parsed.summary, workspaceReal, moduleCache);
+        const module = resolveModule(parsed.summary);
         reports.push({
           ...normalizeReport(
             parsed.summary,
@@ -343,17 +329,16 @@ function createTestReportService(projectStore) {
     reports.sort((first, second) => {
       const firstTime = parseTime(first.finishedAt) ?? first.modifiedAt ?? 0;
       const secondTime = parseTime(second.finishedAt) ?? second.modifiedAt ?? 0;
-      return secondTime - firstTime;
+      return secondTime - firstTime || first.kind.localeCompare(second.kind) || first.id.localeCompare(second.id);
     });
     const totals = totalsOf(reports);
-    if (reports.length > MAX_REPORTS) {
-      reports.length = MAX_REPORTS;
-      truncated = true;
-    }
-    return { available, reports, truncated, invalid, totals };
+    const filtered = kind === "all" ? reports : reports.filter((report) => report.kind === kind);
+    const page = pagination(filtered.length, options.page);
+    return { available, reports: filtered.slice((page.page - 1) * PAGE_SIZE, page.page * PAGE_SIZE), invalid, totals, pagination: page };
   }
 
-  async function get(projectId, kind, id) {
+  async function get(projectId, kind, id, options = {}) {
+    pagination(0, options.page);
     if (!REPORT_KINDS.has(kind)) throw new Error("测试报告类型无效。");
     if (typeof id !== "string" || !/^[\p{L}\p{N}_.-]{1,200}$/u.test(id) || id === "." || id === "..") {
       throw new Error("测试报告编号无效。");
@@ -375,14 +360,20 @@ function createTestReportService(projectStore) {
     const parsed = await readSummary(path.join(root, id, "summary.json"), workspaceReal);
     if (!parsed) throw new Error("测试报告不存在、格式无效或超过大小限制。");
     const summary = parsed.summary;
-    const tests = (Array.isArray(summary.tests) ? summary.tests : []).slice(0, MAX_TESTS);
-    const module = await resolveModule(summary, workspaceReal, new Map());
+    if (kind === "ui" && !matchesUi(summary, projectId, workspaceReal, id)) throw new Error("UI 报告格式或项目/工作区归属无效。");
+    const tests = Array.isArray(summary.tests) ? summary.tests : [];
+    const page = pagination(tests.length, options.page);
+    const failures = tests.filter((test) => !["passed", "skipped"].includes(test?.status));
+    const module = resolveModule(summary);
     return {
       ...normalizeReport(summary, kind, id, parsed.relative, parsed.modifiedAt),
       moduleName: module.name,
       modulePath: module.path,
-      tests: tests.map(normalizeTest),
-      testsTruncated: Array.isArray(summary.tests) && summary.tests.length > MAX_TESTS,
+      tests: tests.slice((page.page - 1) * PAGE_SIZE, page.page * PAGE_SIZE).map(normalizeTest),
+      pagination: page,
+      failureCount: failures.length,
+      failures: failures.slice(0, 5).map(normalizeTest),
+      selections: kind === "ui" ? summary.caseIds.map((caseId) => ({ caseId, revision: summary.revisions[caseId], taskId: summary.sourceTaskIds[caseId] })) : [],
       problems: normalizeProblems(summary.problems),
       versions: normalizeVersions(summary.versions),
       limits: text(summary.limits, 1000),
@@ -395,6 +386,11 @@ function createTestReportService(projectStore) {
       throw new Error("测试报告编号无效。");
     }
     const project = await resolveProject(projectId);
+    if (kind === "ui") {
+      await get(projectId, kind, id);
+      const { removeUiReport } = await import("../capabilities/ui-testing/workflow.mjs");
+      return removeUiReport(project.workspaceDir, { projectId, runId: id });
+    }
     const source = REPORT_ROOTS.find((item) => item.kind === kind);
     const { root } = await resolveRoot(project.workspaceDir, source);
     if (!root) throw new Error("测试报告不存在或已被清理。");
@@ -415,9 +411,12 @@ function createTestReportService(projectStore) {
     }
     let task = null;
     try {
+      const taskInfo = await lstat(path.join(target, "task.json"));
+      if (!taskInfo.isFile() || taskInfo.isSymbolicLink()) throw new Error("测试批次任务文件无效，不能删除。");
       task = JSON.parse(await readFile(path.join(target, "task.json"), "utf8"));
-    } catch {
-      // 没有 task.json 的旧批次仍可删除。
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      // 接口旧批次允许没有 task.json，但损坏的任务不能当成不存在。
     }
     if (task?.status === "running") throw new Error("测试批次正在执行，不能删除。");
     let summaryInfo;

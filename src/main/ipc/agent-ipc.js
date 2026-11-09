@@ -290,11 +290,11 @@ function registerAgentIpc(
     );
   });
   // 测试报告只读；目录和批次编号都在主进程按项目工作区解析。
-  ipcMain.handle("agent:list-test-reports", (_event, projectId) =>
-    projectService.listTestReports(projectId),
+  ipcMain.handle("agent:list-test-reports", (_event, projectId, options) =>
+    projectService.listTestReports(projectId, options),
   );
-  ipcMain.handle("agent:get-test-report", (_event, projectId, kind, id) =>
-    projectService.getTestReport(projectId, kind, id),
+  ipcMain.handle("agent:get-test-report", (_event, projectId, kind, id, options) =>
+    projectService.getTestReport(projectId, kind, id, options),
   );
   ipcMain.handle("agent:delete-test-report", (_event, projectId, kind, id) => {
     return runIdleOperation(() =>

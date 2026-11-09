@@ -19,7 +19,6 @@ const reports = [
     cleanup: "not-needed",
     tracePolicy: "",
     problemsCount: 0,
-    testsTruncated: false,
     summaryPath: "qa/api/runs/api-run/summary.json",
     modifiedAt: 1762300000000,
   },
@@ -36,76 +35,89 @@ const reports = [
     targetUrl: "https://demo.invalid/ui",
     project: { id: "a", name: "演示项目" },
     caseIds: ["case-a", "case-b"],
-    testCount: 2,
-    counts: { passed: 1, failed: 1 },
+    workflow: "browser-use-playwright",
+    purpose: "regression",
+    testCount: 103,
+    counts: { passed: 102, failed: 1 },
     cleanup: "deleted",
     tracePolicy: "disabled-for-private-auth",
     problemsCount: 1,
-    testsTruncated: false,
     summaryPath: "qa/ui/runs/ui-run/summary.json",
     modifiedAt: 1762200000000,
   },
 ];
 
-const details = {
-  "api:api-run": {
-    ...reports[0],
-    tests: [
-      { title: "接口 A 通过", file: "api.spec.cjs", line: 3, status: "passed", durationMs: 20, error: "", attachments: [] },
-      { title: "接口 B 通过", file: "api.spec.cjs", line: 9, status: "passed", durationMs: 30, error: "", attachments: [] },
-    ],
-    problems: [],
-    versions: { node: "22.19.0", playwright: "1.64.1", files: 2 },
-    limits: "接口测试临时夹具。",
-  },
-  "ui:ui-run": {
-    ...reports[1],
-    tests: [
-      { title: "T1 登录成功", file: "ui.spec.cjs", line: 5, status: "passed", durationMs: 120, error: "", attachments: [] },
-      {
-        title: "T2 合同列表加载",
-        file: "ui.spec.cjs",
-        line: 12,
-        status: "failed",
-        durationMs: 90,
-        error: "expect(received).toBe(expected)",
-        attachments: [{ name: "failure.png", contentType: "image/png" }],
-      },
-    ],
-    problems: ["附件缺失：failure.png"],
-    versions: { node: "22.19.0", playwright: "1.64.1", files: 3 },
-    limits: "仅展示临时夹具结果。",
-  },
-};
-
+const uiTests = Array.from({ length: 103 }, (_, index) => ({
+  title: `T${index + 1} 合同列表加载`, file: "case-a/revisions/0002/case.spec.cjs", line: index + 1,
+  status: index === 102 ? "failed" : "passed", durationMs: 90,
+  error: index === 102 ? "expect(received).toBe(expected)" : "",
+  attachments: index === 102 ? [{ name: "failure.png", contentType: "image/png" }] : [],
+}));
+for (let index = 0; index < 51; index += 1) {
+  reports.push({ ...reports[1], id: `older-${index}`, runId: `older-${index}`, moduleName: `历史模块 ${index}`,
+    status: "passed", testCount: 1, counts: { passed: 1 } });
+}
+const stats = { lists: [], details: [], heldList: false, heldDetail: false };
+let holdList = false;
+let holdDetail = false;
+let releaseList;
+let releaseDetail;
+function paginate(items, requested = 1) {
+  const pages = Math.max(1, Math.ceil(items.length / 50));
+  const page = Math.min(requested, pages);
+  return { items: items.slice((page - 1) * 50, page * 50), pagination: { page, pages, total: items.length, pageSize: 50 } };
+}
+function list(projectId, options = {}) {
+  const all = projectId === "b" ? [{ ...reports[0], moduleName: "另一项目" }] : reports;
+  const filtered = options.kind && options.kind !== "all" ? all.filter((item) => item.kind === options.kind) : all;
+  const { items, pagination } = paginate(filtered, options.page);
+  return { available: true, reports: items, pagination, invalid: 1,
+    totals: { total: all.length, ui: all.filter((item) => item.kind === "ui").length,
+      api: all.filter((item) => item.kind === "api").length, passed: all.filter((item) => item.status === "passed").length,
+      failed: all.filter((item) => item.status === "failed").length, incomplete: 0, cancelled: 0 } };
+}
+contextBridge.exposeInMainWorld("__reportFixture", {
+  stats: () => stats,
+  holdList: () => { holdList = true; },
+  releaseList: () => releaseList(),
+  holdDetail: () => { holdDetail = true; },
+  releaseDetail: () => releaseDetail(),
+});
 contextBridge.exposeInMainWorld("agent", {
   listProjectEnvironments: async () => [
     { id: "a", name: "演示项目", workspaceDir: "/demo/a" },
+    { id: "b", name: "另一项目", workspaceDir: "/demo/b" },
   ],
   getSessionInfo: async () => ({ workspaceDir: "/demo/a" }),
-  listTestData: async () => ({
-    available: true,
-    truncated: false,
-    items: [],
-    catalog: {
-      modules: [],
-      legacy: [],
-      truncated: false,
-      totals: { modules: 0, submodules: 0, cases: 0, assertions: 0, legacy: 0 },
-      lastRun: null,
-    },
-  }),
-  listTestReports: async () => ({
-    available: true,
-    reports,
-    truncated: false,
-    invalid: 1,
-    totals: { total: 2, ui: 1, api: 1, passed: 1, failed: 1, incomplete: 0, cancelled: 0 },
-  }),
-  getTestReport: async (_projectId, kind, id) => {
-    const detail = details[`${kind}:${id}`];
-    if (!detail) throw new Error("测试报告不存在或已被清理。");
-    return detail;
+  listTestData: async () => ({ available: true, items: [], catalog: { cases: [], total: 0, page: 1, pages: 1, pageSize: 50, invalid: 0 } }),
+  listTestReports: async (projectId, options = {}) => {
+    stats.lists.push({ projectId, ...options });
+    const result = list(projectId, options);
+    if (holdList) {
+      holdList = false;
+      stats.heldList = true;
+      result.reports = result.reports.map((item) => ({ ...item, moduleName: "迟到列表" }));
+      return new Promise((resolve) => { releaseList = () => { stats.heldList = false; resolve(result); }; });
+    }
+    return result;
+  },
+  getTestReport: async (projectId, kind, id, options = {}) => {
+    stats.details.push({ projectId, kind, id, ...options });
+    const report = reports.find((item) => item.kind === kind && item.id === id);
+    if (!report) throw new Error("测试报告不存在或已被清理。");
+    const allTests = kind === "ui" ? uiTests : [{ title: "接口 A 通过", file: "api.spec.cjs", line: 3, status: "passed", durationMs: 20, error: "", attachments: [] }];
+    const { items, pagination } = paginate(allTests, options.page);
+    const failures = allTests.filter((item) => item.status === "failed");
+    const result = { ...report, tests: items, pagination, failures, failureCount: failures.length,
+      selections: kind === "ui" ? [{ caseId: "case-a", revision: "0002", taskId: "task-source" }] : [],
+      problems: ["附件缺失：failure.png"], versions: { node: "22.19.0", playwright: "1.64.1", files: 3 }, limits: "仅展示临时夹具结果。" };
+    if (holdDetail) {
+      holdDetail = false;
+      stats.heldDetail = true;
+      result.limits = "迟到详情";
+      return new Promise((resolve) => { releaseDetail = () => { stats.heldDetail = false; resolve(result); }; });
+    }
+    return result;
   },
   deleteTestReport: async (_projectId, kind, id) => {
     const index = reports.findIndex((report) => report.kind === kind && report.id === id);
