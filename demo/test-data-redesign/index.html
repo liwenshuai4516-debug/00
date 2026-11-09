@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>测试数据 · 项目管理系统</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%237aa2ff'/%3E%3Cpath d='M7 7h4v4H7zM13 7h4v4h-4zM7 13h4v4H7zM13 13h4v4h-4z' fill='%230b1020'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.7-3.7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.6l2 2.4H18a2.5 2.5 0 0 1 2.5 2.5v7.6A2.5 2.5 0 0 1 18 20H6a2.5 2.5 0 0 1-2.5-2.5z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 8.5 4.5L12 12 3.5 7.5z"/><path d="m4 12 8 4.3 8-4.3"/><path d="m4 16.5 8 4.3 8-4.3"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.2 4.2L19 7"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11 3.5 12.5 8 17 9.5 12.5 11 11 15.5 9.5 11 5 9.5 9.5 8z"/><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/></symbol>
+    <symbol id="i-draft" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.5 3.5-5.5 7-5.5s6.2 2 7 5.5"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.4l2.8 1.6"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M14 4.5 19.5 10 9 20.5H3.5V15z"/><path d="m12.5 6 5.5 5.5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l.8 13h9.4l.8-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13h4l1.5 2.5h5L16 13h4"/><path d="M5.5 5h13L21 13v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 20h18.4z"/><path d="M12 9v5M12 17.5v.1"/></symbol>
+  </svg>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="topbar__left">
+        <span class="brand" aria-hidden="true"><svg class="icon"><use href="#i-grid"></use></svg></span>
+        <nav class="topnav" aria-label="面包屑">
+          <span class="topnav__muted">测试数据</span>
+          <span class="topnav__sep" aria-hidden="true">/</span>
+          <strong>项目管理系统</strong>
+        </nav>
+      </div>
+      <div class="topbar__right">
+        <button class="icon-btn" id="refreshBtn" type="button" title="重新读取本地数据" aria-label="重新读取本地数据">
+          <svg class="icon"><use href="#i-refresh"></use></svg>
+        </button>
+        <button class="icon-btn" id="themeBtn" type="button" title="切换主题" aria-label="切换主题">
+          <svg class="icon theme-icon theme-icon--sun"><use href="#i-sun"></use></svg>
+          <svg class="icon theme-icon theme-icon--moon"><use href="#i-moon"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" aria-label="用例目录">
+        <div class="sidebar__head">
+          <div>
+            <h2>用例目录</h2>
+            <p>按模块组织用例</p>
+          </div>
+          <button class="icon-btn icon-btn--bordered" id="addFolderBtn" type="button" title="新建目录" aria-label="新建目录">
+            <svg class="icon"><use href="#i-plus"></use></svg>
+          </button>
+        </div>
+
+        <div class="sidebar__search">
+          <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+          <input id="folderSearch" type="search" placeholder="筛选目录" autocomplete="off" spellcheck="false" aria-label="筛选目录">
+          <button class="mini-clear" id="clearFolderSearch" type="button" title="清空目录筛选" aria-label="清空目录筛选" hidden>
+            <svg class="icon"><use href="#i-close"></use></svg>
+          </button>
+        </div>
+
+        <nav class="tree" id="folderTree" role="tree" aria-label="用例目录"></nav>
+
+        <div class="sidebar__foot">
+          <div class="legend" aria-label="全部用例状态统计">
+            <span class="legend__item"><i class="dot dot--verified" aria-hidden="true"></i>正式 <b id="legendVerified">0</b></span>
+            <span class="legend__item"><i class="dot dot--candidate" aria-hidden="true"></i>候选 <b id="legendCandidate">0</b></span>
+            <span class="legend__item"><i class="dot dot--draft" aria-hidden="true"></i>草稿 <b id="legendDraft">0</b></span>
+          </div>
+          <div class="sidebar__meta">
+            <span class="save-state" id="saveState" title="演示数据保存在浏览器 localStorage">
+              <i aria-hidden="true"></i><span id="saveStateText">本地演示数据</span>
+            </span>
+            <button class="link-btn" id="resetBtn" type="button">重置示例</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="content" aria-label="用例列表">
+        <div class="content__inner">
+          <header class="content__head">
+            <nav class="breadcrumb" id="breadcrumb" aria-label="当前目录"></nav>
+            <div class="head-row">
+              <div class="head-title">
+                <h1 id="folderTitle">全部用例</h1>
+                <p class="head-sub" id="folderSubtitle"></p>
+              </div>
+              <button class="btn btn--primary" id="newCaseBtn" type="button">
+                <svg class="icon"><use href="#i-plus"></use></svg>新建用例
+              </button>
+            </div>
+            <div class="toolbar">
+              <div class="search-box" role="search">
+                <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+                <input id="caseSearch" type="search" placeholder="搜索用例标题、说明或角色" autocomplete="off" spellcheck="false" aria-label="搜索用例">
+                <kbd id="searchKbd">⌘ K</kbd>
+              </div>
+              <div class="segmented" id="statusTabs" role="group" aria-label="按状态筛选">
+                <button type="button" data-status="all" aria-pressed="true">全部 <span id="countAll">0</span></button>
+                <button type="button" data-status="verified" aria-pressed="false">正式 <span id="countVerified">0</span></button>
+                <button type="button" data-status="candidate" aria-pressed="false">候选 <span id="countCandidate">0</span></button>
+                <button type="button" data-status="draft" aria-pressed="false">草稿 <span id="countDraft">0</span></button>
+              </div>
+              <label class="sort-control">
+                <span>排序</span>
+                <select id="sortSelect" aria-label="排序方式">
+                  <option value="updated">最近更新</option>
+                  <option value="priority">优先级</option>
+                  <option value="title">标题</option>
+                </select>
+              </label>
+            </div>
+          </header>
+
+          <div class="content__scroll" id="contentScroll">
+            <div class="list-head">
+              <span id="resultCount">共 0 条用例</span>
+              <span class="list-head__hint">点击用例查看详情</span>
+            </div>
+            <div class="case-list" id="caseList"></div>
+            <div class="empty" id="emptyState" hidden></div>
+            <p class="footnote">用例支持新增、编辑、删除与目录调整；演示数据保存在浏览器本地，刷新页面不会丢失。</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="scrim" id="drawerScrim" aria-hidden="true"></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true" inert>
+    <div class="drawer__scroll" id="drawerContent"></div>
+    <div class="drawer__foot" id="drawerFoot"></div>
+  </aside>
+
+  <div class="scrim scrim--modal" id="caseScrim" aria-hidden="true"></div>
+  <section class="modal" id="caseModal" role="dialog" aria-modal="true" aria-labelledby="caseModalTitle" aria-hidden="true" inert>
+    <form id="caseForm" novalidate>
+      <header class="modal__head">
+        <div>
+          <h2 id="caseModalTitle">新建用例</h2>
+          <p id="caseModalSub">填写用例信息，保存后可继续完善。</p>
+        </div>
+        <button class="icon-btn" id="caseModalClose" type="button" title="关闭" aria-label="关闭">
+          <svg class="icon"><use href="#i-close"></use></svg>
+        </button>
+      </header>
+      <div class="modal__body">
+        <div class="form-grid">
+          <div class="field field--full" data-field="title">
+            <label class="field__label" for="caseTitleInput">用例标题 <i class="required" aria-hidden="true">*</i></label>
+            <input class="input" id="caseTitleInput" name="title" type="text" maxlength="120" autocomplete="off" placeholder="例如：经营合同列表按合同编号查询、空结果与重置">
+            <p class="field__error" aria-live="polite"></p>
+          </div>
+
+          <div class="field field--full" data-field="folder">
+            <label class="field__label" for="caseFolderInput">所属目录</label>
+            <input class="input" id="caseFolderInput" name="folder" type="text" maxlength="640" autocomplete="off" list="folderOptions" placeholder="合同管理/经营合同">
+            <p class="field__hint">用 <code>/</code> 分隔层级，可直接输入新目录；留空会保存到“未分类”。</p>
+            <datalist id="folderOptions"></datalist>
+            <p class="field__error" aria-live="polite"></p>
+          </div>
+
+          <div class="field" data-field="role">
+            <label class="field__label" for="caseRoleInput">执行角色</label>
+            <input class="input" id="caseRoleInput" name="role" type="text" maxlength="80" autocomplete="off" placeholder="例如：项目管理系统管理员">
+          </div>
+
+          <div class="field" data-field="status">
+            <label class="field__label" for="caseStatusSelect">状态</label>
+            <select class="select" id="caseStatusSelect" name="status">
+              <option value="candidate">候选</option>
+              <option value="verified">正式</option>
+              <option value="draft">草稿</option>
+            </select>
+          </div>
+
+          <div class="field" data-field="priority">
+            <span class="field__label">优先级</span>
+            <div class="priority" role="radiogroup" aria-label="优先级">
+              <label><input type="radio" name="priority" value="P0"><span>P0</span></label>
+              <label><input type="radio" name="priority" value="P1" checked><span>P1</span></label>
+              <label><input type="radio" name="priority" value="P2"><span>P2</span></label>
+            </div>
+          </div>
+
+          <div class="field" data-field="revision">
+            <label class="field__label" for="caseRevisionInput">版本号</label>
+            <input class="input" id="caseRevisionInput" name="revision" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="0001">
+            <p class="field__hint" id="revisionHint">仅正式版本需要 4 位版本号。</p>
+            <p class="field__error" aria-live="polite"></p>
+          </div>
+
+          <div class="field field--full" data-field="description">
+            <label class="field__label" for="caseDescriptionInput">用例说明</label>
+            <textarea class="textarea" id="caseDescriptionInput" name="description" rows="3" maxlength="1000" placeholder="描述这条用例覆盖的业务场景与关键校验点。"></textarea>
+          </div>
+
+          <div class="field field--full" data-field="steps">
+            <label class="field__label" for="caseStepsInput">执行步骤</label>
+            <textarea class="textarea" id="caseStepsInput" name="steps" rows="4" placeholder="每行一个步骤，例如：&#10;进入「合同管理 / 经营合同」列表&#10;输入合同编号并点击查询"></textarea>
+            <p class="field__hint">每行一个步骤，最多 30 步。</p>
+          </div>
+
+          <div class="field field--full" data-field="expected">
+            <label class="field__label" for="caseExpectedInput">预期结果</label>
+            <textarea class="textarea" id="caseExpectedInput" name="expected" rows="3" maxlength="1000" placeholder="描述页面应呈现的结果、提示或数据变化。"></textarea>
+          </div>
+        </div>
+      </div>
+      <footer class="modal__foot">
+        <span class="modal__foot-note">保存后写入本地演示数据</span>
+        <button class="btn" id="caseCancelBtn" type="button">取消</button>
+        <button class="btn btn--primary" id="caseSaveBtn" type="submit">保存用例</button>
+      </footer>
+    </form>
+  </section>
+
+  <div class="scrim scrim--modal" id="folderScrim" aria-hidden="true"></div>
+  <section class="modal modal--sm" id="folderModal" role="dialog" aria-modal="true" aria-labelledby="folderModalTitle" aria-hidden="true" inert>
+    <form id="folderForm" novalidate>
+      <header class="modal__head">
+        <div>
+          <h2 id="folderModalTitle">新建目录</h2>
+          <p>目录用于组织用例，可包含多级层级。</p>
+        </div>
+        <button class="icon-btn" id="folderModalClose" type="button" title="关闭" aria-label="关闭">
+          <svg class="icon"><use href="#i-close"></use></svg>
+        </button>
+      </header>
+      <div class="modal__body">
+        <div class="field" data-field="folderName">
+          <label class="field__label" for="folderNameInput">目录路径 <i class="required" aria-hidden="true">*</i></label>
+          <input class="input" id="folderNameInput" name="folderName" type="text" maxlength="640" autocomplete="off" placeholder="合同管理/补充协议">
+          <p class="field__hint">用 <code>/</code> 分隔层级，新目录会出现在左侧目录树中。</p>
+          <p class="field__error" aria-live="polite"></p>
+        </div>
+      </div>
+      <footer class="modal__foot">
+        <button class="btn" id="folderCancelBtn" type="button">取消</button>
+        <button class="btn btn--primary" type="submit">创建目录</button>
+      </footer>
+    </form>
+  </section>
+
+  <div class="scrim scrim--modal" id="confirmScrim" aria-hidden="true"></div>
+  <section class="modal modal--sm" id="confirmModal" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage" aria-hidden="true" inert>
+    <div class="confirm">
+      <div class="confirm__icon" id="confirmIcon" aria-hidden="true"><svg class="icon"><use href="#i-trash"></use></svg></div>
+      <h2 id="confirmTitle">删除用例</h2>
+      <p id="confirmMessage"></p>
+    </div>
+    <footer class="modal__foot modal__foot--center">
+      <button class="btn" id="confirmCancelBtn" type="button">取消</button>
+      <button class="btn btn--danger" id="confirmOkBtn" type="button">删除</button>
+    </footer>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+    <span id="toastText"></span>
+  </div>
+
+  <noscript>此演示需要启用 JavaScript。</noscript>
+  <script src="app.js"></script>
+</body>
+</html>
