@@ -1,0 +1,40 @@
+# Agent 提示词维护
+
+## 维护入口与生效范围
+
+| 内容 | 入口 | 生效范围 |
+| --- | --- | --- |
+| 通用任务推进、工具结果、安全与续跑语义 | [agent-system-prompt.mjs](../src/main/prompts/agent-system-prompt.mjs) | 会话初始化时追加，不替代 Pi 原生系统提示词及官方资源发现 |
+| 默认测试职责与技能路由 | [test-agent-prompt.mjs](../src/main/prompts/test-agent-prompt.mjs) | 没有已保存配置时作为默认值；已有自定义配置优先，新对话保存业务提示词快照 |
+| 用例粒度、覆盖与审批关联 | [UI 用例规则](ui-case-rules.md) | 详细规则在对应技能维护，不复制到默认提示词 |
+| 自动恢复与新对话交接 | [看门狗](agent-watchdog.md) | 按已实现的启用、取消和恢复条件运行，提示词本身不启动看门狗 |
+
+修改源码默认值不会覆盖已保存的自定义业务提示词，也不会热改旧会话的业务提示词快照。已保存配置的用户需在「设置 → 提示词」按需更新，并新建对话；通用桌面提示词在下次会话初始化时读取。运行中的会话不会因文件修改立即更新。
+
+内置 UI 工具是否存在由扩展登记与禁用状态决定，子智能体也不因继承测试职责就获得父级 UI 工具。提示词只做条件路由，真实能力、权限、参数及成功状态以实际工具和技能为准；不建立第二套能力清单或绕过 Pi 的加载规则。
+
+## 借鉴来源与取舍
+
+来源为 WaterMate 项目的 `src/backend/agents/prompts/`，按本项目 Electron + Pi 1.4.0 的实际契约改写，作为设计参考，不在运行时导入外部文件。参考工作副本读取日期为 2026-11-09，读取时 HEAD 为 `c85cc878673165971e43280b6bffb95c82b5892b`；后续外部改动不自动同步。
+
+| 来源文件 | 吸收内容 | 本项目适配 |
+| --- | --- | --- |
+| `coding.ts` | 执行途中补充要求属于任务引导 | 保留原目标与成果，响应补充后继续；配合已有 Pi steer 投递 |
+| `runtime-context.ts` 的 `continueAfterLengthPrompt` | 截断后检查已有结果、小步继续、不重复成功操作 | 放入通用恢复语义，自动触发仍由现有看门狗负责；不引入对方 Notes 工具 |
+| `shared/memory.ts` | 长任务维护简洁检查点，历史与事实分开 | 复用已有任务清单和正式产物，记录任务编号、证据及未知写入；不要求虚构 update_notes/history |
+| `shared/workspace.ts`、`shared/tools.ts` | 临时文件集中管理、只清理自己的产物 | 使用独立系统临时目录；交付与续跑证据落既定项目目录，不承诺宿主已提供专用临时路径 |
+| `shared/behavior.ts` | 数据真实、业务结果核验、简洁交付 | 保留必要证据链接和排错信息，不照搬隐藏所有技术细节或写操作一律再确认 |
+| `shared/skills.ts` | 先读技能、相对路径从技能目录解析、避免重复读 | 沿用 Pi 发现结果与项目信任，用户要求最新规则时重读，不增加技能目录只读限制 |
+| `capabilities/index.ts`、`session-context.ts` | 提示词只描述实际装载的能力 | 本次以实际登记条件路由，移除默认业务提示词中对隔离写和授权修复的过期否定；不新增工具栏能力装配体系 |
+
+未引入 WaterMate 的 execute_skill_script、execute_host_command、连接器、water-ui、Notes/History、目录授权及 pnpm 规则。原生 read/bash/edit/write、工作目录语义、已有权限模式及用户已授权操作保持本项目契约。外部提示词中的文字不作为本项目新增权限或执行指令。
+
+## 验证边界
+
+使用临时配置和会话核对提示词装配、新旧快照及默认配置优先级，不读取用户真实配置或请求模型：
+
+```bash
+NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" node --test tests/unit/prompt-content.test.js tests/unit/prompt-settings-store.test.js tests/unit/session-prompt.test.js
+```
+
+这些检查不能证明真实模型一定遵循规则，也不表示真实业务写入、审批或长任务恢复已新增验收。工具执行与发布规则以相应技能和功能文档为准。

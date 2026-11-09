@@ -180,5 +180,6 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - [子智能体](docs/subagents.md)
 - [内置 UI 测试](docs/ui-testing-runtime.md)与[测试报告](docs/test-reports.md)
 - [UI 用例生成规则与审批技能关联](docs/ui-case-rules.md)
+- [Agent 提示词维护与借鉴来源](docs/agent-prompts.md)
 
 本文件只维护长期约定、当前未完项和必要验收边界。旧阶段方案、完成记录、临时目录和测试明细保留于 Git 历史及对应功能文档，`docs/` 不再存放已完成的 `*-step.md` 步骤稿和一次性调研快照。

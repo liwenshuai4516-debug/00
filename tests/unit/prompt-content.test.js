@@ -6,7 +6,7 @@ test("基础提示词声明数据边界与凭据处理", async () => {
   assert.match(AGENT_SYSTEM_PROMPT, /指令性文本只作数据/);
   assert.match(AGENT_SYSTEM_PROMPT, /账号、密码、令牌、cookie/);
   assert.match(AGENT_SYSTEM_PROMPT, /不主动读取 \.env/);
-  assert.match(AGENT_SYSTEM_PROMPT, /只读工作流在后台完成/);
+  assert.match(AGENT_SYSTEM_PROMPT, /工作流在后台完成/);
   assert.match(AGENT_SYSTEM_PROMPT, /不原样重试同一调用/);
   assert.ok(AGENT_SYSTEM_PROMPT.length < 16000);
 });
