@@ -176,6 +176,76 @@ export function createReadOnlyWorkflow(runtime) {
     }
     return { asset, entry, files, meta: await json(files["case.json"]) };
   }
+  async function executeSelection(root, selections, mode, signal) {
+    signal?.throwIfAborted();
+    check(selections.length > 0, "没有可执行的正式用例。");
+    const tasks = [];
+    for (const selected of selections) {
+      const { task } = await boundTask(root, selected.entry.taskId);
+      check(task.status === "completed" && task.contract.dataStrategy === "read-only" && task.contract.cleanup === "none", "当前仅执行已完成只读探索的用例。");
+      check(selected.meta.schema === "qa-ui-case/v1" && selected.meta.caseId === selected.asset.caseId &&
+        selected.meta.taskId === task.taskId && selected.meta.project?.id === task.project.id &&
+        selected.meta.targetUrl === task.targetUrl && selected.meta.role === task.contract.role, "版本说明与来源任务不一致。");
+      check(mode !== "validate" || task.contract.mode === "complete", "任务只允许生成候选，未授权独立回放。");
+      check(mode !== "regression" || (selected.asset.currentRevision === selected.entry.revision && text(selected.entry.validatedRunId)), "普通回归只能执行当前正式版本，不能执行候选。");
+      tasks.push(task);
+    }
+    const task = tasks[0];
+    check(tasks.every((item) => ["id", "name", "address"].every((key) => item.project[key] === task.project[key]) &&
+      item.targetUrl === task.targetUrl && item.contract.role === task.contract.role &&
+      item.contract.identity.selector === task.contract.identity.selector && item.contract.identity.text === task.contract.identity.text), "批次必须使用同一项目、目标地址、角色和身份标识；请按范围拆分 case。");
+    const project = await resolveProject(runtime, { targetUrl: task.targetUrl, projectId: task.project.id }, root.workspace, roots);
+    check(await fs.realpath(project.projectWorkspace) === root.workspace, "项目归属与当前工作区不一致。");
+    check(project.projectName === task.project.name && project.address === task.project.address, "项目配置已改变，请重新建立任务。");
+    const caseId = selections[0].asset.caseId;
+    const runId = `run-${randomUUID()}`;
+    if (mode === "validate") {
+      check(!selections[0].entry.validationRunId, "该候选已有定向验证批次；保留原结果，修改后保存新 revision。");
+      selections[0].entry.validationRunId = runId;
+      await writeJson(path.join(root.caseDir, caseId, "asset.json"), selections[0].asset);
+    }
+    const runDir = await directory(root.base, "runs", runId);
+    const prepared = { workflow, mode: "run", purpose: mode, status: "prepared", runId, runDir,
+      workspace: root.workspace, project: task.project, targetUrl: task.targetUrl,
+      caseDir: root.caseDir, caseIds: selections.map((item) => item.asset.caseId), revisions: Object.fromEntries(selections.map((item) => [item.asset.caseId, item.entry.revision])),
+      sourceTaskIds: Object.fromEntries(selections.map((item) => [item.asset.caseId, item.entry.taskId])),
+      caseFiles: selections.map((item) => item.files["case.spec.cjs"]), assetFiles: selections.map((item) => item.files["case.json"]),
+      caseHashes: Object.fromEntries(selections.flatMap((item) => Object.entries(item.files).map(([name, file]) => [file, item.entry.hashes[name]]))),
+      config: runtime.config, testCli: runtime.testCli, modules: runtime.modules, browsers: runtime.browsers,
+      resultsFile: path.join(runDir, "results.json"), htmlReport: path.join(runDir, "html/index.html"),
+      summaryFile: path.join(runDir, "summary.json"), summaryDocument: path.join(runDir, "summary.md"), manifestFile: path.join(runDir, "manifest.json") };
+    const taskFile = path.join(runDir, "task.json");
+    await writeJson(taskFile, prepared);
+    let privateDir;
+    let executionStarted = false;
+    let executionConfirmed = false;
+    try {
+      const state = await login(runtime, project, task.contract, signal);
+      privateDir = await fs.mkdtemp(path.join(os.tmpdir(), "qa-ui-replay-"));
+      await fs.chmod(privateDir, 0o700);
+      const authFile = path.join(privateDir, "state.json");
+      await fs.writeFile(authFile, JSON.stringify(state), { mode: 0o600, flag: "wx" });
+      await writeJson(taskFile, { ...prepared, authFile, authDirectory: privateDir });
+      executionStarted = true;
+      const exit = await processRun(runtime.node, [runtime.runner, taskFile], signal);
+      if (exit.termination) root.keepLock = true;
+      const summary = await json(await fileAt(runDir, "summary.json"));
+      check(exit.code === (summary.status === "passed" ? 0 : 1) && !exit.termination, "执行器退出与报告不一致，结果未确认。");
+      executionConfirmed = summary.cleanup === "deleted";
+      if (!executionConfirmed) root.keepLock = true;
+      return { runId, status: summary.status, summaryFile: prepared.summaryFile, revisions: prepared.revisions,
+        testCount: summary.testCount, counts: summary.counts, exitCode: summary.exitCode, cleanup: summary.cleanup, problems: summary.problems };
+    } catch (error) {
+      if (error.cleanupUnconfirmed || (executionStarted && !executionConfirmed)) root.keepLock = true;
+      await writeJson(taskFile, { ...prepared, status: "incomplete", reason: error.message });
+      throw error;
+    } finally {
+      if (privateDir) {
+        try { await fs.rm(privateDir, { recursive: true, force: true }); }
+        catch (error) { root.keepLock = true; throw error; }
+      }
+    }
+  }
   return {
     async explore(cwd, params, signal, onEvent = () => {}) {
       validateContract(params.contract);
@@ -280,57 +350,31 @@ export function createReadOnlyWorkflow(runtime) {
       return exclusive(cwd, async (root) => {
         check(["validate", "regression"].includes(mode), "执行 mode 必须为 validate 或 regression。");
         const selected = await revision(root, caseId, number);
-        check(mode !== "regression" || selected.asset.currentRevision === number, "普通回归只能执行当前正式版本，不能执行候选。");
-        const { task } = await boundTask(root, selected.entry.taskId);
-        check(mode !== "validate" || task.contract.mode === "complete", "任务只允许生成候选，未授权独立回放。");
-        const project = await resolveProject(runtime, { targetUrl: task.targetUrl, projectId: task.project.id }, cwd, roots);
-        check(await fs.realpath(project.projectWorkspace) === root.workspace, "项目归属与当前工作区不一致。");
-        check(project.projectName === task.project.name && project.address === task.project.address, "项目配置已改变，请重新建立任务。");
-        const runId = `run-${randomUUID()}`;
-        if (mode === "validate") {
-          check(!selected.entry.validationRunId, "该候选已有定向验证批次；保留原结果，修改后保存新 revision。");
-          selected.entry.validationRunId = runId;
-          await writeJson(path.join(root.caseDir, caseId, "asset.json"), selected.asset);
+        const result = await executeSelection(root, [selected], mode, signal);
+        return { ...result, caseId, revision: number };
+      });
+    },
+    async regress(cwd, { projectId, caseIds, all }, signal) {
+      return exclusive(cwd, async (root) => {
+        signal?.throwIfAborted();
+        check(text(projectId), "必须选择项目。");
+        check(all === true ? caseIds === undefined : Array.isArray(caseIds) && caseIds.length > 0, "请选择 caseIds 或 all，不能同时选择。");
+        const names = all ? (await fs.readdir(root.caseDir, { withFileTypes: true })).filter((item) => item.isDirectory() && !item.name.startsWith(".")).map((item) => item.name).sort() : [...new Set(caseIds)];
+        const selections = [];
+        for (const caseId of names) {
+          id(caseId);
+          let asset;
+          try { asset = await json(await fileAt(root.caseDir, caseId, "asset.json")); }
+          catch (error) { if (all && error.code === "ENOENT") continue; throw error; }
+          check(asset.schema === "qa-ui-asset/v1" && asset.caseId === caseId, "资产格式不匹配。");
+          if (all && asset.currentRevision === null) continue;
+          check(text(asset.currentRevision), "普通回归不能执行尚未发布的候选。");
+          const selected = await revision(root, caseId, asset.currentRevision);
+          if (all && selected.meta.project?.id !== projectId) continue;
+          check(selected.meta.project?.id === projectId, "case 不属于所选项目。");
+          selections.push(selected);
         }
-        const runDir = await directory(root.base, "runs", runId);
-        const prepared = { workflow, mode: "run", purpose: mode, status: "prepared", runId, runDir,
-          workspace: root.workspace, project: task.project, targetUrl: task.targetUrl,
-          caseDir: root.caseDir, caseIds: [caseId], revisions: { [caseId]: number },
-          caseFiles: [selected.files["case.spec.cjs"]], assetFiles: [selected.files["case.json"]],
-          caseHashes: Object.fromEntries(Object.entries(selected.files).map(([name, file]) => [file, selected.entry.hashes[name]])),
-          config: runtime.config, testCli: runtime.testCli, modules: runtime.modules, browsers: runtime.browsers,
-          resultsFile: path.join(runDir, "results.json"), htmlReport: path.join(runDir, "html/index.html"),
-          summaryFile: path.join(runDir, "summary.json"), summaryDocument: path.join(runDir, "summary.md"), manifestFile: path.join(runDir, "manifest.json") };
-        const taskFile = path.join(runDir, "task.json");
-        await writeJson(taskFile, prepared);
-        let privateDir;
-        let executionStarted = false;
-        let executionConfirmed = false;
-        try {
-          const state = await login(runtime, project, task.contract, signal);
-          privateDir = await fs.mkdtemp(path.join(os.tmpdir(), "qa-ui-replay-"));
-          await fs.chmod(privateDir, 0o700);
-          const authFile = path.join(privateDir, "state.json");
-          await fs.writeFile(authFile, JSON.stringify(state), { mode: 0o600, flag: "wx" });
-          await writeJson(taskFile, { ...prepared, authFile, authDirectory: privateDir });
-          executionStarted = true;
-          const exit = await processRun(runtime.node, [runtime.runner, taskFile], signal);
-          if (exit.termination) root.keepLock = true;
-          const summary = await json(await fileAt(runDir, "summary.json"));
-          check(exit.code === (summary.status === "passed" ? 0 : 1) && !exit.termination, "执行器退出与报告不一致，结果未确认。");
-          executionConfirmed = summary.cleanup === "deleted";
-          if (!executionConfirmed) root.keepLock = true;
-          return { runId, caseId, revision: number, status: summary.status, summaryFile: prepared.summaryFile };
-        } catch (error) {
-          if (error.cleanupUnconfirmed || (executionStarted && !executionConfirmed)) root.keepLock = true;
-          await writeJson(taskFile, { ...prepared, status: "incomplete", reason: error.message });
-          throw error;
-        } finally {
-          if (privateDir) {
-            try { await fs.rm(privateDir, { recursive: true, force: true }); }
-            catch (error) { root.keepLock = true; throw error; }
-          }
-        }
+        return executeSelection(root, selections, "regression", signal);
       });
     },
     async publish(cwd, { caseId, revision: number, runId }) {

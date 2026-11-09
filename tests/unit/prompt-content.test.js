@@ -32,8 +32,8 @@ test("UI 流程技能说明登录态失效后的恢复顺序", async () => {
   assert.match(basic, /qa_ui_login\(auto\) 对每个 projectRef 只尝试一次/);
   assert.match(basic, /重新调用 qa_ui_project 获取新的 projectRef/);
   const execute = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-execute/SKILL.md"), "utf8");
-  assert.match(execute, /run 准备会绑定当前登录态/);
-  assert.match(execute, /不要重新 prepare 同一 case 来重试/);
+  assert.match(execute, /每批新建私有状态和回放上下文/);
+  assert.match(execute, /没有新恢复依据不得原样重跑/);
   const record = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-record/SKILL.md"), "utf8");
   assert.match(record, /qa_ui_finalize 只登记资产/);
 });
@@ -50,8 +50,9 @@ test("qa-ui-basic 只做流程编排，执行细节由执行技能维护", async
   assert.match(record, /文件命名由工具生成/);
   assert.match(record, /generator_write_test/);
   const execute = await fs.readFile(path.resolve(__dirname, "../../resources/testing/ui/skills/qa-ui-execute/SKILL.md"), "utf8");
-  assert.match(execute, /## 会话内 MCP 回放/);
-  assert.match(execute, /--grep/);
+  assert.match(execute, /currentRevision/);
+  assert.match(execute, /--cases.*--all/);
+  assert.doesNotMatch(execute, /qa_ui_prepare|--grep|--list-users|QA_UI_TEST_PASSWORD/);
 });
 
 test("意图识别技能保留原意并补全审批子集", async () => {

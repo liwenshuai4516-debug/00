@@ -1,125 +1,58 @@
 ---
 name: qa-ui-execute
-description: 只执行已有标准化 UI 用例：按 caseId 单项、批量或定时回放，生成原生报告与摘要。不录制、不盘点、不改脚本；当用户要求跑某些 case、回放、定时执行或看执行结果时使用。
+description: 按 caseId 或项目执行已发布的 UI 正式版本，读取原生报告和摘要。不探索、不生成候选、不修改资产、不自动修复；用户要求回归、回放已有用例或查看执行结果时使用。
 ---
 
-# UI 用例独立执行
+# UI 正式用例执行
 
-## 适用与边界
+## 输入与范围
 
-- 只执行 `qa/data/ui/cases/*.asset.json` 已登记、且 spec 与登记哈希一致的用例。
-- 不进入录制、功能面盘点、用例编辑或 finalize；需要新增/修改用例时改用 `qa-ui-basic` / `qa-ui-record`。
-- 一次命令跑选定 case，不重复执行同一批次；失败不自动重跑，不把失败改成通过。
-- 测试环境以用户原话、项目配置或当前应用权限模式为准；完全权限视为已授权，每次确认模式下工具/CLI 的写操作仍由应用确认，拒绝时按未授权处理。生产/未知环境仍需用户确认。
-- 账号由项目配置/系统管理提供；多角色账号从用户管理读取，不向用户索要账号或密码。
-- 权限、账号、造数在业务层不重复询问；工具层按当前应用权限模式执行，只有生产/未知环境或不可逆外部副作用才暂停。
+- 仅执行 `qa/ui/cases/<caseId>/asset.json` 的 `currentRevision`；该版本须有 `validatedRunId`，且 `case.spec.cjs`、`case.json` 与登记哈希一致。
+- 一例一 test。按 caseId 选择，不按标题正则筛选，不读取旧平铺资产，不迁移旧数据。
+- 当前只支持 `read-only` 任务。新增或修改由候选流程处理；普通回归不修改预期、版本、正式引用或已有结果。
+- 使用项目已配置账号后台登录，每批新建私有状态和回放上下文；不动态发现业务账号、不切换用户、不读取 `.env` 或让模型查看真实配置。
+- 目录和登录成功不等于业务身份正确；脚本必须核对任务声明的身份、初态与业务预期。
 
-## 后台静默
+## 独立 CLI
 
-- CLI 默认无头登录并 headless 执行，不打开前端浏览器；正常执行不要传 `--headed`。
-- `--headed` 只用于排查登录/页面问题，用完即恢复默认。
-- 定时任务始终用默认无头模式；失败看 summary，不靠观察窗口。
-
-## 快速命令
-
-在仓库根目录执行：
+使用客户端开发仓库中的绝对执行器路径；CLI 根据项目登记取得真实工作目录，启动命令的目录不决定资产归属。安装包资源复制及其他平台尚未验收。
 
 ```bash
-resources/testing/ui/bin/node resources/testing/ui/execute.cjs \
-  --project <项目编号或名称> \
-  --cases <caseId1,caseId2>
+/path/to/client/resources/testing/ui/bin/node /path/to/client/resources/testing/ui/execute.cjs \
+  --project <项目编号或唯一名称> --cases <caseId1,caseId2>
 ```
 
-批量跑当前项目全部匹配目标的用例：
+执行所选项目的全部正式用例：
 
 ```bash
-resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project <项目> --all
+/path/to/client/resources/testing/ui/bin/node /path/to/client/resources/testing/ui/execute.cjs --project <项目编号> --all
 ```
 
-常用选项：
+- `--cases` 与 `--all` 二选一；同批必须具有同一目标地址、角色和身份标识。不一致时停止，按已确认范围拆分；不能覆盖目标或猜账号。
+- `--all` 忽略尚未发布的候选及旧平铺文件。显式选择候选、错误项目、被改动的版本或链接路径时报错。
+- `--config <绝对路径>` 可指定项目配置，默认客户端 `config/projects.local.json`；不要把文件内容读入模型。
+- 不支持旧标题筛选、动态账号发现、外部登录态、可见窗口或目标覆盖参数。旧面板生成的命令需要先完成面板替换，不能照抄执行。
+- 不调用模型或 browser-use；CLI 和 `qa_ui_run` 共用执行实现、工作区锁、后台登录、取消及报告逻辑。当前生产会话仍待阶段 3 整体切换，不假定四工具已在生产登记。
 
-| 选项 | 作用 |
+## 执行与交付
+
+1. 确认用户选择的项目、caseId 和执行范围，不扩大为全量测试。
+2. 执行一次命令。stdout 最后一行 JSON 包含 `runId`、`status`、`revisions`、`summaryFile`、`testCount`、`counts`、`exitCode`、`cleanup`、`problems`。退出码 0 且 status 为 passed 才能报告通过。
+3. 读取摘要，按需核对原生 `results.json`、HTML 和 `manifest.json`。报告准确版本、逐例状态、失败、清理和限制；报告交付遵循 `qa-test-report`。
+4. 取消使用原进程的 SIGINT/SIGTERM，等待执行器终值和收尾。已发信号不等于取消完成；收尾未知会保留工作区锁，不能删除锁后重跑。
+5. 首次异常停止依赖链，保留 run/task 和证据。没有新恢复依据不得原样重跑、切换账号、改预期或重新创建等价批次；写入结果未知先只读核实。
+
+每次实际回归生成 `qa/ui/runs/<runId>/`。正常失败和取消也保留报告，清理私有登录态；准备或登录失败可能只有 task.json，以其中的状态和原因报告，不能伪造摘要。强制杀死进程或系统崩溃不保证收尾。
+
+## 受阻处理
+
+| 情况 | 下一步 |
 | --- | --- |
-| `--project` | 必填，项目编号或名称（读 `config/projects.local.json`） |
-| `--cases` | 逗号分隔的 caseId |
-| `--grep` | 只运行标题匹配的测试；与 `--cases` 配合精确到单条 test，不能替代全量复测 |
-| `--all` | 当前项目、当前目标地址下的全部已登记用例；同项目有多个目标时需配合 `--url` |
-| `--url` | 覆盖目标地址，必须与项目配置同源 |
-| `--storage-state` | 复用已有登录态（文件），适合验证码/MFA/SSO |
-| `--list-users` | 从系统“用户管理”动态列出姓名、用户名、部门、岗位、角色和状态；不执行用例 |
-| `--user` | 按姓名或用户名切换到系统用户执行；默认密码只读 `QA_UI_TEST_PASSWORD` |
-| `--tenant` | 登录后租户名称，默认 `项目管理` |
-| `--headed` | 登录窗口可见，仅调试 |
+| 项目名称重复或目录不符 | 使用明确项目编号，核对项目登记；不打印凭据 |
+| 尚无正式版本 | 返回候选验证和发布流程，不能用候选冒充正式用例 |
+| 版本哈希变化 | 保留现场，创建新候选；不重算哈希掩盖变化 |
+| 混合目标或身份 | 按确认的范围拆分 case，不改已有任务约定 |
+| 验证码、MFA、认证受阻或 IndexedDB | 返回 blocked 原因；当前不支持人工接管或外部状态绕过 |
+| 失败、incomplete 或状态未知 | 依据原报告定位原因，列出最小恢复条件；不自动修复或重试 |
 
-登录默认用项目配置账号密码无头自动登录；不打印凭据。遇到验证码、MFA、跨站登录或租户无法自动选择时，先用 `qa-ui-basic`/应用登录生成 storageState，再传 `--storage-state`。
-
-## 动态用户登录
-
-- `--list-users` 从系统 `/system/user` 读取账号列表，只返回展示字段，不返回密码；不需要把每个人员写进项目环境。
-- `--user <姓名|用户名>` 先解析用户管理中的账号，再用默认测试密码登录。密码只从 `QA_UI_TEST_PASSWORD` 读取；该变量写入本地 `.env` 或进程环境，不写入源码、命令行、日志、报告或测试脚本。
-- 找不到、重名或非启用账号直接报错，不猜账号；`--user` 不能和 `--storage-state` 同时使用。
-- 一次执行只使用一个用户；审批多角色按节点拆成多个批次分别登录。登录态仍是批次私有，不能跨批次复用。
-- `--list-users` 读取的是用户管理权限下的动态数据；字段和分页由系统页面决定。
-
-## 条件复测（精确到单条 test）
-
-测试数据面板的“条件复测”会按脚本分组生成 `--cases` 和 `--grep`。按提示逐组执行：
-
-- `--cases` 选择脚本，`--grep` 只运行标题匹配的测试；多个目标测试在同一脚本时合并为一个正则，不要拆成多次 `--all`。
-- `--grep` 匹配 Playwright 完整标题；面板生成 `.*\s<用例名>$` 形式，调用时保持为单个参数，不要额外展开 `$` 或拆分空格。
-- 条件复测不使用 `--all`，不运行未列出的测试；失败保持原流程标记，不自动重跑。
-- 全量复测使用 `--all`，不要和 `--grep` 或条件复测混用。
-- 最新严格 `passed` 的待复测/待人工验证用例会在面板下次刷新时变为“复测通过”；不要手工改写 summary 或标记。
-
-## 执行步骤（Agent）
-
-1. 确认项目和 caseId：从测试数据目录或面板取已登记 case；不要临时拼 caseId。
-2. 只调用一次执行命令；stdout 最后一行是 JSON：
-   ```json
-   {"status":"passed","summaryFile":".../summary.json","testCount":3,"counts":{"passed":3},"exitCode":0,"cleanup":"deleted","problems":[]}
-   ```
-3. 默认只读 `summaryFile` 的 `status`、`testCount`、`counts`、`problems`、`tests`；不要展开 `stdout.log`、`results.json` 或源码，除非需要定位失败。
-4. 报告：加载 `qa-test-report`，按统一 `qa-report/v1` 状态、通过条件和证据顺序交付；UI 批次额外说明 runId、summary 路径和 tracePolicy。退出码非 0 或 `status` 非 `passed` 时不得说通过。
-5. 不做自动重跑；需要新批次时重新执行命令。用例脚本已变更时 CLI 会拒绝，先回到录制/ finalize 流程。
-
-## 会话内 MCP 回放（需要现有登录态或人工接管时）
-
-只执行仍优先使用上面的 CLI。需要在当前会话继承私有登录态或人工接管时：
-
-1. 已按 `qa-ui-basic` 第 1–3 步取得 projectRef、targetUrl 和 saved/not-required 登录。
-2. 调用 `qa_ui_prepare(mode=run, projectRef, targetUrl, caseId/caseIds, grep?)`；run 准备会绑定当前登录态，一个登录态只能准备一个回放批次。
-3. 返回的 `replayCommand` 用 Pi 原生 bash 执行，timeout 可用 660 秒；不自动重放同一命令。
-4. 回放失败后不要重新 prepare 同一 case 来重试；先读 summary。
-5. finalize 不重置登录态；需要新批次时重新走 qa_ui_project → qa_ui_login → qa_ui_prepare。
-6. 批次结果读取 summary 后交 `qa-test-report`；清理、残留和失败按上表与报告技能处理。
-
-## 多角色审批与子 agent
-
-- 审批是顺序状态流：待办节点依赖上一步结果，不能把各节点当成可共享的并行任务。
-- 不要用子 agent 执行同一审批流：`projectRef`、登录态、批次目录和录制资产是当前会话状态，子 agent 默认不共享；并行会产生重复登录、重复批次或无法合并的证据。
-- 用单个编排 Agent，按节点用 `--user` 分批次执行；每批只用一个用户，失败/未授权时保留原批次并报告，不自动切换账号重跑。
-- 子 agent 只适合只读并行检查（如代码审查、独立配置核对），不适合这种需要连续页面状态和登录交接的审批执行。
-
-## 定时执行
-
-用系统 cron/launchd 直接调 CLI，不经过 Agent 和 MCP，token 成本为零。示例：
-
-```cron
-0 9 * * * cd /path/to/17-00 && resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB >> qa/ui/execute.log 2>&1
-```
-
-定时任务建议使用 `--storage-state` 或确保项目凭据长期有效；登录失效时命令以非 0 退出，保留日志，不自动重试。`qa/ui/runs/` 下每次生成独立批次；按需清理旧批次。
-
-## 失败处理
-
-| 现象 | 处理 |
-| --- | --- |
-| 找不到项目/配置 | 检查 `config/projects.local.json` 的编号或名称；不要打印配置内容 |
-| case 不属于项目或目标地址不一致 | 确认 caseId 与 `--url`；不要跨项目混跑 |
-| 脚本与登记哈希不一致 | 回到 `qa-ui-basic`/`qa-ui-record` 重新 finalize |
-| 自动登录失败 | 用 `--storage-state`，或先在应用完成登录；不要反复提交凭据 |
-| 批次 incomplete/证据缺失 | 读 summary 的 `problems`/`tests`；保留失败报告，不宣称通过 |
-
-## 与工作流的关系
-
-`qa-ui-basic` 的第 1–3 步是前置编排，6–7 是回放与报告交接；本 skill 提供 CLI 和会话内回放的具体执行步骤。只执行时优先加载本 skill，不加载录制、盘点和报告全流程，减少 token 与无关工具调用。
+定时调度可调用同一 CLI；本技能不创建计划任务。登录失效时以非 0 退出，不自动重试。

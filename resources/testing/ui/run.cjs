@@ -173,7 +173,7 @@ async function run(taskFile) {
   const summary = {
     schema: "qa-report/v1",
     kind: "ui",
-    ...(task.workflow ? { workflow: task.workflow, purpose: task.purpose, revisions: task.revisions } : {}),
+    ...(task.workflow ? { workflow: task.workflow, purpose: task.purpose, revisions: task.revisions, sourceTaskIds: task.sourceTaskIds } : {}),
     runId: task.runId, status: cancelled ? "cancelled" : passed ? "passed" : report && problems.length === 0 ? "failed" : "incomplete",
     startedAt, finishedAt: new Date().toISOString(), targetUrl: task.targetUrl,
     project: task.project ?? null, workspace: task.workspace, dataDir: task.dataDir ?? null,

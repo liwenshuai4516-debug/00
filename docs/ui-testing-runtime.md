@@ -1,6 +1,8 @@
 # 客户端内置 UI 测试
 
-Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行器调用官方 CLI。支持项目识别、按配置自动登录及必要时可见窗口接管、多文件/多测试批次、原生 JSON/HTML、统一摘要与版本、证据清单。被测工作目录不需要自行安装 Node、Playwright 或浏览器。
+当前处于入口替换中：2026-11-09，独立 `execute.cjs` 与 `qa-ui-execute` 已切换为只执行 `qa/ui/cases/<caseId>/` 中的正式版本，复用新只读工作流。生产扩展、录制技能、面板和 IPC 尚未切换，仍使用旧 Playwright Test MCP 录制入口。下文旧录制说明仅适用于该入口，旧资产及面板命令不能搭配新 CLI；完整边界见 [只读闭环](browser-use-readonly-workflow.md)。
+
+已有执行器支持后台登录、原生 JSON/HTML、统一摘要及证据清单；运行依赖由客户端准备，被测工作目录不需要自行安装。
 
 ## 代码分工
 
@@ -19,7 +21,8 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 | `resources/testing/ui/skills/qa-ui-execute/SKILL.md` | 按 caseId 单项/批量/定时执行，不录制、不改脚本 |
 | `resources/testing/ui/skills/qa-ui-assertion/SKILL.md` | 独立断言规则：来源、业务/守卫、数据不变量、编辑同步、失败判定 |
 | `resources/testing/reporting/SKILL.md` | `qa-test-report`：UI 与接口共用的报告状态、通过条件和交付规则 |
-| `resources/testing/ui/execute.cjs` | 独立执行 CLI：读配置、无头登录、校验资产、生成批次并调用 `run.cjs` |
+| `resources/testing/ui/execute.cjs` | 新正式版本 CLI：选择项目及 case，调用共享只读工作流，不读取旧平铺资产 |
+| `src/main/capabilities/ui-testing/workflow.mjs` | 新资产候选、验证、发布与正式回归；CLI 和 `qa_ui_run` 共用执行核心 |
 | `src/main/services/test-report-service.js` | 聚合 `qa/ui/runs` 与 `qa/api/runs` 的 `qa-report/v1` 摘要，校验路径与大小 |
 | `src/renderer/components/right-sidebar-panel.js` | 右侧栏「测试报告」列表、类型筛选和按需详情 |
 | `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
@@ -56,23 +59,23 @@ Agent 使用官方 Playwright Test MCP 录制真实页面，再用内置执行�
 - 断言编辑需同步 spec、`.asset.json`、`.md` 和 `sha256`，不能只改展示
 - 失败判定：操作正确但 Expected/Received 只差数据量/动态值，按断言问题；筛选未生效、请求缺参数按录制或产品问题
 
-## 独立执行 skill（2026-11-04）
+## 独立执行入口（2026-11-09）
 
-`qa-ui-execute` 只执行已登记用例，不加载录制、盘点和 finalize 流程：
+`qa-ui-execute` 只执行新目录已发布的只读正式版本：
 
 ```bash
 resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB
 ```
 
-- 未传 `--url` 时从所选用例推导目标地址；同项目多个目标时显式传 `--url`
-- `--grep` 只运行标题匹配的测试，配合 `--cases` 可精确复测单条 test；条件复测不使用 `--all`，全量复测才使用 `--all`
-- `--list-users` 从系统“用户管理”动态读取姓名、用户名、部门、岗位、角色和状态，不要求把人员逐个写进项目环境
-- `--user <姓名|用户名>` 用动态账号登录执行；默认测试密码只读本地 `QA_UI_TEST_PASSWORD`，不写入源码、命令行、日志或报告；一次执行只使用一个用户
-- 默认按项目配置无头自动登录；验证码/MFA/租户无法自动选择时传 `--storage-state`
-- 校验 `projectId`、`targetUrl` 和 spec 哈希，生成独立 `qa/ui/runs/execute-*` 批次，调用 `run.cjs`
-- 最后一行 JSON 输出 `status`、`summaryFile`、`testCount`、`counts` 和当前 `user`；退出码 0 才表示全部通过
-- 适合 cron/launchd 直接调用，不经过 Agent/MCP；登录态由批次清理，失败不自动重试
-- 多角色审批按节点拆成多个单用户批次；不使用子 agent 共享同一审批流状态（projectRef、登录态、批次目录不共享）
+- `--project` 接受项目编号或唯一名称；配置默认 `config/projects.local.json`，可用 `--config` 指定文件，工作目录取项目配置的真实目录。
+- `--cases` 精确选择 caseId，或以 `--all` 选择该项目全部正式用例；只读 `currentRevision`，不执行候选或旧平铺格式。
+- 同批必须项目、目标地址、角色和可见身份标识一致，否则在登录前拒绝；需按范围拆批。
+- 与 `qa_ui_run` 共用来源/哈希检查、工作区锁、后台登录、私有状态、取消和报告。每批固定准确 revisions 与 sourceTaskIds，生成 `qa/ui/runs/run-*`，每批登录一次。
+- 最后一行 JSON 输出 `runId`、`status`、`revisions`、`summaryFile`、`testCount`、`counts`、`cleanup` 等；全部通过退出 0，失败、取消、incomplete 或参数错误退出 1。
+- 不读取 `.env`、不动态发现账号、不调用模型、不修改资产；旧标题筛选、账号选择、外部登录态及地址覆盖参数已移除，未知参数直接拒绝。
+- SIGINT/SIGTERM 交给共享执行器收尾；收尾未知保留锁和现场，失败不自动重试。验证码/MFA/身份不符按登录结果停止，不自动弹窗或换账号。
+
+CLI 可由外部调度调用，当前开发入口从仓库加载共享实现；安装包资源布局、跨平台及真实项目定时运行尚未验收。生产旧工具与面板仍待替换，本节不表示旧录制链已整体迁移。
 
 ## 测试提示词（录制）
 
@@ -86,11 +89,13 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 先盘点筛选项、工具栏、行操作、分页、统计卡和详情/回款计划入口；使用 qa_ui_project → qa_ui_login → qa_ui_prepare 和官方录制工具，最后 qa_ui_finalize 登记；不要只输出设计文档。
 ```
 
-## 当前七步流程（2026-11-04）
+## 旧生产录制流程（2026-11-04，待替换）
 
-先判断用户意图，不因调用 `/skill:qa-ui-basic` 就默认跑满七步：只录制走步骤 1–5，只执行走 1–3 + 6–7，只有录制并回放/完整测试才走 1–7；待办清单同步裁剪。用户确认目标为测试环境时视为业务层授权；工具层仍按当前应用权限模式逐次确认或放行。业务预期默认采用页面规则并标注来源。
+旧生产技能尚未同步到新工作流，以下记录现有工具行为，不是新 CLI 的操作规程。旧用例回放须沿用 `qa_ui_prepare(mode=run)` 返回的执行命令，不委派已替换的 `qa-ui-execute`；新目录正式版本使用上一节入口。
 
-在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理细则由同目录注册的 `/skill:qa-ui-record` 提供，执行和报告分别由 `qa-ui-execute`、`qa-test-report` 提供。这些 Skill 是 Agent 的操作规程，登录及资产准备的关键条件同时由工具检查；没有另建绕过 Pi 的宿主关键词路由或通用流程引擎。
+旧编排按意图裁剪：只录制走步骤 1–5，只执行走 1–3 + 6–7，录制并回放走 1–7。用户确认目标为测试环境时视为业务层授权；工具层仍按当前应用权限模式逐次确认或放行。业务预期默认采用页面规则并标注来源。
+
+旧入口在被测工作目录会话选择 `/skill:qa-ui-basic`，提供目标 URL、角色、操作范围和有来源的预期；录制与脚本整理由 `/skill:qa-ui-record` 提供，报告由 `qa-test-report` 提供。现有编排中对执行技能的旧引用仍待删除，不能据此让新 CLI 读取旧格式。登录及资产准备的关键条件同时由工具检查，没有宿主关键词路由。
 
 进入编排前先加载 `qa-ui-intent`：它保留用户原话，识别动作/对象/范围和交付物，输出 `intent`、`completedPrompt`、`missing` 和 `route`。补全只能显式化隐含范围与流程约束，不能把“录制”改成“执行”、把审批子集扩大成全页面，或把只生成 case 改成完整多角色审批。审批子集录制走 `qa-ui-record` 的“审批子集补全模式”，使用新 caseId 生成独立资产，非审批区域标本次范围外。
 
@@ -101,10 +106,10 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 | 3. 判断登录 | qa_ui_login(action=auto, projectRef) 检查表单，按需使用配置凭据登录一次；公开页面返回 not-required，认证成功返回 saved，异常返回 manual-required |
 | 4. 真实录制 | `qa-ui-basic` 委派 `qa-ui-record`：功能面盘点、`qa_ui_prepare(mode=record)`、官方工具现场操作、逐步骤断言、生成日志、脚本和 browser_close 均由录制技能执行 |
 | 5. 整理与持久化 | `qa-ui-record` 负责脚本、用例说明、元数据和 finalize 自检；`qa_ui_finalize` 检查语法、真实日志、说明、元数据及密码误写，并保存 .asset.json |
-| 6. 独立回放 | `qa-ui-basic` 委派 `qa-ui-execute`：优先走 CLI；条件/全量复测、`--grep` 单条 test、会话内 MCP 回放和批次清理由执行技能执行 |
+| 6. 独立回放 | 旧资产使用 `qa_ui_prepare(mode=run)` 返回的命令调用 `run.cjs`，不交给新 CLI 或已替换的 `qa-ui-execute` |
 | 7. 输出结果 | `qa-ui-basic` 委派 `qa-test-report`：按 `qa-report/v1` 规则交付；UI 批次读取原生 JSON/HTML 加 summary.json/summary.md/manifest.json，明确逐例结果、原始失败、版本/来源、清理和未覆盖范围 |
 
-`qa-ui-basic` 只负责业务编排、共享约束和阶段交接；录制、断言、CLI/会话回放、报告的具体步骤分别由 `qa-ui-record`、`qa-ui-assertion`、`qa-ui-execute`、`qa-test-report` 维护，避免同一流程在多处重复描述。步骤 1 和 2 由同一个 `qa_ui_project` 调用完成，不再单独准备工作区目录。
+旧流程的步骤 1 和 2 由同一个 `qa_ui_project` 调用完成，不再单独准备工作区目录。录制、断言和报告技能仍沿用旧格式，后续须与生产扩展一起替换；此处不宣称新旧资产互通。
 
 项目配置仍使用客户端源码根目录的 `config/projects.local.json`，不复制到被测工作区。配置位置与手工编辑约定见 [项目前置数据](project-data.md)。账号密码由后端及独立登录进程使用，不返回模型，不写脚本或报告；不要让 Agent 用原生 read/bash 读取真实配置。目录/地址就绪不表示业务前置数据已正确，返回的 businessDataStatus=not-validated 明示这个边界。
 
