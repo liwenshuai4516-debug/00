@@ -1,8 +1,9 @@
 const path = require("node:path");
 
-function resolveUiTestingRuntime(app, projectRoot) {
+function resolveUiTestingRuntime(app, projectRoot, options = {}) {
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath;
   const directory = app.isPackaged
-    ? path.join(process.resourcesPath, "testing/ui")
+    ? path.join(resourcesPath, "testing/ui")
     : path.join(projectRoot, "resources/testing/ui");
 
   return {

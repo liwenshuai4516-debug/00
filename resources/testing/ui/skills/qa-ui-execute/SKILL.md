@@ -15,7 +15,7 @@ description: 按 caseId 或项目执行已发布的 UI 正式版本，读取原�
 
 ## 独立 CLI
 
-使用客户端开发仓库中的绝对执行器路径；CLI 根据项目登记取得真实工作目录，启动命令的目录不决定资产归属。安装包资源复制及其他平台尚未验收。
+使用客户端的绝对执行器路径：开发仓库为 `resources/testing/ui`，安装包为 `process.resourcesPath/testing/ui`；CLI 自动识别随包 `lib` 并据项目登记取得真实工作目录，启动命令的目录不决定资产归属。模拟资源布局已检查，真实安装包与其他平台尚未验收。
 
 ```bash
 /path/to/client/resources/testing/ui/bin/node /path/to/client/resources/testing/ui/execute.cjs \

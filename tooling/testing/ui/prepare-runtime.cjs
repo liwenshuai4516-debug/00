@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const { copySharedModules } = require("./shared-runtime.cjs");
 
 const projectRoot = path.resolve(__dirname, "../../..");
 const runtimeDir = path.join(projectRoot, "resources/testing/ui");
@@ -74,6 +75,8 @@ function main() {
       PLAYWRIGHT_BROWSERS_PATH: path.join(runtimeDir, "browsers"),
     },
   });
+
+  copySharedModules(projectRoot, runtimeDir);
 
   run(nodeFile, [path.join(runtimeDir, "verify.cjs")], {
     cwd: runtimeDir,

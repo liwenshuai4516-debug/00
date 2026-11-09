@@ -2,10 +2,14 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { createProjectStore } = require("../../../src/main/storage/project-store.js");
-const { resolveUiTestingRuntime } = require("../../../src/main/capabilities/ui-testing/runtime-paths.js");
+const shared = require("./shared.cjs");
+const { createProjectStore } = require(shared.projectStore);
+const { resolveUiTestingRuntime } = require(shared.runtimePaths);
 
 const repoRoot = path.resolve(__dirname, "../../..");
+// 打包后共享实现位于 resources/testing/ui/lib，运行时目录同本题考查同一位置。
+const runtimePaths = resolveUiTestingRuntime({ isPackaged: shared.packaged }, repoRoot,
+  shared.packaged ? { resourcesPath: shared.appResources } : undefined);
 
 function usage() {
   return [
@@ -66,8 +70,8 @@ async function main(argv = process.argv.slice(2)) {
   process.on("SIGTERM", cancel);
   try {
     const { projectId, workspace, configPath } = await loadProject(options);
-    const runtime = { ...resolveUiTestingRuntime({ isPackaged: false }, repoRoot), projectConfig: configPath };
-    const { createReadOnlyWorkflow } = await import(pathToFileURL(path.join(repoRoot, "src/main/capabilities/ui-testing/workflow.mjs")).href);
+    const runtime = { ...runtimePaths, projectConfig: configPath };
+    const { createReadOnlyWorkflow } = await import(pathToFileURL(shared.workflow).href);
     const result = await createReadOnlyWorkflow(runtime).regress(workspace, {
       projectId, caseIds: options.caseIds, all: options.all,
     }, controller.signal);

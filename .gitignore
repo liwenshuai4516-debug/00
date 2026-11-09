@@ -24,6 +24,7 @@ node_modules/
 # 客户端内置测试运行环境的构建产物
 /resources/testing/ui/bin/
 /resources/testing/ui/browsers/
+/resources/testing/ui/lib/
 /resources/testing/ui/browser-use/.venv/
 __pycache__/
 /qa/ui/browser-use-smoke/

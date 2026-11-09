@@ -28,7 +28,7 @@
 | src/main/services/test-data-service.js、test-report-service.js | 用例与报告分页、准确详情和删除检查 |
 | tooling/testing/ui/prepare-runtime.cjs | 准备当前平台 Node、Python、Playwright 和浏览器 |
 
-开发资源位于 resources/testing/ui 和 resources/testing/reporting；发布路径分别为 process.resourcesPath/testing/ui、testing/reporting。运行依赖、浏览器、认证与证据不提交。发布需完整复制对应资源；当前未做安装包或跨平台验收。
+开发资源位于 resources/testing/ui 和 resources/testing/reporting；发布路径分别为 process.resourcesPath/testing/ui、testing/reporting。运行依赖、浏览器、认证与证据不提交。发布需完整复制对应资源。`prepare-runtime.cjs` 会把独立 CLI 依赖的宿主模块复制到 `resources/testing/ui/lib`，CLI 在打包布局下从随包副本加载；模拟 resources 布局并完成真实回放的检查已通过，真实安装包、代码签名与跨平台运行仍未验收。
 
 ## 只读任务
 
