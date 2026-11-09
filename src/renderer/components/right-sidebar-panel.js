@@ -795,7 +795,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     section.append(version);
     const meta = detail.meta;
     section.append(element("p", { class: "case-context", text: `${item.caseId} · ${meta.targetUrl} · ${meta.role}` }),
-      element("p", { class: "case-context", text: `初态：${meta.initialState}；数据：${meta.dataStrategy}；清理：${meta.cleanup}` }));
+      element("p", { class: "case-context", text: `初态：${meta.initialState}；数据：${meta.dataStrategy}；清理：${meta.cleanup}${meta.writeAuthorization ? `；写授权：${meta.writeAuthorization.kind} · ${meta.writeAuthorization.reference}` : ""}` }));
     const addList = (label, entries, describe) => {
       section.append(element("h4", { class: "case-steps__label", text: `${label} ${entries.length}` }));
       const list = element("ol", { class: "case-version-list" });
@@ -1297,6 +1297,8 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     }
     if (detail.parentRunId) facts.append(fact("修复来源", detail.parentRunId));
     if (detail.patchSummary) facts.append(fact("补丁说明", detail.patchSummary));
+    if (detail.dataStrategy) facts.append(fact("数据策略", detail.dataCleanup ? `${detail.dataStrategy} · 清理 ${detail.dataCleanup}` : detail.dataStrategy));
+    if (detail.writeAuthorization) facts.append(fact("写授权", `${detail.writeAuthorization.kind} · ${detail.writeAuthorization.reference}`));
     box.append(facts);
 
     if (detail.targetUrl) {
@@ -1482,16 +1484,18 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
         settled = true;
         cancel.removeEventListener("click", cancelHandler);
         confirm.removeEventListener("click", confirmHandler);
-        confirmDialog.removeEventListener("close", closeHandler);
-        confirmDialog.close();
+        confirmDialog.removeEventListener("cancel", escapeHandler);
+        if (confirmDialog.open) confirmDialog.close();
         resolve(value);
       };
       const cancelHandler = () => finish(false);
       const confirmHandler = () => finish(true);
-      const closeHandler = () => finish(false);
+      // 只听 Esc 的 cancel 事件，不监听异步派发的 close；否则上一次关闭排队中的
+      // close 会命中下一次确认框的监听器并立即把它关掉。
+      const escapeHandler = () => finish(false);
       cancel.addEventListener("click", cancelHandler);
       confirm.addEventListener("click", confirmHandler);
-      confirmDialog.addEventListener("close", closeHandler);
+      confirmDialog.addEventListener("cancel", escapeHandler);
       confirmDialog.showModal();
       cancel.focus();
     });

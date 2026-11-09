@@ -194,6 +194,22 @@ test("修复批次保留父批次与补丁摘要，普通批次为空", async (t
   assert.equal(plain.patchSummary, "");
 });
 
+test("隔离写批次保留数据策略与写授权", async (t) => {
+  const c = await setup(t);
+  await writeSummary(c, "ui", "write-run", { purpose: "validate", dataStrategy: "isolated-write", dataCleanup: "in-test",
+    writeAuthorization: { kind: "user", reference: "受控写夹具" } });
+  const detail = await c.service.get(c.project.id, "ui", "write-run");
+  assert.equal(detail.dataStrategy, "isolated-write");
+  assert.equal(detail.dataCleanup, "in-test");
+  assert.deepEqual(detail.writeAuthorization, { kind: "user", reference: "受控写夹具" });
+  const listed = (await c.service.list(c.project.id)).reports.find((item) => item.id === "write-run");
+  assert.equal(listed.dataStrategy, "isolated-write");
+  await writeSummary(c, "ui", "read-run");
+  const read = await c.service.get(c.project.id, "ui", "read-run");
+  assert.equal(read.dataStrategy, "");
+  assert.equal(read.writeAuthorization, null);
+});
+
 test("空目录返回稳定分页，项目缺失明确拒绝", async (t) => {
   const c = await setup(t);
   const result = await c.service.list(c.project.id);

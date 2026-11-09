@@ -132,10 +132,24 @@ export async function removeUiReport(cwd, { projectId, runId }) {
   });
 }
 
+// 只读与隔离写共用同一套数据策略校验；写操作必须声明授权来源。
+function checkDataStrategy(contract) {
+  const isolated = contract.dataStrategy === "isolated-write";
+  check(contract.dataStrategy === "read-only" || isolated, "dataStrategy 必须是 read-only 或 isolated-write。");
+  if (isolated) {
+    check(contract.cleanup === "in-test", "隔离写任务 cleanup 必须为 in-test，由用例自行准备和清理数据。");
+    check(contract.writeAuthorization && ["user", "rule", "baseline"].includes(contract.writeAuthorization.kind) &&
+      text(contract.writeAuthorization.reference), "隔离写任务必须声明业务写操作授权及来源。");
+  } else {
+    check(contract.cleanup === "none", "只读任务 cleanup 必须为 none。");
+    check(contract.writeAuthorization === undefined, "只读任务不能声明写操作授权。");
+  }
+}
+
 export function validateContract(contract) {
   check(contract && ["explore", "candidate", "complete"].includes(contract.mode), "任务 mode 必须为 explore、candidate 或 complete。");
   for (const field of ["goal", "role", "initialState"]) check(text(contract[field]), `任务缺少 ${field}。`);
-  check(contract.dataStrategy === "read-only" && contract.cleanup === "none", "阶段 2 只接受可重新定位数据的只读任务，cleanup 为 none。");
+  checkDataStrategy(contract);
   check(text(contract.identity?.selector) && text(contract.identity?.text), "必须声明可见身份标识和角色文本。");
   check(Array.isArray(contract.expected) && contract.expected.length > 0, "必须冻结业务预期及来源。");
   const ids = new Set();
@@ -145,7 +159,7 @@ export function validateContract(contract) {
     ids.add(item.id);
   }
   check(Array.isArray(contract.completionTexts) && contract.completionTexts.length > 0 && contract.completionTexts.every(text), "必须声明完成时可见的业务信号。");
-  check(Array.isArray(contract.controls) && contract.controls.length > 0, "必须限定只读操作控件。");
+  check(Array.isArray(contract.controls) && contract.controls.length > 0, "必须限定允许的操作控件。");
   for (const control of contract.controls) {
     check(["click", "input", "select_dropdown"].includes(control.action), "只支持声明的点击、筛选输入和下拉动作。");
     check((text(control.name) && text(control.role)) || Object.keys(control.attributes ?? {}).length > 0, "控件需要稳定 role/name 或属性。");
@@ -244,11 +258,18 @@ export function createReadOnlyWorkflow(runtime) {
     const tasks = [];
     for (const selected of selections) {
       const { task } = await boundTask(root, selected.entry.taskId);
-      check(task.status === "completed" && task.contract.dataStrategy === "read-only" && task.contract.cleanup === "none", "当前仅执行已完成只读探索的用例。");
+      check(task.status === "completed", "当前仅执行已完成任务的用例。");
+      checkDataStrategy(task.contract);
       check(selected.meta.schema === "qa-ui-case/v1" && selected.meta.caseId === selected.asset.caseId &&
         (selected.meta.taskId === task.taskId || (task.kind === "repair" && selected.meta.taskId === task.repair.baseTaskId)) &&
         selected.meta.project?.id === task.project.id &&
         selected.meta.targetUrl === task.targetUrl && selected.meta.role === task.contract.role, "版本说明与来源任务不一致。");
+      check(selected.meta.dataStrategy === task.contract.dataStrategy && selected.meta.cleanup === task.contract.cleanup,
+        "版本数据策略与来源任务不一致。");
+      if (task.contract.dataStrategy === "isolated-write") {
+        check(JSON.stringify(selected.meta.writeAuthorization) === JSON.stringify(task.contract.writeAuthorization),
+          "版本写授权与来源任务不一致。");
+      }
       if (task.kind === "repair") {
         check(selected.entry.baseRevision === task.repair.baseRevision && selected.entry.parentRunId === task.repair.parentRunId &&
           selected.entry.baseTaskId === task.repair.baseTaskId, "修复版本与修复任务不匹配。");
@@ -282,6 +303,9 @@ export function createReadOnlyWorkflow(runtime) {
       config: runtime.config, testCli: runtime.testCli, modules: runtime.modules, browsers: runtime.browsers,
       parentRunId: mode === "validate" && task.kind === "repair" ? task.repair.parentRunId : undefined,
       patchSummary: mode === "validate" ? selections[0].entry.patchSummary : undefined,
+      dataStrategy: task.contract.dataStrategy,
+      dataCleanup: task.contract.cleanup,
+      writeAuthorization: task.contract.writeAuthorization ?? undefined,
       resultsFile: path.join(runDir, "results.json"), htmlReport: path.join(runDir, "html/index.html"),
       summaryFile: path.join(runDir, "summary.json"), summaryDocument: path.join(runDir, "summary.md"), manifestFile: path.join(runDir, "manifest.json") };
     const taskFile = path.join(runDir, "task.json");
@@ -325,7 +349,8 @@ export function createReadOnlyWorkflow(runtime) {
     check(text(selected.entry.validatedRunId), "修复对象必须是已验证并发布的正式版本。");
     const baseTask = await boundTask(root, selected.entry.taskId);
     check(baseTask.task.status === "completed" && baseTask.task.contract.mode === "complete", "修复对象必须来自完整测试任务。");
-    check(selected.meta.dataStrategy === "read-only" && selected.meta.cleanup === "none", "修复任务当前只支持只读用例。");
+    checkDataStrategy({ dataStrategy: selected.meta.dataStrategy, cleanup: selected.meta.cleanup,
+      writeAuthorization: selected.meta.writeAuthorization });
     const summary = await json(await fileAt(root.base, "runs", parentRunId, "summary.json"));
     const runTask = await json(await fileAt(root.base, "runs", parentRunId, "task.json"));
     check(summary.schema === "qa-report/v1" && summary.kind === "ui" && summary.workflow === workflow &&
@@ -352,7 +377,8 @@ export function createReadOnlyWorkflow(runtime) {
       project: structuredClone(baseTask.task.project), targetUrl: baseTask.task.targetUrl,
       contract: { mode: "complete", goal: baseTask.task.contract.goal, role: selected.meta.role,
         identity: structuredClone(baseTask.task.contract.identity), expected: structuredClone(selected.meta.expected),
-        initialState: selected.meta.initialState, dataStrategy: "read-only", cleanup: "none" },
+        initialState: selected.meta.initialState, dataStrategy: selected.meta.dataStrategy, cleanup: selected.meta.cleanup,
+        writeAuthorization: selected.meta.writeAuthorization ? structuredClone(selected.meta.writeAuthorization) : undefined },
       repair: { caseId, baseRevision, baseTaskId: baseTask.task.taskId, parentRunId },
       status: "completed", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
     };
@@ -434,10 +460,15 @@ export function createReadOnlyWorkflow(runtime) {
         check(text(meta.title) && Array.isArray(meta.modulePath) && meta.modulePath.length > 0 && meta.modulePath.every(text), "用例缺少标题或模块。");
         for (const key of ["initialState", "dataStrategy", "cleanup"]) check(meta[key] === task.contract[key], `用例 ${key} 不能改变任务约定。`);
         check(JSON.stringify(meta.expected) === JSON.stringify(task.contract.expected), "候选不能更改已冻结的预期与来源。");
+        if (task.contract.dataStrategy === "isolated-write") {
+          check(JSON.stringify(meta.writeAuthorization) === JSON.stringify(task.contract.writeAuthorization), "用例写授权必须与任务约定一致。");
+        } else {
+          check(meta.writeAuthorization === undefined, "只读用例不能声明写操作授权。");
+        }
         if (repair) {
           check(meta.taskId === repair.baseTaskId, "修复候选必须保留原探索任务编号。");
           const base = await revision(root, caseId, repair.baseRevision);
-          for (const key of ["title", "modulePath", "targetUrl", "role", "initialState", "dataStrategy", "cleanup", "expected", "steps", "assertions"]) {
+          for (const key of ["title", "modulePath", "targetUrl", "role", "initialState", "dataStrategy", "cleanup", "writeAuthorization", "expected", "steps", "assertions"]) {
             check(JSON.stringify(meta[key]) === JSON.stringify(base.meta[key]), `修复补丁不能改变 ${key}；只允许修改脚本定位、等待和证据。`);
           }
         } else {
@@ -449,7 +480,13 @@ export function createReadOnlyWorkflow(runtime) {
         check(Array.isArray(meta.assertions) && task.contract.expected.every((expected) => meta.assertions.some((item) => item.kind === "business" && item.expectedId === expected.id && text(item.text))), "每条业务预期必须有业务断言引用。");
         check((script.match(/\btest\s*\(/g) ?? []).length === 1 && /\bexpect\s*\(/.test(script), "每个脚本必须有且只有一个 test，包含明确断言。");
         check(!/\b(?:skip|fixme|fail|only|waitForTimeout|setTimeout|setInterval|nth|first|last)\s*\(|\bwhile\s*\(|\bcatch\b|\b(?:password|api_key|Authorization)\s*[:=]|element[-_]?\d+|\bref\s*[:=]\s*["']e\d+/.test(script), "发现跳过、吞异常、固定等待、任意行、临时 ref 或明显凭据。");
-        for (const name of ["qa-initial-state", "qa-business-result"]) check(script.includes(name), `脚本必须留存 ${name} 截图证据。`);
+        const evidenceNames = ["qa-initial-state", "qa-business-result",
+          ...(task.contract.dataStrategy === "isolated-write" ? ["qa-cleanup"] : [])];
+        for (const name of evidenceNames) check(script.includes(name), `脚本必须留存 ${name} 截图证据。`);
+        if (task.contract.dataStrategy === "isolated-write") {
+          check(/process\.env\.QA_RUN_ID/.test(script), "隔离写脚本必须使用 QA_RUN_ID 生成每次独立的测试数据。");
+          check(/qa-cleanup/.test(script), "隔离写脚本必须留存 qa-cleanup 清理证据。");
+        }
         const syntax = await processRun(runtime.node, ["--check", scriptFile], signal);
         check(syntax.code === 0, "脚本语法检查未通过。");
         check(hash(await fs.readFile(scriptFile)) === hash(script) && hash(await fs.readFile(metaFile)) === hash(metaData), "静态检查期间草稿发生变化，请保留并重新检查。");
@@ -545,7 +582,8 @@ export function createReadOnlyWorkflow(runtime) {
           const snapshot = `sources/${index}-${name}`;
           check(manifest.files.some((item) => item.path === snapshot && item.sha256 === version.sha256), "缺少准确版本快照。");
         }
-        for (const name of ["qa-initial-state", "qa-business-result"]) {
+        for (const name of ["qa-initial-state", "qa-business-result",
+          ...(task.dataStrategy === "isolated-write" ? ["qa-cleanup"] : [])]) {
           const attachment = tests[0].attachments.find((item) => item.name === name && item.contentType === "image/png" && item.path);
           check(attachment, "缺少初态或业务结果截图。");
           const relative = path.relative(runDir, attachment.path).split(path.sep).join("/");

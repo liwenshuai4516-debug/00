@@ -41,7 +41,7 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 
 所有工具共用工作区排他文件锁，跨扩展实例生效；取消直接传给进程，不等待该锁。Python 仍须同时确认 done、退出和浏览器收尾。回放取消先交给现有执行器收尾，超限才终止进程组；收尾未知时保留锁和现场，禁止新任务。应用重启不自动续跑或清理遗留锁，先核对原任务与相关进程。新路径拒绝链接越界，不创建旧 `qa/data/ui` 目录。tasks、runs 和互斥标记属于本地产物并被忽略。
 
-静态检查是轻量规则检查，不能证明任意 JavaScript 与业务说明的语义一致，也不构成执行不可信脚本的隔离机制。只读控件的业务含义、初态和断言内容须基于任务来源；发布证明该脚本在记录条件下实际执行通过。此次集成检查中的候选是显式编写的夹具，并非 Qwen 生成脚本的验收。真实业务、跨 frame、IndexedDB、重启续跑、写操作、自动修复及真实应用操作均不扩大为已验证能力。
+静态检查是轻量规则检查，不能证明任意 JavaScript 与业务说明的语义一致，也不构成执行不可信脚本的隔离机制。只读控件的业务含义、初态和断言内容须基于任务来源；发布证明该脚本在记录条件下实际执行通过。此次集成检查中的候选是显式编写的夹具，并非 Qwen 生成脚本的验收。真实业务、跨 frame、IndexedDB、重启续跑、真实业务写操作、自动修复决策及真实应用操作均不扩大为已验证能力。
 
 ## 独立执行 CLI
 
@@ -75,7 +75,7 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 
 ## 已有用例的修复任务与父批次关联
 
-阶段 4 的首个切片已接入，仍只支持只读用例。执行正式回归失败且用户明确授权修复后，Pi 读取失败批次、当前 revision、脚本和证据，只改脚本定位、等待与证据；不改变业务预期、步骤、断言说明、标题、模块或初态。写操作、修复后的自动决策与定时调度仍不在本切片范围。
+修复任务对只读和隔离写用例都适用。执行正式回归失败且用户明确授权修复后，Pi 读取失败批次、当前 revision、脚本和证据，只改脚本定位、等待与证据；不改变业务预期、步骤、断言说明、标题、模块、初态或写授权。修复后的自动决策与定时调度仍不在本切片范围。
 
 ```text
 1. qa_ui_run {caseId, revision, mode: "regression"} → 失败批次 runId（保留原报告）
@@ -91,6 +91,25 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 修复 revision 的 `asset.json` 条目记录 `baseRevision`、`baseTaskId`、`parentRunId` 和可选 `patchSummary`，`case.json.taskId` 仍保留原探索任务。验证批次摘要带 `parentRunId` 与 `patchSummary`；报告列表显示“修复”标记，详情展示修复来源和补丁说明，历史失败报告不合并改写。父批次被修复任务引用时不能删除；删除用例时按原探索任务编号校验修复版本。
 
 验证：`node --test tests/unit/ui-repair-workflow.test.js` 1 项通过，使用受控本地 Chromium 真实执行回归失败、修复任务建立、两个补丁、定向验证与发布，覆盖非失败父批次、错误 revision、预期/步骤/断言/标题/任务编号篡改、重复建任务、补丁预算和删除保护；`node --test tests/unit/test-report-service.test.js` 8 项通过（含修复字段）；报告页面检查 19 项通过（含修复标记与来源）。修复运行仍使用显式夹具脚本，不代表真实模型生成补丁已验收。
+
+## 隔离写用例（阶段 4 写操作）
+
+新增、编辑、删除等写操作仅在用户明确授权具体业务对象、且数据可每轮独立准备和清理时支持；仍用同一套探索、候选、验证和发布链路，不新增写工具或第二套执行器。真实业务写操作、审批和跨系统清理未验收。
+
+```text
+contract.dataStrategy = "isolated-write"
+contract.cleanup = "in-test"
+contract.writeAuthorization = { kind: "user" | "rule" | "baseline", reference: "授权依据" }
+```
+
+- `case.json` 必须原样声明 dataStrategy、cleanup 与 writeAuthorization；只读用例不得携带写授权。
+- 脚本必须使用 `process.env.QA_RUN_ID` 生成每轮唯一业务标识，同上清理由用例自行完成；不得写死固定对象或复用上轮残留。执行器为每个批次注入唯一 runId。
+- 脚本必须保存并 attach `qa-cleanup` PNG；成功回放缺少初态、业务结果或清理证据任一项都不能发布，报告问题会明确列出缺少的证据。
+- 静态检查只证明脚本引用了唯一标识和清理证据，不证明数据实际隔离或清理成功；执行结果以 Playwright 实际断言和原生报告为准。
+- 未知提交不重放：中断、结果未知或清理未确认时保留现场和报告，先只读核对本次对象状态；不自动补交、重复删除或重建等价批次。
+- 修复任务同样可用于隔离写用例，写授权与预期、步骤一起冻结；补丁只改脚本定位、等待和证据。
+
+验证使用受控本地页面真实创建与删除数据：`node --test tests/unit/ui-write-workflow.test.js` 1 项通过，覆盖写授权不一致、只读任务携带写授权、缺 QA_RUN_ID、缺 qa-cleanup、两轮数据唯一且清理一致、缺清理证据验证失败且不能发布；报告服务 9 项通过（含数据策略与写授权归一化）；报告页面 19 项通过（含数据策略与写授权展示）。该结果不代表真实业务写入或清理成功。
 
 ## 验证记录
 
@@ -243,7 +262,7 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 | 最小修复 | `resources/testing/ui/run.cjs` 启动测试 CLI 时增加 `--require playwright-resolve.cjs`，把 `@playwright/test`、`playwright`、`playwright-core` 统一解析到随包依赖；该解析器一并纳入批次 sources 归档。未改动模型、超时、浏览器或断言逻辑。 |
 | 回归验证 | `tests/unit/execute-cli.test.js` 的工作区加入一份会抛错的 `@playwright/test` 占位依赖。移除修复时该用例失败（已观察），加回修复后 `node --test --test-concurrency=1 tests/unit/execute-cli.test.js tests/unit/ui-readonly-workflow.test.js` 4 项通过、0 失败，含真实回放、发布、取消收尾与离线模型闭环。 |
 | 恢复结果 | 修复后在新隔离目录重跑一次，2026-11-09 11:03:08–11:03:36 全链通过：真实模型探索 taskId=`task-c3b660c7-a135-4c92-b420-8c4cc029a22a`（4 次模型调用、4 个动作、4 段 usage，cleanupConfirmed=true）；定向验证 `run-cce7a3d7-12ca-478f-adda-f34593c92951` 1 个实际 passed、退出 0、cleanup=deleted；发布写入 `qa-ui-asset/v1` 正式引用 0001（validationRunId 与 validatedRunId 均指向该批次）；正式回归 passed。两次验证截图 `qa-initial-state`、`qa-business-result` 均为独立 PNG 并纳入清单；纯只读访问记录为 3 次 Beta，无 Alpha 点击。 |
-| 边界 | 本次只证明该模型在该受控页面上的探索与整链闭环，真实业务站点、跨 frame、IndexedDB、写操作、自动修复及模型生成候选脚本仍未验证。真实现场保留在 `qa/ui/browser-use-smoke/stage2-real-20261109-105736/`（首次失败）与 `stage2-real-20261109-110217/`（恢复通过），均被忽略且不含凭据。 |
+| 边界 | 本次只证明该模型在该受控页面上的探索与整链闭环，真实业务站点、跨 frame、IndexedDB、真实业务写操作、自动修复决策及模型生成候选脚本仍未验证。真实现场保留在 `qa/ui/browser-use-smoke/stage2-real-20261109-105736/`（首次失败）与 `stage2-real-20261109-110217/`（恢复通过），均被忽略且不含凭据。 |
 
 ## 异常报告 I：工作区内重复 Playwright 解析导致验证批次无结果（已修复）
 
@@ -255,3 +274,13 @@ UI 删除经 idle 互斥和共享工作区锁，重新核对 summary/task 归属
 | 原因与证据 | 失败批次 `summary.json` 的 problems 记录 `Requiring @playwright/test second time` 与 `No tests found`；对照实验确认：脚本位于仓库工作区内时解析到仓库根副本，配置解析到随包副本；把同一脚本复制到仓库外目录后不再出现该错误。已确认是重复解析问题，不是模型超时、浏览器断言失败或页面缺陷 |
 | 已执行处置 | 首次异常即停止后续发布与回归；只读检查运行器、配置与 Node 解析后以最小解析补丁修复，并新增占位依赖回归用例；先确认移除修复时用例失败、加回后通过，再做一次真实整链恢复验证。未重放首次失败批次 |
 | 影响与恢复 | 首次失败批次保留原结果，不更新正式引用；真实探索证据与任务记录保留。恢复运行全链通过，未发生业务写入或结果未知操作；需用户补充的信息：无 |
+
+## 异常报告 J：确认框第二次打开被旧 close 事件关闭（已修复）
+
+| 项目 | 记录 |
+| --- | --- |
+| 任务与结论 | 2026-11-09 11:30–11:45 UTC+08:00，用例面板检查在“取消删除后再次打开删除确认框”处间歇性超时；产品行为是确认框打开后在数毫秒内被关闭，非检查断言错误 |
+| 调用链路 | 阶段 4 页面检查 → `electron tests/ui/test-data-catalog.check.cjs` → 本地 renderer / `confirmAction` → 原生 `<dialog>`；未使用技能，无模型或真实业务请求 |
+| 原因与证据 | `dialog.close()` 的 close 事件异步派发；取消后立即再次打开确认框时，上一次排队的 close 事件命中新实例的 close 监听器，触发 `finish(false)` 并关闭新对话框。几何诊断记录到 `open` 在 1–5 毫秒内由 true 变为 false，事件顺序为旧 close → close called → 新 close |
+| 已执行处置 | 先确认与本次业务改动无直接关系并保留两次失败现场；对照基线复跑排除版本差异后，读取确认框实现并用页面内诊断定位到 close 事件竞态；改为只监听 Esc 的 `cancel` 事件、不监听异步 `close`，不再让旧事件命中新实例。修复后连续 5 次诊断运行与 3 次正式用例页检查、1 次报告页检查均通过 |
+| 影响与恢复 | 仅本地模拟页面，无真实数据或结果未知操作；确认按钮、取消按钮与 Esc 行为保留。未重放真实模型或业务请求 |

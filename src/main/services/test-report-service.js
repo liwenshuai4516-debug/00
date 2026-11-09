@@ -47,6 +47,13 @@ function parseTime(value) {
   return Number.isFinite(time) ? time : null;
 }
 
+function normalizeWriteAuthorization(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const kind = text(value.kind, 20);
+  const reference = text(value.reference, 300);
+  return kind && reference ? { kind, reference } : null;
+}
+
 function normalizeProject(value) {
   if (value && typeof value === "object") {
     const id = text(value.id, 200);
@@ -160,6 +167,9 @@ function normalizeReport(summary, kind, id, summaryPath, modifiedAt) {
     purpose: text(summary?.purpose, 40),
     parentRunId: text(summary?.parentRunId, 200),
     patchSummary: text(summary?.patchSummary, 300),
+    dataStrategy: text(summary?.dataStrategy, 40),
+    dataCleanup: text(summary?.dataCleanup, 40),
+    writeAuthorization: normalizeWriteAuthorization(summary?.writeAuthorization),
     status: deriveStatus(summary, tests),
     startedAt,
     finishedAt,

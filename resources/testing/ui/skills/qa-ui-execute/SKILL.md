@@ -9,7 +9,7 @@ description: 按 caseId 或项目执行已发布的 UI 正式版本，读取原�
 
 - 仅执行 `qa/ui/cases/<caseId>/asset.json` 的 `currentRevision`；该版本须有 `validatedRunId`，且 `case.spec.cjs`、`case.json` 与登记哈希一致。
 - 一例一 test。按 caseId 选择，不按标题正则筛选，不读取旧平铺资产，不迁移旧数据。
-- 当前只支持 `read-only` 任务。新增或修改由候选流程处理；普通回归不修改预期、版本、正式引用或已有结果。
+- 只读任务要求 `dataStrategy=read-only`；用户明确授权的隔离写任务要求 `isolated-write` 且 `cleanup=in-test`，并按任务记录的写授权执行。普通回归不修改预期、版本、正式引用或已有结果；发现数据未清理时报告残留，不做自动重放。
 - 使用项目已配置账号后台登录，每批新建私有状态和回放上下文；不动态发现业务账号、不切换用户、不读取 `.env` 或让模型查看真实配置。
 - 目录和登录成功不等于业务身份正确；脚本必须核对任务声明的身份、初态与业务预期。
 
@@ -40,7 +40,7 @@ description: 按 caseId 或项目执行已发布的 UI 正式版本，读取原�
 2. 执行一次命令。stdout 最后一行 JSON 包含 `runId`、`status`、`revisions`、`summaryFile`、`testCount`、`counts`、`exitCode`、`cleanup`、`problems`。退出码 0 且 status 为 passed 才能报告通过。
 3. 读取摘要，按需核对原生 `results.json`、HTML 和 `manifest.json`。报告准确版本、逐例状态、失败、清理和限制；报告交付遵循 `qa-test-report`。
 4. 取消使用原进程的 SIGINT/SIGTERM，等待执行器终值和收尾。已发信号不等于取消完成；收尾未知会保留工作区锁，不能删除锁后重跑。
-5. 首次异常停止依赖链，保留 run/task 和证据。没有新恢复依据不得原样重跑、切换账号、改预期或重新创建等价批次；写入结果未知先只读核实。
+5. 首次异常停止依赖链，保留 run/task 和证据。没有新恢复依据不得原样重跑、切换账号、改预期或重新创建等价批次；写入结果未知先只读核实，确认本次对象状态后再决定是否继续。
 
 每次实际回归生成 `qa/ui/runs/<runId>/`。正常失败和取消也保留报告，清理私有登录态；准备或登录失败可能只有 task.json，以其中的状态和原因报告，不能伪造摘要。强制杀死进程或系统崩溃不保证收尾。
 

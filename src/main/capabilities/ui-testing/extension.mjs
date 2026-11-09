@@ -9,7 +9,11 @@ const contract = Type.Object({
   identity: Type.Object({ selector: string, text: string }),
   expected: Type.Array(Type.Object({ id: string, text: string,
     source: Type.Object({ kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string }) }), { minItems: 1 }),
-  initialState: string, dataStrategy: Type.Literal("read-only"), cleanup: Type.Literal("none"),
+  initialState: string, dataStrategy: Type.Union([Type.Literal("read-only"), Type.Literal("isolated-write")]),
+  cleanup: Type.Union([Type.Literal("none"), Type.Literal("in-test")]),
+  writeAuthorization: Type.Optional(Type.Object({
+    kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string,
+  })),
   completionTexts: Type.Array(string, { minItems: 1 }),
   controls: Type.Array(Type.Object({
     action: Type.Union([Type.Literal("click"), Type.Literal("input"), Type.Literal("select_dropdown")]),
