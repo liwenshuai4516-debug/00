@@ -194,7 +194,14 @@ function createSessionService(
           fresh.desktopRestoreWarning = "上次对话的模型已不可用，已新建对话。旧记录和输入仍保留，可在右下角选择可用模型。";
           return fresh;
         })
-        .then(observeSession)
+        .then(async (session) => {
+          // 上次进程中断和发送异常都可能留下快照；只恢复历史，不推断操作未执行。
+          const state = await sessionStateStore?.load?.(session.sessionId);
+          if (state?.pendingSend) {
+            session.desktopRestoreWarning = "检测到上次运行未确认结束。已恢复可用历史，发送原文已保留；请先核对工具结果，再手动继续，不会自动重发。";
+          }
+          return observeSession(session);
+        })
         .catch((error) => {
           sessionPromise = undefined;
           throw error;

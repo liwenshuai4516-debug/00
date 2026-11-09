@@ -1,4 +1,5 @@
 const { createProposalStore } = require("./proposal-store.js");
+const { createAgentWatchdog } = require("./agent-watchdog.js");
 
 // 延迟加载 Pi，并返回真正执行发送的函数。
 async function loadDefaultSender() {
@@ -18,11 +19,32 @@ function createChatService(
   sessionStateStore,
   loadSteer = loadDefaultSteer,
   workspaceChanges,
+  createWatchdog = createAgentWatchdog,
 ) {
   let activeRequest;
 
   function isBusy() {
     return Boolean(activeRequest);
+  }
+
+  function abortRequest(request) {
+    if (!request.stopPromise) {
+      request.stopPromise = Promise.resolve().then(async () => {
+        const current = request.session?.desktopRuntime?.session ?? request.session;
+        // allSettled 保证一方失败时也等待另一方，不提前释放运行锁。
+        const results = await Promise.allSettled([
+          Promise.resolve().then(() => current?.desktopCancelUi?.()),
+          Promise.resolve().then(() => current?.desktopSubagents?.stop()),
+          Promise.resolve().then(() => current?.abort?.()),
+        ]);
+        const failed = results.find(result => result.status === "rejected");
+        if (failed) {
+          request.stopFailed = true;
+          throw new Error("停止未确认，会话保持锁定。请检查工具状态或重启应用后核对历史。", { cause: failed.reason });
+        }
+      });
+    }
+    return request.stopPromise;
   }
 
   async function send(
@@ -69,6 +91,7 @@ function createChatService(
     let workspaceDir;
     let registrationWarning;
     let completionStatus;
+    let watchdog;
 
     try {
       const sendMessage = await loadSender();
@@ -112,16 +135,36 @@ function createChatService(
       // 初始化或消费期间停止时，仍完成草稿收尾，但不调用模型。
       if (!request.stopped) {
         request.session = session;
+        watchdog = request.watchdog = createWatchdog({
+          isWaitingForInput: () => {
+            const current = session.desktopRuntime?.session ?? session;
+            return current.desktopHasPendingUi?.() || current.desktopSubagents?.isWaitingForInput?.();
+          },
+          onTimeout: () => {
+            request.watchdogTriggered = true;
+            request.stopped = true;
+            onStatus("看门狗检测到连续 10 分钟无进展，正在停止；已完成内容保留，不会自动重发。");
+            void abortRequest(request).catch(() => {
+              onStatus("看门狗停止失败，结果未确认。请保留现场并检查工具状态；不会启动重复任务。");
+            });
+          },
+          onUnresponsive: () => onStatus("看门狗已等待停止 30 秒，工具退出仍未确认；会话保持锁定，请检查工具或重启应用后核对历史。"),
+        });
+        session.desktopAgentProgress = watchdog.touch;
 
         try {
           const senderResult = await sendMessage(
             session,
             text.trim(),
             (delta) => {
-              if (!request.stopped) onText(delta);
+              if (!request.stopped) {
+                if (delta) watchdog.touch();
+                onText(delta);
+              }
             },
             (event) => {
               if (request.stopped) return;
+              watchdog.touch();
 
               if (
                 event.type === "end" &&
@@ -159,16 +202,33 @@ function createChatService(
             },
             // 停止后的状态不能覆盖页面上的停止提示。
             (status) => {
-              if (!request.stopped) onStatus(status);
+              if (!request.stopped) {
+                watchdog.touch();
+                onStatus(status);
+              }
             },
             // 中止后的工具结束与 agent_settled 仍是有效收尾，不随文本一起丢弃。
-            onOutputEvent,
+            (output) => {
+              if (!request.stopped && output.type !== "queue_update") watchdog.touch();
+              onOutputEvent(output);
+            },
           );
+          if (request.stopPromise) await request.stopPromise;
+          if (request.watchdogTriggered) throw new Error("无进展超时。");
           completionStatus = senderResult?.completionStatus;
         } catch (error) {
+          // 异常也先终止父子链路；不让遗留任务与下一次发送同时运行。
+          await abortRequest(request);
           // 主动停止产生的中断不作为请求失败展示。
+          if (request.watchdogTriggered) {
+            throw new Error("看门狗已停止本轮无进展的运行，会话已恢复可操作。请核对历史和工具结果后手动继续；不会自动重发。", { cause: error });
+          }
           if (!request.stopped) throw error;
         } finally {
+          watchdog.dispose();
+          delete session.desktopAgentProgress;
+          const current = session.desktopRuntime?.session;
+          if (current) delete current.desktopAgentProgress;
           try {
             const actual = session.desktopRuntime?.session ?? session;
             await sessionService.syncSessionRegistration?.(actual.sessionId);
@@ -228,8 +288,8 @@ function createChatService(
           // 记录失败不影响已经完成的对话结果。
         }
       }
-      // 成功、失败或停止后，都允许下一次发送。
-      activeRequest = undefined;
+      // 取消失败时保留锁，不把旧工具仍可能执行的会话交给下一次发送。
+      if (!request.stopFailed) activeRequest = undefined;
     }
   }
 
@@ -248,12 +308,12 @@ function createChatService(
     if (!request) return;
 
     request.stopped = true;
+    // 主动停止不再触发无进展处置；已有取消请求只等待一次。
+    if (!request.watchdogTriggered) request.watchdog?.dispose();
 
     // session 赋值后，发送函数已经进入执行阶段。
     if (request.session) {
-      const current = request.session.desktopRuntime?.session ?? request.session;
-      current.desktopCancelUi?.();
-      await Promise.all([current.desktopSubagents?.stop(), current.abort()]);
+      await abortRequest(request);
     }
   }
 

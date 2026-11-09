@@ -49,6 +49,16 @@ function createExtensionUiBridge() {
 
   function createContext(session, base) {
     const sessionId = session.sessionId;
+    session.desktopHasPendingUi = () => [...pending.values()].some(item => item.event.sessionId === sessionId);
+    async function ask(method, data, opts) {
+      session.desktopAgentProgress?.();
+      try {
+        return await request(sessionId, method, data, opts);
+      } finally {
+        // 用户思考的时间不算 Agent 卡住；交互结束后重新计时。
+        session.desktopAgentProgress?.();
+      }
+    }
     const state = new Map();
     states.set(sessionId, state);
     const emit = (method, data, key = method) => {
@@ -58,10 +68,10 @@ function createExtensionUiBridge() {
     };
     return {
       ...base,
-      select: (title, options, opts) => request(sessionId, "select", { title, options }, opts),
-      confirm: async (title, message, opts) => (await request(sessionId, "confirm", { title, message }, opts)) === true,
-      input: (title, placeholder, opts) => request(sessionId, "input", { title, placeholder }, opts),
-      editor: (title, prefill) => request(sessionId, "editor", { title, prefill }),
+      select: (title, options, opts) => ask("select", { title, options }, opts),
+      confirm: async (title, message, opts) => (await ask("confirm", { title, message }, opts)) === true,
+      input: (title, placeholder, opts) => ask("input", { title, placeholder }, opts),
+      editor: (title, prefill) => ask("editor", { title, prefill }),
       notify: (message, type = "info") => emit("notify", { message, notifyType: type }),
       setStatus: (key, text) => emit("setStatus", { statusKey: key, statusText: text }, `status:${key}`),
       setWidget(key, content, options) {

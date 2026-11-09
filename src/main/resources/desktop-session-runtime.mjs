@@ -85,6 +85,7 @@ export async function bindDesktopRuntime(initial, createReplacement, resourceOpt
 
   async function adopt(session) {
     const onReplacement = previous.desktopOnReplacement;
+    session.desktopAgentProgress = previous.desktopAgentProgress;
     resourceOptions.cancelUi?.(previous.sessionId);
     previous = session;
     try {

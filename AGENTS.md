@@ -128,6 +128,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - [上下文用量](docs/context-usage.md)与[运行轨迹](docs/trajectory-view.md)
 - [侧栏布局](docs/sidebar-layout.md)与[右侧面板](docs/right-sidebar.md)
 - [关闭与重启验收](docs/window-close-acceptance.md)
+- [Agent 看门狗与异常恢复](docs/agent-watchdog.md)
 - [无历史待确认发送的查看与清理](docs/unsent-send-review.md)
 - [任务清单与任务栏](docs/todo-dock.md)
 - [子智能体](docs/subagents.md)

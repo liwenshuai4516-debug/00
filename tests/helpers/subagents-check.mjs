@@ -77,7 +77,11 @@ try {
   const originalId = session.sessionId;
   const output = [];
   await sendMessage(session, "BASELINE", () => {}, () => {});
+  let childProgress = 0;
+  session.desktopAgentProgress = () => childProgress++;
   await sendMessage(session, "DELEGATE", () => {}, () => {}, () => {}, event => output.push(event));
+  assert.ok(childProgress > 0, "真实子会话事件向父看门狗报告进展");
+  delete session.desktopAgentProgress;
   assert.equal(session.sessionId, originalId);
   assert.equal(session.desktopRuntime.session, session);
   let rows = JSON.parse(session.desktopSubagents.list().content[0].text);

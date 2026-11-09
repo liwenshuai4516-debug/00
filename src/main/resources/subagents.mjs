@@ -101,6 +101,7 @@ export function createSubagentManager({ getParent, createChild }) {
     child.notified = false;
     child.output = undefined;
     child.work = Promise.resolve().then(async () => {
+      let unsubscribe;
       try {
         child.session = await open(child, resume);
         if (child.cancelled || stopped || closed) {
@@ -108,6 +109,9 @@ export function createSubagentManager({ getParent, createChild }) {
           return;
         }
         child.status = "running";
+        unsubscribe = child.session.subscribe?.(event => {
+          if (event.type !== "queue_update") parent().desktopAgentProgress?.();
+        });
         save(child);
         const startIndex = child.session.messages.length;
         await child.session.prompt(`父智能体 ID：${parent().sessionId}\n你是受委派的子智能体，不得再次委派。请完成任务并给出最终结果；可用 send_message 向直接父级汇报。\n\n${prompt}`);
@@ -122,6 +126,7 @@ export function createSubagentManager({ getParent, createChild }) {
         child.status = child.cancelled ? "stopped" : "error";
         child.output = error.message;
       } finally {
+        unsubscribe?.();
         try {
           await lifecycle.closePiSession(child.session);
         } catch (error) {
@@ -200,6 +205,7 @@ export function createSubagentManager({ getParent, createChild }) {
     return { entries, continue: true };
   }
   return { restore, start, send, interrupt, stop, settle,
+    isWaitingForInput: () => active().some(child => child.session?.desktopHasPendingUi?.()),
     begin: () => { if (!closed) stopped = false; },
     list: () => result(JSON.stringify([...children.values()].map(snapshot), null, 2), {}),
   };

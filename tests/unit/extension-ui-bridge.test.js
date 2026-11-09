@@ -15,9 +15,27 @@ async function setup() {
   bridge.register(ipc);
   const call = (name, ...args) => handlers.get(`agent:${name}`)(event, ...args);
   await call("extension-ui-ready");
-  const ui = bridge.createContext({ sessionId: "a" }, { custom: async () => undefined });
-  return { bridge, ipc, handlers, sender, event, sent, ui, call };
+  const session = { sessionId: "a" };
+  const ui = bridge.createContext(session, { custom: async () => undefined });
+  return { bridge, ipc, handlers, sender, event, sent, ui, call, session };
 }
+
+test("等待用户只暂停所属会话的看门狗，交互开始和结束均重置无进展时间", async () => {
+  const f = await setup();
+  let progress = 0;
+  f.session.desktopAgentProgress = () => progress++;
+  const other = { sessionId: "b" };
+  f.bridge.createContext(other, {});
+  assert.equal(f.session.desktopHasPendingUi(), false);
+  const response = f.ui.confirm("确认执行", "是否继续？");
+  assert.equal(progress, 1);
+  assert.equal(f.session.desktopHasPendingUi(), true);
+  assert.equal(other.desktopHasPendingUi(), false);
+  f.call("extension-ui-response", { id: f.sent.at(-1).id, value: true });
+  assert.equal(await response, true);
+  assert.equal(progress, 2);
+  assert.equal(f.session.desktopHasPendingUi(), false);
+});
 
 test("扩展对话只接受所属主页面和有效选项；取消、信号和超时均结束等待", async () => {
   const f = await setup();
