@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const os = require("node:os");
-const { mkdtemp, readFile, writeFile, rm } = require("node:fs/promises");
+const { mkdtemp, mkdir, readFile, writeFile, rm } = require("node:fs/promises");
 const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow } = require("electron");
 
@@ -11,6 +11,7 @@ app.on("window-all-closed", () => {});
 async function main() {
   const root = path.resolve(__dirname, "../..");
   const temporary = await mkdtemp(path.join(os.tmpdir(), "test-data-catalog-check-"));
+  await mkdir(path.join(temporary, "user-data", "Shared Dictionary", "cache"), { recursive: true });
   app.setPath("userData", path.join(temporary, "user-data"));
   app.setPath("sessionData", path.join(temporary, "user-data"));
   await app.whenReady();
@@ -93,94 +94,56 @@ async function main() {
     await run(`[...document.querySelectorAll('.right-panel__card')].find((button)=>button.textContent.includes('测试数据')).click()`);
     await wait(`document.querySelector('.case-catalog')!==null`);
 
-    await check("顶部显示项目与模块/子模块/用例/断言计数", `document.querySelector('.right-panel__nav-title').textContent==='测试数据 · 演示项目'&&document.querySelector('.right-panel__select').selectedOptions[0].textContent==='演示项目'&&[...document.querySelectorAll('.case-catalog__stat')].map((node)=>node.textContent.replace(/\\s+/g,'')).join(',')==='1模块,2子模块,3用例,5断言'&&document.querySelector('.case-catalog__policy').textContent==='只读'`);
-    await check("按 modulePath 展示两级模块", `document.querySelectorAll('.case-module').length===3&&document.querySelector('.case-module[data-depth="0"] > .case-module__head .case-module__name').textContent==='合同管理'&&[...document.querySelectorAll('.case-module--nested > .case-module__head .case-module__name')].map((node)=>node.textContent).join(',')==='经营合同,采购合同'`);
-    await check("测试数据项目筛选使用紧凑宽度", `document.querySelector('.right-panel__select').getBoundingClientRect().width<200`);
-    await check("一级模块默认展开，子模块与用例默认折叠", `document.querySelector('.case-module[data-depth="0"] > .case-module__body').hidden===false&&[...document.querySelectorAll('.case-module--nested > .case-module__body')].every((node)=>node.hidden===true)&&[...document.querySelectorAll('.case-card__body')].every((node)=>node.hidden===true)`);
-    await run(`document.querySelector('.case-module--nested > .case-module__head').click()`);
-    await check("展开子模块后仍保持用例折叠", `document.querySelector('.case-module--nested > .case-module__body').hidden===false&&[...document.querySelectorAll('.case-card__body')].every((node)=>node.hidden===true)`);
-    await check("子模块显示页面、角色与汇总条数", `(()=>{const node=document.querySelectorAll('.case-module--nested')[0];return node.querySelector('.case-module__page').textContent.includes('/pms/OperationContract')&&node.querySelector('.case-module__page').textContent.includes('管理员')&&node.querySelector('.case-module__count').textContent==='2 条'&&node.querySelectorAll('.case-card').length===2;})()`);
-    await check("模块内用例按优先级排序", `document.querySelector('.case-module--nested .case-card__name').textContent==='T2 权限拒绝时列表为空'&&document.querySelector('.case-module--nested .case-card__priority').textContent==='P0'`);
-    await check("折叠行显示断言预览与断言计数", `document.querySelector('.case-module--nested .case-card__assertion-preview').textContent.includes('列表 0 行')&&document.querySelector('.case-module--nested .case-card__meta').textContent.includes('业务 1')&&document.querySelector('.case-module--nested .case-card__meta').textContent.includes('前置 1')`);
-    await run(`document.querySelector('.case-module[data-depth="0"] > .case-module__head').click()`);
-    await check("折叠一级模块隐藏整棵子树", `document.querySelector('.case-module[data-depth="0"] > .case-module__body').hidden===true&&document.querySelector('.case-module[data-depth="0"] > .case-module__head').getAttribute('aria-expanded')==='false'`);
-    await run(`document.querySelector('.case-module[data-depth="0"] > .case-module__head').click()`);
-    await check("重新展开一级模块恢复子树与箭头", `document.querySelector('.case-module[data-depth="0"] > .case-module__body').hidden===false&&document.querySelector('.case-module[data-depth="0"] > .case-module__head').getAttribute('aria-expanded')==='true'&&getComputedStyle(document.querySelector('.case-module[data-depth="0"] > .case-module__head .case-module__chevron')).transform!=='none'`);
-    await check("展开前不显示断言，展开后按业务/前置分组显示", `(()=>{const card=document.querySelector('.case-module--nested .case-card');const body=card.querySelector('.case-card__body');const before=body.hidden;card.querySelector('.case-card__head').click();const labels=[...body.querySelectorAll('.case-assertions__label')].map((node)=>node.textContent).join(',');return before&&!body.hidden&&labels==='业务断言 1,前置断言 1'&&body.textContent.includes('执行步骤 3')&&body.textContent.includes('打开合同列表')&&body.textContent.includes('列表 0 行')&&body.textContent.includes('需求声明')&&body.textContent.includes('最近运行 失败')&&body.textContent.includes('模块 合同管理 / 经营合同')&&card.querySelector('.case-card__head').getAttribute('aria-expanded')==='true';})()`);
-    await check("用例头部两行布局、完整标题与状态条", `(()=>{const card=document.querySelector('.case-module--nested .case-card');const head=card.querySelector('.case-card__head');const top=head.querySelector('.case-card__top');const name=card.querySelector('.case-card__name');return top.contains(card.querySelector('.case-card__priority'))&&top.contains(name)&&top.contains(card.querySelector('.case-card__status'))&&head.querySelector('.case-card__meta').textContent.includes('权限')&&card.dataset.status==='failed'&&getComputedStyle(name).whiteSpace==='normal'&&card.querySelectorAll('.case-context').length===3&&card.querySelector('.case-card__files-block').open===false;})()`);
-    await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-    if (process.env.TEST_DATA_CATALOG_SCREENSHOT_PATH) {
-      await writeFile(process.env.TEST_DATA_CATALOG_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    }
-    await run(`[...document.querySelectorAll('.case-module--nested .case-card__edit')].find((button)=>button.textContent==='编辑步骤').click()`);
-    await check("打开执行步骤编辑器", `document.querySelectorAll('.case-editor__row--step').length===3&&document.querySelector('.case-editor__row--step .case-editor__text').value==='打开合同列表'`);
-    await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-    if (process.env.TEST_DATA_STEPS_EDITOR_SCREENSHOT_PATH) {
-      await writeFile(process.env.TEST_DATA_STEPS_EDITOR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    }
-    await run(`(()=>{const input=document.querySelector('.case-editor__row--step .case-editor__text');input.value='打开经营合同列表';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    await run(`document.querySelector('.case-editor__button--primary').click()`);
-    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('执行步骤已保存')`);
-    await check("保存步骤后刷新展示", `document.querySelector('.case-module--nested .case-card__body').textContent.includes('打开经营合同列表')&&document.querySelector('.case-editor')===null`);
-
-    await run(`[...document.querySelectorAll('.case-module--nested .case-card__edit')].find((button)=>button.textContent==='编辑断言').click()`);
-    await check("打开断言编辑器", `document.querySelectorAll('.case-editor__row').length===2&&document.querySelector('.case-editor__text').value==='列表 0 行'`);
-    await run(`new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
-    if (process.env.TEST_DATA_EDITOR_SCREENSHOT_PATH) {
-      await writeFile(process.env.TEST_DATA_EDITOR_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    }
-    await run(`document.querySelector('.case-editor__text').value='列表 0 行（已编辑）';document.querySelector('.case-editor__text').dispatchEvent(new Event('input',{bubbles:true}))`);
-    await run(`document.querySelector('.case-editor__button--primary').click()`);
-    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('断言已保存')`);
-    await check("保存断言后刷新展示", `document.querySelector('.case-module--nested .case-card__body').textContent.includes('列表 0 行（已编辑）')&&document.querySelector('.case-editor')===null`);
-    await check("顶部显示最近运行结果", `document.querySelector('.case-run').textContent==='失败'&&document.querySelector('.case-run').dataset.status==='failed'&&document.querySelector('.case-catalog__run-text').textContent.includes('2/3 通过')`);
-    await check("用例行显示最近状态", `[...document.querySelectorAll('.case-card__status')].map((node)=>node.textContent).join(',')==='失败,通过,通过'`);
-    await check("未标准化资产有提示", `document.querySelector('.right-panel__note').textContent.includes('1 个资产未包含')&&document.querySelectorAll('.right-panel__file').length===0`);
-    await check("用例筛选与执行范围控件可用", `document.querySelector('.case-filter__workflow').value==='all'&&[...document.querySelector('.case-filter__workflow').options].some((option)=>option.textContent.includes('待复测'))&&document.querySelector('.case-filter__mode').value==='retest'&&document.querySelector('.case-filter__run').textContent==='生成执行提示'`);
-    await run(`(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');const select=card.querySelector('.case-card__workflow');select.value='retest';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('用例标记已保存')`);
-    await check("单条用例可保存待复测标记", `(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');return card.querySelector('.case-mark')?.textContent==='待复测'&&card.querySelector('.case-card__workflow').value==='retest';})()`);
-    await run(`(()=>{const select=document.querySelector('.case-filter__workflow');select.value='retest';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-    await wait(`document.querySelectorAll('.case-card').length===1`);
-    await check("按待复测筛选只显示目标用例", `document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空'`);
-    await run(`(()=>{const select=document.querySelector('.case-filter__workflow');select.value='all';select.dispatchEvent(new Event('change',{bubbles:true}));window.__insertedPrompt='';})()`);
-    await wait(`document.querySelectorAll('.case-card').length===3`);
-    await run(`document.querySelector('.case-filter__run').click()`);
-    await wait(`window.__insertedPrompt.includes('--grep')`);
-    await check("条件复测提示包含精确测试标题和 caseId", `window.__insertedPrompt.includes('--project a --cases 合同')&&window.__insertedPrompt.includes('--grep')&&window.__insertedPrompt.includes('T2 权限拒绝时列表为空')&&window.__insertedPrompt.includes('不要扩展到其他用例')`);
-    await run(`(()=>{const select=document.querySelector('.case-filter__mode');select.value='full';select.dispatchEvent(new Event('change',{bubbles:true}));window.__insertedPrompt='';})()`);
-    await wait(`document.querySelector('.case-filter__mode').value==='full'`);
-    await run(`document.querySelector('.case-filter__run').click()`);
-    await wait(`window.__insertedPrompt.includes('--all')`);
-    await check("全量复测提示使用 --all 且与条件复测互斥", `window.__insertedPrompt.includes('--project a --all')&&!window.__insertedPrompt.includes('--grep')&&window.__insertedPrompt.includes('全量 UI 复测')`);
-    await run(`(()=>{const select=document.querySelector('.case-filter__mode');select.value='retest';select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
-    await wait(`document.querySelector('.case-filter__mode').value==='retest'`);
+    await check("列表每页 50 条并显示正式版本、候选和回归状态", `document.querySelectorAll('.case-card').length===50&&document.querySelector('.case-catalog__summary').textContent.includes('52 条')&&document.querySelector('.case-card').textContent.includes('正式 0001')&&document.querySelector('.case-card').textContent.includes('新候选 0002')&&document.querySelector('.case-card').textContent.includes('最近回归 通过')`);
+    await check("列表不预取详情并移除旧编辑、标记入口", `(async()=>{const stats=await window.agent.getTestStats();return stats.details===0&&document.querySelectorAll('.case-card__body,.case-editor,.case-card__workflow').length===0;})()`);
+    await run(`document.querySelector('.case-card__head').click()`);
+    await wait(`document.querySelector('.case-version-detail')!==null`);
+    await check("展开只读步骤、业务预期与来源、业务和前置断言", `(()=>{const body=document.querySelector('.case-card__body');return body.textContent.includes('打开合同列表')&&body.textContent.includes('合同需求第 3 条')&&body.textContent.includes('业务断言 1')&&body.textContent.includes('前置断言 1')&&body.textContent.includes('task-source')&&body.querySelectorAll('input,textarea').length===0;})()`);
     await check("面板没有横向溢出", `document.getElementById('body').scrollWidth<=document.getElementById('body').clientWidth`);
-
-    await run(`(()=>{const input=document.querySelector('.case-catalog__search');input.value='空态';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    await check("搜索按用例名保留祖先与命中子模块", `document.querySelectorAll('.case-module').length===2&&document.querySelectorAll('.case-module--nested').length===1&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-module--nested .case-module__name').textContent==='采购合同'&&document.querySelector('.case-card__name').textContent.includes('空态')`);
-    await run(`(()=>{const input=document.querySelector('.case-catalog__search');input.value='需求声明';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    await check("搜索命中断言来源", `document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空'&&document.querySelector('.case-module--nested .case-module__name').textContent==='经营合同'`);
-    await run(`(()=>{const input=document.querySelector('.case-catalog__search');input.value='经营合同';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    await check("搜索命中模块路径显示该分支全部用例", `document.querySelectorAll('.case-module--nested').length===1&&document.querySelectorAll('.case-card').length===2`);
-    await run(`(()=>{const input=document.querySelector('.case-catalog__search');input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));})()`);
-    await check("清空搜索恢复全部用例", `document.querySelectorAll('.case-module').length===3&&document.querySelectorAll('.case-card').length===3`);
-
-    await run(`(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');if(card.querySelector('.case-card__body').hidden)card.querySelector('.case-card__head').click();})()`);
-    await run(`(()=>{const card=[...document.querySelectorAll('.case-card')].find((node)=>node.querySelector('.case-card__name').textContent==='T2 权限拒绝时列表为空');[...card.querySelectorAll('.case-card__edit')].find((button)=>button.textContent==='删除用例').click();})()`);
+    await run(`new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+    if (process.env.TEST_DATA_CATALOG_SCREENSHOT_PATH) await writeFile(process.env.TEST_DATA_CATALOG_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
+    await run(`(()=>{const select=document.querySelector('.case-version-detail select');select.value='0002';select.dispatchEvent(new Event('change'));})()`);
+    await wait(`document.querySelector('.case-version-detail')?.textContent.includes('新候选步骤')`);
+    await check("可按需查看候选版本", `document.querySelector('.case-version-detail select').value==='0002'&&document.querySelector('.case-version-detail').textContent.includes('run-candidate')`);
+    await run(`[...document.querySelectorAll('.case-card__edit')].find(button=>button.textContent==='生成执行提示').click()`);
+    await check("执行提示只选正式 case，不使用 grep、all 或自动发送", `window.__insertedPrompt.includes("--project 'a' --cases 'contracts'")&&window.__insertedPrompt.includes('当前列表版本 0001')&&!window.__insertedPrompt.includes('--grep')&&!window.__insertedPrompt.includes('--all')&&document.querySelector('.right-panel__status').textContent.includes('请确认后发送')`);
+    await run(`document.querySelector('[data-case-id="candidate"] .case-card__head').click()`);
+    await wait(`document.querySelector('[data-case-id="candidate"] .case-version-detail')!==null`);
+    await check("候选用例没有回归执行入口", `![...document.querySelectorAll('[data-case-id="candidate"] button')].some(button=>button.textContent==='生成执行提示')`);
+    await run(`[...document.querySelectorAll('.case-catalog__pager button')].find(button=>button.textContent==='下一页').click()`);
+    await wait(`document.querySelectorAll('.case-card').length===2`);
+    await check("翻页后最后两条可见且详情缓存清空", `document.querySelector('.case-catalog__pager').textContent.includes('第 2 / 2 页')&&document.querySelectorAll('.case-card__body').length===0`);
+    const search = async (query) => {
+      await run(`(()=>{const input=document.querySelector('.case-catalog__search');input.value=${JSON.stringify(query)};input.form.requestSubmit();})()`);
+      await wait(`document.getElementById('body').getAttribute('aria-busy')==='false'`);
+    };
+    await search('仅候选');
+    await check("搜索传到服务端并重置第一页", `(async()=>{const last=(await window.agent.getTestStats()).lists.at(-1);return last.page===1&&last.query==='仅候选'&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-catalog__pager').textContent.includes('第 1 / 1 页');})()`);
+    await run(`document.querySelector('.case-card__head').click()`);
+    await wait(`document.querySelector('.case-version-detail')!==null`);
+    await run(`[...document.querySelectorAll('.case-card__edit')].find(button=>button.textContent==='删除整个用例').click()`);
     await wait(`document.getElementById('confirm').open`);
-    await check("单条删除需要确认同步移除脚本", `document.getElementById('right-panel-confirm-message').textContent.includes('spec 脚本')&&document.getElementById('right-panel-confirm-message').textContent.includes('不可恢复')`);
-    await run(`document.querySelector('#confirm [data-confirm]').click()`);
-    await wait(`![...document.querySelectorAll('.case-card__name')].some((node)=>node.textContent==='T2 权限拒绝时列表为空')`);
-    await check("单条删除后保留同资产其他用例", `document.querySelectorAll('.case-card').length===2&&document.querySelector('.right-panel__status').textContent.includes('已删除 1 条用例')`);
-
-    await run(`(()=>{const names=['T1 列表加载与结构完整','T3 合同编号不存在时展示空态'];for(const card of document.querySelectorAll('.case-card')){const name=card.querySelector('.case-card__name').textContent;if(names.includes(name))card.querySelector('.case-card__select').click();}})()`);
-    await check("勾选多条用例显示批量删除入口", `document.querySelector('.case-bulk__count').textContent==='已选 2 条'&&document.querySelector('.case-bulk__delete').textContent==='删除选中（2）'&&!document.querySelector('.case-bulk__delete').disabled`);
-    await run(`document.querySelector('.case-bulk__delete').click()`);
+    await check("整例删除说明全部版本及历史保留", `document.getElementById('right-panel-confirm-message').textContent.includes('全部版本和脚本')&&document.getElementById('right-panel-confirm-message').textContent.includes('历史任务和运行快照保留')`);
+    await run(`document.querySelector('#confirm [data-cancel]').click()`);
+    await check("取消删除保留用例", `document.querySelectorAll('.case-card').length===1`);
+    await run(`[...document.querySelectorAll('.case-card__edit')].find(button=>button.textContent==='删除整个用例').click()`);
     await wait(`document.getElementById('confirm').open`);
     await run(`document.querySelector('#confirm [data-confirm]').click()`);
-    await wait(`document.querySelectorAll('.case-card').length===0`);
-    await check("批量删除后目录清空并显示空态", `document.querySelector('.case-catalog')===null&&document.querySelector('.right-panel__empty').textContent.includes('暂无标准化用例')`);
+    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('已删除整个用例')`);
+    await check("删除使用 case 编号和列表哈希，刷新后展示空态", `(async()=>{const deletion=(await window.agent.getTestStats()).deletions[0];return deletion.caseId==='candidate'&&deletion.assetHash==='hash-1'&&document.querySelectorAll('.case-card').length===0;})()`);
+    await check("其他测试数据文件仍可管理", `document.querySelector('.case-data-file').textContent.includes('api/sample.json')`);
+    await run(`document.querySelector('.case-data-file button').click()`);
+    await wait(`document.getElementById('confirm').open`);
+    await run(`document.querySelector('#confirm [data-confirm]').click()`);
+    await wait(`document.querySelector('.right-panel__status')?.textContent.includes('测试数据文件已删除')`);
+    await check("其他测试数据删除后刷新", `document.querySelectorAll('.case-data-file').length===0`);
+    await search('');
+    await run(`document.querySelector('[data-case-id="contracts"] .case-card__head').click()`);
+    await wait(`document.querySelector('.case-version-detail')!==null`);
+    await run(`(()=>{const select=document.querySelector('.case-version-detail select');select.value='0002';select.dispatchEvent(new Event('change'));const env=document.querySelector('[aria-label="选择项目环境"]');env.value='b';env.dispatchEvent(new Event('change'));})()`);
+    await wait(`document.querySelector('.case-catalog__summary')?.textContent.includes('0 条')`);
+    await run(`new Promise(resolve=>setTimeout(resolve,150))`);
+    await check("换项目后迟到详情不覆盖新列表", `document.querySelectorAll('.case-version-detail,.case-card').length===0&&document.querySelector('[aria-label="选择项目环境"]').value==='b'`);
 
     assert.deepEqual(errors, [], "页面不应有 console error");
     console.log(`PASS ${passed} 项检查`);

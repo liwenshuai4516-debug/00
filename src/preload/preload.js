@@ -302,19 +302,15 @@ contextBridge.exposeInMainWorld("agent", {
   deleteProjectEnvironment: (projectId) =>
     ipcRenderer.invoke("agent:delete-project-environment", projectId),
 
-  // 测试数据只提交项目编号与 qa/data 下的相对路径。
-  listTestData: (projectId) =>
-    ipcRenderer.invoke("agent:list-test-data", projectId),
+  // 测试数据提交项目编号；版本用例使用对象编号，普通文件使用相对路径。
+  listTestData: (projectId, options) =>
+    ipcRenderer.invoke("agent:list-test-data", projectId, options),
   deleteTestData: (projectId, relativePath) =>
     ipcRenderer.invoke("agent:delete-test-data", projectId, relativePath),
-  updateTestCaseAssertions: (projectId, assetPath, caseName, assertions) =>
-    ipcRenderer.invoke("agent:update-test-case-assertions", projectId, assetPath, caseName, assertions),
-  updateTestCaseSteps: (projectId, assetPath, caseName, steps) =>
-    ipcRenderer.invoke("agent:update-test-case-steps", projectId, assetPath, caseName, steps),
-  updateTestCaseMarks: (projectId, items, changes) =>
-    ipcRenderer.invoke("agent:update-test-case-marks", projectId, items, changes),
-  deleteTestCases: (projectId, items) =>
-    ipcRenderer.invoke("agent:delete-test-cases", projectId, items),
+  getTestCase: (projectId, caseId, revision) =>
+    ipcRenderer.invoke("agent:get-test-case", projectId, caseId, revision),
+  deleteTestCase: (projectId, caseId, assetHash) =>
+    ipcRenderer.invoke("agent:delete-test-case", projectId, caseId, assetHash),
 
   // 测试报告只读；页面只提交项目编号、类型和批次目录名。
   listTestReports: (projectId) =>

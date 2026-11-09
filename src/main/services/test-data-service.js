@@ -1,1122 +1,186 @@
 const path = require("node:path");
-const { createHash, randomUUID } = require("node:crypto");
-const { readdir, readFile, writeFile, realpath, stat, lstat, unlink, rename } = require("node:fs/promises");
+const fs = require("node:fs/promises");
+const { createHash } = require("node:crypto");
 
-const DATA_SEGMENTS = ["qa", "data"];
-const MAX_FILES = 500;
-const MAX_CASE_ASSETS = 200;
-const MAX_ASSET_BYTES = 512 * 1024;
-const MAX_RUNS = 50;
-const MAX_SUMMARY_BYTES = 1024 * 1024;
-const MAX_MODULE_DEPTH = 6;
-const MAX_MODULE_TITLE = 60;
-const CASE_TYPES = new Set(["functional", "permission", "boundary", "exception", "regression"]);
-const PRIORITIES = new Set(["P0", "P1", "P2", "P3"]);
-const DATA_POLICIES = new Set(["read-only", "write-unique", "write-disposable", "no-write"]);
-const PRIORITY_ORDER = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const CASE_STATE_FILE = ".case-state.json";
-const CASE_STATE_VERSION = 1;
-const CASE_WORKFLOWS = new Set(["pending", "retest", "verified", "confirmed"]);
-const MAX_CASE_STATE_ENTRIES = 1000;
-const MAX_CASE_STATE_NAME = 300;
+const PAGE_SIZE = 50;
+const hash = (data) => createHash("sha256").update(data).digest("hex");
+const validId = (value) => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(value);
+function check(condition, message) { if (!condition) throw new Error(message); }
 
-function emptyCatalog() {
-  return {
-    modules: [],
-    legacy: [],
-    truncated: false,
-    totals: { modules: 0, submodules: 0, cases: 0, assertions: 0, legacy: 0 },
-    lastRun: null,
-  };
+// 每层都检查链接；读取不会创建目录或更新人工状态。
+async function at(workspace, ...parts) {
+  let current = workspace;
+  for (const part of parts) {
+    current = path.join(current, part);
+    check(!(await fs.lstat(current)).isSymbolicLink(), "测试数据不能使用符号链接。");
+  }
+  return current;
 }
-
-function text(value, max) {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-
-function safeId(value) {
-  const id = text(value, 200);
-  return /^[\p{L}\p{N}_-]+$/u.test(id) ? id : "";
-}
-
-function caseStateKey(assetPath, caseName) {
-  return `${assetPath}\u001f${caseName}`;
-}
-
-function caseStateFile(root) {
-  return path.join(root, "ui", "cases", CASE_STATE_FILE);
-}
-
-function normalizeCaseWorkflow(value) {
-  return CASE_WORKFLOWS.has(value) ? value : "none";
-}
-
-function parseCaseState(value) {
-  let parsed;
+async function optionalDirectory(workspace, ...parts) {
   try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new Error("用例标记文件损坏，请检查 qa/data/ui/cases/.case-state.json。");
-  }
-  if (
-    parsed?.version !== CASE_STATE_VERSION ||
-    !parsed.cases ||
-    typeof parsed.cases !== "object" ||
-    Array.isArray(parsed.cases)
-  ) {
-    throw new Error("用例标记文件格式无效，请检查 qa/data/ui/cases/.case-state.json。");
-  }
-  const cases = {};
-  for (const [key, entry] of Object.entries(parsed.cases)) {
-    if (Object.keys(cases).length >= MAX_CASE_STATE_ENTRIES) break;
-    if (!entry || typeof entry !== "object") continue;
-    const assetPath = text(entry.assetPath, MAX_CASE_STATE_NAME);
-    const caseName = text(entry.caseName, MAX_CASE_STATE_NAME);
-    const workflow = normalizeCaseWorkflow(entry.workflow);
-    if (!assetPath || !caseName || workflow === "none") continue;
-    if (caseStateKey(assetPath, caseName) !== key) continue;
-    if (!/^ui\/cases\/[^/]+\.asset\.json$/.test(assetPath)) continue;
-    cases[key] = {
-      assetPath,
-      caseName,
-      workflow,
-      updatedAt: text(entry.updatedAt, 40),
-    };
-  }
-  return {
-    version: CASE_STATE_VERSION,
-    updatedAt: text(parsed.updatedAt, 40),
-    cases,
-  };
-}
-
-async function readCaseState(root) {
-  try {
-    return parseCaseState(await readFile(caseStateFile(root), "utf8"));
+    const directory = await at(workspace, ...parts);
+    check((await fs.stat(directory)).isDirectory(), "测试数据目录无效。");
+    return directory;
   } catch (error) {
-    if (error.code === "ENOENT") {
-      return { version: CASE_STATE_VERSION, updatedAt: "", cases: {} };
-    }
+    if (error.code === "ENOENT") return null;
     throw error;
   }
 }
-
-async function writeCaseState(root, cases) {
-  const file = caseStateFile(root);
-  const temporary = `${file}.${randomUUID()}.tmp`;
-  const payload = {
-    version: CASE_STATE_VERSION,
-    updatedAt: new Date().toISOString(),
-    cases,
-  };
-  try {
-    await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { mode: 0o600 });
-    await rename(temporary, file);
-  } finally {
-    await unlink(temporary).catch(() => {});
+async function boundedRead(file, limit) {
+  const info = await fs.stat(file);
+  check(info.isFile() && info.size <= limit, "测试资产文件无效或过大。");
+  const data = await fs.readFile(file);
+  check(data.length <= limit, "测试资产文件过大。");
+  return data;
+}
+async function assetAt(workspace, caseId) {
+  check(validId(caseId), "用例编号无效。");
+  const bytes = await boundedRead(await at(workspace, "qa", "ui", "cases", caseId, "asset.json"), 512 * 1024);
+  const asset = JSON.parse(bytes);
+  if (asset.schema !== "qa-ui-asset/v1") return null;
+  check(asset.schema === "qa-ui-asset/v1" && asset.caseId === caseId && Array.isArray(asset.revisions) && asset.revisions.length > 0, "用例版本索引无效。");
+  const numbers = asset.revisions.map((entry) => entry.revision);
+  check(numbers.every((number) => typeof number === "string" && /^\d{4}$/.test(number)) && new Set(numbers).size === numbers.length &&
+    (asset.currentRevision === null || numbers.includes(asset.currentRevision)), "用例版本索引无效。");
+  return { asset, assetHash: hash(bytes) };
+}
+async function metaAt(workspace, projectId, caseId, entry, script = false) {
+  const parts = ["qa", "ui", "cases", caseId, "revisions", entry.revision];
+  const bytes = await boundedRead(await at(workspace, ...parts, "case.json"), 512 * 1024);
+  check(hash(bytes) === entry.hashes?.["case.json"], "用例说明已变更，请保留现场并核对版本。");
+  const meta = JSON.parse(bytes);
+  check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && meta.taskId === entry.taskId && meta.project?.id === projectId, "用例说明与项目或来源不匹配。");
+  check(typeof meta.title === "string" && Array.isArray(meta.modulePath), "用例标题或模块无效。");
+  if (script) {
+    const source = await boundedRead(await at(workspace, ...parts, "case.spec.cjs"), 512 * 1024);
+    check(hash(source) === entry.hashes?.["case.spec.cjs"], "用例脚本已变更，请保留现场并核对版本。");
   }
-  return payload;
+  return meta;
 }
 
-function applyCaseStateToModules(modules, state) {
-  const stack = [...modules];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    for (const item of node.cases ?? []) {
-      const entry = state.cases[caseStateKey(item.assetPath, item.name)];
-      item.workflow = entry?.workflow ?? "none";
-      item.markedAt = entry?.updatedAt ?? null;
-    }
-    stack.push(...(node.children ?? []));
-  }
-}
-
-// 自动转换只处理“待复测/待人工验证”与“复测通过”的明确结果，其他标记保留人工判断。
-function reconcileCaseState(state, modules) {
-  let changed = false;
-  const now = new Date().toISOString();
-  const stack = [...modules];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    for (const item of node.cases ?? []) {
-      const entry = state.cases[caseStateKey(item.assetPath, item.name)];
-      if (!entry || !item.lastResult) continue;
-      const finishedAt = Date.parse(item.lastResult.finishedAt ?? "");
-      const markedAt = Date.parse(entry.updatedAt ?? "");
-      if (!Number.isFinite(finishedAt) || !Number.isFinite(markedAt) || finishedAt <= markedAt) continue;
-      const passed = item.lastResult.status === "passed";
-      const failed = ["failed", "timedOut"].includes(item.lastResult.status);
-      if (passed && ["pending", "retest"].includes(entry.workflow)) {
-        entry.workflow = "verified";
-      } else if (failed && entry.workflow === "verified") {
-        entry.workflow = "pending";
-      } else {
-        continue;
-      }
-      entry.updatedAt = now;
-      item.workflow = entry.workflow;
-      item.markedAt = now;
-      changed = true;
-    }
-    stack.push(...(node.children ?? []));
-  }
-  return changed;
-}
-
-function legacyEntry(item) {
-  return {
-    path: item.path,
-    name: item.name,
-    size: item.size,
-    modifiedAt: item.modifiedAt,
-  };
-}
-
-// 目录层级只取显式 modulePath；旧资产缺少该字段时由 buildCatalog 按页面兼容。
-function readModulePath(caseMeta) {
-  if (!Array.isArray(caseMeta?.modulePath)) return [];
-  return caseMeta.modulePath
-    .map((segment) => text(segment, MAX_MODULE_TITLE))
-    .filter(Boolean)
-    .slice(0, MAX_MODULE_DEPTH);
-}
-
-function finalizeModule(node) {
-  node.children.sort(
-    (first, second) =>
-      first.title.localeCompare(second.title, "zh-CN") ||
-      first.key.localeCompare(second.key),
-  );
-  node.cases.sort(
-    (first, second) =>
-      PRIORITY_ORDER[first.priority] - PRIORITY_ORDER[second.priority] ||
-      first.name.localeCompare(second.name, "zh-CN"),
-  );
-  for (const child of node.children) finalizeModule(child);
-
-  node.caseCount =
-    node.cases.length +
-    node.children.reduce((total, child) => total + child.caseCount, 0);
-  node.assertionCount =
-    node.cases.reduce((total, item) => total + item.assertions.length, 0) +
-    node.children.reduce((total, child) => total + child.assertionCount, 0);
-  node.pages = [...node.pages].sort((first, second) => first.localeCompare(second, "zh-CN"));
-  node.roles = [...node.roles].sort((first, second) => first.localeCompare(second, "zh-CN"));
-  node.tags = [...node.tags];
-  node.policies = [...node.policies];
-  node.page = node.pages.length === 1 ? node.pages[0] : "";
-  node.role = node.roles.length === 1 ? node.roles[0] : "";
-  if (node.policies.length === 1) node.dataPolicy = node.policies[0];
-  else if (node.policies.length > 1) node.dataPolicy = "mixed";
-  else node.dataPolicy = "";
-}
-
-function pruneEmptyModules(node) {
-  node.children = node.children.filter((child) => {
-    pruneEmptyModules(child);
-    return child.caseCount > 0;
-  });
-}
-
-function countModules(modules) {
-  let total = 0;
-  const stack = [...modules];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    total += 1;
-    stack.push(...node.children);
-  }
-  return total;
-}
-
-function isOutside(relative) {
-  return (
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative)
-  );
-}
-
-function summaryCaseId(file) {
-  const base = String(file).split(/[\\/]/).pop() ?? "";
-  return base.replace(/\.spec\.cjs$/i, "");
-}
-
-// 回放结果按脚本 + 用例名匹配；同一用例取最近一次批次的结果。
-async function readRunResults(workspace) {
-  const directory = path.join(workspace, "qa/ui/runs");
-  let entries;
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if (error.code === "ENOENT") return { latest: null, byCase: new Map() };
-    throw error;
-  }
-
+async function recentResults(workspace, projectId) {
+  const results = new Map();
+  const directory = await optionalDirectory(workspace, "qa", "ui", "runs");
+  if (!directory) return results;
   const summaries = [];
-  for (const entry of entries.slice(0, 200)) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    const file = path.join(directory, entry.name, "summary.json");
-    let info;
+  for (const item of await fs.readdir(directory, { withFileTypes: true })) {
+    if (!item.isDirectory() || !validId(item.name)) continue;
+    let summary;
     try {
-      info = await stat(file);
+      summary = JSON.parse(await boundedRead(await at(directory, item.name, "summary.json"), 1024 * 1024));
     } catch (error) {
       if (error.code === "ENOENT") continue;
       throw error;
     }
-    if (!info.isFile() || info.size > MAX_SUMMARY_BYTES) continue;
-    let summary;
-    try {
-      summary = JSON.parse(await readFile(file, "utf8"));
-    } catch {
-      continue;
-    }
-    if (!summary || typeof summary.runId !== "string" || !Array.isArray(summary.tests)) continue;
-    summaries.push({ ...summary, modifiedAt: info.mtimeMs });
+    if (summary.schema !== "qa-report/v1" || summary.workflow !== "browser-use-playwright" || summary.purpose !== "regression" ||
+      summary.project?.id !== projectId || summary.workspace !== workspace || summary.runId !== item.name) continue;
+    summaries.push(summary);
   }
-
-  summaries.sort((first, second) => {
-    const firstTime = Date.parse(first.finishedAt ?? "") || first.modifiedAt || 0;
-    const secondTime = Date.parse(second.finishedAt ?? "") || second.modifiedAt || 0;
-    return secondTime - firstTime;
-  });
-  if (summaries.length > MAX_RUNS) summaries.length = MAX_RUNS;
-
-  const byCase = new Map();
+  summaries.sort((a, b) => (Date.parse(b.finishedAt) || 0) - (Date.parse(a.finishedAt) || 0) || b.runId.localeCompare(a.runId));
   for (const summary of summaries) {
-    for (const test of summary.tests) {
-      if (!test || typeof test.file !== "string" || typeof test.title !== "string") continue;
-      const key = `${summaryCaseId(test.file)}::${test.title.split(" > ").pop()}`;
-      if (byCase.has(key)) continue;
-      byCase.set(key, {
-        status: typeof test.status === "string" ? test.status : "unknown",
-        durationMs: Number.isFinite(test.durationMs) ? test.durationMs : null,
-        finishedAt: typeof summary.finishedAt === "string" ? summary.finishedAt : null,
-        runId: summary.runId,
-      });
+    for (const [caseId, revision] of Object.entries(summary.revisions ?? {})) {
+      if (!validId(caseId) || !/^\d{4}$/.test(revision)) continue;
+      const key = `${caseId}/${revision}`;
+      if (results.has(key)) continue;
+      const file = path.join(workspace, "qa", "ui", "cases", caseId, "revisions", revision, "case.spec.cjs");
+      const tests = (summary.tests ?? []).filter((test) => typeof test.file === "string" && path.resolve(workspace, "qa", "ui", "cases", test.file) === file);
+      results.set(key, { runId: summary.runId, revision, status: tests.length === 1 ? tests[0].status : summary.status === "cancelled" ? "cancelled" : "unknown", finishedAt: summary.finishedAt });
     }
   }
-
-  const latest = summaries[0]
-    ? {
-      runId: summaries[0].runId,
-      status: typeof summaries[0].status === "string" ? summaries[0].status : "unknown",
-      startedAt: typeof summaries[0].startedAt === "string" ? summaries[0].startedAt : null,
-      finishedAt: typeof summaries[0].finishedAt === "string" ? summaries[0].finishedAt : null,
-      total: summaries[0].tests.length,
-      passed: summaries[0].tests.filter((test) => test?.status === "passed").length,
-      failed: summaries[0].tests.filter((test) => ["failed", "timedOut"].includes(test?.status)).length,
-      skipped: summaries[0].tests.filter((test) => test?.status === "skipped").length,
-      cancelled: summaries[0].tests.filter((test) => test?.status === "cancelled").length,
-    }
-    : null;
-  return { latest, byCase };
+  return results;
 }
 
-function normalizeCaseAssertions(assertions) {
-  if (!Array.isArray(assertions) || assertions.length === 0) throw new Error("至少需要一条断言。");
-  if (assertions.length > 50) throw new Error("断言不能超过 50 条。");
-  const result = assertions.map((assertion, index) => {
-    const content = text(assertion?.text, 500);
-    const source = text(assertion?.source, 500);
-    if (!content) throw new Error(`第 ${index + 1} 条断言内容不能为空。`);
-    if (!source) throw new Error(`第 ${index + 1} 条断言来源不能为空。`);
-    return {
-      id: text(assertion?.id, 20) || `A${index + 1}`,
-      kind: assertion?.kind === "guard" ? "guard" : "business",
-      text: content,
-      source,
-    };
-  });
-  if (!result.some((assertion) => assertion.kind === "business")) throw new Error("至少需要一条业务断言。");
-  return result;
-}
-
-function normalizeCaseSteps(steps) {
-  if (!Array.isArray(steps) || steps.length === 0) throw new Error("至少需要一个执行步骤。");
-  if (steps.length > 50) throw new Error("执行步骤不能超过 50 条。");
-  return steps.map((step, index) => {
-    const content = text(step, 500);
-    if (!content) throw new Error(`第 ${index + 1} 个执行步骤不能为空。`);
-    return content;
-  });
-}
-
-function removeCaseTableRows(document, caseNames) {
-  const lines = document.split("\n");
-  let inSection = false;
-  const removed = new Set(caseNames);
-  const result = [];
-  for (const line of lines) {
-    if (line.trim() === "## 用例与断言") { inSection = true; result.push(line); continue; }
-    if (inSection && line.trim().startsWith("## ")) inSection = false;
-    if (inSection && line.startsWith("|")) {
-      const cells = line.split("|");
-      if (cells.length >= 6 && removed.has(cells[1].trim())) continue;
-    }
-    result.push(line);
-  }
-  return result.join("\n");
-}
-
-function matchingBrace(source, start) {
-  let depth = 0;
-  let quote = null;
-  let lineComment = false;
-  let blockComment = false;
-  for (let index = start; index < source.length; index += 1) {
-    const char = source[index];
-    const next = source[index + 1];
-    if (lineComment) {
-      if (char === "\n") lineComment = false;
-      continue;
-    }
-    if (blockComment) {
-      if (char === "*" && next === "/") { blockComment = false; index += 1; }
-      continue;
-    }
-    if (quote) {
-      if (char === "\\") { index += 1; continue; }
-      if (char === quote) quote = null;
-      continue;
-    }
-    if (char === "/" && next === "/") { lineComment = true; index += 1; continue; }
-    if (char === "/" && next === "*") { blockComment = true; index += 1; continue; }
-    if (char === '"' || char === "'" || char === "`") { quote = char; continue; }
-    if (char === "{") depth += 1;
-    else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
-}
-
-// 删除 spec 中与用例名对应的 test 块；找不到时返回 null，调用方必须在写入前中止。
-function normalizeSpecTitle(value) {
-  return String(value)
-    .replace(/^T\d+\s*/i, "")
-    .replace(/[与和及]/g, "")
-    .replace(/[\s:：,，、。；;！!？?\-—→>（）()【】\[\]"'“”‘’]/g, "")
-    .toLowerCase();
-}
-
-function specTestEntries(source) {
-  const entries = [];
-  for (const quote of ['"', "'", "`"]) {
-    const prefix = `test(${quote}`;
-    let index = -1;
-    while ((index = source.indexOf(prefix, index + 1)) >= 0) {
-      const titleStart = index + prefix.length;
-      const titleEnd = source.indexOf(quote, titleStart);
-      if (titleEnd < 0) break;
-      const title = source.slice(titleStart, titleEnd);
-      if (!title.includes("\n")) entries.push({ index, title });
-      index = titleEnd;
-    }
-  }
-  return entries.sort((first, second) => first.index - second.index);
-}
-
-function removeTestAt(source, index) {
-  const arrow = source.indexOf("=>", index);
-  if (arrow < 0) return null;
-  const brace = source.indexOf("{", arrow);
-  if (brace < 0) return null;
-  const end = matchingBrace(source, brace);
-  if (end < 0) return null;
-  let after = end + 1;
-  while (source[after] === " " || source[after] === "\t") after += 1;
-  if (source[after] === ")") after += 1;
-  if (source[after] === ";") after += 1;
-  while (source[after] === "\r" || source[after] === "\n") after += 1;
-  const lineStart = source.lastIndexOf("\n", index) + 1;
-  return source.slice(0, lineStart) + source.slice(after);
-}
-
-function removeSpecTest(source, caseName) {
-  let exact = -1;
-  for (const quote of ['"', "'", "`"]) {
-    exact = source.indexOf(`test(${quote}${caseName}${quote}`, exact + 1);
-    if (exact >= 0) break;
-  }
-  if (exact >= 0) return removeTestAt(source, exact);
-
-  const target = normalizeSpecTitle(caseName);
-  if (target.length < 4) return null;
-  const candidates = specTestEntries(source).filter((entry) => {
-    const normalized = normalizeSpecTitle(entry.title);
-    return normalized.length >= 4
-      && (normalized === target || normalized.startsWith(target) || target.startsWith(normalized));
-  });
-  if (candidates.length !== 1) return null;
-  return removeTestAt(source, candidates[0].index);
-}
-
-function replaceAssertionTableRow(document, caseName, assertions) {
-  const summary = assertions
-    .map((assertion) => `${assertion.id} ${assertion.kind === "guard" ? "前置" : "业务"}：${assertion.text}${assertion.source ? `（${assertion.source}）` : ""}`)
-    .join("；");
-  const lines = document.split("\n");
-  let inSection = false;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line.trim() === "## 用例与断言") { inSection = true; continue; }
-    if (!inSection) continue;
-    if (line.trim().startsWith("## ")) break;
-    if (!line.startsWith("|")) continue;
-    const cells = line.split("|");
-    if (cells.length >= 6 && cells[1].trim() === caseName) {
-      cells[4] = ` ${summary.replaceAll("|", "\\|")} `;
-      lines[index] = cells.join("|");
-      break;
-    }
-  }
-  return lines.join("\n");
-}
-
-// 测试数据只落在项目工作目录的 qa/data；页面只提交相对路径与项目编号。
 function createTestDataService(projectStore) {
-  // 列表读取会顺带落盘自动状态转换；与手动标记串行，避免读旧快照覆盖新标记。
-  let caseStateQueue = Promise.resolve();
-  function runCaseState(operation) {
-    const next = caseStateQueue.then(operation, operation);
-    caseStateQueue = next.then(() => {}, () => {});
-    return next;
+  async function workspaceFor(projectId) {
+    check(typeof projectId === "string" && projectId.trim(), "请选择项目环境。");
+    const project = (await projectStore.list()).find((item) => item.id === projectId);
+    check(project, "未找到该项目环境，请重新读取。");
+    return fs.realpath(project.workspaceDir);
   }
 
-  async function resolveRoot(projectId) {
-    if (typeof projectId !== "string" || !projectId.trim()) {
-      throw new Error("请选择项目环境。");
+  async function list(projectId, options = {}) {
+    check(options && typeof options === "object" && !Array.isArray(options), "列表参数无效。");
+    const { page = 1, query = "" } = options;
+    check(Number.isSafeInteger(page) && page > 0 && typeof query === "string" && query.length <= 200, "分页或筛选参数无效。");
+    const workspace = await workspaceFor(projectId);
+    const caseRoot = await optionalDirectory(workspace, "qa", "ui", "cases");
+    const cases = [];
+    if (caseRoot) {
+      for (const item of await fs.readdir(caseRoot, { withFileTypes: true })) {
+        if (!item.isDirectory() || !validId(item.name)) continue;
+        let indexed;
+        try { indexed = await assetAt(workspace, item.name); }
+        catch (error) { if (error.code === "ENOENT") continue; throw error; }
+        if (!indexed) continue;
+        const { asset, assetHash } = indexed;
+        const entry = asset.revisions.find((entry) => entry.revision === asset.currentRevision) ?? asset.revisions.at(-1);
+        const meta = await metaAt(workspace, projectId, item.name, entry);
+        if (!`${item.name} ${meta.title} ${meta.modulePath.join(" / ")} ${meta.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) continue;
+        cases.push({ caseId: item.name, title: meta.title, modulePath: meta.modulePath, role: meta.role,
+          currentRevision: asset.currentRevision, displayRevision: entry.revision,
+          candidates: asset.revisions.filter((entry) => !entry.validatedRunId && (!asset.currentRevision || entry.revision > asset.currentRevision)).map((entry) => entry.revision),
+          assetHash, runnable: Boolean(asset.currentRevision && entry.validatedRunId) });
+      }
     }
-    const project = (await projectStore.list()).find(
-      (item) => item.id === projectId,
-    );
-    if (!project) {
-      throw new Error("未找到该项目环境，请重新读取。");
-    }
+    cases.sort((a, b) => a.modulePath.join("/").localeCompare(b.modulePath.join("/"), "zh-CN") || a.title.localeCompare(b.title, "zh-CN") || a.caseId.localeCompare(b.caseId));
+    const pages = Math.max(1, Math.ceil(cases.length / PAGE_SIZE));
+    const selectedPage = Math.min(page, pages);
+    const selected = cases.slice((selectedPage - 1) * PAGE_SIZE, selectedPage * PAGE_SIZE);
+    const results = selected.length ? await recentResults(workspace, projectId) : new Map();
+    for (const item of selected) item.lastResult = item.currentRevision ? results.get(`${item.caseId}/${item.currentRevision}`) ?? null : null;
 
-    const root = path.join(project.workspaceDir, ...DATA_SEGMENTS);
-    let resolved;
-    try {
-      resolved = await realpath(root);
-    } catch (error) {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    }
-    const info = await stat(resolved);
-    if (!info.isDirectory()) {
-      throw new Error("测试数据目录无效。");
-    }
-    return { root: resolved, workspace: project.workspaceDir };
-  }
-
-  async function list(projectId) {
-    const resolved = await resolveRoot(projectId);
-    if (resolved === null) {
-      return { available: false, truncated: false, items: [], catalog: emptyCatalog() };
-    }
-    const { root, workspace } = resolved;
-
+    const root = await optionalDirectory(workspace, "qa", "data");
     const items = [];
-    const assets = [];
-    async function walk(directory, prefix) {
-      if (items.length >= MAX_FILES) return;
-      const entries = await readdir(directory, { withFileTypes: true });
-      for (const entry of entries) {
-        if (items.length >= MAX_FILES) break;
-        if (entry.name.startsWith(".")) continue;
-        const absolute = path.join(directory, entry.name);
+    async function walk(directory, prefix = "") {
+      for (const entry of (await fs.readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
         const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isSymbolicLink()) continue;
-        if (entry.isDirectory()) {
-          await walk(absolute, relative);
-          continue;
+        if (entry.name.startsWith(".") || entry.isSymbolicLink() || relative === "ui/cases") continue;
+        const file = await at(directory, entry.name);
+        if (entry.isDirectory()) await walk(file, relative);
+        else if (entry.isFile()) {
+          const info = await fs.stat(file);
+          items.push({ path: relative, name: entry.name, size: info.size, modifiedAt: info.mtimeMs });
         }
-        if (!entry.isFile()) continue;
-
-        try {
-          const info = await stat(absolute);
-          const item = {
-            path: relative,
-            name: entry.name,
-            category: relative.includes("/") ? relative.split("/")[0] : "",
-            size: info.size,
-            modifiedAt: info.mtimeMs,
-          };
-          items.push(item);
-          if (
-            relative.startsWith("ui/cases/") &&
-            relative.endsWith(".asset.json") &&
-            relative.split("/").length === 3
-          ) {
-            assets.push(item);
-          }
-        } catch (error) {
-          if (error.code !== "ENOENT") throw error;
-        }
+        if (items.length > 500) return;
       }
     }
-
-    await walk(root, "");
-    items.sort(
-      (first, second) =>
-        (first.category || "\uffff").localeCompare(
-          second.category || "\uffff",
-        ) || second.modifiedAt - first.modifiedAt,
-    );
-
-    const catalog = await buildCatalog(root, assets);
-    await applyRunResults(catalog, workspace);
-    await runCaseState(async () => {
-      const caseState = await readCaseState(root);
-      applyCaseStateToModules(catalog.modules, caseState);
-      if (reconcileCaseState(caseState, catalog.modules)) {
-        await writeCaseState(root, caseState.cases);
-      }
-    });
-    return {
-      available: true,
-      truncated: items.length >= MAX_FILES,
-      items,
-      catalog,
-    };
+    if (root) await walk(root);
+    return { available: Boolean(root || caseRoot), items: items.slice(0, 500), truncated: items.length > 500,
+      catalog: { cases: selected, total: cases.length, page: selectedPage, pageSize: PAGE_SIZE, pages } };
   }
 
-  function applyRunResultsToModules(modules, byCase) {
-    for (const module of modules) {
-      for (const item of module.cases) {
-        item.lastResult = byCase.get(`${item.caseId}::${item.name}`) ?? null;
-      }
-      applyRunResultsToModules(module.children, byCase);
-    }
+  async function getCase(projectId, caseId, revision) {
+    check(typeof revision === "string" && /^\d{4}$/.test(revision), "用例版本无效。");
+    const workspace = await workspaceFor(projectId);
+    const indexed = await assetAt(workspace, caseId);
+    check(indexed, "仅支持新版 UI 用例。");
+    const { asset, assetHash } = indexed;
+    const entry = asset.revisions.find((entry) => entry.revision === revision);
+    check(entry, "未登记该用例版本，请刷新。");
+    const meta = await metaAt(workspace, projectId, caseId, entry, true);
+    return { caseId, revision, assetHash, currentRevision: asset.currentRevision,
+      revisions: asset.revisions.map(({ revision, taskId, validatedRunId, validationRunId }) => ({ revision, taskId, validatedRunId, validationRunId })), meta };
   }
 
-  async function applyRunResults(catalog, workspace) {
-    const { latest, byCase } = await readRunResults(workspace);
-    applyRunResultsToModules(catalog.modules, byCase);
-    catalog.lastRun = latest;
-  }
-
-  // qa-ui-case 元数据是分类索引：modulePath 对应实际项目目录层级；旧资产按页面归组。
-  async function buildCatalog(root, assets) {
-    const nodes = new Map();
-    const roots = [];
-    const legacy = [];
-
-    for (const item of assets.slice(0, MAX_CASE_ASSETS)) {
-      if (item.size > MAX_ASSET_BYTES) {
-        legacy.push(legacyEntry(item));
-        continue;
-      }
-      let metadata;
-      try {
-        metadata = JSON.parse(await readFile(path.join(root, ...item.path.split("/")), "utf8"));
-      } catch {
-        legacy.push(legacyEntry(item));
-        continue;
-      }
-      const caseMeta = metadata?.caseMeta;
-      if (
-        caseMeta?.schema !== "qa-ui-case/v1" ||
-        !Array.isArray(caseMeta.cases) ||
-        caseMeta.cases.length === 0
-      ) {
-        legacy.push(legacyEntry(item));
-        continue;
-      }
-
-      const page = text(caseMeta.page, 300) || "未标注页面";
-      const role = text(caseMeta.role, 80);
-      const tags = Array.isArray(caseMeta.tags)
-        ? caseMeta.tags.map((tag) => text(tag, 40)).filter(Boolean).slice(0, 8)
-        : [];
-      const dataPolicy = DATA_POLICIES.has(caseMeta.dataPolicy) ? caseMeta.dataPolicy : "read-only";
-      const modulePath = readModulePath(caseMeta);
-      const explicitPath = modulePath.length > 0;
-      const title = explicitPath ? modulePath[modulePath.length - 1] : tags[0] || page;
-      const idPath = explicitPath ? modulePath : [page];
-
-      let module = null;
-      for (let index = 0; index < idPath.length; index += 1) {
-        const prefix = idPath.slice(0, index + 1);
-        const key = explicitPath ? prefix.join("\u001f") : `page:${page}`;
-        let node = nodes.get(key);
-        if (!node) {
-          node = {
-            key,
-            path: explicitPath ? prefix : [title],
-            title: explicitPath ? prefix[prefix.length - 1] : title,
-            depth: explicitPath ? index : 0,
-            cases: [],
-            children: [],
-            pages: new Set(),
-            roles: new Set(),
-            tags: new Set(),
-            policies: new Set(),
-          };
-          nodes.set(key, node);
-          if (module) module.children.push(node);
-          else roots.push(node);
-        }
-        module = node;
-      }
-
-      for (const tag of tags) module.tags.add(tag);
-      module.pages.add(page);
-      if (role) module.roles.add(role);
-      module.policies.add(dataPolicy);
-
-      const caseId = safeId(caseMeta.caseId);
-      const recordedAt = text(metadata.recordedAt, 40);
-      for (const entry of caseMeta.cases.slice(0, 100)) {
-        const name = text(entry?.name, 300);
-        if (!name) continue;
-        const assertions = (Array.isArray(entry.assertions) ? entry.assertions : [])
-          .slice(0, 50)
-          .map((assertion, index) => ({
-            id: text(assertion?.id, 20) || `A${index + 1}`,
-            kind: assertion?.kind === "guard" ? "guard" : "business",
-            text: text(assertion?.text, 500),
-            source: text(assertion?.source, 500),
-          }))
-          .filter((assertion) => assertion.text);
-        const steps = (Array.isArray(entry.steps) ? entry.steps : [])
-          .slice(0, 50)
-          .map((step) => text(step, 500))
-          .filter(Boolean);
-        module.cases.push({
-          name,
-          type: CASE_TYPES.has(entry.type) ? entry.type : "functional",
-          priority: PRIORITIES.has(entry.priority) ? entry.priority : "P2",
-          steps,
-          assertions,
-          caseId,
-          assetPath: item.path,
-          specPath: caseId ? `ui/cases/${caseId}.spec.cjs` : "",
-          documentPath: caseId ? `ui/cases/${caseId}.md` : "",
-          page,
-          role,
-          recordedAt,
-          modifiedAt: item.modifiedAt,
-        });
-      }
-    }
-
-    for (const node of roots) finalizeModule(node);
-    const modules = roots.filter((node) => {
-      pruneEmptyModules(node);
-      return node.caseCount > 0;
-    });
-    modules.sort(
-      (first, second) =>
-        first.title.localeCompare(second.title, "zh-CN") ||
-        first.key.localeCompare(second.key),
-    );
-    const cases = modules.reduce((total, module) => total + module.caseCount, 0);
-    const assertions = modules.reduce((total, module) => total + module.assertionCount, 0);
-    const totalModules = countModules(modules);
-    return {
-      modules,
-      legacy,
-      truncated: assets.length > MAX_CASE_ASSETS,
-      totals: {
-        modules: modules.length,
-        submodules: Math.max(0, totalModules - modules.length),
-        cases,
-        assertions,
-        legacy: legacy.length,
-      },
-    };
+  async function removeCase(projectId, caseId, assetHash) {
+    const workspace = await workspaceFor(projectId);
+    const { removeUiCase } = await import("../capabilities/ui-testing/workflow.mjs");
+    return removeUiCase(workspace, { projectId, caseId, assetHash });
   }
 
   async function remove(projectId, relativePath) {
-    if (typeof relativePath !== "string" || !relativePath) {
-      throw new Error("请选择要删除的测试数据。");
-    }
-    if (relativePath.includes("\0")) {
-      throw new Error("测试数据路径无效。");
-    }
+    check(typeof relativePath === "string" && relativePath && !relativePath.includes("\0"), "测试数据路径无效。");
     const normalized = relativePath.replaceAll("\\", "/");
-    const segments = normalized.split("/");
-    if (
-      path.posix.isAbsolute(normalized) ||
-      path.win32.isAbsolute(normalized) ||
-      segments.some((segment) => segment === "" || segment === "." || segment === "..")
-    ) {
-      throw new Error("测试数据路径无效。");
-    }
-
-    const resolvedRoot = await resolveRoot(projectId);
-    if (resolvedRoot === null) {
-      throw new Error("测试数据目录不存在。");
-    }
-    const { root } = resolvedRoot;
-    const target = path.join(root, ...segments);
-    const relative = path.relative(root, target);
-    if (!relative || isOutside(relative)) {
-      throw new Error("测试数据路径超出 qa/data。");
-    }
-
-    let linkInfo;
-    try {
-      linkInfo = await lstat(target);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        throw new Error("测试数据已不存在，请刷新。");
-      }
-      throw error;
-    }
-    if (linkInfo.isSymbolicLink()) {
-      throw new Error("不能删除符号链接。");
-    }
-    if (!linkInfo.isFile()) {
-      throw new Error("只能删除测试数据文件。");
-    }
-
-    const resolved = await realpath(target);
-    const resolvedRelative = path.relative(root, resolved);
-    if (!resolvedRelative || isOutside(resolvedRelative)) {
-      throw new Error("测试数据路径超出 qa/data。");
-    }
-
-    await unlink(resolved);
+    const parts = normalized.split("/");
+    check(!path.posix.isAbsolute(normalized) && !path.win32.isAbsolute(normalized) && parts.every((part) => part && part !== "." && part !== ".." && !part.startsWith(".")), "测试数据路径无效。");
+    check(!(parts[0] === "ui" && parts[1] === "cases"), "旧 UI 用例不由此面板管理。");
+    const workspace = await workspaceFor(projectId);
+    const file = await at(workspace, "qa", "data", ...parts);
+    check((await fs.stat(file)).isFile(), "只能删除测试数据文件。");
+    await fs.unlink(file);
     return { path: normalized };
   }
-
-  async function updateCase(projectId, assetPath, caseName, changes) {
-    if (typeof assetPath !== "string" || !assetPath.trim()) throw new Error("请选择要编辑的用例资产。");
-    if (typeof caseName !== "string" || !caseName.trim()) throw new Error("请选择要编辑的用例。");
-    const normalized = assetPath.replaceAll("\\", "/");
-    const segments = normalized.split("/");
-    if (
-      path.posix.isAbsolute(normalized) ||
-      path.win32.isAbsolute(normalized) ||
-      segments.length !== 3 ||
-      segments[0] !== "ui" ||
-      segments[1] !== "cases" ||
-      !segments[2].endsWith(".asset.json") ||
-      segments.some((segment) => !segment || segment === "." || segment === "..")
-    ) {
-      throw new Error("只能编辑 qa/data/ui/cases 下的用例资产。");
-    }
-    const nextSteps = changes.steps === undefined ? null : normalizeCaseSteps(changes.steps);
-    const nextAssertions = changes.assertions === undefined
-      ? null
-      : normalizeCaseAssertions(changes.assertions);
-    if (nextSteps === null && nextAssertions === null) throw new Error("没有要保存的用例内容。");
-    const resolved = await resolveRoot(projectId);
-    if (resolved === null) throw new Error("测试数据目录不存在。");
-    const { root } = resolved;
-    const target = path.join(root, ...segments);
-    const relative = path.relative(root, target);
-    if (!relative || isOutside(relative)) throw new Error("用例资产路径超出 qa/data。");
-
-    let link;
-    try {
-      link = await lstat(target);
-    } catch (error) {
-      if (error.code === "ENOENT") throw new Error("用例资产已不存在，请刷新。");
-      throw error;
-    }
-    if (link.isSymbolicLink()) throw new Error("不能编辑符号链接。");
-    if (!link.isFile()) throw new Error("只能编辑用例资产文件。");
-    const real = await realpath(target);
-    if (isOutside(path.relative(root, real))) throw new Error("用例资产路径超出 qa/data。");
-
-    let metadata;
-    try {
-      metadata = JSON.parse(await readFile(real, "utf8"));
-    } catch {
-      throw new Error("用例资产不是有效 JSON，无法编辑用例。");
-    }
-    const caseMeta = metadata?.caseMeta;
-    if (caseMeta?.schema !== "qa-ui-case/v1" || !Array.isArray(caseMeta.cases)) {
-      throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法编辑用例。");
-    }
-    const targetCase = caseMeta.cases.find((item) => item.name === caseName);
-    if (!targetCase) throw new Error("未找到该用例，请刷新后重试。");
-    if (nextSteps !== null) targetCase.steps = nextSteps;
-    if (nextAssertions !== null) {
-      targetCase.assertions = nextAssertions;
-      caseMeta.assertionCount = caseMeta.cases.reduce(
-        (total, item) => total + (Array.isArray(item.assertions) ? item.assertions.length : 0),
-        0,
-      );
-    }
-
-    // 先更新人读文档，再写资产索引；文档缺失时只更新资产。
-    const documentPath = real.replace(/\.asset\.json$/, ".md");
-    try {
-      let document = await readFile(documentPath, "utf8");
-      const block = document.match(/```json qa-ui-case[ \t]*\r?\n([\s\S]*?)\r?\n```/);
-      if (block) {
-        const documentMeta = JSON.parse(block[1]);
-        const documentCase = documentMeta?.cases?.find((item) => item.name === caseName);
-        if (documentCase) {
-          if (nextSteps !== null) documentCase.steps = nextSteps;
-          if (nextAssertions !== null) documentCase.assertions = nextAssertions;
-          document = document.replace(block[0], "```json qa-ui-case\n" + JSON.stringify(documentMeta, null, 2) + "\n```");
-        }
-      }
-      if (nextAssertions !== null) document = replaceAssertionTableRow(document, caseName, nextAssertions);
-      await writeFile(documentPath, document);
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-
-    await writeFile(real, JSON.stringify(metadata, null, 2) + "\n");
-    return {
-      path: normalized,
-      caseName,
-      ...(nextSteps === null ? {} : { steps: nextSteps }),
-      ...(nextAssertions === null ? {} : { assertions: nextAssertions }),
-    };
-  }
-
-  function updateAssertions(projectId, assetPath, caseName, assertions) {
-    return updateCase(projectId, assetPath, caseName, { assertions });
-  }
-
-  function updateSteps(projectId, assetPath, caseName, steps) {
-    return updateCase(projectId, assetPath, caseName, { steps });
-  }
-
-  async function updateCaseMarks(projectId, items, changes) {
-    if (!Array.isArray(items) || items.length === 0) throw new Error("请选择要标记的用例。");
-    if (items.length > 100) throw new Error("一次最多标记 100 条用例。");
-    const workflow = changes?.workflow;
-    if (workflow !== "none" && !CASE_WORKFLOWS.has(workflow)) throw new Error("用例标记无效。");
-    const resolved = await resolveRoot(projectId);
-    if (resolved === null) throw new Error("测试数据目录不存在。");
-    const { root } = resolved;
-    const groups = new Map();
-    const normalizedItems = [];
-    for (const item of items) {
-      if (typeof item?.assetPath !== "string" || !item.assetPath.trim()) throw new Error("用例资产路径无效。");
-      if (typeof item?.caseName !== "string" || !item.caseName.trim()) throw new Error("用例名称无效。");
-      const normalized = item.assetPath.replaceAll("\\", "/");
-      const segments = normalized.split("/");
-      if (
-        path.posix.isAbsolute(normalized) ||
-        path.win32.isAbsolute(normalized) ||
-        segments.length !== 3 ||
-        segments[0] !== "ui" ||
-        segments[1] !== "cases" ||
-        !segments[2].endsWith(".asset.json") ||
-        segments.some((segment) => !segment || segment === "." || segment === "..")
-      ) {
-        throw new Error("只能标记 qa/data/ui/cases 下的用例。");
-      }
-      const caseName = item.caseName.trim();
-      if (caseName.length > MAX_CASE_STATE_NAME) throw new Error("用例名称过长。");
-      if (!groups.has(normalized)) groups.set(normalized, []);
-      groups.get(normalized).push(caseName);
-      normalizedItems.push({ assetPath: normalized, caseName });
-    }
-
-    // 先确认资产和用例仍存在，避免把标记写到已删除或伪造的路径。
-    for (const [assetPath, names] of groups) {
-      const target = path.join(root, ...assetPath.split("/"));
-      const relative = path.relative(root, target);
-      if (!relative || isOutside(relative)) throw new Error("用例资产路径超出 qa/data。");
-      let link;
-      try {
-        link = await lstat(target);
-      } catch (error) {
-        if (error.code === "ENOENT") throw new Error("用例资产已不存在，请刷新。");
-        throw error;
-      }
-      if (link.isSymbolicLink()) throw new Error("不能标记符号链接中的用例。");
-      if (!link.isFile()) throw new Error("只能标记用例资产文件中的用例。");
-      const real = await realpath(target);
-      if (isOutside(path.relative(root, real))) throw new Error("用例资产路径超出 qa/data。");
-      let metadata;
-      try {
-        metadata = JSON.parse(await readFile(real, "utf8"));
-      } catch {
-        throw new Error("用例资产不是有效 JSON，无法标记用例。");
-      }
-      const caseMeta = metadata?.caseMeta;
-      if (caseMeta?.schema !== "qa-ui-case/v1" || !Array.isArray(caseMeta.cases)) {
-        throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法标记用例。");
-      }
-      const existing = new Set(caseMeta.cases.map((entry) => text(entry?.name, MAX_CASE_STATE_NAME)));
-      for (const name of names) {
-        if (!existing.has(name)) throw new Error(`未找到用例「${name}」，请刷新后重试。`);
-      }
-    }
-
-    const updated = await runCaseState(async () => {
-      const state = await readCaseState(root);
-      const now = new Date().toISOString();
-      const result = [];
-      const seen = new Set();
-      for (const { assetPath, caseName } of normalizedItems) {
-        const key = caseStateKey(assetPath, caseName);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        if (workflow === "none") delete state.cases[key];
-        else state.cases[key] = { assetPath, caseName, workflow, updatedAt: now };
-        result.push({ assetPath, caseName, workflow });
-      }
-      if (Object.keys(state.cases).length > MAX_CASE_STATE_ENTRIES) {
-        throw new Error("用例标记数量超过上限，请先清理。");
-      }
-      await writeCaseState(root, state.cases);
-      return result;
-    });
-    return { workflow, updatedAt: new Date().toISOString(), cases: updated };
-  }
-
-  async function deleteCases(projectId, items) {
-    if (!Array.isArray(items) || items.length === 0) throw new Error("请选择要删除的用例。");
-    if (items.length > 100) throw new Error("一次最多删除 100 条用例。");
-    const groups = new Map();
-    const seen = new Set();
-    for (const item of items) {
-      if (typeof item?.assetPath !== "string" || !item.assetPath.trim()) throw new Error("用例资产路径无效。");
-      if (typeof item?.caseName !== "string" || !item.caseName.trim()) throw new Error("用例名称无效。");
-      const normalized = item.assetPath.replaceAll("\\", "/");
-      const segments = normalized.split("/");
-      if (
-        path.posix.isAbsolute(normalized) ||
-        path.win32.isAbsolute(normalized) ||
-        segments.length !== 3 ||
-        segments[0] !== "ui" ||
-        segments[1] !== "cases" ||
-        !segments[2].endsWith(".asset.json") ||
-        segments.some((segment) => !segment || segment === "." || segment === "..")
-      ) {
-        throw new Error("只能删除 qa/data/ui/cases 下的用例。");
-      }
-      const key = `${normalized}\u001f${item.caseName}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (!groups.has(normalized)) groups.set(normalized, new Set());
-      groups.get(normalized).add(item.caseName);
-    }
-
-    const resolved = await resolveRoot(projectId);
-    if (resolved === null) throw new Error("测试数据目录不存在。");
-    const { root } = resolved;
-    const plans = [];
-
-    for (const [assetPath, names] of groups) {
-      const target = path.join(root, ...assetPath.split("/"));
-      const relative = path.relative(root, target);
-      if (!relative || isOutside(relative)) throw new Error("用例资产路径超出 qa/data。");
-      let link;
-      try {
-        link = await lstat(target);
-      } catch (error) {
-        if (error.code === "ENOENT") throw new Error("用例资产已不存在，请刷新。");
-        throw error;
-      }
-      if (link.isSymbolicLink()) throw new Error("不能删除符号链接中的用例。");
-      if (!link.isFile()) throw new Error("只能删除用例资产文件中的用例。");
-      const real = await realpath(target);
-      if (isOutside(path.relative(root, real))) throw new Error("用例资产路径超出 qa/data。");
-
-      let metadata;
-      try {
-        metadata = JSON.parse(await readFile(real, "utf8"));
-      } catch {
-        throw new Error("用例资产不是有效 JSON，无法删除用例。");
-      }
-      const caseMeta = metadata?.caseMeta;
-      if (caseMeta?.schema !== "qa-ui-case/v1" || !Array.isArray(caseMeta.cases)) {
-        throw new Error("用例资产缺少 qa-ui-case/v1 元数据，无法删除用例。");
-      }
-      const existingNames = new Set(caseMeta.cases.map((item) => item.name));
-      for (const name of names) {
-        if (!existingNames.has(name)) throw new Error(`未找到用例「${name}」，请刷新后重试。`);
-      }
-
-      const specPath = real.replace(/\.asset\.json$/, ".spec.cjs");
-      let spec;
-      try {
-        spec = await readFile(specPath, "utf8");
-      } catch (error) {
-        if (error.code === "ENOENT") throw new Error("用例脚本不存在，不能只删除资产记录。");
-        throw error;
-      }
-      let nextSpec = spec;
-      for (const name of names) {
-        const next = removeSpecTest(nextSpec, name);
-        if (next === null) throw new Error(`脚本中未找到用例「${name}」，未执行删除。`);
-        nextSpec = next;
-      }
-
-      const remaining = caseMeta.cases.filter((item) => !names.has(item.name));
-      if (remaining.length === 0) {
-        plans.push({
-          removeAll: true,
-          target,
-          specPath,
-          documentPath: real.replace(/\.asset\.json$/, ".md"),
-          assetPath,
-        });
-        continue;
-      }
-
-      caseMeta.cases = remaining;
-      caseMeta.caseCount = remaining.length;
-      caseMeta.assertionCount = remaining.reduce(
-        (total, item) => total + (Array.isArray(item.assertions) ? item.assertions.length : 0),
-        0,
-      );
-      metadata.sha256 = createHash("sha256").update(nextSpec).digest("hex");
-
-      const documentPath = real.replace(/\.asset\.json$/, ".md");
-      let nextDocument = null;
-      try {
-        let document = await readFile(documentPath, "utf8");
-        const block = document.match(/```json qa-ui-case[ \t]*\r?\n([\s\S]*?)\r?\n```/);
-        if (block) {
-          const documentMeta = JSON.parse(block[1]);
-          if (Array.isArray(documentMeta.cases)) {
-            documentMeta.cases = documentMeta.cases.filter((item) => !names.has(item.name));
-          }
-          document = document.replace(block[0], "```json qa-ui-case\n" + JSON.stringify(documentMeta, null, 2) + "\n```");
-        }
-        document = removeCaseTableRows(document, names);
-        nextDocument = document;
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
-
-      plans.push({
-        removeAll: false,
-        assetPath,
-        target,
-        specPath,
-        nextSpec,
-        assetText: JSON.stringify(metadata, null, 2) + "\n",
-        documentPath,
-        nextDocument,
-      });
-    }
-
-    const removedAssets = [];
-    const deleted = [];
-    for (const plan of plans) {
-      if (plan.removeAll) {
-        await unlink(plan.target).catch((error) => { if (error.code !== "ENOENT") throw error; });
-        await unlink(plan.specPath).catch((error) => { if (error.code !== "ENOENT") throw error; });
-        await unlink(plan.documentPath).catch((error) => { if (error.code !== "ENOENT") throw error; });
-        removedAssets.push(plan.assetPath);
-      } else {
-        await writeFile(plan.specPath, plan.nextSpec);
-        if (plan.nextDocument !== null) await writeFile(plan.documentPath, plan.nextDocument);
-        await writeFile(plan.target, plan.assetText);
-      }
-      for (const name of groups.get(plan.assetPath)) deleted.push({ assetPath: plan.assetPath, caseName: name });
-    }
-    return { deleted, removedAssets };
-  }
-
-  return { list, remove, updateAssertions, updateSteps, updateCaseMarks, deleteCases };
+  return { list, getCase, removeCase, remove };
 }
 
 module.exports = { createTestDataService };

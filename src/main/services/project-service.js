@@ -64,28 +64,20 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return projectStore.remove(projectId);
   }
 
-  function listTestData(projectId) {
-    return testData.list(projectId);
+  function listTestData(projectId, options) {
+    return testData.list(projectId, options);
   }
 
   function deleteTestData(projectId, relativePath) {
     return testData.remove(projectId, relativePath);
   }
 
-  function updateTestCaseAssertions(projectId, assetPath, caseName, assertions) {
-    return testData.updateAssertions(projectId, assetPath, caseName, assertions);
+  function getTestCase(projectId, caseId, revision) {
+    return testData.getCase(projectId, caseId, revision);
   }
 
-  function updateTestCaseSteps(projectId, assetPath, caseName, steps) {
-    return testData.updateSteps(projectId, assetPath, caseName, steps);
-  }
-
-  function updateTestCaseMarks(projectId, items, changes) {
-    return testData.updateCaseMarks(projectId, items, changes);
-  }
-
-  function deleteTestCases(projectId, items) {
-    return testData.deleteCases(projectId, items);
+  function deleteTestCase(projectId, caseId, assetHash) {
+    return testData.removeCase(projectId, caseId, assetHash);
   }
 
   function listTestReports(projectId) {
@@ -111,10 +103,8 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     deleteProjectEnvironment,
     listTestData,
     deleteTestData,
-    updateTestCaseAssertions,
-    updateTestCaseSteps,
-    updateTestCaseMarks,
-    deleteTestCases,
+    getTestCase,
+    deleteTestCase,
     listTestReports,
     getTestReport,
     deleteTestReport,

@@ -1,6 +1,6 @@
 # 客户端内置 UI 测试
 
-当前处于入口替换中：2026-11-09，独立 `execute.cjs` 与 `qa-ui-execute` 已切换为只执行 `qa/ui/cases/<caseId>/` 中的正式版本，复用新只读工作流。生产扩展、录制技能、面板和 IPC 尚未切换，仍使用旧 Playwright Test MCP 录制入口。下文旧录制说明仅适用于该入口，旧资产及面板命令不能搭配新 CLI；完整边界见 [只读闭环](browser-use-readonly-workflow.md)。
+当前处于入口替换中：2026-11-09，独立 `execute.cjs` 与 `qa-ui-execute` 已切换为只执行 `qa/ui/cases/<caseId>/` 中的正式版本，复用新只读工作流。用例面板及对应 IPC 已切换为新版资产的分页列表、只读详情和整例删除；报告面板的新契约待接入。生产扩展与其他技能仍使用旧 Playwright Test MCP 录制入口。下文旧录制说明仅适用于该入口，旧资产不能搭配新 CLI 或新版用例面板；完整边界见 [只读闭环](browser-use-readonly-workflow.md)。
 
 已有执行器支持后台登录、原生 JSON/HTML、统一摘要及证据清单；运行依赖由客户端准备，被测工作目录不需要自行安装。
 
@@ -23,8 +23,9 @@
 | `resources/testing/reporting/SKILL.md` | `qa-test-report`：UI 与接口共用的报告状态、通过条件和交付规则 |
 | `resources/testing/ui/execute.cjs` | 新正式版本 CLI：选择项目及 case，调用共享只读工作流，不读取旧平铺资产 |
 | `src/main/capabilities/ui-testing/workflow.mjs` | 新资产候选、验证、发布与正式回归；CLI 和 `qa_ui_run` 共用执行核心 |
+| `src/main/services/test-data-service.js` | 新版用例每页 50 条、准确 revision 详情及哈希核对；整例删除复用共享锁；保留其他测试文件 |
 | `src/main/services/test-report-service.js` | 聚合 `qa/ui/runs` 与 `qa/api/runs` 的 `qa-report/v1` 摘要，校验路径与大小 |
-| `src/renderer/components/right-sidebar-panel.js` | 右侧栏「测试报告」列表、类型筛选和按需详情 |
+| `src/renderer/components/right-sidebar-panel.js` | 新版用例搜索分页、只读版本、正式执行提示与整例删除；报告列表、类型筛选和按需详情 |
 | `tooling/testing/ui/prepare-runtime.cjs` | 准备当前平台的内置 Node、Playwright 及匹配浏览器 |
 
 ## 录制工具与 MCP 模式
@@ -75,7 +76,17 @@ resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --c
 - 不读取 `.env`、不动态发现账号、不调用模型、不修改资产；旧标题筛选、账号选择、外部登录态及地址覆盖参数已移除，未知参数直接拒绝。
 - SIGINT/SIGTERM 交给共享执行器收尾；收尾未知保留锁和现场，失败不自动重试。验证码/MFA/身份不符按登录结果停止，不自动弹窗或换账号。
 
-CLI 可由外部调度调用，当前开发入口从仓库加载共享实现；安装包资源布局、跨平台及真实项目定时运行尚未验收。生产旧工具与面板仍待替换，本节不表示旧录制链已整体迁移。
+CLI 可由外部调度调用，当前开发入口从仓库加载共享实现；安装包资源布局、跨平台及真实项目定时运行尚未验收。用例面板已生成新版 CLI 提示；生产旧工具及报告契约仍待替换，本节不表示旧录制链已整体迁移。
+
+## 用例面板（2026-11-09）
+
+右侧「测试数据」按项目读取 `qa/ui/cases/<caseId>/`，只展示 `qa-ui-asset/v1`。完整枚举、按模块/标题/编号排序并筛选后，每页 50 条；不先截取前 200 个目录。搜索用例编号、标题、模块或角色，展开才读取准确 revision 的详情与文件哈希。
+
+正式说明优先，后续候选单独标示；详情可切换版本，只读展示步骤、固定预期及来源、business/guard 断言、初态、task 与验证 run。最近状态仅关联同项目、真实工作区、准确正式 revision 的新版 regression；候选验证结果不充当正式回归。只有正式用例可生成精确 `--project` / `--cases` 执行提示，插入输入框但不发送；候选没有执行入口。
+
+删除需确认整个 case 的全部版本永久删除。主进程 idle 互斥与共享工作区锁内核对列表 assetHash、说明哈希及项目/task 归属；有活动任务、遗留锁或版本变化时拒绝。历史 tasks/runs 保留。其他 `qa/data` 文件保留单文件删除，旧 UI 平铺目录不再展示或编辑。旧步骤/断言编辑、流程标记、批量移除 spec 中 test 的接口已退出。
+
+定向服务/IPC/共享工作流检查 23 项通过，独立用例页面 16 项断言通过且已核对截图；缓存初始化仍报错，共用侧栏检查停在旧模型设置断言，没有完成。详细证据和恢复条件见 [实现与异常记录](browser-use-readonly-workflow.md)。本次没有真实模型请求或真实业务验收。
 
 ## 测试提示词（录制）
 
@@ -117,7 +128,7 @@ CLI 可由外部调度调用，当前开发入口从仓库加载共享实现；�
 
 项目目录和测试存储目录分别处理：目标项目可登记其他工作目录，本次产物仍写当前会话工作区。新脚本使用 `qa/data/ui/cases/项目名称__页面路径__短摘要.spec.cjs`，同名重复录制自动增加版本；路由 hash 纳入路径命名，查询参数保留在任务 URL、不作为目录名。中文及文件长度做路径处理，旧资产不会被覆盖。
 
-qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。用例说明还必须包含 `qa-ui-case/v1` 元数据块（schema、caseId、project.id、page、modulePath、role、dataPolicy、cases[].steps、cases[].assertions），工具校验后把 caseMeta、caseCount、assertionCount 写入 .asset.json；缺失或字段不合规拒绝登记。每个 case 必须有 1-50 条执行步骤；步骤是说明元数据，可在右侧栏编辑并同步资产/说明，但不重写 spec。`modulePath` 是可选的 1-6 段实际导航层级（如 `["合同管理", "经营合同"]`），右侧测试数据目录按此分组；缺省时按页面归组，仅用于兼容旧资产。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
+qa_ui_finalize 检查的是脚本语法、来源登记与持久化，不是业务设计批准，也不是自动格式化器；排版和断言整理由 Agent 根据 Skill 执行。用例说明还必须包含 `qa-ui-case/v1` 元数据块（schema、caseId、project.id、page、modulePath、role、dataPolicy、cases[].steps、cases[].assertions），工具校验后把 caseMeta、caseCount、assertionCount 写入 .asset.json；缺失或字段不合规拒绝登记。每个 case 必须有 1-50 条执行步骤；步骤是旧说明元数据。`modulePath` 是可选的 1-6 段实际导航层级（如 `["合同管理", "经营合同"]`）。该旧格式已退出右侧用例面板，不再提供步骤/断言编辑或旧资产兼容展示。新项目回放要求同目录 .asset.json 与当前脚本哈希一致。准备回放后修改脚本会被执行器拒绝，不自动修复再跑。
 
 自动登录默认识别唯一的账号、密码及登录按钮，可用 selectors.account/password/submit/authenticated 提供实际页面定位器；应优先提供明确的登录后角色或页面标识。默认检查目标路由可达且登录表单消失，不足以证明角色权限，录制前仍需通过页面核验。自动登录同 origin 内执行一次，验证码/MFA、跨域认证、无法确定的表单或失败时默认关闭无头窗口并返回具体受阻原因，不重复提交；只有用户明确传 `headed=true` 才保留可见窗口供接管。用户解决后 complete 即可交接；自动与手动流程都默认保存私有临时登录态，不再逐次确认，回放结束或会话关闭时删除。
 

@@ -283,3 +283,26 @@ test("内置命令转发整理说明、资源命令与重新加载", async () =>
     /请等待当前回复结束/,
   );
 });
+
+test("版本用例的分页和详情只读转发，整例删除共用空闲互斥，旧编辑通道退出", async () => {
+  const handlers = new Map();
+  const calls = [];
+  let busy = true;
+  const pending = Promise.withResolvers();
+  registerAgentIpc({ handle: (key, value) => handlers.set(key, value) }, {}, { isBusy: () => busy }, null, null, null, null, {
+    listTestData: (...args) => { calls.push(["list", ...args]); return "list"; },
+    getTestCase: (...args) => { calls.push(["get", ...args]); return "detail"; },
+    deleteTestCase: (...args) => { calls.push(["delete", ...args]); return pending.promise; },
+  });
+  const options = { page: 3, query: "列表" };
+  assert.equal(handlers.get("agent:list-test-data")({}, "p1", options), "list");
+  assert.equal(handlers.get("agent:get-test-case")({}, "p1", "case1", "0002"), "detail");
+  assert.throws(() => handlers.get("agent:delete-test-case")({}, "p1", "case1", "hash"), /请等待/);
+  busy = false;
+  const deletion = handlers.get("agent:delete-test-case")({}, "p1", "case1", "hash");
+  assert.throws(() => handlers.get("agent:delete-test-case")({}, "p1", "case1", "hash"), /请等待/);
+  pending.resolve({ caseId: "case1" });
+  assert.deepEqual(await deletion, { caseId: "case1" });
+  assert.deepEqual(calls, [["list", "p1", options], ["get", "p1", "case1", "0002"], ["delete", "p1", "case1", "hash"]]);
+  for (const channel of ["agent:update-test-case-assertions", "agent:update-test-case-steps", "agent:update-test-case-marks", "agent:delete-test-cases"]) assert.equal(handlers.has(channel), false);
+});

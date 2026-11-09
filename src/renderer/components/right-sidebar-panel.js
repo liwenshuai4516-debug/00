@@ -4,20 +4,6 @@ import { renderMarkdown } from "./markdown-renderer.js";
 import { normalizeBrowserUrl } from "./browser-url.js";
 
 const SIZE_UNITS = ["B", "KB", "MB", "GB"];
-const CASE_TYPE_LABELS = {
-  functional: "功能",
-  permission: "权限",
-  boundary: "边界",
-  exception: "异常",
-  regression: "回归",
-};
-const DATA_POLICY_LABELS = {
-  "read-only": "只读",
-  "write-unique": "写入（唯一数据）",
-  "write-disposable": "写入（可清理）",
-  "no-write": "不写数据",
-};
-const ASSERTION_KIND_LABELS = { business: "业务", guard: "前置" };
 const RUN_STATUS_LABELS = {
   passed: "通过",
   failed: "失败",
@@ -37,27 +23,6 @@ const CASE_STATUS_LABELS = {
   interrupted: "已中断",
   unknown: "未知",
 };
-const CASE_WORKFLOW_LABELS = {
-  pending: "待人工验证",
-  retest: "待复测",
-  verified: "复测通过",
-  confirmed: "确认失败",
-};
-const CASE_WORKFLOW_OPTIONS = [
-  ["none", "无流程标记"],
-  ["pending", "待人工验证"],
-  ["retest", "待复测"],
-  ["verified", "复测通过"],
-  ["confirmed", "确认失败"],
-];
-const CASE_WORKFLOW_FILTERS = [
-  ["all", "全部状态"],
-  ["failed", "最近失败"],
-  ["pending", "待人工验证"],
-  ["retest", "待复测"],
-  ["verified", "复测通过"],
-  ["confirmed", "确认失败"],
-];
 const REPORT_KIND_LABELS = { ui: "UI", api: "接口" };
 const CLEANUP_LABELS = {
   deleted: "已删除",
@@ -108,24 +73,8 @@ function formatDate(value) {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function shellQuote(value) {
   return "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
-}
-
-function caseWorkflow(item) {
-  return item?.workflow ?? "none";
-}
-
-// 条件复测只包含仍失败的用例；确认失败不自动复测，复测通过不重复跑。
-function caseNeedsRetest(item) {
-  const workflow = caseWorkflow(item);
-  if (workflow === "confirmed" || workflow === "verified") return false;
-  if (workflow === "pending" || workflow === "retest") return true;
-  return ["failed", "timedOut"].includes(item?.lastResult?.status);
 }
 
 function reportTitle(report) {
@@ -182,14 +131,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
   let editingId = null;
   let data = null;
   let caseQuery = "";
-  let caseWorkflowFilter = "all";
-  let caseRunMode = "retest";
+  let casePage = 1;
+  let dataRequest = 0;
   const expandedCases = new Set();
-  const selectedCases = new Map();
-  let editingAssertions = null;
-  let editingSteps = null;
-  const collapsedModules = new Set();
-  const knownModuleKeys = new Set();
+  const caseDetails = new Map();
   let reportsData = null;
   let reportKindFilter = "all";
   const expandedReports = new Set();
@@ -321,14 +266,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     if (selectedId !== previousSelectedId) {
       data = null;
       caseQuery = "";
-      caseWorkflowFilter = "all";
-      caseRunMode = "retest";
+      casePage = 1;
+      dataRequest += 1;
       expandedCases.clear();
-      selectedCases.clear();
-      editingAssertions = null;
-      editingSteps = null;
-      collapsedModules.clear();
-      knownModuleKeys.clear();
+      caseDetails.clear();
       reportsData = null;
       reportKindFilter = "all";
       expandedReports.clear();
@@ -338,32 +279,27 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
 
   async function loadData() {
     const projectId = selectedId;
-    if (!projectId) {
-      data = null;
-      return;
-    }
+    const request = ++dataRequest;
+    if (!projectId) { data = null; return; }
     let next;
     try {
-      next = { projectId, ...(await api().listTestData(projectId)) };
+      next = { projectId, ...(await api().listTestData(projectId, { page: casePage, query: caseQuery })) };
     } catch (error) {
-      next = {
-        projectId,
-        available: false,
-        truncated: false,
-        items: [],
-        error: errorMessage(error),
-      };
+      next = { projectId, items: [], error: errorMessage(error) };
     }
-    if (selectedId === projectId) data = next;
+    if (selectedId === projectId && request === dataRequest) {
+      data = next;
+      casePage = next.catalog?.page ?? casePage;
+      expandedCases.clear();
+      caseDetails.clear();
+    }
   }
 
   function dataCountText() {
     if (!selectedId) return "未选择环境";
     if (!data || data.projectId !== selectedId) return busy ? "读取中…" : "—";
     if (data.error) return "读取失败";
-    if (!data.available) return "无 qa/data";
-    if (data.catalog) return `${data.catalog.totals.cases} 条用例`;
-    return `${data.items.length} 个文件`;
+    return `${data.catalog?.total ?? 0} 条用例`;
   }
 
   function renderHome() {
@@ -390,7 +326,7 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       featureCard({
         iconName: "database",
         title: "测试数据",
-        description: "查看并清理 qa/data 中的测试文件",
+        description: "查看版本用例与 qa/data 中的测试文件",
         meta: dataCountText(),
         onClick: () => {
           view = "data";
@@ -725,1135 +661,195 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
     setNav(environment ? `测试数据 · ${environment.name}` : "测试数据", () => go("home"), [
       iconButton("刷新测试数据", "refresh", () => void refreshData(), busy),
     ]);
-
     const panel = element("div", { class: "right-panel" });
-    if (environments.length === 0) {
-      panel.append(element("p", {
-        class: "right-panel__empty",
-        text: "还没有项目环境。先添加项目，才能读取它的 qa/data。",
-      }));
-      panel.append(statusLine());
-      content.append(panel);
-      return;
-    }
-
-    const select = element("select", {
-      class: "right-panel__select right-panel__select--compact",
-      "aria-label": "选择项目环境",
-      disabled: busy,
-    });
-    for (const environment of environments) {
-      select.append(element("option", {
-        value: environment.id,
-        text: environment.name,
-        selected: environment.id === selectedId,
-      }));
-    }
-    select.value = selectedId ?? "";
-    select.addEventListener("change", () => {
-      selectedId = select.value;
-      data = null;
-      caseQuery = "";
-      caseWorkflowFilter = "all";
-      caseRunMode = "retest";
-      expandedCases.clear();
-      collapsedModules.clear();
-      knownModuleKeys.clear();
-      editingAssertions = null;
-      editingSteps = null;
-      void refreshData();
-    });
-
-    panel.append(element("div", { class: "right-panel__toolbar" },
-      select,
-      element("span", { class: "right-panel__root-label", text: "qa/data" }),
-    ));
-
-    if (!data || data.projectId !== selectedId) {
-      panel.append(element("p", {
-        class: "right-panel__empty",
-        text: busy ? "正在读取测试数据…" : "选择环境后读取测试数据。",
-      }));
-    } else if (data.error) {
-      panel.append(element("p", { class: "right-panel__empty", text: `读取失败：${data.error}` }));
-    } else if (!data.available) {
-      panel.append(element("p", {
-        class: "right-panel__empty",
-        text: "当前项目的 qa/data 目录不存在。",
-      }));
-    } else if (data.items.length === 0 && !data.catalog?.modules?.length) {
-      panel.append(element("p", {
-        class: "right-panel__empty",
-        text: "qa/data 下暂无测试数据。",
-      }));
+    if (!environment) {
+      panel.append(element("p", { class: "right-panel__empty", text: "还没有项目环境，请先添加项目。" }));
     } else {
-      const catalog = data.catalog;
-      if (catalog?.modules?.length) {
-        panel.append(renderCaseCatalog(catalog));
-        if (catalog.truncated) {
-          panel.append(element("p", {
-            class: "right-panel__note",
-            text: "标准化用例超过 200 个，仅展示前 200 个资产。",
-          }));
-        }
+      const select = element("select", { class: "right-panel__select", "aria-label": "选择项目环境", disabled: busy });
+      for (const item of environments) select.append(element("option", { value: item.id, text: item.name }));
+      select.value = selectedId;
+      select.addEventListener("change", () => {
+        selectedId = select.value;
+        data = null;
+        caseQuery = "";
+        casePage = 1;
+        expandedCases.clear();
+        caseDetails.clear();
+        void refreshData();
+      });
+      panel.append(select);
+      if (!data || data.projectId !== selectedId) {
+        panel.append(element("p", { class: "right-panel__empty", text: "正在读取测试数据…" }));
+      } else if (data.error) {
+        panel.append(element("p", { class: "right-panel__empty", text: `读取失败：${data.error}` }));
       } else {
-        if (catalog?.lastRun) panel.append(renderRunLine(catalog.lastRun));
-        panel.append(element("p", {
-          class: "right-panel__empty",
-          text: "暂无标准化用例。使用 qa-ui-record 录制后，会按实际项目模块层级展示。",
-        }));
-      }
-      if (catalog?.legacy?.length) {
-        panel.append(element("p", {
-          class: "right-panel__note",
-          text: `${catalog.legacy.length} 个资产未包含 qa-ui-case 元数据，未纳入目录。`,
-        }));
+        panel.append(renderCaseCatalog(data.catalog));
+        panel.append(element("h3", { class: "case-steps__label", text: "其他测试数据 · qa/data" }));
+        for (const item of data.items) {
+          panel.append(element("div", { class: "case-data-file" },
+            element("span", { text: `${item.path} · ${formatSize(item.size)}` }),
+            element("button", { type: "button", class: "case-card__edit", text: "删除文件", disabled: busy,
+              "aria-label": `删除文件 ${item.path}`, onclick: () => void deleteDataFile(item) }),
+          ));
+        }
+        if (!data.items.length) panel.append(element("p", { class: "right-panel__note", text: "暂无其他测试数据。旧 UI 资产不在此面板展示。" }));
+        if (data.truncated) panel.append(element("p", { class: "right-panel__note", text: "其他测试数据超过 500 个文件，仅展示前 500 个。" }));
       }
     }
-
     panel.append(statusLine());
     content.append(panel);
   }
 
-  // 目录策略覆盖整棵树；旧节点没有 policies 时退回 dataPolicy。
-  function catalogPolicies(modules) {
-    const policies = new Set();
-    const stack = [...modules];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      for (const policy of node.policies ?? []) policies.add(policy);
-      if (node.dataPolicy && node.dataPolicy !== "mixed") policies.add(node.dataPolicy);
-      stack.push(...(node.children ?? []));
-    }
-    return [...policies].filter(Boolean);
-  }
-
-  function moduleCaseCount(node) {
-    return node.caseCount ?? ((node.cases?.length ?? 0) +
-      (node.children ?? []).reduce((total, child) => total + moduleCaseCount(child), 0));
-  }
-
-  function moduleMetaText(node) {
-    const pages = node.pages?.length ? node.pages : node.page ? [node.page] : [];
-    const roles = node.roles?.length ? node.roles : node.role ? [node.role] : [];
-    const pageText = pages.length === 1
-      ? pages[0]
-      : pages.length > 1
-        ? `${pages.length} 个页面`
-        : "";
-    const roleText = roles.length === 1
-      ? roles[0]
-      : roles.length > 1
-        ? `${roles.length} 个角色`
-        : "";
-    return [pageText, roleText].filter(Boolean).join(" · ");
-  }
-
-  function moduleMatchText(node) {
-    return [
-      node.title,
-      ...(node.path ?? []),
-      node.page,
-      node.role,
-      ...(node.pages ?? []),
-      ...(node.roles ?? []),
-      ...(node.tags ?? []),
-    ].join(" ").toLowerCase();
-  }
-
-  function caseMatchesWorkflow(item) {
-    if (caseWorkflowFilter === "all") return true;
-    if (caseWorkflowFilter === "failed") {
-      return ["failed", "timedOut"].includes(item.lastResult?.status);
-    }
-    return caseWorkflow(item) === caseWorkflowFilter;
-  }
-
-  function caseMatchText(item) {
-    return [
-      item.name,
-      item.type,
-      item.priority,
-      item.page,
-      item.role,
-      CASE_WORKFLOW_LABELS[caseWorkflow(item)] ?? "",
-      ...(item.steps ?? []),
-      ...(item.assertions ?? []).flatMap((assertion) => [assertion.text, assertion.source]),
-    ].join(" ").toLowerCase();
-  }
-
-  // 搜索命中的模块保留其下通过状态筛选的用例；只命中用例时保留祖先路径。
-  function filterCaseModule(node, needle) {
-    const filtering = Boolean(needle) || caseWorkflowFilter !== "all";
-    if (!filtering) return node;
-    const moduleHit = Boolean(needle) && moduleMatchText(node).includes(needle);
-    const cases = (node.cases ?? []).filter((item) =>
-      caseMatchesWorkflow(item) && (moduleHit || caseMatchText(item).includes(needle)));
-    const children = [];
-    for (const child of node.children ?? []) {
-      const filtered = filterCaseModule(child, needle);
-      if (filtered) children.push(filtered);
-    }
-    if (cases.length === 0 && children.length === 0) return null;
-    return {
-      ...node,
-      cases,
-      children,
-      caseCount: cases.length +
-        children.reduce((total, child) => total + moduleCaseCount(child), 0),
-    };
-  }
-
-  // 新出现的子模块默认折叠；一级模块保持展开，已记录的展开/折叠状态不被刷新覆盖。
-  function seedCollapsedModules(catalog) {
-    const stack = [...catalog.modules];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      const key = node.key ?? [...(node.path ?? [node.title])].join("\u001f");
-      if (!knownModuleKeys.has(key)) {
-        knownModuleKeys.add(key);
-        if ((node.depth ?? 0) > 0) collapsedModules.add(key);
-      }
-      stack.push(...(node.children ?? []));
-    }
-  }
-
   function renderCaseCatalog(catalog) {
-    seedCollapsedModules(catalog);
-    const container = element("div", { class: "case-catalog" });
-    const summary = element("div", { class: "case-catalog__summary" });
-    const stat = (value, label) => element("span", { class: "case-catalog__stat" },
-      element("strong", { text: String(value) }),
-      label,
-    );
-    summary.append(
-      stat(catalog.totals.modules, "模块"),
-      catalog.totals.submodules > 0 ? stat(catalog.totals.submodules, "子模块") : null,
-      stat(catalog.totals.cases, "用例"),
-      stat(catalog.totals.assertions, "断言"),
-    );
-    const policies = catalogPolicies(catalog.modules);
-    summary.append(element("span", {
-      class: "case-catalog__policy",
-      text: policies.length === 1
-        ? DATA_POLICY_LABELS[policies[0]] ?? policies[0]
-        : policies.length > 1
-          ? "混合数据策略"
-          : "—",
-    }));
-
-    const search = element("input", {
-      type: "search",
-      class: "case-catalog__search",
-      placeholder: "搜索用例、断言、模块或流程标记",
-      "aria-label": "搜索用例",
-      value: caseQuery,
-    });
-    const list = element("div", { class: "case-catalog__list" });
-    const paint = () => {
-      list.replaceChildren(...renderCaseModules(catalog, caseQuery));
-    };
-    let filtering = Boolean(caseQuery.trim());
-    search.addEventListener("input", () => {
+    const section = element("section", { class: "case-catalog" });
+    section.append(element("div", { class: "case-catalog__summary" },
+      element("span", { class: "case-catalog__project", text: "UI 版本用例" }),
+      element("span", { text: `${catalog.total} 条 · 每页 ${catalog.pageSize} 条` }),
+      element("span", { text: "内容只读" }),
+    ));
+    const search = element("input", { type: "search", class: "case-catalog__search", "aria-label": "搜索用例", placeholder: "用例、模块、角色或编号", value: caseQuery, maxlength: 200, disabled: busy });
+    const form = element("form", { class: "case-catalog__search-form" }, search,
+      element("button", { type: "submit", class: "case-card__edit", text: "搜索", disabled: busy }));
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
       caseQuery = search.value;
-      const nextFiltering = Boolean(caseQuery.trim());
-      // 开始搜索时展开所有分支，避免命中结果藏在折叠节点内。
-      if (nextFiltering && !filtering) collapsedModules.clear();
-      filtering = nextFiltering;
-      paint();
+      casePage = 1;
+      void refreshData();
     });
-    paint();
-
-    container.append(
-      summary,
-      renderRunLine(catalog.lastRun),
-      search,
-      renderCaseFilters(catalog),
-      renderCaseBulkBar(catalog),
-      list,
+    section.append(form);
+    const pager = element("div", { class: "case-catalog__pager" });
+    const turn = (page) => { casePage = page; void refreshData(); };
+    pager.append(
+      element("button", { type: "button", class: "case-card__edit", text: "上一页", disabled: busy || catalog.page <= 1, onclick: () => turn(catalog.page - 1) }),
+      element("span", { text: `第 ${catalog.page} / ${catalog.pages} 页` }),
+      element("button", { type: "button", class: "case-card__edit", text: "下一页", disabled: busy || catalog.page >= catalog.pages, onclick: () => turn(catalog.page + 1) }),
     );
-    return container;
-  }
-
-  function caseFilterCounts(catalog) {
-    const all = collectModuleCases(catalog.modules);
-    return {
-      all: all.length,
-      failed: all.filter((item) => ["failed", "timedOut"].includes(item.lastResult?.status)).length,
-      pending: all.filter((item) => caseWorkflow(item) === "pending").length,
-      retest: all.filter((item) => caseWorkflow(item) === "retest").length,
-      verified: all.filter((item) => caseWorkflow(item) === "verified").length,
-      confirmed: all.filter((item) => caseWorkflow(item) === "confirmed").length,
-    };
-  }
-
-  function renderCaseFilters(catalog) {
-    const counts = caseFilterCounts(catalog);
-    const workflow = element("select", {
-      class: "case-filter__workflow",
-      "aria-label": "筛选用例流程状态",
-    });
-    for (const [value, label] of CASE_WORKFLOW_FILTERS) {
-      workflow.append(element("option", {
-        value,
-        text: `${label}（${counts[value] ?? 0}）`,
-        selected: value === caseWorkflowFilter,
-      }));
-    }
-    workflow.addEventListener("change", () => {
-      caseWorkflowFilter = workflow.value;
-      collapsedModules.clear();
-      render();
-    });
-
-    const mode = element("select", {
-      class: "case-filter__mode",
-      "aria-label": "选择执行范围",
-    }, [
-      ["retest", "条件复测"],
-      ["full", "全量复测"],
-    ].map(([value, label]) => element("option", {
-      value,
-      text: label,
-      selected: value === caseRunMode,
-    })));
-    mode.addEventListener("change", () => {
-      caseRunMode = mode.value;
-      render();
-    });
-
-    const run = element("button", {
-      type: "button",
-      class: "case-filter__run",
-      text: "生成执行提示",
-      disabled: busy,
-      title: "生成提示词并插入输入框，不自动发送",
-    });
-    run.addEventListener("click", () => {
-      const prompt = buildCaseRunPrompt(catalog);
-      if (!prompt) {
-        setStatus("没有符合条件的用例。", true);
-        return;
-      }
-      insertComposerText(prompt);
-    });
-
-    return element("div", { class: "case-filters" }, workflow, mode, run);
-  }
-
-  function insertComposerText(promptText) {
-    const detail = { text: promptText, accepted: false };
-    document.dispatchEvent(new CustomEvent("insert-composer-text", { detail }));
-    if (!detail.accepted) {
-      setStatus("当前输入框不可用，无法插入执行提示。", true);
-      return;
-    }
-    setStatus("已插入执行提示，请在输入框确认后发送。");
-  }
-
-  function buildCaseRunPrompt(catalog) {
-    const all = collectModuleCases(catalog.modules);
-    const targets = caseRunMode === "full" ? all : all.filter(caseNeedsRetest);
-    if (targets.length === 0) return "";
-    const groups = new Map();
-    for (const item of targets) {
-      if (!item.caseId) continue;
-      if (!groups.has(item.caseId)) groups.set(item.caseId, []);
-      groups.get(item.caseId).push(item);
-    }
-    if (groups.size === 0) return "";
-
-    const environment = environments.find((item) => item.id === selectedId);
-    const projectName = environment?.name ?? selectedId;
-    const lines = [];
-    if (caseRunMode === "full") {
-      lines.push(`请执行当前项目的全量 UI 复测，共 ${targets.length} 条用例；不要遗漏。`);
-      lines.push(`项目：${projectName}（${selectedId}）`);
-      lines.push(`执行参数：--project ${selectedId} --all（使用 qa-ui-execute 的 execute.cjs）`);
-    } else {
-      lines.push(`请只执行以下条件复测用例，共 ${targets.length} 条；不要扩展到其他用例。`);
-      lines.push(`项目：${projectName}（${selectedId}）`);
-      lines.push("按脚本分组执行，每组只运行列出的测试标题：");
-      let index = 1;
-      for (const [caseId, items] of groups) {
-        const pattern = items
-          .map((item) => `.*\\s${escapeRegExp(item.name)}$`)
-          .join("|");
-        lines.push(`${index}. caseId ${caseId}：${items.map((item) => item.name).join("；")}`);
-        lines.push(`   参数：--project ${selectedId} --cases ${caseId} --grep ${shellQuote(pattern)}`);
-        index += 1;
-      }
-    }
-    lines.push("要求：");
-    lines.push("1. 使用 qa-ui-execute 的 execute.cjs 按上述参数逐组执行；条件复测不得改用 --all，也不得运行未列出的测试。");
-    lines.push("2. 每组读取 summary，汇报 status、testCount、counts 和 problems；失败不自动重跑。");
-    lines.push("3. 最新严格 passed 的待复测/待人工验证用例会自动变为「复测通过」；失败保持原标记。不要手工改写报告。");
-    lines.push("4. 认证或环境受阻时保留原始错误并停止该组，不扩大范围。");
-    return lines.join("\n");
-  }
-
-  function renderRunLine(run) {
-    const line = element("div", { class: "case-catalog__run" });
-    if (!run) {
-      line.append(element("span", {
-        class: "case-catalog__run-text",
-        text: "尚无运行结果",
-      }));
-      return line;
-    }
-    line.append(
-      element("span", {
-        class: "case-run",
-        dataset: { status: run.status },
-        text: RUN_STATUS_LABELS[run.status] ?? run.status,
-      }),
-      element("span", {
-        class: "case-catalog__run-text",
-        text: `最近运行 ${formatTime(run.finishedAt)} · ${run.passed}/${run.total} 通过`,
-      }),
-    );
-    return line;
-  }
-
-  function renderCaseModules(catalog, query) {
-    const needle = query.trim().toLowerCase();
-    const sections = [];
-    for (const module of catalog.modules) {
-      const filtered = needle || caseWorkflowFilter !== "all"
-        ? filterCaseModule(module, needle)
-        : module;
-      if (filtered) sections.push(renderCaseModule(filtered));
-    }
-    if (sections.length === 0) {
-      sections.push(element("p", {
-        class: "case-catalog__empty",
-        text: "没有匹配的用例。",
-      }));
-    }
-    return sections;
-  }
-
-  function collectModuleCases(modules) {
-    const items = [];
-    const stack = [...modules];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      items.push(...(node.cases ?? []));
-      stack.push(...(node.children ?? []));
-    }
-    return items;
-  }
-
-  function visibleCaseItems(catalog) {
-    const needle = caseQuery.trim().toLowerCase();
-    const roots = needle || caseWorkflowFilter !== "all"
-      ? catalog.modules.map((module) => filterCaseModule(module, needle)).filter(Boolean)
-      : catalog.modules;
-    return collectModuleCases(roots);
-  }
-
-  function caseSelectionKey(item) {
-    return `${item.assetPath}::${item.name}`;
-  }
-
-  function updateCaseBulkBar() {
-    const bar = content.querySelector(".case-bulk");
-    if (!bar) return;
-    const count = bar.querySelector(".case-bulk__count");
-    const remove = bar.querySelector(".case-bulk__delete");
-    const mark = bar.querySelector(".case-bulk__mark");
-    const apply = bar.querySelector(".case-bulk__apply");
-    const size = selectedCases.size;
-    count.textContent = `已选 ${size} 条`;
-    remove.disabled = size === 0 || busy;
-    remove.textContent = size === 0 ? "删除选中" : `删除选中（${size}）`;
-    if (mark) mark.disabled = size === 0 || busy;
-    if (apply) apply.disabled = size === 0 || busy;
-  }
-
-  function renderCaseBulkBar(catalog) {
-    const bar = element("div", { class: "case-bulk" });
-    const selectAll = element("button", {
-      type: "button",
-      class: "case-bulk__button",
-      text: "全选",
-      onclick: () => {
-        for (const item of visibleCaseItems(catalog)) {
-          selectedCases.set(caseSelectionKey(item), {
-            assetPath: item.assetPath,
-            caseName: item.name,
-          });
-        }
-        render();
-      },
-    });
-    const clear = element("button", {
-      type: "button",
-      class: "case-bulk__button",
-      text: "清除",
-      onclick: () => {
-        selectedCases.clear();
-        render();
-      },
-    });
-    const count = element("span", { class: "case-bulk__count", text: `已选 ${selectedCases.size} 条` });
-    const mark = element("select", {
-      class: "case-bulk__mark",
-      "aria-label": "批量设置流程标记",
-      disabled: selectedCases.size === 0 || busy,
-    }, CASE_WORKFLOW_OPTIONS.map(([value, label]) => element("option", {
-      value,
-      text: label,
-      selected: value === "retest",
-    })));
-    const apply = element("button", {
-      type: "button",
-      class: "case-bulk__button case-bulk__apply",
-      text: "应用标记",
-      disabled: selectedCases.size === 0 || busy,
-      onclick: () => void markSelectedCases(mark.value),
-    });
-    const remove = element("button", {
-      type: "button",
-      class: "case-bulk__delete",
-      disabled: selectedCases.size === 0 || busy,
-      text: selectedCases.size === 0 ? "删除选中" : `删除选中（${selectedCases.size}）`,
-      onclick: () => void deleteSelectedCases(),
-    });
-    bar.append(selectAll, clear, count, mark, apply, remove);
-    return bar;
-  }
-
-  async function markCases(items, changes) {
-    if (items.length === 0) return;
-    busy = true;
-    setStatus("正在保存用例标记…");
-    render();
-    try {
-      await api().updateTestCaseMarks(
-        selectedId,
-        items.map((item) => ({
-          assetPath: item.assetPath,
-          caseName: item.caseName ?? item.name,
-        })),
-        changes,
-      );
-      await loadData();
-      setStatus("用例标记已保存。");
-    } catch (error) {
-      setStatus(errorMessage(error), true);
-    } finally {
-      busy = false;
-      render();
-    }
-  }
-
-  async function markSelectedCases(workflow) {
-    const items = [...selectedCases.values()];
-    if (items.length === 0) return;
-    await markCases(items, { workflow });
-  }
-
-  async function deleteCaseItems(items, message) {
-    if (items.length === 0) return;
-    const confirmed = await confirmAction({
-      title: "删除测试用例",
-      message,
-      confirmLabel: `删除 ${items.length} 条`,
-    });
-    if (!confirmed) {
-      setStatus("已取消删除。");
-      return;
-    }
-    busy = true;
-    setStatus("正在删除测试用例…");
-    render();
-    try {
-      await api().deleteTestCases(selectedId, items);
-      selectedCases.clear();
-      await loadData();
-      setStatus(`已删除 ${items.length} 条用例。`);
-    } catch (error) {
-      setStatus(errorMessage(error), true);
-    } finally {
-      busy = false;
-      render();
-    }
-  }
-
-  async function deleteSelectedCases() {
-    const items = [...selectedCases.values()];
-    if (items.length === 0) return;
-    await deleteCaseItems(
-      items,
-      `将删除选中的 ${items.length} 条用例，并同步从 spec 脚本、资产和说明中移除；最后一条用例删除后对应资产文件也会删除。不可恢复。`,
-    );
-  }
-
-  async function deleteCase(item) {
-    await deleteCaseItems(
-      [{ assetPath: item.assetPath, caseName: item.name }],
-      `将删除用例「${item.name}」，并同步从 spec 脚本、资产和说明中移除；若这是资产最后一条用例，会同时删除资产文件。不可恢复。`,
-    );
-  }
-
-  function renderCaseModule(module) {
-    const depth = Number.isInteger(module.depth) ? module.depth : 0;
-    const cases = module.cases ?? [];
-    const children = module.children ?? [];
-    const key = module.key ?? [...(module.path ?? [module.title])].join("\u001f");
-    const expanded = !collapsedModules.has(key);
-    const section = element("section", {
-      class: `case-module${depth > 0 ? " case-module--nested" : ""}`,
-      dataset: { depth: String(depth) },
-    });
-
-    const header = element("button", {
-      type: "button",
-      class: "case-module__head",
-      "aria-expanded": String(expanded),
-    });
-    const title = element("div", { class: "case-module__title" },
-      element("span", { class: "case-module__name", text: module.title }),
-    );
-    const meta = moduleMetaText(module);
-    if (meta) title.append(element("span", { class: "case-module__page", text: meta }));
-    header.append(
-      element("span", { class: "case-module__chevron", "aria-hidden": "true", text: "›" }),
-      title,
-      element("span", { class: "case-module__count", text: `${moduleCaseCount(module)} 条` }),
-    );
-    section.append(header);
-
-    const body = element("div", { class: "case-module__body" });
-    body.hidden = !expanded;
-    if ((module.tags ?? []).length > 0) {
-      body.append(element("div", { class: "case-module__tags" },
-        module.tags.slice(0, 4).map((tag) => element("span", { class: "case-tag", text: tag })),
-      ));
-    }
-    if (cases.length > 0) {
-      const list = element("div", { class: "case-module__cases" });
-      for (const item of cases) list.append(renderCaseCard(module, item));
-      body.append(list);
-    }
-    if (children.length > 0) {
-      const group = element("div", { class: "case-module__children" });
-      for (const child of children) group.append(renderCaseModule(child));
-      body.append(group);
-    }
-    section.append(body);
-
-    header.addEventListener("click", () => {
-      const open = body.hidden;
-      body.hidden = !open;
-      header.setAttribute("aria-expanded", String(open));
-      if (open) collapsedModules.delete(key);
-      else collapsedModules.add(key);
-    });
+    section.append(pager);
+    if (!catalog.cases.length) section.append(element("p", { class: "case-catalog__empty", text: "暂无匹配的新版本用例。" }));
+    const list = element("div", { class: "case-catalog__list" });
+    for (const item of catalog.cases) list.append(renderCaseCard(item));
+    section.append(list);
     return section;
   }
 
-  function renderCaseCard(module, item) {
-    const key = `${item.assetPath}::${item.name}`;
-    const selected = selectedCases.has(key);
-    const editingAssertionsMode = editingAssertions?.key === key;
-    const editingStepsMode = editingSteps?.key === key;
-    const expanded = expandedCases.has(key) || editingAssertionsMode || editingStepsMode;
-    const businessAssertions = item.assertions.filter((assertion) => assertion.kind === "business");
-    const guardAssertions = item.assertions.filter((assertion) => assertion.kind === "guard");
-    const previewAssertion = businessAssertions[0] ?? item.assertions[0] ?? null;
-    const status = item.lastResult?.status ?? "not-run";
-    const workflow = caseWorkflow(item);
-    const article = element("article", {
-      class: "case-card",
-      dataset: { status, workflow, selected: String(selected) },
-    });
-    const head = element("button", {
-      type: "button",
-      class: "case-card__head",
-      "aria-expanded": String(expanded),
-    });
-    head.append(
-      element("span", { class: "case-card__top" },
-        element("span", {
-          class: "case-card__priority",
-          dataset: { priority: item.priority },
-          text: item.priority,
-        }),
-        element("span", { class: "case-card__name", title: item.name, text: item.name }),
-        element("span", {
-          class: "case-card__status",
-          dataset: { status },
-          text: CASE_STATUS_LABELS[status] ?? "未运行",
-        }),
-        element("span", { class: "case-card__chevron", "aria-hidden": "true", text: "›" }),
-      ),
-      element("span", { class: "case-card__meta" },
-        `${CASE_TYPE_LABELS[item.type] ?? item.type} · 业务 ${businessAssertions.length} · 前置 ${guardAssertions.length}`,
-        workflow !== "none"
-          ? element("span", {
-            class: "case-mark",
-            dataset: { workflow },
-            text: CASE_WORKFLOW_LABELS[workflow] ?? workflow,
-          })
-          : null,
-      ),
+  function renderCaseCard(item) {
+    const open = expandedCases.has(item.caseId);
+    const card = element("article", { class: "case-card", dataset: { caseId: item.caseId, status: item.lastResult?.status ?? "unknown" } });
+    const head = element("button", { type: "button", class: "case-card__head", "aria-expanded": String(open), onclick: () => {
+      if (open) expandedCases.delete(item.caseId);
+      else expandedCases.add(item.caseId);
+      render();
+      if (!open && !caseDetails.has(item.caseId)) void loadCaseDetail(item, item.displayRevision);
+    } },
+    element("div", { class: "case-card__top" },
+      element("span", { class: "case-card__name", text: item.title }),
+      element("span", { class: "case-card__status", text: item.currentRevision ? `正式 ${item.currentRevision}` : "候选" }),
+    ),
+    element("span", { class: "case-version-meta", text: `${item.modulePath.join(" / ")} · ${item.role}` }),
+    element("span", { class: "case-version-meta", text: [item.candidates.length ? `新候选 ${item.candidates.join("、")}` : "", item.lastResult ? `最近回归 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}` : "暂无当前正式版本回归结果"].filter(Boolean).join(" · ") }),
     );
-
-    const preview = element("p", {
-      class: "case-card__assertion-preview",
-      text: previewAssertion ? `${previewAssertion.id} ${previewAssertion.text}` : "未登记断言",
-    });
-    preview.hidden = expanded;
-
-    const detail = element("div", { class: "case-card__body" });
-    detail.hidden = !expanded;
-    if (editingStepsMode) {
-      detail.append(renderStepsEditor(item));
-    } else if (editingAssertionsMode) {
-      detail.append(renderAssertionEditor(item));
-    } else {
-      const modulePath = (module.path ?? [module.title]).join(" / ");
-      const casePage = item.page ?? module.page ?? "";
-      const caseRole = item.role ?? module.role ?? "";
-      const context = element("div", { class: "case-card__context" });
-      const contextChip = (label, value) => element("span", {
-        class: "case-context",
-        text: `${label} ${value}`,
-      });
-      context.append(
-        contextChip("模块", modulePath),
-        casePage ? contextChip("页面", casePage) : null,
-        caseRole ? contextChip("角色", caseRole) : null,
-      );
-      detail.append(context);
-      detail.append(element("p", {
-        class: "case-card__result",
-        dataset: { status },
-        text: item.lastResult
-          ? `最近运行 ${CASE_STATUS_LABELS[item.lastResult.status] ?? item.lastResult.status} · ${formatTime(item.lastResult.finishedAt)}${item.lastResult.durationMs === null ? "" : ` · ${item.lastResult.durationMs} ms`}`
-          : "最近运行：未运行",
-      }));
-
-      const workflowSelect = element("select", {
-        class: "case-card__workflow",
-        "aria-label": `设置用例「${item.name}」的流程标记`,
-        disabled: busy,
-      }, CASE_WORKFLOW_OPTIONS.map(([value, label]) => element("option", {
-        value,
-        text: label,
-        selected: value === workflow,
-      })));
-      workflowSelect.addEventListener("change", () => {
-        void markCases([item], { workflow: workflowSelect.value });
-      });
-      detail.append(element("div", { class: "case-card__mark-row" },
-        element("span", { class: "case-card__mark-label", text: "流程标记" }),
-        workflowSelect,
-      ));
-
-      const steps = item.steps ?? [];
-      detail.append(element("div", { class: "case-steps__label", text: `执行步骤 ${steps.length}` }));
-      if (steps.length > 0) {
-        const list = element("ol", { class: "case-steps" });
-        for (const [index, step] of steps.entries()) {
-          list.append(element("li", { class: "case-step" },
-            element("span", { class: "case-step__index", text: String(index + 1) }),
-            element("span", { class: "case-step__text", text: step }),
-          ));
-        }
-        detail.append(list);
-      } else {
-        detail.append(element("p", { class: "case-card__context", text: "未登记执行步骤。" }));
-      }
-
-      if (item.assertions.length > 0) {
-        if (businessAssertions.length) {
-          detail.append(element("div", { class: "case-assertions__label", text: `业务断言 ${businessAssertions.length}` }));
-          detail.append(renderAssertionList(businessAssertions));
-        }
-        if (guardAssertions.length) {
-          detail.append(element("div", { class: "case-assertions__label", text: `前置断言 ${guardAssertions.length}` }));
-          detail.append(renderAssertionList(guardAssertions));
-        }
-      } else {
-        detail.append(element("p", { class: "case-card__context", text: "该用例没有登记断言。" }));
-      }
-
-      const editActions = element("div", { class: "case-card__edit-actions" });
-      const editSteps = element("button", {
-        type: "button",
-        class: "case-card__edit",
-        disabled: busy,
-        text: "编辑步骤",
-      });
-      editSteps.addEventListener("click", () => {
-        editingSteps = {
-          key,
-          assetPath: item.assetPath,
-          caseName: item.name,
-          draft: [...(item.steps ?? [])],
-        };
-        editingAssertions = null;
-        expandedCases.add(key);
-        render();
-      });
-      editActions.append(editSteps);
-      if (item.assertions.length > 0) {
-        const editAssertions = element("button", {
-          type: "button",
-          class: "case-card__edit",
-          disabled: busy,
-          text: "编辑断言",
-        });
-        editAssertions.addEventListener("click", () => {
-          editingAssertions = {
-            key,
-            assetPath: item.assetPath,
-            caseName: item.name,
-            draft: item.assertions.map((assertion, index) => ({
-              id: assertion.id || `A${index + 1}`,
-              kind: assertion.kind === "guard" ? "guard" : "business",
-              text: assertion.text,
-              source: assertion.source,
-            })),
-          };
-          editingSteps = null;
-          expandedCases.add(key);
-          render();
-        });
-        editActions.append(editAssertions);
-      }
-      const deleteButton = element("button", {
-        type: "button",
-        class: "case-card__edit case-card__edit--danger",
-        disabled: busy,
-        text: "删除用例",
-      });
-      deleteButton.addEventListener("click", () => void deleteCase(item));
-      editActions.append(deleteButton);
-      detail.append(editActions);
-
-      const files = [
-        ["资产", item.assetPath],
-        ["脚本", item.specPath],
-        ["说明", item.documentPath],
-        ["录制", item.recordedAt ? formatTime(item.recordedAt) : ""],
-      ].filter(([, value]) => value);
-      if (files.length > 0) {
-        const filesBlock = element("details", { class: "case-card__files-block" });
-        filesBlock.append(element("summary", { text: `文件与录制（${files.length}）` }));
-        filesBlock.append(element("dl", { class: "case-card__files" },
-          files.flatMap(([label, value]) => [
-            element("dt", { text: label }),
-            element("dd", { text: value }),
-          ]),
-        ));
-        detail.append(filesBlock);
-      }
+    card.append(head);
+    if (open) {
+      const body = element("div", { class: "case-card__body" });
+      const detail = caseDetails.get(item.caseId);
+      if (!detail || detail.loading) body.append(element("p", { class: "right-panel__note", text: "正在读取版本详情…" }));
+      else if (detail.error) body.append(element("p", { class: "right-panel__note", text: `读取失败：${detail.error}` }));
+      else body.append(renderCaseDetail(item, detail));
+      const actions = element("div", { class: "case-card__edit-actions" });
+      if (item.runnable) actions.append(element("button", { type: "button", class: "case-card__edit", text: "生成执行提示", disabled: busy, onclick: () => insertCaseRunPrompt(item) }));
+      actions.append(element("button", { type: "button", class: "case-card__edit case-card__edit--danger", text: "删除整个用例", disabled: busy, onclick: () => void deleteVersionedCase(item) }));
+      body.append(actions);
+      card.append(body);
     }
-
-    head.addEventListener("click", () => {
-      const open = detail.hidden;
-      detail.hidden = !open;
-      preview.hidden = open;
-      head.setAttribute("aria-expanded", String(open));
-      if (open) expandedCases.add(key);
-      else expandedCases.delete(key);
-    });
-
-    const row = element("div", { class: "case-card__row" });
-    const select = element("input", {
-      type: "checkbox",
-      class: "case-card__select",
-      "aria-label": `选择用例 ${item.name}`,
-    });
-    select.checked = selected;
-    select.addEventListener("change", () => {
-      if (select.checked) {
-        selectedCases.set(key, { assetPath: item.assetPath, caseName: item.name });
-      } else {
-        selectedCases.delete(key);
-      }
-      updateCaseBulkBar();
-    });
-    row.append(select, head);
-    article.append(row, preview, detail);
-    return article;
+    return card;
   }
 
-  function renderAssertionList(assertions) {
-    const list = element("ol", { class: "case-assertions" });
-    for (const assertion of assertions) {
-      list.append(element("li", { class: "case-assertion" },
-        element("span", { class: "case-assertion__id", text: assertion.id }),
-        element("div", { class: "case-assertion__body" },
-          element("p", { class: "case-assertion__text", text: assertion.text }),
-          assertion.source
-            ? element("p", { class: "case-assertion__source", text: `来源：${assertion.source}` })
-            : null,
-        ),
-        element("span", {
-          class: "case-assertion__kind",
-          dataset: { kind: assertion.kind },
-          text: ASSERTION_KIND_LABELS[assertion.kind] ?? assertion.kind,
-        }),
-      ));
+  async function loadCaseDetail(item, revision) {
+    const projectId = selectedId;
+    const request = dataRequest;
+    const pending = { loading: true };
+    caseDetails.set(item.caseId, pending);
+    render();
+    let detail;
+    try {
+      detail = await api().getTestCase(projectId, item.caseId, revision);
+      if (detail.assetHash !== item.assetHash) throw new Error("用例版本已变化，请刷新列表。");
+    } catch (error) { detail = { error: errorMessage(error) }; }
+    if (selectedId === projectId && request === dataRequest && caseDetails.get(item.caseId) === pending) {
+      caseDetails.set(item.caseId, detail);
+      render();
     }
-    return list;
   }
 
-  function renderStepsEditor(item) {
-    const draft = editingSteps.draft;
-    const container = element("div", { class: "case-editor case-editor--steps" });
-    container.append(element("p", {
-      class: "case-editor__hint",
-      text: "步骤记录本次 case 的实际操作，保存后同步用例说明和资产索引；执行逻辑仍以 spec 脚本为准。",
-    }));
-    const rows = element("div", { class: "case-editor__list" });
-    for (const [index, step] of draft.entries()) {
-      const row = element("div", { class: "case-editor__row case-editor__row--step" });
-      const content = element("textarea", {
-        class: "case-editor__text",
-        rows: "2",
-        placeholder: "例如：在合同编号输入框填写 HSKJ-JYHT-2026-001",
-        "aria-label": `第 ${index + 1} 个执行步骤`,
-      });
-      content.value = step;
-      content.addEventListener("input", () => { draft[index] = content.value; });
-      const up = element("button", {
-        type: "button",
-        class: "case-editor__step-action",
-        disabled: index === 0,
-        title: "上移",
-        "aria-label": "上移执行步骤",
-        text: "↑",
-      });
-      up.addEventListener("click", () => {
-        [draft[index - 1], draft[index]] = [draft[index], draft[index - 1]];
-        render();
-      });
-      const down = element("button", {
-        type: "button",
-        class: "case-editor__step-action",
-        disabled: index === draft.length - 1,
-        title: "下移",
-        "aria-label": "下移执行步骤",
-        text: "↓",
-      });
-      down.addEventListener("click", () => {
-        [draft[index + 1], draft[index]] = [draft[index], draft[index + 1]];
-        render();
-      });
-      const remove = element("button", {
-        type: "button",
-        class: "case-editor__remove",
-        title: "删除步骤",
-        "aria-label": "删除执行步骤",
-        text: "删除",
-      });
-      remove.addEventListener("click", () => {
-        if (draft.length <= 1) {
-          setStatus("至少保留一个执行步骤。", true);
-          render();
-          return;
-        }
-        draft.splice(index, 1);
-        render();
-      });
-      row.append(
-        element("span", { class: "case-editor__id", text: `S${index + 1}` }),
-        content,
-        up,
-        down,
-        remove,
-      );
-      rows.append(row);
+  function renderCaseDetail(item, detail) {
+    const section = element("div", { class: "case-version-detail" });
+    const version = element("select", { class: "right-panel__select", "aria-label": `选择版本 ${item.caseId}` });
+    for (const entry of detail.revisions) version.append(element("option", { value: entry.revision,
+      text: `${entry.revision} · ${entry.revision === detail.currentRevision ? "当前正式" : entry.validatedRunId ? "历史已验证" : "候选"}` }));
+    version.value = detail.revision;
+    version.addEventListener("change", () => void loadCaseDetail(item, version.value));
+    section.append(version);
+    const meta = detail.meta;
+    section.append(element("p", { class: "case-context", text: `${item.caseId} · ${meta.targetUrl} · ${meta.role}` }),
+      element("p", { class: "case-context", text: `初态：${meta.initialState}；数据：${meta.dataStrategy}；清理：${meta.cleanup}` }));
+    const addList = (label, entries, describe) => {
+      section.append(element("h4", { class: "case-steps__label", text: `${label} ${entries.length}` }));
+      const list = element("ol", { class: "case-version-list" });
+      for (const entry of entries) list.append(element("li", { text: describe(entry) }));
+      section.append(list);
+    };
+    addList("执行步骤", meta.steps ?? [], (step) => `${step.text}（${step.stepId}）`);
+    addList("业务预期与来源", meta.expected ?? [], (expected) => `${expected.id} · ${expected.text}；来源：${({ user: "用户说明", rule: "页面规则", baseline: "基线" })[expected.source?.kind] ?? "未知"} · ${expected.source?.reference ?? "未记录"}`);
+    for (const [kind, label] of [["business", "业务断言"], ["guard", "前置断言"]]) {
+      addList(label, (meta.assertions ?? []).filter((entry) => entry.kind === kind), (entry) => `${entry.text}${entry.expectedId ? `；预期 ${entry.expectedId}` : ""}`);
     }
-    container.append(rows);
-
-    const actions = element("div", { class: "case-editor__actions" });
-    const add = element("button", { type: "button", class: "case-editor__button", text: "新增步骤" });
-    add.addEventListener("click", () => {
-      draft.push("");
-      render();
-    });
-    const save = element("button", {
-      type: "button",
-      class: "case-editor__button case-editor__button--primary",
-      text: "保存步骤",
-      disabled: busy,
-    });
-    save.addEventListener("click", () => void saveSteps(item));
-    const cancel = element("button", { type: "button", class: "case-editor__button", text: "取消" });
-    cancel.addEventListener("click", () => {
-      editingSteps = null;
-      render();
-    });
-    actions.append(add, save, cancel);
-    container.append(actions);
-    return container;
+    const entry = detail.revisions.find((entry) => entry.revision === detail.revision);
+    section.append(element("p", { class: "case-context", text: `来源任务：${entry.taskId}；验证批次：${entry.validatedRunId ?? entry.validationRunId ?? "未验证"}` }));
+    return section;
   }
 
-  async function saveSteps(item) {
-    const steps = (editingSteps?.draft ?? []).map((step) => step.trim()).filter(Boolean);
-    if (steps.length === 0) {
-      setStatus("至少保留一个执行步骤。", true);
-      render();
-      return;
-    }
-    if (steps.length > 50) {
-      setStatus("执行步骤不能超过 50 条。", true);
-      render();
-      return;
-    }
+  function insertCaseRunPrompt(item) {
+    const prompt = `请使用 qa-ui-execute 执行已有正式用例 ${item.caseId}（当前列表版本 ${item.currentRevision}）。\n参数：--project ${shellQuote(selectedId)} --cases ${shellQuote(item.caseId)}\n执行前核对当前正式版本；如版本已变化先报告。只执行这个用例，不扩大范围，不修改脚本，不调用模型修复；保留原始结果。`;
+    const detail = { text: prompt, accepted: false };
+    document.dispatchEvent(new CustomEvent("insert-composer-text", { detail }));
+    setStatus(detail.accepted ? "已插入执行提示，请确认后发送。" : "未能插入执行提示。", !detail.accepted);
+    render();
+  }
+
+  async function deleteVersionedCase(item) {
+    const projectId = selectedId;
+    const confirmed = await confirmAction({ title: "删除整个用例", message: `将永久删除「${item.title}」的全部版本和脚本，不可恢复。历史任务和运行快照保留。`, confirmLabel: "删除用例" });
+    if (!confirmed || selectedId !== projectId) return;
     busy = true;
-    setStatus("正在保存执行步骤…");
     render();
     try {
-      await api().updateTestCaseSteps(selectedId, item.assetPath, item.name, steps);
+      await api().deleteTestCase(projectId, item.caseId, item.assetHash);
       await loadData();
-      editingSteps = null;
-      setStatus("执行步骤已保存。");
-    } catch (error) {
-      setStatus(errorMessage(error), true);
-    } finally {
-      busy = false;
-      render();
-    }
+      setStatus("已删除整个用例，历史运行快照保留。");
+    } catch (error) { setStatus(errorMessage(error), true); }
+    finally { busy = false; render(); }
   }
 
-  function renderAssertionEditor(item) {
-    const draft = editingAssertions.draft;
-    const container = element("div", { class: "case-editor" });
-    container.append(element("p", {
-      class: "case-editor__hint",
-      text: "编辑只更新用例说明和资产中的断言记录，不修改 spec 代码。",
-    }));
-    const rows = element("div", { class: "case-editor__list" });
-    for (const [index, assertion] of draft.entries()) {
-      const row = element("div", { class: "case-editor__row" });
-      const kind = element("select", { class: "case-editor__kind", "aria-label": "断言类型" });
-      kind.append(
-        element("option", { value: "business", text: "业务", selected: assertion.kind !== "guard" }),
-        element("option", { value: "guard", text: "前置", selected: assertion.kind === "guard" }),
-      );
-      kind.addEventListener("change", () => { assertion.kind = kind.value === "guard" ? "guard" : "business"; });
-      const content = element("input", {
-        type: "text",
-        class: "case-editor__text",
-        placeholder: "断言内容",
-        "aria-label": "断言内容",
-        value: assertion.text,
-      });
-      content.addEventListener("input", () => { assertion.text = content.value; });
-      const source = element("input", {
-        type: "text",
-        class: "case-editor__source",
-        placeholder: "断言来源",
-        "aria-label": "断言来源",
-        value: assertion.source,
-      });
-      source.addEventListener("input", () => { assertion.source = source.value; });
-      const remove = element("button", {
-        type: "button",
-        class: "case-editor__remove",
-        "aria-label": `删除断言 ${assertion.id || index + 1}`,
-        text: "删除",
-      });
-      remove.addEventListener("click", () => {
-        if (draft.length <= 1) {
-          setStatus("至少保留一条断言。", true);
-          render();
-          return;
-        }
-        draft.splice(index, 1);
-        render();
-      });
-      row.append(
-        element("span", { class: "case-editor__id", text: assertion.id || `A${index + 1}` }),
-        kind,
-        content,
-        source,
-        remove,
-      );
-      rows.append(row);
-    }
-    container.append(rows);
-
-    const actions = element("div", { class: "case-editor__actions" });
-    const add = element("button", { type: "button", class: "case-editor__button", text: "新增断言" });
-    add.addEventListener("click", () => {
-      draft.push({ id: `A${draft.length + 1}`, kind: "business", text: "", source: "" });
-      render();
-    });
-    const save = element("button", {
-      type: "button",
-      class: "case-editor__button case-editor__button--primary",
-      text: "保存断言",
-      disabled: busy,
-    });
-    save.addEventListener("click", () => void saveAssertions(item));
-    const cancel = element("button", { type: "button", class: "case-editor__button", text: "取消" });
-    cancel.addEventListener("click", () => {
-      editingAssertions = null;
-      editingSteps = null;
-      render();
-    });
-    actions.append(add, save, cancel);
-    container.append(actions);
-    return container;
-  }
-
-  async function saveAssertions(item) {
-    const draft = editingAssertions?.draft ?? [];
-    const assertions = draft.map((assertion, index) => ({
-      id: assertion.id || `A${index + 1}`,
-      kind: assertion.kind === "guard" ? "guard" : "business",
-      text: assertion.text.trim(),
-      source: assertion.source.trim(),
-    }));
-    if (assertions.some((assertion) => !assertion.text || !assertion.source)) {
-      setStatus("断言内容和来源不能为空。", true);
-      render();
-      return;
-    }
-    if (!assertions.some((assertion) => assertion.kind === "business")) {
-      setStatus("至少保留一条业务断言。", true);
-      render();
-      return;
-    }
+  async function deleteDataFile(item) {
+    const projectId = selectedId;
+    const confirmed = await confirmAction({ title: "删除测试数据文件", message: `将永久删除 qa/data/${item.path}，不可恢复。`, confirmLabel: "删除文件" });
+    if (!confirmed || selectedId !== projectId) return;
     busy = true;
-    setStatus("正在保存断言…");
     render();
     try {
-      await api().updateTestCaseAssertions(selectedId, item.assetPath, item.name, assertions);
+      await api().deleteTestData(projectId, item.path);
       await loadData();
-      editingAssertions = null;
-      editingSteps = null;
-      setStatus("断言已保存。");
-    } catch (error) {
-      setStatus(errorMessage(error), true);
-    } finally {
-      busy = false;
-      render();
-    }
+      setStatus("测试数据文件已删除。");
+    } catch (error) { setStatus(errorMessage(error), true); }
+    finally { busy = false; render(); }
   }
 
   async function refreshData() {
-    if (!selectedId) {
-      render();
-      return;
-    }
+    if (!selectedId) { render(); return; }
     busy = true;
     render();
-    try {
-      await loadData();
-    } finally {
-      busy = false;
-      render();
-    }
+    try { await loadData(); }
+    finally { busy = false; render(); }
   }
 
   function reportKey(report) {
@@ -2008,14 +1004,10 @@ export function createRightSidebarPanel({ body, tabs, confirmDialog }) {
       selectedId = select.value;
       data = null;
       caseQuery = "";
-      caseWorkflowFilter = "all";
-      caseRunMode = "retest";
+      casePage = 1;
+      dataRequest += 1;
       expandedCases.clear();
-      selectedCases.clear();
-      editingAssertions = null;
-      editingSteps = null;
-      collapsedModules.clear();
-      knownModuleKeys.clear();
+      caseDetails.clear();
       reportsData = null;
       reportKindFilter = "all";
       expandedReports.clear();

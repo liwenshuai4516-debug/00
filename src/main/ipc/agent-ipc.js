@@ -272,33 +272,21 @@ function registerAgentIpc(
     );
   });
 
-  // 测试数据读取只返回相对路径和元信息；删除只接受项目编号与相对路径。
-  ipcMain.handle("agent:list-test-data", (_event, projectId) =>
-    projectService.listTestData(projectId),
+  // 测试数据按页读取；版本详情与整例删除只接受项目及对象编号。
+  ipcMain.handle("agent:list-test-data", (_event, projectId, options) =>
+    projectService.listTestData(projectId, options),
   );
   ipcMain.handle("agent:delete-test-data", (_event, projectId, relativePath) => {
     return runIdleOperation(() =>
       projectService.deleteTestData(projectId, relativePath),
     );
   });
-  ipcMain.handle("agent:update-test-case-assertions", (_event, projectId, assetPath, caseName, assertions) => {
+  ipcMain.handle("agent:get-test-case", (_event, projectId, caseId, revision) =>
+    projectService.getTestCase(projectId, caseId, revision),
+  );
+  ipcMain.handle("agent:delete-test-case", (_event, projectId, caseId, assetHash) => {
     return runIdleOperation(() =>
-      projectService.updateTestCaseAssertions(projectId, assetPath, caseName, assertions),
-    );
-  });
-  ipcMain.handle("agent:update-test-case-steps", (_event, projectId, assetPath, caseName, steps) => {
-    return runIdleOperation(() =>
-      projectService.updateTestCaseSteps(projectId, assetPath, caseName, steps),
-    );
-  });
-  ipcMain.handle("agent:update-test-case-marks", (_event, projectId, items, changes) => {
-    return runIdleOperation(() =>
-      projectService.updateTestCaseMarks(projectId, items, changes),
-    );
-  });
-  ipcMain.handle("agent:delete-test-cases", (_event, projectId, items) => {
-    return runIdleOperation(() =>
-      projectService.deleteTestCases(projectId, items),
+      projectService.deleteTestCase(projectId, caseId, assetHash),
     );
   });
   // 测试报告只读；目录和批次编号都在主进程按项目工作区解析。

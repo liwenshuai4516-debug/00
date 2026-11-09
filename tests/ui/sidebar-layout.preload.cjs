@@ -6,7 +6,7 @@ for (const name of [
   "readModelCatalog", "saveModel", "deleteModel", "setDefaultModel", "setThinkingLevel", "loadComposerDraft", "saveComposerDraft", "inspectComposerSend",
   "addProject", "openProject", "openSession", "sendMessage", "stop", "newChat",
   "listProjectEnvironments", "saveProjectEnvironment", "deleteProjectEnvironment",
-  "listTestData", "deleteTestData", "updateTestCaseAssertions", "readPreviewFile", "listWorkspaceDirectory", "openExternalUrl", "openBrowserDevTools", "searchSessions",
+  "listTestData", "deleteTestData", "getTestCase", "deleteTestCase", "readPreviewFile", "listWorkspaceDirectory", "openExternalUrl", "openBrowserDevTools", "searchSessions",
 ]) {
   agent[name] = (...args) => ipcRenderer.invoke("sidebar-check", name, args);
 }

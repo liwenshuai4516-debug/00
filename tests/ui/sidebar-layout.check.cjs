@@ -98,50 +98,22 @@ async function main() {
       return { path: args[0], size: 48, content: "# 需求文档\n\n- **本地预览**\n" };
     }
     if (name === "listTestData") {
-      if (args[0] !== "a") return { available: false, truncated: false, items: [], catalog: null };
+      if (args[0] !== "a") return { available: false, truncated: false, items: [], catalog: { total: 0, page: 1, pages: 1, pageSize: 50, cases: [] } };
       return {
         available: true,
         truncated: false,
         items: testData.map((item) => ({ ...item })),
-        catalog: {
-          modules: [{
-            key: "/demo",
-            path: ["演示模块"],
-            depth: 0,
-            page: "/demo",
-            pages: ["/demo"],
-            title: "演示模块",
-            role: "管理员",
-            roles: ["管理员"],
-            dataPolicy: "read-only",
-            policies: ["read-only"],
-            tags: ["演示"],
-            children: [],
-            caseCount: 1,
-            cases: [{
-              name: "T1 演示用例",
-              type: "functional",
-              priority: "P1",
-              assertions: [{ id: "A1", kind: "business", text: "演示断言", source: "演示基线" }],
-              caseId: "demo",
-              assetPath: "ui/cases/demo.asset.json",
-              specPath: "ui/cases/demo.spec.cjs",
-              documentPath: "ui/cases/demo.md",
-              page: "/demo",
-              role: "管理员",
-              recordedAt: "2026-11-04T06:48:43.222Z",
-              lastResult: { status: "passed", durationMs: 8, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
-            }],
-          }],
-          legacy: [],
-          truncated: false,
-          totals: { modules: 1, submodules: 0, cases: 1, assertions: 1, legacy: 0 },
-          lastRun: { runId: "run-1", status: "passed", startedAt: "2026-11-04T06:50:00.000Z", finishedAt: "2026-11-04T06:51:00.000Z", total: 1, passed: 1, failed: 0, skipped: 0, cancelled: 0 },
-        },
+        catalog: { total: 1, page: 1, pages: 1, pageSize: 50, cases: [{
+          caseId: "demo", title: "T1 演示用例", modulePath: ["演示模块"], role: "管理员", currentRevision: "0001", displayRevision: "0001", candidates: [], assetHash: "demo-hash", runnable: true,
+          lastResult: { status: "passed", finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
+        }] },
       };
     }
-    if (name === "updateTestCaseAssertions") {
-      return { path: args[1], caseName: args[2], assertions: args[3] };
+    if (name === "getTestCase") {
+      return { assetHash: "demo-hash", revision: "0001", currentRevision: "0001", revisions: [{ revision: "0001", taskId: "task-demo", validatedRunId: "run-1" }], meta: {
+        targetUrl: "https://demo.invalid", role: "管理员", initialState: "列表", dataStrategy: "read-only", cleanup: "none", steps: [], assertions: [],
+        expected: [{ id: "E1", text: "演示断言", source: { kind: "baseline", reference: "演示基线" } }],
+      } };
     }
     if (name === "deleteTestData") {
       const index = testData.findIndex((item) => item.path === args[1]);
@@ -152,6 +124,7 @@ async function main() {
     if (name === "getSessionInfo") return { sessionId: current, workspaceDir: "/demo/a", provider: "demo", modelId: "demo", contextUsage: null };
     if (name === "listModels") return { provider: "demo", modelId: "demo", models: [{ id: "demo", name: "演示模型", provider: "demo" }] };
     if (name === "readModelConfiguration") return { modelsPath: "/demo/pi/models.json" };
+    if (name === "readModelCatalog") return { providers: [], options: { api: [], thinkingLevels: [], inputs: [] } };
     if (name === "loadComposerDraft") return getDraft();
     if (name === "inspectComposerSend") return { ...getDraft(), pendingSend: null };
     if (name === "saveComposerDraft") {
@@ -497,10 +470,11 @@ async function main() {
     await wait(`document.querySelectorAll('.right-panel__card').length===5&&document.querySelectorAll('.right-panel__card')[1].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
     await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
     await wait(`document.querySelectorAll('.case-card').length===1`);
-    await check("测试数据按模块和用例展示最近结果", `document.querySelectorAll('.case-module').length===1&&document.querySelector('.case-module__name').textContent==='演示模块'&&document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-run').textContent==='通过'&&document.querySelector('.case-card__status').textContent==='通过'`);
+    await check("测试数据按模块和用例展示最近结果", `document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-version-meta').textContent.includes('演示模块')&&document.querySelector('.case-card__status').textContent==='正式 0001'&&document.querySelector('.case-card').textContent.includes('最近回归 通过')`);
     await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     if (process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
     await run(`document.querySelector('.case-card__head').click()`);
+    await wait(`document.querySelector('.case-version-detail')!==null`);
     await check("展开用例显示断言与来源", `!document.querySelector('.case-card__body').hidden&&document.querySelector('.case-card__body').textContent.includes('演示基线')`);
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelectorAll('.right-panel__card').length===5`);

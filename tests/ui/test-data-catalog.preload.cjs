@@ -1,229 +1,53 @@
 const { contextBridge } = require("electron");
-
-const catalog = {
-  modules: [
-    {
-      key: "合同管理",
-      path: ["合同管理"],
-      title: "合同管理",
-      depth: 0,
-      page: "",
-      role: "",
-      dataPolicy: "",
-      tags: [],
-      policies: [],
-      cases: [],
-      children: [
-        {
-          key: "合同管理\u001f经营合同",
-          path: ["合同管理", "经营合同"],
-          title: "经营合同",
-          depth: 1,
-          page: "/pms/OperationContract",
-          role: "管理员",
-          dataPolicy: "read-only",
-          pages: ["/pms/OperationContract"],
-          roles: ["管理员"],
-          tags: ["合同管理", "列表"],
-          policies: ["read-only"],
-          caseCount: 2,
-          children: [],
-          cases: [
-            {
-              name: "T2 权限拒绝时列表为空",
-              type: "permission",
-              priority: "P0",
-              steps: ["打开合同列表", "以无权限账号访问", "确认列表为空"],
-              assertions: [
-                { id: "A1", kind: "business", text: "列表 0 行", source: "需求声明：无权限不可见" },
-                { id: "A2", kind: "guard", text: "无权限提示可见", source: "页面基线" },
-              ],
-              caseId: "合同",
-              assetPath: "ui/cases/合同.asset.json",
-              specPath: "ui/cases/合同.spec.cjs",
-              documentPath: "ui/cases/合同.md",
-              page: "/pms/OperationContract",
-              role: "管理员",
-              recordedAt: "2026-11-04T06:48:43.222Z",
-              workflow: "pending",
-              markedAt: "2026-11-04T06:52:00.000Z",
-              lastResult: { status: "failed", durationMs: 12, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
-            },
-            {
-              name: "T1 列表加载与结构完整",
-              type: "functional",
-              priority: "P2",
-              steps: ["打开合同列表", "确认列表结构完整"],
-              assertions: [
-                { id: "A1", kind: "business", text: "列表出现", source: "页面基线" },
-              ],
-              caseId: "合同",
-              assetPath: "ui/cases/合同.asset.json",
-              specPath: "ui/cases/合同.spec.cjs",
-              documentPath: "ui/cases/合同.md",
-              page: "/pms/OperationContract",
-              role: "管理员",
-              recordedAt: "2026-11-04T06:48:43.222Z",
-              lastResult: { status: "passed", durationMs: 8, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
-            },
-          ],
-        },
-        {
-          key: "合同管理\u001f采购合同",
-          path: ["合同管理", "采购合同"],
-          title: "采购合同",
-          depth: 1,
-          page: "/pms/PurchaseContract",
-          role: "管理员",
-          dataPolicy: "read-only",
-          pages: ["/pms/PurchaseContract"],
-          roles: ["管理员"],
-          tags: ["合同管理", "查询"],
-          policies: ["read-only"],
-          caseCount: 1,
-          children: [],
-          cases: [
-            {
-              name: "T3 合同编号不存在时展示空态",
-              type: "exception",
-              priority: "P2",
-              steps: ["打开合同列表", "输入不存在的合同编号", "点击查询", "确认展示空态"],
-              assertions: [
-                { id: "A1", kind: "business", text: "共 0 条", source: "页面基线" },
-                { id: "A2", kind: "business", text: "表格 0 行", source: "页面基线" },
-              ],
-              caseId: "合同查询",
-              assetPath: "ui/cases/合同查询.asset.json",
-              specPath: "ui/cases/合同查询.spec.cjs",
-              documentPath: "ui/cases/合同查询.md",
-              page: "/pms/PurchaseContract",
-              role: "管理员",
-              recordedAt: "2026-11-04T06:48:43.222Z",
-              lastResult: { status: "passed", durationMs: 9, finishedAt: "2026-11-04T06:51:00.000Z", runId: "run-1" },
-            },
-          ],
-        },
-      ],
-      caseCount: 3,
-      assertionCount: 5,
-    },
-  ],
-  legacy: [{ path: "ui/cases/旧资产.asset.json", name: "旧资产.asset.json", size: 64, modifiedAt: 1762300000000 }],
-  truncated: false,
-  totals: { modules: 1, submodules: 2, cases: 3, assertions: 5, legacy: 1 },
-  lastRun: {
-    runId: "run-1",
-    status: "failed",
-    startedAt: "2026-11-04T06:50:00.000Z",
-    finishedAt: "2026-11-04T06:51:00.000Z",
-    total: 3,
-    passed: 2,
-    failed: 1,
-    skipped: 0,
-    cancelled: 0,
-  },
-};
-
-let currentCatalog = JSON.parse(JSON.stringify(catalog));
-const items = [
-  { path: "ui/cases/合同.asset.json", name: "合同.asset.json", category: "ui", size: 2048, modifiedAt: 1762300000000 },
-  { path: "ui/cases/合同.spec.cjs", name: "合同.spec.cjs", category: "ui", size: 1024, modifiedAt: 1762300000000 },
-  { path: "ui/cases/合同.md", name: "合同.md", category: "ui", size: 512, modifiedAt: 1762300000000 },
-];
-
+const cases = Array.from({ length: 52 }, (_, index) => ({
+  caseId: index === 0 ? "contracts" : index === 1 ? "candidate" : `case-${index}`,
+  title: index === 0 ? "合同列表按编号筛选并查看详情" : index === 1 ? "仅候选 · 权限边界" : `列表用例 ${index}`,
+  modulePath: ["合同管理", "经营合同"], role: "管理员",
+  currentRevision: index === 1 ? null : "0001", displayRevision: "0001",
+  candidates: index === 0 ? ["0002"] : index === 1 ? ["0001"] : [],
+  assetHash: `hash-${index}`, runnable: index !== 1,
+  lastResult: index === 0 ? { status: "passed", finishedAt: "2026-11-09T06:00:00Z", runId: "run-regression" } : null,
+}));
+const files = [{ path: "api/sample.json", size: 1024 }];
+const stats = { details: 0, lists: [], deletions: [] };
 contextBridge.exposeInMainWorld("agent", {
-  deleteTestCases: async (_projectId, items) => {
-    const selected = new Set(items.map((item) => `${item.assetPath}\u001f${item.caseName}`));
-    const removeFrom = (node) => {
-      node.cases = (node.cases ?? []).filter(
-        (item) => !selected.has(`${item.assetPath}\u001f${item.name}`),
-      );
-      for (const child of node.children ?? []) removeFrom(child);
-      node.children = (node.children ?? []).filter(
-        (child) => (child.cases?.length ?? 0) > 0 || (child.children?.length ?? 0) > 0,
-      );
-      node.caseCount = (node.cases?.length ?? 0)
-        + (node.children ?? []).reduce((total, child) => total + child.caseCount, 0);
-      return node.caseCount;
-    };
-    currentCatalog.modules = currentCatalog.modules.filter(
-      (module) => removeFrom(module) > 0,
-    );
-    const countAssertions = (node) => (node.cases ?? []).reduce((sum, test) => sum + test.assertions.length, 0)
-      + (node.children ?? []).reduce((sum, child) => sum + countAssertions(child), 0);
-    const countCases = (node) => (node.cases?.length ?? 0)
-      + (node.children ?? []).reduce((sum, child) => sum + countCases(child), 0);
-    const countNodes = (nodes) => nodes.reduce((sum, node) => sum + 1 + countNodes(node.children ?? []), 0);
-    currentCatalog.totals = {
-      ...currentCatalog.totals,
-      modules: currentCatalog.modules.length,
-      submodules: Math.max(0, countNodes(currentCatalog.modules) - currentCatalog.modules.length),
-      cases: currentCatalog.modules.reduce((sum, module) => sum + countCases(module), 0),
-      assertions: currentCatalog.modules.reduce((sum, module) => sum + countAssertions(module), 0),
-    };
-    return { deleted: items, removedAssets: [] };
-  },
-  updateTestCaseMarks: async (_projectId, items, changes) => {
-    const keys = new Set(items.map((item) => `${item.assetPath}\u001f${item.caseName}`));
-    const apply = (node) => {
-      for (const item of node.cases ?? []) {
-        if (keys.has(`${item.assetPath}\u001f${item.name}`)) {
-          item.workflow = changes.workflow === "none" ? "none" : changes.workflow;
-          item.markedAt = "2026-11-05T07:00:00.000Z";
-        }
-      }
-      for (const child of node.children ?? []) apply(child);
-    };
-    for (const module of currentCatalog.modules) apply(module);
-    return { workflow: changes.workflow, cases: items };
-  },
-  updateTestCaseSteps: async (_projectId, assetPath, caseName, steps) => {
-    const findCase = (node) => {
-      for (const item of node.cases ?? []) {
-        if (item.assetPath === assetPath && item.name === caseName) return item;
-      }
-      for (const child of node.children ?? []) {
-        const found = findCase(child);
-        if (found) return found;
-      }
-      return null;
-    };
-    let item = null;
-    for (const module of currentCatalog.modules) {
-      item = findCase(module);
-      if (item) break;
-    }
-    if (!item) throw new Error("未找到该用例");
-    item.steps = steps;
-    return { path: assetPath, caseName, steps };
-  },
-  updateTestCaseAssertions: async (_projectId, assetPath, caseName, assertions) => {
-    const findCase = (node) => {
-      for (const item of node.cases ?? []) {
-        if (item.assetPath === assetPath && item.name === caseName) return item;
-      }
-      for (const child of node.children ?? []) {
-        const found = findCase(child);
-        if (found) return found;
-      }
-      return null;
-    };
-    let item = null;
-    for (const module of currentCatalog.modules) {
-      item = findCase(module);
-      if (item) break;
-    }
-    if (!item) throw new Error("未找到该用例");
-    item.assertions = assertions;
-    const countAssertions = (node) => (node.cases ?? []).reduce((sum, test) => sum + test.assertions.length, 0)
-      + (node.children ?? []).reduce((sum, child) => sum + countAssertions(child), 0);
-    currentCatalog.totals.assertions = currentCatalog.modules.reduce((total, module) => total + countAssertions(module), 0);
-    return { path: assetPath, caseName, assertions };
-  },
   listProjectEnvironments: async () => [
     { id: "a", name: "演示项目", workspaceDir: "/demo/a" },
+    { id: "b", name: "空项目", workspaceDir: "/demo/b" },
   ],
   getSessionInfo: async () => ({ workspaceDir: "/demo/a" }),
-  listTestData: async () => ({ available: true, truncated: false, items, catalog: currentCatalog }),
-  deleteTestData: async (_projectId, relativePath) => ({ path: relativePath }),
+  listTestData: async (projectId, { page = 1, query = "" } = {}) => {
+    stats.lists.push({ projectId, page, query });
+    const filtered = projectId === "a" ? cases.filter((item) => `${item.title} ${item.caseId}`.includes(query)) : [];
+    const pages = Math.max(1, Math.ceil(filtered.length / 50));
+    page = Math.min(page, pages);
+    return { available: true, items: projectId === "a" ? files : [], truncated: false,
+      catalog: { total: filtered.length, page, pages, pageSize: 50, cases: filtered.slice((page - 1) * 50, page * 50) } };
+  },
+  getTestCase: async (_projectId, caseId, revision) => {
+    stats.details++;
+    if (revision === "0002") await new Promise((resolve) => setTimeout(resolve, 100));
+    const item = cases.find((item) => item.caseId === caseId);
+    return { caseId, assetHash: item.assetHash, revision, currentRevision: item.currentRevision,
+      revisions: [{ revision: "0001", taskId: "task-source", validatedRunId: item.currentRevision ? "run-validated" : null },
+        ...(caseId === "contracts" ? [{ revision: "0002", taskId: "task-source", validationRunId: "run-candidate" }] : [])],
+      meta: { title: item.title, targetUrl: "https://demo.invalid/contracts", role: "管理员", initialState: "合同列表，编号 Beta 可重新定位", dataStrategy: "read-only", cleanup: "none",
+        steps: [{ stepId: "step-1", text: revision === "0002" ? "新候选步骤" : "打开合同列表" }, { stepId: "step-2", text: "按编号筛选并打开详情" }],
+        expected: [{ id: "E1", text: "详情编号与所选合同一致", source: { kind: "rule", reference: "合同需求第 3 条" } }],
+        assertions: [{ kind: "business", text: "详情编号为 Beta", expectedId: "E1" }, { kind: "guard", text: "当前身份为管理员" }],
+      } };
+  },
+  deleteTestCase: async (projectId, caseId, assetHash) => {
+    const index = cases.findIndex((item) => item.caseId === caseId && item.assetHash === assetHash);
+    if (index < 0) throw new Error("版本已变化，请刷新。");
+    stats.deletions.push({ projectId, caseId, assetHash });
+    cases.splice(index, 1);
+    return { caseId };
+  },
+  deleteTestData: async (_projectId, relativePath) => {
+    const index = files.findIndex((item) => item.path === relativePath);
+    files.splice(index, 1);
+    return { path: relativePath };
+  },
+  getTestStats: async () => stats,
 });

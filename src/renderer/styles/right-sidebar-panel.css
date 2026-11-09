@@ -2522,3 +2522,43 @@
 .right-panel--browser .right-panel__status:empty {
   display: none;
 }
+
+/* 版本用例按需读取详情，列表与文件区都适配窄侧栏。 */
+.case-catalog__search-form,
+.case-catalog__pager,
+.case-data-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.case-catalog__search-form .case-catalog__search {
+  min-width: 0;
+  flex: 1;
+}
+
+.case-catalog__pager {
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.case-version-meta,
+.case-data-file,
+.case-version-list {
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.case-data-file > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.case-version-list {
+  margin: 6px 0;
+  padding-left: 20px;
+}

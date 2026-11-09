@@ -70,6 +70,28 @@ async function exclusive(cwd, operation) {
   }
 }
 
+// 面板整例删除与探索、保存、回放、发布共用同一把工作区锁。
+export async function removeUiCase(cwd, { projectId, caseId, assetHash }) {
+  id(caseId);
+  check(text(projectId) && typeof assetHash === "string" && /^[a-f0-9]{64}$/.test(assetHash), "删除用例参数无效。");
+  return exclusive(cwd, async (root) => {
+    const file = await fileAt(root.caseDir, caseId, "asset.json");
+    const bytes = await fs.readFile(file);
+    check(hash(bytes) === assetHash, "用例版本已变化，请刷新后重新确认删除。");
+    const asset = JSON.parse(bytes);
+    check(asset.schema === "qa-ui-asset/v1" && asset.caseId === caseId && asset.revisions?.length > 0, "用例版本索引无效。");
+    for (const entry of asset.revisions) {
+      check(typeof entry.revision === "string" && /^\d{4}$/.test(entry.revision), "用例版本无效。");
+      const metaBytes = await fs.readFile(await fileAt(root.caseDir, caseId, "revisions", entry.revision, "case.json"));
+      check(hash(metaBytes) === entry.hashes?.["case.json"], "用例说明已变更，请保留现场并核对版本。");
+      const meta = JSON.parse(metaBytes);
+      check(meta.schema === "qa-ui-case/v1" && meta.caseId === caseId && meta.taskId === entry.taskId && meta.project?.id === projectId, "用例不属于所选项目或来源不匹配。");
+    }
+    await fs.rm(path.join(root.caseDir, caseId), { recursive: true });
+    return { caseId };
+  });
+}
+
 export function validateContract(contract) {
   check(contract && ["explore", "candidate", "complete"].includes(contract.mode), "任务 mode 必须为 explore、candidate 或 complete。");
   for (const field of ["goal", "role", "initialState"]) check(text(contract[field]), `任务缺少 ${field}。`);
