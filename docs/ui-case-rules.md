@@ -11,6 +11,7 @@
 | 被测项目专属规则、数据准备及业务口径 | 被测项目实际工作目录的 AGENTS.md，较长规则放在明确引用的文档 | 按 Pi 项目指引加载；在当前任务要求 Agent 读取最新规则 |
 | UI 工具操作、探索与候选约束 | 客户端 resources/testing/ui/skills/qa-ui-basic/SKILL.md；断言检查在 qa-ui-assertion/SKILL.md | 客户端内置技能，属于应用维护；不在单次任务中修改它来迁就测试结果 |
 | 本次页面范围、输入条件、预期及来源 | 当前任务的覆盖清单与各探索 contract | 当前测试任务；expected 在探索前冻结 |
+| 审批链、节点、处理人及可选开关 | 实际测试工作区 .pi/skills/qa-approval-workflow/SKILL.md 及其 references | 涉及审批的用例设计先加载，与 qa-ui-case-design 关联生成对应 case |
 
 内置默认提示词在 `src/main/prompts/test-agent-prompt.mjs`，只保留生成规则的技能路由。已保存的自定义提示词和旧会话快照不会被源码更新覆盖；其中若复制了旧规则，需手动改为引用 qa-ui-case-design，避免多处维护不同版本。
 
@@ -19,3 +20,5 @@
 UI 扩展通过官方 resources_discover 登记该技能，由 Pi 处理资源发现、过滤和冲突。qa-ui-basic 在生成前加载它，qa-ui-assertion 在检查新候选时引用它；仅回归或修复既有脚本不触发重新设计。禁用内置 UI 扩展时不登记该技能。
 
 也可以在应用新对话中使用 `/skill:qa-ui-case-design` 并附上设计目标。客户端更新后新建对话以加载新技能目录；规则修改后的当前会话应明确要求重新读取文件，不依赖此前加载的旧正文。加载和结构验证不能代替真实模型行为或业务用例回放验收。
+
+审批技能属于项目资源，不随内置 UI 技能分发；跨项目使用需在实际工作区安装完整 qa-approval-workflow 目录（含 references），并按 Pi 项目信任规则加载。生成规则按技能名称关联，不新增客户端私有扫描或绕过信任。未安装时保留审批待确认项，不能宣称已经读取该流程；已设计但不具备执行条件的审批 case 不计为可执行正式资产。

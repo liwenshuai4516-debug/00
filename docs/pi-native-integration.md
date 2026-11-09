@@ -44,7 +44,7 @@
 
 - `qa-requirement-review`：需求评审，附 `references/checklist.md`。
 - `qa-case-design`：测试用例设计，附 `references/case-format.md`。
-- `qa-approval-workflow`：多角色业务审批执行；只在需要跑通或验证审批终态时加载。它是项目技能，不随内置 UI 测试技能分发。
+- `qa-approval-workflow`：审批流程分析、人员映射与只读状态参考；涉及审批用例生成时与 qa-ui-case-design 关联，提供节点、分支及终态来源，当前不执行提交或多角色审批。它是项目技能，不随内置 UI 测试技能分发。
 - `qa-skill-smoke`：仅显式调用的技能加载演示，不进入自动匹配目录。
 
 原 `src/main/resources/skills/` 已迁移，loader 不再用 `additionalSkillPaths` 追加源码资源。项目资源由 Pi 官方 loader 按实际会话工作目录和项目信任决定加载；切换到其他项目不会自动携带这些技能。`qa-approval-workflow` 等业务技能必须安装到实际测试工作区的 `.pi/skills/`，只放在本仓库不会在其他工作区生效；安装与信任说明见 [项目业务技能](ui-testing-runtime.md#项目业务技能如多角色审批)。
