@@ -4,6 +4,8 @@ import path from "node:path";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createPiAgent, sendMessage } from "../../src/main/pi-agent.mjs";
 import lifecycle from "../../src/main/resources/pi-session-lifecycle.js";
+import { TEST_AGENT_PROMPT } from "../../src/main/prompts/test-agent-prompt.mjs";
+import { AGENT_SYSTEM_PROMPT } from "../../src/main/prompts/agent-system-prompt.mjs";
 
 const base = process.argv[2];
 const workspace = path.join(base, "workspace");
@@ -41,6 +43,10 @@ function offlineModel(session) {
 async function create(file) {
   const session = await createPiAgent(path.join(base, "sessions"), false, file, workspace, config);
   sessions.push(session);
+  assert.ok(session.systemPrompt.startsWith(TEST_AGENT_PROMPT));
+  assert.ok(session.systemPrompt.includes(AGENT_SYSTEM_PROMPT));
+  assert.ok(!session.systemPrompt.includes("You are an expert coding assistant operating inside pi"));
+  assert.ok(!session.systemPrompt.includes("Use read to examine files instead of cat or sed."));
   assert.ok(session.extensionRunner.getRegisteredCommands().some(command => command.name === "diagnostic-command"));
   offlineModel(session);
   return session;
@@ -55,6 +61,8 @@ try {
   assert.equal(diagnostics().length, 1);
   assert.equal(calls, 2, "工具后的第二次响应不重复打印运行日志");
   const output = diagnostics()[0];
+  assert.ok(output.includes(TEST_AGENT_PROMPT));
+  assert.ok(!output.includes("You are an expert coding assistant operating inside pi"));
   assert.ok(output.includes(`session=${first.sessionId}`));
   assert.match(output, /EXTENSION_FINAL_PROMPT/);
   assert.doesNotMatch(output, /fixture-runtime-secret|fixture-password-secret|第一轮/);

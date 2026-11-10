@@ -142,7 +142,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 - 不传 `tools`/`excludeTools` 覆盖原生登记，默认 read/bash/edit/write；`customTools` 追加桌面自己的 `todo_write`（见[任务清单](docs/todo-dock.md)），尊重 `defaultTools`、扩展工具及其原生参数。Pi 1.4.0 的 edit 使用 `edits[]`。旧文件草稿记录和待保存接口保留兼容，新 Agent 文件操作按实际工具结果直接落盘。
 - 项目业务技能维护在 `.pi/skills/`；随客户端分发的内置测试技能维护在 `resources/testing/ui/skills/`，报告技能维护在 `resources/testing/reporting/`，通过官方 `resources_discover` 事件接入。资源解析、冲突和诊断继续交给 `DefaultResourceLoader`，不自行扫描技能目录或改写技能格式。
 - 项目信任顺序为：受保护资源检查 → 用户扩展 project_trust 首个 yes/no → 最近保存决定 → global defaultProjectTrust → 宿主询问。通过公开 `LoadExtensionsResult` 事件处理器和 `ProjectTrustStore` 适配；未公开导出的 CLI resolver 不深层导入。上下文文件按 Pi 规则不受此信任开关保护；信任与 cwd 都不是工具或扩展的隔离边界。
-- 不覆盖原生系统提示词；保留 SYSTEM.md/APPEND_SYSTEM.md 的发现与优先级，通过公开 appendSystemPromptOverride 追加桌面结果说明和已有业务提示词。业务提示词快照继续按原会话保存，不改写使用者已存内容；其中若引用旧草稿工具，以当前实际工具为准。
+- 使用配置的测试职责与 `src/main/prompts/agent-system-prompt.mjs` 组成系统提示词主体，通过公开 `systemPromptOverride` 替换 Pi 默认角色与通用规则；已发现的 SYSTEM.md 正文接在应用主体后，APPEND_SYSTEM.md 仍作为追加内容，二者各自保留项目优先于全局的官方发现规则。项目上下文、技能及扩展继续按 Pi 原生资源链路加载，工具参数以实际登记为准。业务提示词快照继续按原会话保存，不改写使用者已存内容；其中若引用旧草稿工具，以当前实际工具为准。
 - 通过公开工厂登记 codemode、tool-search、mcp 的 builtin 身份，保留禁用和第三方替换语义。bindExtensions 启动运行时，运行期 onError 与加载期诊断分别接通。桌面有 UI bridge 时使用官方 rpc/hasUI=true，无界面的检查使用 json/hasUI=false；选择、确认、输入、多行编辑、通知、状态及文本组件按 RPC 契约适配。自定义终端组件、终端编辑器、页眉页脚和终端主题等沿用官方非 TUI 行为，不伪装为完整 TUI。扩展会话命令通过公开 AgentSessionRuntime 执行，并同步宿主会话、订阅及输入归属。
 - 宿主通过官方 SDK 的 model/modelRuntime/sessionManager 参数接通官方模型目录、会话目录绑定与旧历史，模型配置遵循 Custom Providers，保留桌面选择与恢复语义。这是公开 SDK 的宿主覆盖，不另建资源格式。Pi 主题加载与 Electron 主题映射属于不同工作，未自动把终端主题转换为 CSS。
 

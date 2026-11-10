@@ -213,4 +213,4 @@ PI_ACCEPTANCE_REPORT=/tmp/pi-system-report.json node_modules/.bin/electron scrip
 
 本次按已安装的官方 1.4.0 随包文档与公开声明复核会话创建、资源加载、工具选择、信任顺序及扩展生命周期。运行入口没有旧 `AuthStorage`、私有资源扫描、技能专用 read 或草稿工具允许名单；无引用的旧技能读取与旧信任模块已移除，旧接入计划已废止。
 
-提示词设置保存的是应用追加的测试职责，并按会话保留快照；不替代 Pi 原生系统提示词、SYSTEM.md、APPEND_SYSTEM.md 或资源发现。界面内置的测试任务模板只写入待发送输入，不替代 Pi 官方提示词模板。旧草稿的服务、历史展示与对应测试继续保留，原生 Agent 不注册这组工具。
+提示词设置保存测试职责，并按会话保留快照。2026-11-10 起，选中的职责与 AGENT_SYSTEM_PROMPT 通过公开 systemPromptOverride 组成主体，替换 Pi 默认角色及通用规则；已发现的 SYSTEM.md 作为主体后的补充，APPEND_SYSTEM.md 继续追加，项目上下文、技能及扩展按官方链路加载。组装顺序与生效范围见 [Agent 提示词维护](agent-prompts.md)。界面内置的测试任务模板只写入待发送输入，不替代 Pi 官方提示词模板。旧草稿的服务、历史展示与对应测试继续保留，原生 Agent 不注册这组工具。

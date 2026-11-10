@@ -11,6 +11,14 @@ test("真实 SDK 中新旧会话、空会话恢复和旧历史采用正确提示
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "session-prompt-")));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   await fs.mkdir(path.join(root, "workspace"));
+  await fs.mkdir(path.join(root, "pi-config"), { recursive: true });
+  await fs.writeFile(path.join(root, "pi-config/SYSTEM.md"), "全局自定义系统规则夹具");
+  await fs.writeFile(path.join(root, "pi-config/APPEND_SYSTEM.md"), "全局追加规则夹具");
+  await fs.writeFile(path.join(root, "workspace/AGENTS.md"), "项目上下文夹具");
+  await fs.mkdir(path.join(root, "workspace/.pi/skills/prompt-fixture"), { recursive: true });
+  await fs.writeFile(path.join(root, "workspace/.pi/SYSTEM.md"), "项目自定义系统规则夹具");
+  await fs.writeFile(path.join(root, "workspace/.pi/APPEND_SYSTEM.md"), "项目追加规则夹具");
+  await fs.writeFile(path.join(root, "workspace/.pi/skills/prompt-fixture/SKILL.md"), "---\nname: prompt-fixture\ndescription: 提示词加载夹具\n---\n\n只用于离线检查。\n");
   const piPath = path.resolve(__dirname, "../../src/main/pi-agent.mjs");
   const storePath = require.resolve("../../src/main/storage/prompt-settings-store.js");
   const statePath = require.resolve("../../src/main/storage/session-state-store.js");
@@ -31,13 +39,21 @@ test("真实 SDK 中新旧会话、空会话恢复和旧历史采用正确提示
       const options = { promptSettingsStore: prompts, sessionStateStore: states };
       const create = (sessionPath, recovery) => createPiAgent(
         sessions, false, sessionPath, workspace, model, recovery, undefined, options,
+        { askProjectTrust: async () => ({ trusted: true }) },
       );
 
       const first = await create();
       let firstPath;
       try {
         assert.ok(first.systemPrompt.includes("职责 A"));
+        assert.ok(first.systemPrompt.startsWith("职责 A"), "配置正文必须成为系统提示词主体");
+        assert.ok(!first.systemPrompt.includes("You are an expert coding assistant operating inside pi"));
         assert.ok(first.systemPrompt.includes("Pi 原生语义"));
+        for (const marker of ["项目自定义系统规则夹具", "项目追加规则夹具", "项目上下文夹具", "prompt-fixture"]) {
+          assert.ok(first.systemPrompt.includes(marker), marker);
+        }
+        assert.ok(!first.systemPrompt.includes("全局自定义系统规则夹具"), "项目 SYSTEM.md 保留官方发现优先级");
+        assert.ok(!first.systemPrompt.includes("全局追加规则夹具"), "项目 APPEND_SYSTEM.md 保留官方发现优先级");
         assert.deepEqual(first.getActiveToolNames().sort(), ["read", "bash", "edit", "write", "todo_write", "subagent", "subagent_fork", "send_message", "list_agents", "interrupt_agent"].sort());
         // 只写临时本地历史，使 SDK 产生可恢复文件。
         first.sessionManager.appendMessage({ role: "user", content: "临时历史", timestamp: Date.now() });
@@ -49,6 +65,7 @@ test("真实 SDK 中新旧会话、空会话恢复和旧历史采用正确提示
       try {
         assert.equal(reopened.desktopPromptSnapshot.testAgentPrompt, "职责 A");
         assert.ok(reopened.systemPrompt.includes("职责 A"));
+        assert.ok(reopened.systemPrompt.startsWith("职责 A"));
       } finally { reopened.dispose(); }
 
       const empty = await create();
@@ -63,6 +80,7 @@ test("真实 SDK 中新旧会话、空会话恢复和旧历史采用正确提示
       try {
         assert.equal(restored.sessionId, emptyId);
         assert.equal(restored.desktopPromptSnapshot.testAgentPrompt, "职责 B");
+        assert.ok(restored.systemPrompt.startsWith("职责 B"));
       } finally { restored.dispose(); }
 
       await states.consumeDraft(emptyId, workspace, "未发送输入", 1);

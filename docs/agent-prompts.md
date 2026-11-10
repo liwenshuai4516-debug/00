@@ -4,7 +4,7 @@
 
 | 内容 | 入口 | 生效范围 |
 | --- | --- | --- |
-| 通用任务推进、工具结果、安全与续跑语义 | [agent-system-prompt.mjs](../src/main/prompts/agent-system-prompt.mjs) | 会话初始化时追加，不替代 Pi 原生系统提示词及官方资源发现 |
+| 通用任务推进、工具结果、安全与续跑语义 | [agent-system-prompt.mjs](../src/main/prompts/agent-system-prompt.mjs) | 与选中的测试职责组成系统提示词主体，替换 Pi 默认角色与通用规则；资源发现仍由官方加载器处理 |
 | 默认测试职责与技能路由 | [test-agent-prompt.mjs](../src/main/prompts/test-agent-prompt.mjs) | 没有已保存配置时作为默认值；已有自定义配置优先，新对话保存业务提示词快照 |
 | 用例粒度、覆盖与审批关联 | [UI 用例规则](ui-case-rules.md) | 详细规则在对应技能维护，不复制到默认提示词 |
 | UI 主 Agent 执行流程 | [qa-ui-basic/SKILL.md](../resources/testing/ui/skills/qa-ui-basic/SKILL.md) | 明确阶段继续条件，调用探索前读取规则文件 |
@@ -17,6 +17,10 @@
 | 自动恢复与新对话交接 | [看门狗](agent-watchdog.md) | 按已实现的启用、取消和恢复条件运行，提示词本身不启动看门狗 |
 
 修改源码默认值不会覆盖已保存的自定义业务提示词，也不会热改旧会话的业务提示词快照。已保存配置的用户需在「设置 → 提示词」按需更新，并新建对话；通用桌面提示词在下次会话初始化时读取。运行中的会话不会因文件修改立即更新。
+
+系统提示词组装为：当前会话选中的测试职责 → AGENT_SYSTEM_PROMPT → 官方加载器发现的 SYSTEM.md 正文 → APPEND_SYSTEM.md → 项目指引、技能目录及扩展段。前两项通过公开 systemPromptOverride 成为主体，不再自动注入 Pi 的英文编码助手角色、默认工具介绍、通用规则和文档指引；真实工具及参数仍由 SDK 登记并传给模型。SYSTEM.md 与 APPEND_SYSTEM.md 分别保留项目文件优先于全局文件的发现规则，不叠加同名的全局与项目文件。
+
+测试职责的选择顺序保持为已有会话快照、当前保存的设置、源码 TEST_AGENT_PROMPT（子会话可继承父级职责）。本次只改变组装位置，不迁移或覆写已有快照；重启客户端后重新打开会话使用新的组装方式，修改默认正文则仍只影响随后创建的新会话。
 
 内置 UI 工具是否存在由扩展登记与禁用状态决定，子智能体也不因继承测试职责就获得父级 UI 工具。提示词只做条件路由，真实能力、权限、参数及成功状态以实际工具和技能为准；不建立第二套能力清单或绕过 Pi 的加载规则。
 
@@ -32,7 +36,7 @@ UI 探索提示词集中放在 `resources/testing/ui/prompt/`，沿用现有工�
 
 开发时从 `npm start` 的终端查看，使用 `[Pi 桌面] 本轮完整系统提示词` 搜索。打印格式为 `round=<UUID> session=<实际会话编号> <原文字符数> 字符`，随后是“系统提示词开始/结束”与“动态配置开始/结束”分隔块。不添加独立日志文件、不转发到页面或写入会话历史；安装包中的日志查看方式由进程启动方式决定，本次未新增文件日志或界面入口。
 
-系统提示词直接读取 SDK 的 `session.systemPrompt`，包含当时的原生提示词、已生效的业务职责快照、桌面语言/行为边界/最终回答协议、项目上下文、技能目录和扩展修改。没有另建一套摘要或硬编码角色，不覆盖 SYSTEM.md/APPEND_SYSTEM.md 与历史快照；技能目录不等于技能正文已读取。此日志记录运行开始时的有效状态，不代表后续 `context_with_system`、供应商请求转换或工具轮次中更新后的最终网络载荷，也不打印用户消息、工具结果、内部思考或请求头。
+系统提示词直接读取 SDK 的 `session.systemPrompt`，包含已生效的业务职责快照、桌面语言/行为边界/最终回答协议、自定义 SYSTEM.md/APPEND_SYSTEM.md、项目上下文、技能目录和扩展修改。没有另建一套摘要；Pi 默认英文角色已由配置正文替换，历史快照正文不改写；技能目录不等于技能正文已读取。此日志记录运行开始时的有效状态，不代表后续 `context_with_system`、供应商请求转换或工具轮次中更新后的最终网络载荷，也不打印用户消息、工具结果、内部思考或请求头。
 
 动态配置记录当时的北京时间（固定 Asia/Shanghai、UTC+08:00）、操作系统用户名（项目没有独立用户登录体系，不冒充业务账号）、实际会话目录的末级名称、MCP 接入是否已加载及当前已登记工具的名称/暴露方式。连接器启用按实际 `mcp_servers_change` 处理器判断；未配置任何服务也可能已启用，工具登记不代表服务连接或认证成功，未查询的连接状态明确标注。日志不会为诊断主动连接 MCP、请求模型或读取认证配置。
 
@@ -71,6 +75,12 @@ NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" node --test te
 ```
 
 这些检查不能证明真实模型一定遵循规则，也不表示真实业务写入、审批或长任务恢复已新增验收。工具执行与发布规则以相应技能和功能文档为准。
+
+2026-11-10 系统提示词主体切换的定向验证：先在真实 SDK 隔离会话复现配置正文不在开头的断言失败，再通过公开 systemPromptOverride 修复。session-prompt、prompt-diagnostics、prompt-content、permission-trust 共 8 项通过，未请求模型；覆盖中文配置正文成为主体、默认英文角色与 read 通用规则不再注入、全局/项目 SYSTEM.md 和 APPEND_SYSTEM.md 的发现优先级、AGENTS.md 与技能保留、新旧会话及空会话恢复、资源重载、扩展最终提示词及日志脱敏。模型流为离线夹具，真实供应商行为与重新启动后的人工验收未执行。
+
+补充执行 prompt-settings-store、prompt-ipc、subagents、workspace-changes-registration，并随新增默认 read 规则断言定向运行 prompt-diagnostics，11 项通过；扣除重复项，本次共 16 项定向测试通过。均使用临时资源和离线模型，不读取真实用户配置或请求模型。
+
+本次源码定位中有两处候选路径不存在（tests/unit/pi-resources.test.js、src/renderer/components/settings/settings-templates.js），只读检索返回 No such file or directory，相关检索已停止；按实际文件索引定位到 session-prompt.test.js 和 src/renderer/index.html 后继续。发生于 2026-11-10 UTC+08:00，精确时间未记录；调用链为用户修改要求 → 原生命令工具 functions.exec/exec_command → 本地文件检索，未使用执行技能或下游服务。未重试原失败路径、无文件写入或未知业务结果，不影响上述验证结论。
 
 探索控制文件的读取使用离线检查，不请求模型、不启动真实浏览器：
 

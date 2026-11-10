@@ -141,7 +141,7 @@ export async function createPiAgent(
   const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
     await createPiResources({
       cwd: workspaceRoot,
-      appendSystemPrompt: [promptSnapshot?.testAgentPrompt ?? resourceOptions?.delegatedPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT],
+      systemPrompt: [promptSnapshot?.testAgentPrompt ?? resourceOptions?.delegatedPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT].join("\n\n"),
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
       uiTestingRuntime,

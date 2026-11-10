@@ -76,6 +76,7 @@ async function resolveTrust({
 
 export async function createPiResources({
   cwd,
+  systemPrompt,
   appendSystemPrompt,
   askProjectTrust,
   onDiagnostics,
@@ -95,7 +96,9 @@ export async function createPiResources({
     cwd,
     agentDir,
     settingsManager,
-    // 保留 APPEND_SYSTEM.md 的官方发现，再追加宿主说明。
+    // 应用配置作为主体，已发现的 SYSTEM.md 保留为补充，不再注入 Pi 默认角色。
+    systemPromptOverride: (base) => [systemPrompt, base].filter(Boolean).join("\n\n") || undefined,
+    // 保留 APPEND_SYSTEM.md 的官方发现及调用方的追加说明。
     appendSystemPromptOverride: (base) => [
       ...base,
       ...(appendSystemPrompt ?? []),

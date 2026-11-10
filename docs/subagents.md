@@ -22,7 +22,7 @@ Pi 官方提供实现所需的底层能力，当前五个子智能体工具由�
 
 - [Pi v1.4.0 SDK](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/sdk.md)：`createAgentSession`、独立 `ModelRuntime`、`SessionManager` 及命名、可替换的 builtin 扩展。
 - [Pi v1.4.0 Extensions](https://github.com/earendil-works/pi/blob/v1.4.0/packages/coding-agent/docs/extensions.md)：`registerTool`、`registerCommand`、`agent_before_settle`、`custom_message` 边界条目、条件 `continue: true`、`sendCustomMessage` 对应的消息投递和字符串数组 widget。
-- 已安装包公开导出和声明确认 `SessionManager.open/create/createBranchedSession`、`AgentSession.bindExtensions/prompt/abort/sendCustomMessage` 的签名。没有深层导入 Pi 内部实现，没有覆盖原生系统提示词或替换原生工具。
+- 已安装包公开导出和声明确认 `SessionManager.open/create/createBranchedSession`、`AgentSession.bindExtensions/prompt/abort/sendCustomMessage` 的签名。没有深层导入 Pi 内部实现或替换原生工具；父子会话统一使用应用配置的系统提示词主体，组装与快照规则见 [Agent 提示词维护](agent-prompts.md)。
 
 ```mermaid
 sequenceDiagram
