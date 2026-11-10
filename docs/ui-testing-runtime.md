@@ -56,6 +56,8 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 
 ## 正式版本 CLI
 
+审批测试的提示词授权、人员账号映射、逐节点核验与异常停止统一维护在 [qa-ui-execute 的审批测试执行](../resources/testing/ui/skills/qa-ui-execute/SKILL.md#审批测试执行)。测试任务包含审批时，允许依据项目 qa-approval-workflow 的流程人员信息及已确认账号执行；例如实际启用并到达董事长审核节点后，使用用户明确指定的账号。普通只读回归不触发审批操作。此为提示词执行规则，当前 CLI/qa_ui_run 仍只使用项目配置的一套账号，没有动态选人或多角色调度参数；能力不足须报告已授权但执行受阻。本次未新增运行时账号切换或审批实现，也未进行真实审批验收。
+
 运行 resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB。
 
 --project 接受项目编号或唯一名称；配置默认 config/projects.local.json，可用 --config 指定。--cases 与 --all 二选一，只执行 currentRevision。同批必须项目、目标、角色和身份一致；每批登录一次，记录准确 revisions/sourceTaskIds。最终 JSON 输出 runId/status/summaryFile/counts/cleanup；全部通过退出 0，其余退出 1。SIGINT/SIGTERM 交给共享执行器收尾。无账号发现、外部登录态、地址覆盖或自动修复参数，不读取 .env 或调用模型。外部调度可调用该入口；2026-11-09 已在项目管理系统以临时 launchd 60 秒间隔完成两次真实定时回归（均 passed、资产未变），应用内调度、失败/取消/并发调度和长期稳定性仍未验收。
