@@ -9,6 +9,7 @@ import { createWorkspaceSession } from "./workspace/workspace-session.mjs";
 import { createPiResources } from "./resources/pi-resources.mjs";
 import sessionLifecycle from "./resources/pi-session-lifecycle.js";
 import { AGENT_SYSTEM_PROMPT } from "./prompts/agent-system-prompt.mjs";
+import { bindPromptDiagnostics } from "./resources/prompt-diagnostics.mjs";
 import messageAdapter from "./adapters/message-adapter.js";
 import outputAdapter from "./adapters/output-event-adapter.js";
 import modelConfig from "./config/model-config.js";
@@ -213,6 +214,7 @@ export async function createPiAgent(
     ...(resumeOptions?.thinkingLevel ? { thinkingLevel: resumeOptions.thinkingLevel } : {}),
     ...(resourceOptions?.subagentParent ? { thinkingLevel: resourceOptions.subagentParent.thinkingLevel } : {}),
   });
+  bindPromptDiagnostics(session, { agentDir, knownSecrets: [startupModel.apiKey] });
   parentSession = session;
   session.desktopSubagents = subagents;
   session.desktopReloadResources = async () => {
