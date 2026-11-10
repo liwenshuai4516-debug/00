@@ -40,6 +40,8 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 
 项目配置仍在客户端 config/projects.local.json，见 [项目前置数据](project-data.md)。按 origin 和完整路径段匹配，最长范围优先；同等候选须明确项目。产物写当前会话真实工作区 qa/ui，不根据工作区名称猜系统。凭据由后端使用，不返回模型或写入脚本。
 
+探索提示词还约定主 Agent 在明确审批线索出现时动态加载项目 qa-approval-workflow，普通功能不预加载；browser-use 只报告线索，由主 Agent 将适用的只读要点及来源交给后续任务。成功且清理确认后按证据去重，并回写通用覆盖项或带 projectId 的专属功能索引，核实过程与变更依据保存在原任务目录 discoveries.md；回写失败保留待处理项。这是提示词执行约定，qa_ui_explore 未新增自动回写服务、技能安装、可写运行副本或审批执行能力；真实模型的条件加载、持续回写及安装包可写性仍未验收，详细规则只在探索提示词维护。
+
 自动登录仅后台执行一次。公开页不提交凭据；验证码/MFA、跨域认证、未知表单、登录失败或身份无法确认时停止，无人工接管窗口。已验证 cookie/localStorage 交接，IndexedDB 状态尚不支持。每次回放创建独立上下文并核对身份和初态，结束删除私有状态。
 
 ## 文件与通过条件

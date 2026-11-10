@@ -10,9 +10,9 @@
 | 任务角色与技能路由 | 应用「设置 → 提示词」的默认业务提示词 | 保存后新对话；已有对话保留原提示词快照 |
 | 被测项目专属规则、数据准备及业务口径 | 被测项目实际工作目录的 AGENTS.md，较长规则放在明确引用的文档 | 按 Pi 项目指引加载；在当前任务要求 Agent 读取最新规则 |
 | UI 工具操作、探索与候选约束 | 客户端 resources/testing/ui/skills/qa-ui-basic/SKILL.md；断言检查在 qa-ui-assertion/SKILL.md | 客户端内置技能，属于应用维护；不在单次任务中修改它来迁就测试结果 |
-| 功能发现与探索顺序 | [prompt/exploration-control.md](../resources/testing/ui/prompt/exploration-control.md)，由 qa-ui-basic 引用 | 优先探索指定功能，再继续自由探索；新发现不自动扩大正式用例或写入授权 |
+| 功能发现与探索顺序 | [prompt/exploration-control.md](../resources/testing/ui/prompt/exploration-control.md)，由 qa-ui-basic 引用 | 优先探索指定功能，再继续自由探索；按证据核实、去重回写新功能，按项目范围复用；新发现不自动扩大正式用例或写入授权 |
 | 当前观察目标、输入条件、预期及来源 | 当前任务的覆盖清单与各探索 contract | 单次任务 expected 在探索前冻结；不限制后续功能发现 |
-| 审批链、节点、处理人及可选开关 | 实际测试工作区 .pi/skills/qa-approval-workflow/SKILL.md 及其 references | 涉及审批的用例设计先加载，与 qa-ui-case-design 关联生成对应 case |
+| 审批链、节点、处理人及可选开关 | 实际测试工作区 .pi/skills/qa-approval-workflow/SKILL.md 及其 references | 出现明确审批线索时按探索提示词动态加载；属于本次用例设计范围时再与 qa-ui-case-design 关联生成 case |
 
 内置默认提示词在 `src/main/prompts/test-agent-prompt.mjs`，只保留生成规则的技能路由。已保存的自定义提示词和旧会话快照不会被源码更新覆盖；其中若复制了旧规则，需手动改为引用 qa-ui-case-design，避免多处维护不同版本。
 
