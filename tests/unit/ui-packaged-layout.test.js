@@ -32,7 +32,7 @@ test("打包资源布局：共享实现从随包 lib 加载并完成真实回放
   for (const name of ["node_modules", "browsers", "bin", "browser-use"]) {
     await fs.symlink(path.join(repo, "resources/testing/ui", name), path.join(runtimeDir, name), "dir");
   }
-  for (const name of ["verify.cjs", "run.cjs", "execute.cjs", "shared.cjs", "playwright.config.cjs", "playwright-resolve.cjs", "login.cjs"]) {
+  for (const name of ["verify.cjs", "run.cjs", "execute.cjs", "shared.cjs", "playwright.config.cjs", "playwright-resolve.cjs", "login.cjs", "exploration-control.md"]) {
     await fs.copyFile(path.join(repo, "resources/testing/ui", name), path.join(runtimeDir, name));
   }
   copySharedModules(repo, runtimeDir);
