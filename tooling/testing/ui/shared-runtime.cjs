@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const SHARED_MODULES = [
   "capabilities/ui-testing/workflow.mjs",
+  "capabilities/ui-testing/coverage.mjs",
   "capabilities/ui-testing/project-context.mjs",
   "capabilities/ui-testing/login-session.mjs",
   "capabilities/ui-testing/runtime-paths.js",

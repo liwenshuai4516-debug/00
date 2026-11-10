@@ -2,6 +2,10 @@
 
 测试报告是 UI 测试与接口测试共用的结果层：两种执行器写同一份 `qa-report/v1` 摘要，右侧边栏「测试报告」统一聚合展示，Agent 按 `qa-test-report` 技能交付结论。报告内容只读，不重跑、不修改脚本、不改写原始结果；可从右侧栏二次确认删除整份批次目录。
 
+UI 的本轮功能汇总另存 `qa/ui/rounds/<roundId>/<revision>/summary.json` 和 `summary.md`，由 qa_ui_coverage 在核对来源、候选版本与业务预期引用后生成，使用 `qa-ui-coverage/v1`，不混入 `qa-report/v1` 执行批次。主流程先留档范围、持续更新，最后冻结准确版本；报告技能读取该版本交付概览、完整清单和缺项。仅探索/仅候选可直接交付这份汇总，旧回归和 API 不强制补建。结构、生成率算法、历史复用及缺数据处理统一见 [本轮清单规程](../resources/testing/ui/skills/qa-ui-basic/references/coverage.md)。本轮状态不替代执行状态，右侧报告面板未增加本轮汇总入口。
+
+本轮清单接入的验证与已知边界见 [功能清单验收记录](ui-coverage-acceptance.md)。
+
 ## 存放位置
 
 | 类型 | 批次目录 | `kind` |

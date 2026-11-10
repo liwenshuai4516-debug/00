@@ -27,7 +27,7 @@ const contract = Type.Object({
   budget: Type.Object({ maxSteps: Type.Integer({ minimum: 1, maximum: 12 }), timeoutMs: Type.Integer({ minimum: 1000, maximum: 180000 }) }),
 });
 
-// 生产会话与独立检查共用四工具入口。
+// 生产会话与独立检查共用工作流入口。
 export function createUiTestingExtension(runtime) {
   return (pi) => {
     const workflow = createReadOnlyWorkflow(runtime);
@@ -61,6 +61,9 @@ export function createUiTestingExtension(runtime) {
       caseId: string, revision: string, mode: Type.Union([Type.Literal("validate"), Type.Literal("regression")]),
     }), "run");
     register("qa_ui_publish", "读取真实原生报告、版本哈希、初态及业务截图；只有准确版本验证通过才发布。", Type.Object({ caseId: string, revision: string, runId: string }), "publish");
+    register("qa_ui_coverage", "保存本轮功能清单或读取准确版本汇总。save 从 qa/ui/rounds/<roundId>/draft.json 校验来源、候选映射和 baseRevision，保留未生成项并写入不可改写的快照；不探索、不执行。read 读取已保存快照，不以当前资产重算历史。", Type.Object({
+      roundId: string, action: Type.Union([Type.Literal("save"), Type.Literal("read")]), revision: Type.Optional(string),
+    }), "coverage");
     pi.on("session_shutdown", async () => {
       const pending = [...active.values()];
       for (const item of pending) item.controller.abort();

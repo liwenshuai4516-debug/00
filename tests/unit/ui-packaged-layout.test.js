@@ -41,6 +41,7 @@ test("打包资源布局：共享实现从随包 lib 加载并完成真实回放
   const packaged = resolveUiTestingRuntime({ isPackaged: true }, repo, { resourcesPath: resources });
   assert.equal(packaged.directory, runtimeDir);
   assert.ok(existsSync(path.join(runtimeDir, "lib/capabilities/ui-testing/workflow.mjs")), "共享实现必须复制到随包 lib");
+  assert.ok(existsSync(path.join(runtimeDir, "lib/capabilities/ui-testing/coverage.mjs")), "清单统计依赖必须随共享工作流复制");
   assert.equal(require(path.join(runtimeDir, "shared.cjs")).packaged, true, "CLI 必须识别打包布局");
   const upstream = require(path.join(repo, "resources/testing/ui/browser-use/upstream.json"));
   const verified = JSON.parse((await runFile(packaged.node, [path.join(runtimeDir, "verify.cjs")], { encoding: "utf8", timeout: 60_000 })).stdout.trim());

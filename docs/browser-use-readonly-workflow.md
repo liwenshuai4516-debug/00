@@ -4,7 +4,7 @@
 
 ## 已接入的链路
 
-生产扩展工厂为 src/main/capabilities/ui-testing/extension.mjs 的 createUiTestingExtension(runtime)，由 pi-resources.mjs 通过官方 DefaultResourceLoader.extensionFactories 登记。createPiAgent 为每个会话复制运行时，并在官方模型目录刷新后注入该会话的 ModelRuntime；四工具闭包共用此引用。旧开发扩展已删除，不再保留两组入口或 MCP 设置过滤。
+生产扩展工厂为 src/main/capabilities/ui-testing/extension.mjs 的 createUiTestingExtension(runtime)，由 pi-resources.mjs 通过官方 DefaultResourceLoader.extensionFactories 登记。createPiAgent 为每个会话复制运行时，并在官方模型目录刷新后注入该会话的 ModelRuntime；工作流工具闭包共用此引用。旧开发扩展已删除，不再保留两组入口或 MCP 设置过滤。
 
 | 工具 | 行为 |
 | --- | --- |
@@ -12,6 +12,7 @@
 | `qa_ui_save_candidate` | 从任务草稿读取一例一 test 的脚本和唯一 `case.json`，检查语法、字段、固定预期、实际步骤引用和明显违规，冻结新 revision 与 SHA-256 |
 | `qa_ui_run` | `validate` 执行准确候选版本，每个 revision 仅一个定向验证批次；`regression` 仅执行当前正式引用。复用现有 `run.cjs`，每次重新后台登录并创建新回放上下文 |
 | `qa_ui_publish` | 从磁盘核对准确版本、原生单个 passed、退出码、清理、执行前后哈希、快照和报告/截图清单，再原子更新正式引用 |
+| `qa_ui_coverage` | 读取本轮 draft、核对来源和准确候选映射，保存逐版功能汇总；read 仅读冻结版本，不执行测试 |
 
 只读任务必须声明：`mode`（explore/candidate/complete）、目标、角色、可见身份标识、业务预期及 user/rule/baseline 来源、可重新定位的初态、`dataStrategy: "read-only"`、`cleanup: "none"`、完成时可见文本、允许的控件和输入值、明确 provider/model，以及最多 12 步/180 秒的探索预算。`explore` 不准保存候选，`candidate` 不准回放候选。
 
@@ -22,6 +23,8 @@ Python 只暴露 navigate/click/input/select_dropdown/done。动作前按实际�
 后台登录沿用私有临时状态和现有登录进程。公开页无登录表单时跳过凭据提交；验证码/MFA/身份无法确认返回 blocked。角色文本仍须在探索与用例中核对。只支持已验证的 cookie/localStorage；遇到 IndexedDB 状态明确 blocked。Qwen 的内网直连仅在 Python 子进程中按用户已确认的该 provider/model 配置，不改变宿主代理。
 
 ## 文件契约与发布门槛
+
+本轮主流程现为：保存初始范围 → 按目标探索并登记发现 → 保存候选并关联准确版本 → 按原模式验证/发布 → 继续自由探索 → 冻结本轮汇总。只探索/仅候选不创建执行批次，回归已有资产不强制重建清单。目录、格式、转换率与检查项缺口、历史复用及失败收尾统一见 [本轮清单规程](../resources/testing/ui/skills/qa-ui-basic/references/coverage.md)。现有执行报告仍按 runId 保存，功能汇总通过文件链接交付。
 
 用例的业务粒度、独立执行要求、覆盖数量及设置中的规则维护入口见 [UI 用例粒度与规则维护](ui-case-rules.md)。先拆业务目标再冻结探索任务；每个文件一个 test 只是结构约束，不代表独立功能已拆分。
 

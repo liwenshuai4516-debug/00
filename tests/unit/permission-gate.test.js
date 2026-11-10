@@ -70,11 +70,11 @@ test("确认拒绝、无 UI 或确认异常都按失败关闭处理", async () =
 test("完全权限直接放行写入与 UI 工作流，不依赖界面", async () => {
   const { handler, state } = await loadExtension("full-access");
   const noUi = { hasUI: false, ui: {} };
-  for (const toolName of ["bash", "write", "qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish"]) {
+  for (const toolName of ["bash", "write", "qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage"]) {
     assert.equal(await handler({ toolName, input: {} }, noUi), undefined, toolName);
   }
   state.mode = "ask";
-  for (const toolName of ["qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish"]) {
+  for (const toolName of ["qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage"]) {
     assert.equal((await handler({ toolName, input: {} }, noUi)).block, true);
   }
 });

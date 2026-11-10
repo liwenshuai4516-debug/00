@@ -16,6 +16,7 @@ node_modules/
 /qa/ui/recordings/
 /qa/ui/runs/
 /qa/ui/tasks/
+/qa/ui/rounds/
 /qa/ui/.workflow.lock
 /qa/api/runs/
 /.playwright-cli/

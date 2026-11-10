@@ -11,6 +11,7 @@
 | 正式回归与审批测试执行 | [qa-ui-execute/SKILL.md](../resources/testing/ui/skills/qa-ui-execute/SKILL.md) | 正式版本回归；审批任务按项目流程与已确认人员账号映射执行，仍以实际工具能力为前提 |
 | 功能探索提示词 | [prompt/exploration-control.md](../resources/testing/ui/prompt/exploration-control.md) | 统一维护优先探索、自由发现、覆盖维度、审批技能条件加载、功能核实与去重回写及停止规则；当前阶段和独立目标写入 contract.goal |
 | 当前任务的探索约定 | 当前工作区 `qa/ui/tasks/<taskId>/task.json` 的 contract | qa_ui_explore 保存本次约定；不覆盖其他任务或已冻结预期 |
+| 本轮功能清单与转换汇总 | [本轮清单规程](../resources/testing/ui/skills/qa-ui-basic/references/coverage.md) | 主 Agent 通过 qa_ui_coverage 持续保存并冻结 qa/ui/rounds 准确版本；不由 browser-use 写入或计算 |
 | browser-use 提示词加载 | [explore.py](../resources/testing/ui/browser-use/explore.py) | 每次探索按入口相对位置读取 prompt/exploration-control.md，与 goal、冻结 contract 组装为 Agent 的 task |
 | 系统提示词运行日志 | [prompt-diagnostics.mjs](../src/main/resources/prompt-diagnostics.mjs)，由 createPiAgent 绑定 | 每次实际 agent_start 打印当轮有效系统提示词与动态配置，日志副本脱敏；不改写模型输入 |
 | 自动恢复与新对话交接 | [看门狗](agent-watchdog.md) | 按已实现的启用、取消和恢复条件运行，提示词本身不启动看门狗 |

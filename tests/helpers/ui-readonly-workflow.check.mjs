@@ -106,8 +106,16 @@ const call = async (name, params, signal) => {
 const evidence = { scenario, workspace, checks: [], startedAt: new Date().toISOString(), model: `${contract.provider}/${contract.modelId}` };
 try {
   const names = session.getAllTools().filter((item) => item.name.startsWith("qa_ui_")).map((item) => item.name).sort();
-  assert.deepEqual(names, ["qa_ui_explore", "qa_ui_publish", "qa_ui_run", "qa_ui_save_candidate"].sort());
-  evidence.checks.push("官方 SDK 登记四个工具，无旧工具");
+  assert.deepEqual(names, ["qa_ui_explore", "qa_ui_publish", "qa_ui_run", "qa_ui_save_candidate", "qa_ui_coverage"].sort());
+  evidence.checks.push("官方 SDK 登记五个工具，无旧工具");
+  const roundId = "round-sdk";
+  const roundDir = path.join(workspace, "qa/ui/rounds", roundId);
+  await fs.mkdir(roundDir, { recursive: true });
+  await write(path.join(roundDir, "draft.json"), { schema: "qa-ui-round/v1", roundId, baseRevision: null, projectId: "fixture",
+    mode: "complete", goal: "SDK 清单接入检查", budget: "一个目标", status: "active", taskIds: [], features: [] });
+  const coverage = await call("qa_ui_coverage", { roundId, action: "save" });
+  assert.equal(coverage.revision, "0001");
+  assert.equal((await call("qa_ui_coverage", { roundId, action: "read", revision: "0001" })).counts.conversionRate, null);
   const explored = await call("qa_ui_explore", { targetUrl: url, contract });
   assert.equal(explored.status, "completed");
   assert.equal(await fs.stat(path.join(workspace, "qa/data")).catch(() => null), null, "新链路不得创建旧目录");
@@ -174,6 +182,17 @@ test("filter and detail agree", async ({ page }, testInfo) => {
   assert.equal(summary.testCount, 1);
   assert.equal(summary.cleanup, "deleted");
   const published = await call("qa_ui_publish", { ...selection, runId: result.runId });
+  await write(path.join(roundDir, "draft.json"), { schema: "qa-ui-round/v1", roundId, baseRevision: coverage.revision, projectId: "fixture",
+    mode: "complete", goal: "SDK 清单接入检查", budget: "一个目标", status: "completed", stopReason: "受控目标已验证发布", taskIds: [explored.taskId],
+    features: [{ featureId: "detail", modulePath: ["Accounts"], name: "筛选后查看目标详情", role: contract.role,
+      initialState: contract.initialState, branch: "目标详情", confirmation: "confirmed", exploration: "explored", inScope: true, scopeReason: "受控目标",
+      sources: [{ taskId: explored.taskId, path: `qa/ui/tasks/${explored.taskId}/actions.jsonl` }],
+      checks: [{ checkId: "detail-check", goal: contract.expected[0].text, expectedIds: ["filter-detail"], case: selection }] }] });
+  const closedCoverage = await call("qa_ui_coverage", { roundId, action: "save" });
+  assert.equal(closedCoverage.counts.conversionRate, 100);
+  const coverageSnapshot = await read(closedCoverage.summaryFile);
+  assert.equal(coverageSnapshot.mappings[0].validationStatus, "passed");
+  assert.equal(coverageSnapshot.mappings[0].published, true);
   assert.equal(published.status, "verified");
   const assetFile = path.join(workspace, "qa/ui/cases", caseId, "asset.json");
   assert.equal((await read(assetFile)).currentRevision, "0001");

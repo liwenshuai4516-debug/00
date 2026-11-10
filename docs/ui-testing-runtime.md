@@ -14,13 +14,15 @@
 | qa_ui_save_candidate | 检查任务草稿、来源与步骤，冻结准确 revision，不执行 |
 | qa_ui_run | validate 验证候选，regression 仅执行当前正式版本 |
 | qa_ui_publish | 核对真实 passed 结果、版本哈希、证据与清理后更新正式引用 |
+| qa_ui_coverage | 保存本轮功能清单、校验准确候选映射并统计；read 读取已保存版本，不执行测试 |
 
 内置 UI 技能为 qa-ui-basic、qa-ui-assertion、qa-ui-execute，共用报告技能 qa-test-report。旧意图/录制技能及旧 project/login/prepare/finalize 工具已移除；旧平铺资产和录制日志不迁移、不作为新版来源。已有会话需重新加载资源或新建会话才使用更新入口。
 
 | 位置 | 职责 |
 | --- | --- |
-| src/main/capabilities/ui-testing/extension.mjs | 四工具、技能发现、关闭时取消并等待任务收尾 |
+| src/main/capabilities/ui-testing/extension.mjs | 五工具、技能发现、关闭时取消并等待任务收尾 |
 | 同目录 workflow.mjs | 候选、验证、发布、正式回归及工作区锁 |
+| 同目录 coverage.mjs | 本轮范围、功能与检查项留档、准确候选映射及确定性统计 |
 | 同目录 project-context.mjs、login-session.mjs | 项目边界、后台登录、私有临时状态 |
 | resources/testing/ui/browser-use/ | 固定 Python/browser-use 探索及协议 |
 | resources/testing/ui/run.cjs、playwright.config.cjs | 独立回放、取消、原生报告、快照和清单 |
@@ -49,10 +51,17 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 - qa/ui/tasks/<taskId>/：任务约定、动作轨迹、必要证据及 drafts/<caseId>/case.spec.cjs、case.json。
 - qa/ui/cases/<caseId>/：asset.json、revisions/0001/ 等冻结版本；currentRevision 仅指向验证通过的正式版本。
 - qa/ui/runs/<runId>/：原生 JSON/HTML、summary、源码快照、截图与 manifest。
+- qa/ui/rounds/<roundId>/：本轮 draft 与逐版 summary.json/summary.md；跨探索任务和执行批次的功能明细，不作为执行结果。
 
 一例一 test，业务断言覆盖固定预期并引用真实成功步骤。先核对独立初态、附 qa-initial-state PNG，再断言业务结果并附 qa-business-result PNG；附件必须保存为可核对的文件。静态检查不代表执行通过。validate 只允许完整测试任务，每个 revision 仅一次定向验证；只有实际 passed、退出 0、哈希一致、必要证据齐全且清理成功才发布。回归不修改资产。
 
 同工作区跨实例串行；取消直接交给原任务并等待终值。首次异常停止依赖链，保留任务和日志；明确修复前置条件后才允许一次恢复验证。收尾未知保留锁和现场，不自行删锁、换模型或新建等价任务绕过。
+
+## 本轮功能清单与候选转换
+
+探索前保存本轮范围，探索和候选生成中持续登记，收尾保存 completed/partial 准确版本；保留优先功能、自由发现、受阻与待确认项。工具沿用共享锁及 JSON 保存机制，候选版本和预期引用均从现有资产核对。结构、调用、统计和停止规则统一见 [本轮清单规程](../resources/testing/ui/skills/qa-ui-basic/references/coverage.md)，主流程见 qa-ui-basic。生成、历史复用、独立验证和发布分列；单功能至少一例不表示全部检查项完成。
+
+清单快照通过文件链接交付，右侧报告面板继续只显示执行批次。仅探索、仅生成候选不制造 run；已有回归无需补建探索清单。功能确认与业务断言是否相符仍需 Agent 按来源核对，工具校验不能代替语义评审。运行资源准备同步复制 coverage.mjs，不手动修改生成的 lib。
 
 ## 正式版本 CLI
 
@@ -69,6 +78,8 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 UI 报告只接收 qa-report/v1、kind=ui、workflow=browser-use-playwright 和有效版本来源；API 报告保持兼容。列表及逐例详情每页 50 条，全批失败摘要记录总数及前 5 条，不因分页改统计。删除在共享锁内核对活动任务与有效用例来源/验证引用，必要来源不可删。细节见 [测试报告](test-reports.md)。
 
 ## 验证边界
+
+本轮清单接入的 2026-11-10 定向结果及环境异常恢复见 [功能清单验收记录](ui-coverage-acceptance.md)。以下原有验收记录不扩大为新清单规则的真实模型行为验收。
 
 本轮生产入口、项目上下文、提示词和后台登录定向测试 9 项通过、无失败或跳过。真实生产工厂创建临时官方 SDK 会话，确认四工具及四技能只登记一次、禁用和第三方 MCP 替换语义不变；离线探索协议夹具连接真实本地 Chromium，验证候选、发布、正式回归、拒绝边界、取消与清理。未读取真实认证，未请求模型。
 

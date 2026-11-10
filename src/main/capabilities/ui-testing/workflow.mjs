@@ -7,6 +7,7 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveProject, readCredentials } from "./project-context.mjs";
 import { openLogin } from "./login-session.mjs";
+import { recordCoverage } from "./coverage.mjs";
 
 const require = createRequire(import.meta.url);
 const workflow = "browser-use-playwright";
@@ -396,6 +397,11 @@ export function createReadOnlyWorkflow(runtime) {
   }
 
   return {
+    async coverage(cwd, params, signal) {
+      return exclusive(cwd, (root) => recordCoverage(root, params, signal, {
+        id, directory, fileAt, writeJson, boundTask, revision,
+      }));
+    },
     async explore(cwd, params, signal, onEvent = () => {}) {
       validateContract(params.contract);
       return exclusive(cwd, async (root) => {

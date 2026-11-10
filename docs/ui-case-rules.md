@@ -12,6 +12,7 @@
 | UI 工具操作、探索与候选约束 | 客户端 resources/testing/ui/skills/qa-ui-basic/SKILL.md；断言检查在 qa-ui-assertion/SKILL.md | 客户端内置技能，属于应用维护；不在单次任务中修改它来迁就测试结果 |
 | 功能发现与探索顺序 | [prompt/exploration-control.md](../resources/testing/ui/prompt/exploration-control.md)，由 qa-ui-basic 引用 | 优先探索指定功能，再继续自由探索；按证据核实、去重回写新功能，按项目范围复用；新发现不自动扩大正式用例或写入授权 |
 | 当前观察目标、输入条件、预期及来源 | 当前任务的覆盖清单与各探索 contract | 单次任务 expected 在探索前冻结；不限制后续功能发现 |
+| 本轮清单、功能与检查项编号、候选映射和转换统计 | [qa-ui-basic/references/coverage.md](../resources/testing/ui/skills/qa-ui-basic/references/coverage.md) | 覆盖清单持久化为 qa/ui/rounds 准确版本；qa_ui_coverage 校验统计，语义覆盖仍按用例设计规则核对 |
 | 审批链、节点、处理人及可选开关 | 实际测试工作区 .pi/skills/qa-approval-workflow/SKILL.md 及其 references | 出现明确审批线索时按探索提示词动态加载；属于本次用例设计范围时再与 qa-ui-case-design 关联生成 case |
 
 内置默认提示词在 `src/main/prompts/test-agent-prompt.mjs`，只保留生成规则的技能路由。已保存的自定义提示词和旧会话快照不会被源码更新覆盖；其中若复制了旧规则，需手动改为引用 qa-ui-case-design，避免多处维护不同版本。
