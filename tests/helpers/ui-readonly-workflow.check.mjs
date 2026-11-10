@@ -106,8 +106,9 @@ const call = async (name, params, signal) => {
 const evidence = { scenario, workspace, checks: [], startedAt: new Date().toISOString(), model: `${contract.provider}/${contract.modelId}` };
 try {
   const names = session.getAllTools().filter((item) => item.name.startsWith("qa_ui_")).map((item) => item.name).sort();
-  assert.deepEqual(names, ["qa_ui_explore", "qa_ui_publish", "qa_ui_run", "qa_ui_save_candidate", "qa_ui_coverage"].sort());
-  evidence.checks.push("官方 SDK 登记五个工具，无旧工具");
+  assert.deepEqual(names, ["qa_ui_explore", "qa_ui_publish", "qa_ui_run", "qa_ui_save_candidate", "qa_ui_coverage", "qa_ui_approval"].sort());
+  evidence.checks.push("官方 SDK 登记六个工具，无旧工具");
+  assert.match((await call("qa_ui_approval", { operation: "instructions" })).instructions, /审批探索与完整链测试/);
   const roundId = "round-sdk";
   const roundDir = path.join(workspace, "qa/ui/rounds", roundId);
   await fs.mkdir(roundDir, { recursive: true });

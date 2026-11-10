@@ -355,3 +355,11 @@ contract.writeAuthorization = { kind: "user" | "rule" | "baseline", reference: "
 | 原因与证据 | 首次：事件记录显示模型先被静态检查拒绝，读取实现后改稿并成功保存、验证、发布；包装脚本仍按“本阶段任何工具错误即失败”断言退出。第二次：变体页面移除了 `[data-testid="identity"]`，后台登录按约定要求该身份选择器，返回 `blocked：后台认证未通过`，与模型和 Playwright 无关。另有一次凭据锁写入被沙箱拒绝（`EPERM ... auth.json.lock`），未发出模型请求，已按授权在进程内使用官方认证后重试 |
 | 已执行处置 | 首次失败后读取真实产物和事件，确认是包装断言错误；改为记录静态拒绝、以最终 revision/验证/发布事实判定，仅在明确前置条件改变后恢复。第二次失败后只读检查登录契约，确认身份选择器必须保留，改为仅延迟详情响应并保持页面身份与业务文本不变；随后一次修复验收通过。未重放首次候选模型请求，未重复失败的登录/执行批次 |
 | 影响与恢复 | 候选阶段的产品动作在首次运行中已完成并发布，失败批次与包装摘要保留；补丁验收在修正后独立通过。无真实业务写入、无凭据输出、无结果未知操作；后续如需单次包装全程通过，可重新执行 `all`，但不应把本次两次修正视为产品失败 |
+
+## 2026-11-10 审批专用分支
+
+原 browser-use 只读协议保持。新增 qa_ui_approval：条件加载独立审批提示词 → inspect 人员与页面 → execute 单节点并核验 → 终态后 candidate → 既有候选冻结、独立验证、发布与回归 → 主线清单/报告收尾。节点异常进入原 flowId 的 reconcile，只读确认后再决定下一节点；收尾未知保留互斥锁，不重交。来源、输入输出、数据残留、支持的认证及未验收边界以 [运行说明](ui-testing-runtime.md) 和 [审批提示词](../resources/testing/ui/prompt/approval-control.md) 为准。历史“多角色不支持”说明仅描述当时版本，不作为当前能力结论。
+
+本次定向验证命令：`node --test tests/unit/ui-approval.test.js`，以及 `ui-readonly-workflow`、`ui-testing-runtime`、`ui-packaged-layout`、`ui-coverage`、`ui-project-context`、`permission-gate`、`prompt-content`、`ui-write-workflow`、`ui-residual-workflow`、`ui-repair-workflow` 对应单元检查（29 项），均通过；最后对审批、SDK 与模拟随包布局三项补充检查也通过。四份受影响技能通过 quick_validate。没有请求真实模型、读取真实认证或执行业务审批。
+
+验证中先后遇到本机端口权限 EPERM、临时动态资源缺少 bridge.cjs、候选脚本 test.setTimeout 与既有静态规则冲突，以及夹具误从 manifest 读取 summary 字段。各次均停下该依赖链并定位：端口检查经审批获准后继续；补齐隔离资源；将审批超时放回执行配置；修正夹具读取位置。修复后只对相关链路验证，失败现场保留在系统临时目录，不涉及真实业务写入。

@@ -64,6 +64,29 @@ export function createUiTestingExtension(runtime) {
     register("qa_ui_coverage", "保存本轮功能清单或读取准确版本汇总。save 从 qa/ui/rounds/<roundId>/draft.json 校验来源、候选映射和 baseRevision，保留未生成项并写入不可改写的快照；不探索、不执行。read 读取已保存快照，不以当前资产重算历史。", Type.Object({
       roundId: string, action: Type.Union([Type.Literal("save"), Type.Literal("read")]), revision: Type.Optional(string),
     }), "coverage");
+    register("qa_ui_approval", "审批专用分支。先 instructions 动态读取 approval-control.md，再 inspect 观察真实控件；execute 按人员隔离执行一个声明节点；reconcile 只读核对结果不明的原节点；candidate 根据完整终态轨迹准备独立 E2E 草稿。凭据只由宿主处理。", Type.Object({
+      operation: Type.Union(["instructions", "inspect", "execute", "reconcile", "candidate"].map(value => Type.Literal(value))),
+      flowId: Type.Optional(string), targetUrl: Type.Optional(string), projectId: Type.Optional(string),
+      config: Type.Optional(Type.Object({
+        source: string, residualAuthorization: Type.Object({ kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string }), record: Type.Object({ selector: string, text: string, kind: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("value")])) }),
+        actors: Type.Array(Type.Object({ id: string, account: string, source: string,
+          credentialSource: Type.Union([Type.Literal("project"), Type.Literal("test-password")]),
+          identity: Type.Object({ selector: string, text: string }),
+          login: Type.Optional(Type.Object({ account: Type.Optional(string), password: Type.Optional(string), submit: Type.Optional(string),
+            tenant: Type.Optional(Type.Object({ selector: string, confirm: string })) })),
+        }), { minItems: 1 }),
+      })),
+      step: Type.Optional(Type.Object({
+        actorId: string, url: string, id: Type.Optional(string), name: Type.Optional(string), source: Type.Optional(string),
+        before: Type.Optional(Type.Array(Type.Object({ selector: string, text: string, kind: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("value")])) }))),
+        after: Type.Optional(Type.Array(Type.Object({ selector: string, text: string, kind: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("value")])) }))),
+        actions: Type.Optional(Type.Array(Type.Object({ kind: Type.Union(["click", "fill", "select", "upload"].map(value => Type.Literal(value))), selector: string, value: Type.Optional(string), file: Type.Optional(string) }))),
+        capture: Type.Optional(Type.Object({ name: string, query: Type.Optional(string), selector: Type.Optional(string), attribute: Type.Optional(string) })),
+        createsRecord: Type.Optional(Type.Boolean()), terminal: Type.Optional(Type.Boolean()),
+      })), previousStepId: Type.Optional(string),
+      authorization: Type.Optional(Type.Object({ kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string })),
+      caseId: Type.Optional(string), title: Type.Optional(string), modulePath: Type.Optional(Type.Array(string)), contract: Type.Optional(contract),
+    }), "approval");
     pi.on("session_shutdown", async () => {
       const pending = [...active.values()];
       for (const item of pending) item.controller.abort();

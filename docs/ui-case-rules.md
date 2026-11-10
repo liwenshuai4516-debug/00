@@ -24,3 +24,7 @@ UI 扩展通过官方 resources_discover 登记该技能，由 Pi 处理资源�
 也可以在应用新对话中使用 `/skill:qa-ui-case-design` 并附上设计目标。客户端更新后新建对话以加载新技能目录；规则修改后的当前会话应明确要求重新读取文件，不依赖此前加载的旧正文。加载和结构验证不能代替真实模型行为或业务用例回放验收。
 
 审批技能属于项目资源，不随内置 UI 技能分发；跨项目使用需在实际工作区安装完整 qa-approval-workflow 目录（含 references），并按 Pi 项目信任规则加载。生成规则按技能名称关联，不新增客户端私有扫描或绕过信任。未安装时保留审批待确认项，不能宣称已经读取该流程；已设计但不具备执行条件的审批 case 不计为可执行正式资产。
+
+## 审批执行入口更新
+
+出现审批线索时先由 qa_ui_approval instructions 动态读取 [审批提示词](../resources/testing/ui/prompt/approval-control.md)，再加载被测工作区的 qa-approval-workflow。业务事实由项目技能提供，节点拆分仍由 qa-ui-case-design 维护；执行授权与人员映射不再在多个技能重复维护。新工具支持按人员隔离执行完整链，终态及成功轨迹齐全后自动准备一条 E2E 草稿，随后沿 save_candidate/validate/publish 流程处理。单节点、权限和反向分支保持独立检查项，缺数据时保留执行缺口；一条完整链不能折算成多个节点用例。实际步骤、产物和失败规则见 [运行说明](ui-testing-runtime.md)。

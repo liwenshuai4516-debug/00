@@ -70,11 +70,11 @@ test("确认拒绝、无 UI 或确认异常都按失败关闭处理", async () =
 test("完全权限直接放行写入与 UI 工作流，不依赖界面", async () => {
   const { handler, state } = await loadExtension("full-access");
   const noUi = { hasUI: false, ui: {} };
-  for (const toolName of ["bash", "write", "qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage"]) {
+  for (const toolName of ["bash", "write", "qa_ui_approval", "qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage"]) {
     assert.equal(await handler({ toolName, input: {} }, noUi), undefined, toolName);
   }
   state.mode = "ask";
-  for (const toolName of ["qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage"]) {
+  for (const toolName of ["qa_ui_approval", "qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage"]) {
     assert.equal((await handler({ toolName, input: {} }, noUi)).block, true);
   }
 });
@@ -135,4 +135,14 @@ test("门禁把当前会话与工作区传给按会话/项目解析", async () =
   await handler({ toolName: "bash", input: {} }, ctx);
   assert.deepEqual(calls.at(-1), { sessionId: "session-a", workspace: "/workspace/project-a" });
   assert.match(event.systemPromptOptions.sections["app-permission"], /只读/);
+});
+
+test("审批专用工具仍遵循只读及每次确认门禁", async () => {
+  const { handler, state } = await loadExtension("read-only");
+  const event = { toolName: "qa_ui_approval", input: { operation: "execute" } };
+  assert.equal((await handler(event, { hasUI: false })).block, true);
+  state.mode = "ask";
+  let confirmations = 0;
+  assert.equal(await handler(event, { hasUI: true, ui: { confirm: async () => { confirmations++; return true; } } }), undefined);
+  assert.equal(confirmations, 1);
 });

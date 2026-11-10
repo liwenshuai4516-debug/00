@@ -8,7 +8,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { resolveUiTestingRuntime } = require("../../src/main/capabilities/ui-testing/runtime-paths.js");
 
-test("生产入口：官方 SDK 五工具、版本回放发布与拒绝边界（离线模型协议夹具）", async (t) => {
+test("生产入口：官方 SDK 六工具、版本回放发布与拒绝边界（离线模型协议夹具）", async (t) => {
   const runtime = resolveUiTestingRuntime({ isPackaged: false }, path.resolve(__dirname, "../.."));
   if (![runtime.node, runtime.testCli, runtime.browsers].every(existsSync) || process.platform === "win32") {
     t.skip("需要已准备的内置 Chromium 和 Node 环境。"); return;

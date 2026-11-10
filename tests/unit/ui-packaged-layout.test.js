@@ -32,7 +32,7 @@ test("打包资源布局：共享实现从随包 lib 加载并完成真实回放
   for (const name of ["node_modules", "browsers", "bin", "browser-use"]) {
     await fs.symlink(path.join(repo, "resources/testing/ui", name), path.join(runtimeDir, name), "dir");
   }
-  for (const name of ["verify.cjs", "run.cjs", "execute.cjs", "shared.cjs", "playwright.config.cjs", "playwright-resolve.cjs", "login.cjs"]) {
+  for (const name of ["verify.cjs", "run.cjs", "execute.cjs", "shared.cjs", "playwright.config.cjs", "playwright-resolve.cjs", "login.cjs", "approval-browser.cjs"]) {
     await fs.copyFile(path.join(repo, "resources/testing/ui", name), path.join(runtimeDir, name));
   }
   await fs.cp(path.join(repo, "resources/testing/ui/prompt"), path.join(runtimeDir, "prompt"), { recursive: true });
@@ -42,7 +42,14 @@ test("打包资源布局：共享实现从随包 lib 加载并完成真实回放
   assert.equal(packaged.directory, runtimeDir);
   assert.ok(existsSync(path.join(runtimeDir, "lib/capabilities/ui-testing/workflow.mjs")), "共享实现必须复制到随包 lib");
   assert.ok(existsSync(path.join(runtimeDir, "lib/capabilities/ui-testing/coverage.mjs")), "清单统计依赖必须随共享工作流复制");
+  assert.ok(existsSync(path.join(runtimeDir, "lib/capabilities/ui-testing/approval.mjs")));
+  assert.ok(existsSync(path.join(runtimeDir, "prompt/approval-control.md")));
   assert.equal(require(path.join(runtimeDir, "shared.cjs")).packaged, true, "CLI 必须识别打包布局");
+  const approvalEntry = path.join(runtimeDir, "lib/capabilities/ui-testing/workflow.mjs");
+  const approvalWorkspace = path.join(base, "approval-workspace"); await fs.mkdir(approvalWorkspace);
+  const loadedApproval = await runFile(packaged.node, ["--input-type=module", "-e",
+    `const {createReadOnlyWorkflow}=await import(${JSON.stringify(approvalEntry)}); const result=await createReadOnlyWorkflow(${JSON.stringify(packaged)}).approval(${JSON.stringify(approvalWorkspace)}, {operation:"instructions"}); process.stdout.write(result.promptFile);`]);
+  assert.equal(loadedApproval.stdout, path.join(runtimeDir, "prompt/approval-control.md"));
   const upstream = require(path.join(repo, "resources/testing/ui/browser-use/upstream.json"));
   const verified = JSON.parse((await runFile(packaged.node, [path.join(runtimeDir, "verify.cjs")], { encoding: "utf8", timeout: 60_000 })).stdout.trim());
   assert.equal(verified.browserUse, upstream.version);

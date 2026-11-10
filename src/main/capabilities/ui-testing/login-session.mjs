@@ -37,6 +37,7 @@ export async function openLogin(runtime, targetUrl, signal) {
     execArgv: [],
     env: {
       ...process.env,
+      QA_UI_TEST_PASSWORD: "",
       NODE_PATH: runtime.modules,
       PLAYWRIGHT_BROWSERS_PATH: runtime.browsers,
     },

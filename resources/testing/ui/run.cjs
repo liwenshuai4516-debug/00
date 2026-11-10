@@ -68,7 +68,7 @@ async function run(taskFile) {
     versions.playwright = require("@playwright/test/package.json").version;
     await writeJson(taskFile, { ...task, status: "running", startedAt });
     await fs.mkdir(path.join(task.runDir, "sources"));
-    for (const file of [...task.caseFiles, ...(task.assetFiles ?? []), task.config, path.join(__dirname, "playwright-resolve.cjs"), __filename]) {
+    for (const file of [...task.caseFiles, ...(task.assetFiles ?? []), ...(task.approvalFiles ?? []), ...(task.approvalRunner ? [task.approvalRunner] : []), task.config, path.join(__dirname, "playwright-resolve.cjs"), __filename]) {
       const data = await fs.readFile(file);
       versions.files.push({ path: file, sha256: digest(data) });
       await fs.writeFile(path.join(task.runDir, "sources", `${versions.files.length}-${path.basename(file)}`), data);
@@ -88,10 +88,12 @@ async function run(taskFile) {
         child = spawn(process.execPath, testArgs, {
           cwd: task.workspace,
           env: {
-            ...process.env, NODE_PATH: task.modules, PLAYWRIGHT_BROWSERS_PATH: task.browsers,
+            ...process.env, QA_UI_TEST_PASSWORD: "", NODE_PATH: task.modules, PLAYWRIGHT_BROWSERS_PATH: task.browsers,
             QA_TARGET_URL: task.targetUrl, QA_RUN_ID: task.runId, QA_UI_CASES_DIR: task.caseDir,
             QA_UI_OUTPUT_DIR: task.runDir, QA_UI_PHASE: "run",
             QA_UI_STORAGE_STATE: task.authFile || "", QA_UI_HEADED: "0",
+            QA_UI_APPROVAL_STATES: task.approvalStatesFile || "", QA_UI_APPROVAL_RUNNER: task.approvalRunner || "",
+            QA_UI_WORKSPACE: task.workspace,
           },
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -186,7 +188,7 @@ async function run(taskFile) {
     project: task.project ?? null, workspace: task.workspace, dataDir: task.dataDir ?? null,
     caseIds: task.caseIds, testCount: report ? tests.length : null, counts,
     exitCode, cleanup, problems, versions, tests,
-    tracePolicy: task.authFile ? "disabled-for-private-auth" : "steps-without-dom-network-sources",
+    tracePolicy: (task.authFile || task.approvalStatesFile) ? "disabled-for-private-auth" : "steps-without-dom-network-sources",
     limits: "版本清单覆盖所选脚本、配置和执行器，不覆盖导入依赖闭包；被测部署版本未知。",
   };
   await writeJson(task.summaryFile, summary);
@@ -197,14 +199,14 @@ async function run(taskFile) {
     `运行环境：Node ${versions.node}；Playwright ${versions.playwright ?? "未知"}。`,
     ...(task.parentRunId ? [`修复来源：${task.parentRunId}${task.patchSummary ? `；补丁：${task.patchSummary}` : ""}。`] : []),
     ...(task.dataStrategy ? [`数据策略：${task.dataStrategy}；清理：${task.dataCleanup ?? "未声明"}${task.writeAuthorization ? `；写授权：${task.writeAuthorization.kind} · ${task.writeAuthorization.reference}` : ""}${task.residualAuthorization ? `；残留授权：${task.residualAuthorization.kind} · ${task.residualAuthorization.reference}` : ""}。`] : []),
-    task.authFile ? "本批次关闭 trace，避免归档私有登录态。" : "trace 保留步骤，不含 DOM、网络快照和源码。", "",
+    (task.authFile || task.approvalStatesFile) ? "本批次关闭 trace，避免归档私有登录态。" : "trace 保留步骤，不含 DOM、网络快照和源码。", "",
     "| 用例 | 状态 | 耗时（毫秒） |", "| --- | --- | --- |",
     ...tests.map((test) => `| ${test.title.replaceAll("|", "\\|").replaceAll("\n", " ")} | ${test.status} | ${test.durationMs ?? "未知"} |`),
     "", ...problems.map((problem) => `- ${problem}`), "", summary.limits,
     "", "原生报告：results.json、html/index.html；版本和逐例证据引用：summary.json；文件摘要：manifest.json。", "",
   ].join("\n"));
   await writeJson(task.manifestFile, { runId: task.runId, files: await inventory(task.runDir) });
-  await writeJson(taskFile, { ...task, authFile: undefined, authDirectory: undefined, status: summary.status, startedAt, finishedAt: summary.finishedAt });
+  await writeJson(taskFile, { ...task, authFile: undefined, authDirectory: undefined, approvalStatesFile: undefined, status: summary.status, startedAt, finishedAt: summary.finishedAt });
   process.stdout.write(JSON.stringify({ status: summary.status, summaryFile: task.summaryFile, cleanup }) + "\n");
   process.exitCode = passed ? 0 : 1;
 }

@@ -1,6 +1,6 @@
 # 客户端内置 UI 测试
 
-2026-11-09，生产会话已切换到 browser-use 探索、Playwright 独立验证与版本发布链路。默认只读；新增、编辑、删除等写操作仅在用户明确授权的隔离写任务中支持，要求 `QA_RUN_ID` 唯一数据、用例内清理和 `qa-cleanup` 证据，未获授权不能执行。只读与隔离写用例都支持修复任务与父批次关联：不启动探索浏览器，最多两个补丁，业务预期、步骤与写授权冻结。多角色、真实业务写操作与安装包验收不在本阶段范围。2026-11-09 11:03，真实模型（qwen3.8-flash-next）在受控本地页面完成探索→候选→定向验证→发布→正式回归整链；同日又完成真实模型自行生成候选脚本，以及真实失败回归后生成最小补丁（revision 0002）并通过定向验证、发布和正式回归。真实业务站点、跨 frame／IndexedDB、多角色、自动修复决策与安装包仍未验收；真实业务写操作仅完成采购合同草稿创建/查询的授权验收，且因当前版本无删除入口采用已声明残留（每次回归新增草稿）；提交审批、编辑、删除与批量业务写入仍未验收。详细证据、边界和历史异常见 [只读闭环](browser-use-readonly-workflow.md)。
+2026-11-09，生产会话已切换到 browser-use 探索、Playwright 独立验证与版本发布链路。默认只读；新增、编辑、删除等写操作仅在用户明确授权的隔离写任务中支持，要求 `QA_RUN_ID` 唯一数据、用例内清理和 `qa-cleanup` 证据，未获授权不能执行。只读与隔离写用例都支持修复任务与父批次关联：不启动探索浏览器，最多两个补丁，业务预期、步骤与写授权冻结。原阶段未包含多角色；现已新增下文审批专用分支，真实审批与安装包仍须单独验收。2026-11-09 11:03，真实模型（qwen3.8-flash-next）在受控本地页面完成探索→候选→定向验证→发布→正式回归整链；同日又完成真实模型自行生成候选脚本，以及真实失败回归后生成最小补丁（revision 0002）并通过定向验证、发布和正式回归。真实业务站点、跨 frame／IndexedDB、多角色、自动修复决策与安装包仍未验收；真实业务写操作仅完成采购合同草稿创建/查询的授权验收，且因当前版本无删除入口采用已声明残留（每次回归新增草稿）；提交审批、编辑、删除与批量业务写入仍未验收。详细证据、边界和历史异常见 [只读闭环](browser-use-readonly-workflow.md)。
 
 ## 入口和资源
 
@@ -14,13 +14,14 @@
 | qa_ui_save_candidate | 检查任务草稿、来源与步骤，冻结准确 revision，不执行 |
 | qa_ui_run | validate 验证候选，regression 仅执行当前正式版本 |
 | qa_ui_publish | 核对真实 passed 结果、版本哈希、证据与清理后更新正式引用 |
+| qa_ui_approval | 按需读取审批提示词、隔离账号观察、逐节点执行、结果核对及完整链候选草稿 |
 | qa_ui_coverage | 保存本轮功能清单、校验准确候选映射并统计；read 读取已保存版本，不执行测试 |
 
 内置 UI 技能为 qa-ui-basic、qa-ui-assertion、qa-ui-execute，共用报告技能 qa-test-report。旧意图/录制技能及旧 project/login/prepare/finalize 工具已移除；旧平铺资产和录制日志不迁移、不作为新版来源。已有会话需重新加载资源或新建会话才使用更新入口。
 
 | 位置 | 职责 |
 | --- | --- |
-| src/main/capabilities/ui-testing/extension.mjs | 五工具、技能发现、关闭时取消并等待任务收尾 |
+| src/main/capabilities/ui-testing/extension.mjs | 六工具、技能发现、关闭时取消并等待任务收尾 |
 | 同目录 workflow.mjs | 候选、验证、发布、正式回归及工作区锁 |
 | 同目录 coverage.mjs | 本轮范围、功能与检查项留档、准确候选映射及确定性统计 |
 | 同目录 project-context.mjs、login-session.mjs | 项目边界、后台登录、私有临时状态 |
@@ -42,7 +43,7 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 
 项目配置仍在客户端 config/projects.local.json，见 [项目前置数据](project-data.md)。按 origin 和完整路径段匹配，最长范围优先；同等候选须明确项目。产物写当前会话真实工作区 qa/ui，不根据工作区名称猜系统。凭据由后端使用，不返回模型或写入脚本。
 
-探索提示词还约定主 Agent 在明确审批线索出现时动态加载项目 qa-approval-workflow，普通功能不预加载；browser-use 只报告线索，由主 Agent 将适用的只读要点及来源交给后续任务。成功且清理确认后按证据去重，并回写通用覆盖项或带 projectId 的专属功能索引，核实过程与变更依据保存在原任务目录 discoveries.md；回写失败保留待处理项。这是提示词执行约定，qa_ui_explore 未新增自动回写服务、技能安装、可写运行副本或审批执行能力；真实模型的条件加载、持续回写及安装包可写性仍未验收，详细规则只在探索提示词维护。
+探索提示词还约定主 Agent 在明确审批线索出现时动态加载项目 qa-approval-workflow，普通功能不预加载；browser-use 只报告线索，由主 Agent 将适用的只读要点及来源交给后续任务。成功且清理确认后按证据去重，并回写通用覆盖项或带 projectId 的专属功能索引，核实过程与变更依据保存在原任务目录 discoveries.md；回写失败保留待处理项。功能回写是提示词执行约定，qa_ui_explore 未新增自动回写服务、技能安装或可写运行副本；审批执行由独立 qa_ui_approval 承担；真实模型的条件加载、持续回写及安装包可写性仍未验收，详细规则只在探索提示词维护。
 
 自动登录仅后台执行一次。公开页不提交凭据；验证码/MFA、跨域认证、未知表单、登录失败或身份无法确认时停止，无人工接管窗口。已验证 cookie/localStorage 交接，IndexedDB 状态尚不支持。每次回放创建独立上下文并核对身份和初态，结束删除私有状态。
 
@@ -63,13 +64,31 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 
 清单快照通过文件链接交付，右侧报告面板继续只显示执行批次。仅探索、仅生成候选不制造 run；已有回归无需补建探索清单。功能确认与业务断言是否相符仍需 Agent 按来源核对，工具校验不能代替语义评审。运行资源准备同步复制 coverage.mjs，不手动修改生成的 lib。
 
-## 正式版本 CLI
+## 审批执行边界
 
-审批测试的提示词授权、人员账号映射、逐节点核验与异常停止统一维护在 [qa-ui-execute 的审批测试执行](../resources/testing/ui/skills/qa-ui-execute/SKILL.md#审批测试执行)。测试任务包含审批时，允许依据项目 qa-approval-workflow 的流程人员信息及已确认账号执行；例如实际启用并到达董事长审核节点后，使用用户明确指定的账号。普通只读回归不触发审批操作。此为提示词执行规则，当前 CLI/qa_ui_run 仍只使用项目配置的一套账号，没有动态选人或多角色调度参数；能力不足须报告已授权但执行受阻。本次未新增运行时账号切换或审批实现，也未进行真实审批验收。
+审批规则统一维护在 [审批提示词](../resources/testing/ui/prompt/approval-control.md)。主线仅在明确审批要求或发现审批线索时调用 `qa_ui_approval instructions` 动态读取该文件，再读取实际测试工作区已登记的 qa-approval-workflow 及所需资料；普通功能不预加载。旧项目资料中的历史工具说明不覆盖当前契约。
+
+| 阶段 | 实际入口与产物 | 继续条件 |
+| --- | --- | --- |
+| 条件加载 | qa_ui_approval instructions → 当前运行资源 prompt/approval-control.md | 工具、文件及项目流程事实齐全；普通功能跳过 |
+| 人员观察 | inspect → flow.json 与独立身份截图/真实控件 | 项目归属、身份核验、人员映射与残留约定成立 |
+| 节点执行 | execute → 意图、成功动作轨迹、前后截图及变量 | 引用上一已确认节点，核对同记录/初态，按授权执行一次并验证 after |
+| 异常核对 | reconcile → 原节点只读核对证据 | 只确认 record/after，不重放；收尾未知保留锁 |
+| 完整链草稿 | candidate → task.json 与 drafts/<caseId> | 从唯一新记录开始、全部节点真实动作完整、确认终态；预期与 after 来源匹配 |
+| 候选及独立回放 | save_candidate → validate → passed 才 publish；按范围 regression | 复用原版本/报告链，每批创建独立记录、多账号隔离、附件哈希冻结 |
+| 主线收尾 | 回到本轮清单与 qa-test-report | 分列节点证据和正式 run，保留受阻项、记录残留与生成率 |
+
+多账号凭据沿用项目已配置账号；已确认共用测试密码的其他账号可由宿主 QA_UI_TEST_PASSWORD 提供，不读取 .env 给模型、不修改全局项目账号，不支持每人不同密码的通用凭据库。登录选择器与可选租户选择由真实页面证据提供；认证、验证码/MFA、跨站或身份核验失败停止依赖链。每节点新上下文，登录态仅私有临时文件/IPC，回放关闭 trace。工具支持稳定定位器的 click/fill/select/upload，不代表任意前端控件均已验收。
+
+当前完整链采用显式 residual 授权：每次探索、验证或回归都创建专属记录并留下残留，不能报告为自动清理。候选及正式版本冻结 approvalPlan；修复任务继承该计划。完整链自动准备一条 E2E，独立节点/反向分支仍按用例设计规程设计，不能用 E2E 数量代替全分支覆盖。`qa/ui/approvals/` 是工作区运行产物，已忽略。运行资源准备复制 approval.mjs，approval-browser.cjs 和 prompt 与运行资源同目录发布，不直接编辑生成 lib。
+
+验证结果：2026-11-10，新增审批整链检查通过，覆盖三账号隔离、真实上传、完整链候选/验证/发布/回归、重复节点拒绝、错误身份拒绝、附件变动拒绝、未知结果核对、取消及未知创建恢复；原主线相关 29 项定向检查通过，无失败或跳过，后续补充的 SDK 实际调用与随包提示词路径检查通过。四份受影响技能的格式校验通过。不请求模型、不使用真实用户认证、不进行真实审批。真实业务流程、不同密码人员、验证码、复杂租户页面、真实安装包及跨平台仍未验收。
+
+## 正式版本 CLI
 
 运行 resources/testing/ui/bin/node resources/testing/ui/execute.cjs --project pms --cases caseA,caseB。
 
---project 接受项目编号或唯一名称；配置默认 config/projects.local.json，可用 --config 指定。--cases 与 --all 二选一，只执行 currentRevision。同批必须项目、目标、角色和身份一致；每批登录一次，记录准确 revisions/sourceTaskIds。最终 JSON 输出 runId/status/summaryFile/counts/cleanup；全部通过退出 0，其余退出 1。SIGINT/SIGTERM 交给共享执行器收尾。无账号发现、外部登录态、地址覆盖或自动修复参数，不读取 .env 或调用模型。外部调度可调用该入口；2026-11-09 已在项目管理系统以临时 launchd 60 秒间隔完成两次真实定时回归（均 passed、资产未变），应用内调度、失败/取消/并发调度和长期稳定性仍未验收。
+--project 接受项目编号或唯一名称；配置默认 config/projects.local.json，可用 --config 指定。--cases 与 --all 二选一，只执行 currentRevision。普通同批必须项目、目标、角色和身份一致；普通批次登录一次，审批完整链单独批次并按冻结人员映射隔离登录，记录准确 revisions/sourceTaskIds。最终 JSON 输出 runId/status/summaryFile/counts/cleanup；全部通过退出 0，其余退出 1。SIGINT/SIGTERM 交给共享执行器收尾。无账号发现、外部登录态、地址覆盖或自动修复参数，不读取 .env 或调用模型。外部调度可调用该入口；2026-11-09 已在项目管理系统以临时 launchd 60 秒间隔完成两次真实定时回归（均 passed、资产未变），应用内调度、失败/取消/并发调度和长期稳定性仍未验收。
 
 ## 用例和报告面板
 

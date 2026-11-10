@@ -42,11 +42,11 @@ if (scenario === "resources") {
       const expected = enabled && enabled !== "disabled" ? 1 : 0;
       const extensions = session.resourceLoader.getExtensions().extensions;
       const tools = session.getAllTools().map(tool => tool.name);
-      for (const name of ["qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage"]) {
+      for (const name of ["qa_ui_explore", "qa_ui_save_candidate", "qa_ui_run", "qa_ui_publish", "qa_ui_coverage", "qa_ui_approval"]) {
         assert.equal(extensions.filter(entry => entry.tools.has(name)).length, expected, name);
         assert.equal(tools.filter(item => item === name).length, expected, name);
       }
-      assert.equal(tools.filter(name => name.startsWith("qa_ui_")).length, 5 * expected);
+      assert.equal(tools.filter(name => name.startsWith("qa_ui_")).length, 6 * expected);
       for (const name of ["read", "bash", "edit", "write"]) assert.ok(tools.includes(name), name);
       const skills = session.resourceLoader.getSkills().skills;
       for (const name of ["qa-ui-basic", "qa-ui-case-design", "qa-ui-execute", "qa-ui-assertion", "qa-test-report"]) {

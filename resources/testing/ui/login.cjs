@@ -29,7 +29,10 @@ let browser;
       if (current.origin !== target.origin) return false;
       // 目标路由必须稳定；SPA 空壳可能短暂渲染身份区后又被守卫重定向到登录页。
       if (current.pathname !== target.pathname || current.hash !== target.hash) return false;
-      if (selectors.authenticated) return page.locator(selectors.authenticated).isVisible();
+      if (selectors.authenticated) {
+        const identity = page.locator(selectors.authenticated);
+        return await identity.isVisible() && (!selectors.identityText || (await identity.innerText()).trim() === selectors.identityText);
+      }
       return await password.count() === 0;
     };
     try {
@@ -63,6 +66,10 @@ let browser;
       await password.fill(message.credentials.password, { timeout: 5000 });
       await submit.click({ timeout: 5000 });
       await password.waitFor({ state: "hidden", timeout: 10000 });
+      if (selectors.tenant && await page.locator(selectors.tenant.selector).isVisible()) {
+        await page.locator(selectors.tenant.selector).click();
+        await page.locator(selectors.tenant.confirm).click();
+      }
       await page.goto(target.href);
       if (selectors.authenticated) await page.locator(selectors.authenticated).waitFor({ state: "visible", timeout: 10000 });
       else await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});

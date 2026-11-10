@@ -150,7 +150,7 @@ JavaScript 使用两空格缩进、双引号、分号和描述性驼峰命名；
 
 - 提示词保留角色、通用边界和技能路由；业务规则在对应技能单处维护，不复制到默认提示词、多个技能和本指南。提示词模块保持纯文本或按传入上下文构建，不承担凭据读取和业务操作；工具是否可用以真实登记为准，规则文字不代替程序权限校验。
 - 新增独立技能目录与 `SKILL.md` 的 name 一致，description 明确适用场景及必要边界；已有显式路径映射不因命名规范自动迁移。短技能保持自包含，较长资料按需拆到 `references/`，需要可执行资源时才建 `scripts/`。相对路径以技能目录为准，跨技能引用通过实际发现位置定位，不硬编码开发机路径。
-- UI 用例生成规则统一维护在 `resources/testing/ui/skills/qa-ui-case-design/SKILL.md`；涉及审批时关联实际测试工作区的 `qa-approval-workflow` 及其参考资料，保持单目标、独立数据与来源追溯。详细设计规则见 [维护说明](docs/ui-case-rules.md)，不在本指南重复。
+- UI 用例生成规则统一维护在 `resources/testing/ui/skills/qa-ui-case-design/SKILL.md`；涉及审批时按需加载 `resources/testing/ui/prompt/approval-control.md`，关联实际测试工作区的 `qa-approval-workflow` 及其参考资料，保持单目标、独立数据与来源追溯。详细设计规则见 [维护说明](docs/ui-case-rules.md)，不在本指南重复。
 - 本轮 UI 功能清单与候选映射通过 `qa_ui_coverage` 保存到实际工作区 `qa/ui/rounds/`，规程维护在 `resources/testing/ui/skills/qa-ui-basic/references/coverage.md`。它与执行批次报告分开，准确快照不随后续资产变化重算；语义覆盖仍须按用例设计规则核对。
 - UI 主 Agent 执行流程与阶段继续条件维护在 `resources/testing/ui/skills/qa-ui-basic/SKILL.md`，探索提示词统一放在 `resources/testing/ui/prompt/`，顺序、功能发现、深度、去重和停止规则维护在其中的 `exploration-control.md`；当前探索阶段与独立目标写入现有 `contract.goal`，随任务冻结，不将单任务约定当成整体功能白名单。主 Agent 通过技能引用读取规则并调度后续任务，browser-use 在 `resources/testing/ui/browser-use/explore.py` 中按运行资源相对位置自动读取同一文件，不在源码、默认业务提示词或本指南复制规则正文。修改时核对 `qa_ui_explore` 参数、任务保存、实际模型输入及开发/随包路径；提示词调度不等于工具内置自动遍历，探索完成不能冒充独立验证或发布。维护与生效入口见 [Agent 提示词维护](docs/agent-prompts.md)。
 - 涉及测试流程的代码、工具、提示词、技能或规则变更时，必须在同一次任务中主动同步受影响的测试执行步骤、已有流程图/流程表、功能文档与验收说明，无需用户另行提醒。逐项核对阶段顺序、Agent/工具职责、输入输出、前置条件、继续与停止条件、失败和取消处理、产物及交付状态；UI 主流程同步核对 `qa-ui-basic` 的「主 Agent 执行流程」及相关分支。只更新实际受影响的内容，详细规则仍在原维护入口单处保存，其他位置通过引用关联；交付前对照实际实现与定向验证确认一致，不将计划、未实现能力或未验证效果写成已完成。

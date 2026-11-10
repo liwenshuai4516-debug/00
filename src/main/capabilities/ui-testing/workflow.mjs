@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { resolveProject, readCredentials } from "./project-context.mjs";
 import { openLogin } from "./login-session.mjs";
 import { recordCoverage } from "./coverage.mjs";
+import { approvalOperation, approvalStates } from "./approval.mjs";
 
 const require = createRequire(import.meta.url);
 const workflow = "browser-use-playwright";
@@ -272,6 +273,7 @@ export function createReadOnlyWorkflow(runtime) {
         selected.meta.targetUrl === task.targetUrl && selected.meta.role === task.contract.role, "版本说明与来源任务不一致。");
       check(selected.meta.dataStrategy === task.contract.dataStrategy && selected.meta.cleanup === task.contract.cleanup,
         "版本数据策略与来源任务不一致。");
+      check(JSON.stringify(selected.meta.approvalPlan) === JSON.stringify(task.approvalPlan), "审批计划与来源任务不一致。");
       if (task.contract.dataStrategy === "isolated-write") {
         check(JSON.stringify(selected.meta.writeAuthorization) === JSON.stringify(task.contract.writeAuthorization),
           "版本写授权与来源任务不一致。");
@@ -323,12 +325,24 @@ export function createReadOnlyWorkflow(runtime) {
     let executionStarted = false;
     let executionConfirmed = false;
     try {
-      const state = await login(runtime, project, task.contract, signal);
+      const state = task.approvalPlan ? null : await login(runtime, project, task.contract, signal);
       privateDir = await fs.mkdtemp(path.join(os.tmpdir(), "qa-ui-replay-"));
       await fs.chmod(privateDir, 0o700);
       const authFile = path.join(privateDir, "state.json");
-      await fs.writeFile(authFile, JSON.stringify(state), { mode: 0o600, flag: "wx" });
-      await writeJson(taskFile, { ...prepared, authFile, authDirectory: privateDir });
+      const approvalStatesFile = task.approvalPlan ? path.join(privateDir, "actors.json") : undefined;
+      const approvalFiles = [];
+      if (task.approvalPlan) {
+        check(selections.length === 1, "审批 E2E 使用独立批次，不混合其他用例。");
+        for (const [relative, expectedHash] of Object.entries(task.approvalPlan.files ?? {})) {
+          const file = await fileAt(root.workspace, ...relative.split("/"));
+          check(hash(await fs.readFile(file)) === expectedHash, "审批附件已变化，停止回放。");
+          approvalFiles.push(file);
+        }
+        const states = await approvalStates(runtime, project, task.approvalPlan.actors, signal);
+        await fs.writeFile(approvalStatesFile, JSON.stringify(states), { mode: 0o600, flag: "wx" });
+      } else await fs.writeFile(authFile, JSON.stringify(state), { mode: 0o600, flag: "wx" });
+      await writeJson(taskFile, { ...prepared, authFile: state ? authFile : undefined, authDirectory: privateDir,
+        approvalStatesFile, approvalRunner: task.approvalPlan ? path.join(runtime.directory, "approval-browser.cjs") : undefined, approvalFiles });
       executionStarted = true;
       const exit = await processRun(runtime.node, [runtime.runner, taskFile], signal);
       if (exit.termination) root.keepLock = true;
@@ -384,6 +398,7 @@ export function createReadOnlyWorkflow(runtime) {
     const task = {
       schema: "qa-ui-task/v1", workflow, kind: "repair", taskId, workspace: root.workspace,
       project: structuredClone(baseTask.task.project), targetUrl: baseTask.task.targetUrl,
+      approvalPlan: baseTask.task.approvalPlan ? structuredClone(baseTask.task.approvalPlan) : undefined,
       contract: { mode: "complete", goal: baseTask.task.contract.goal, role: selected.meta.role,
         identity: structuredClone(baseTask.task.contract.identity), expected: structuredClone(selected.meta.expected),
         initialState: selected.meta.initialState, dataStrategy: selected.meta.dataStrategy, cleanup: selected.meta.cleanup,
@@ -397,6 +412,11 @@ export function createReadOnlyWorkflow(runtime) {
   }
 
   return {
+    async approval(cwd, params, signal) {
+      return exclusive(cwd, root => approvalOperation(root, params, signal, {
+        runtime, id, directory, fileAt, writeJson, validateContract,
+      }));
+    },
     async coverage(cwd, params, signal) {
       return exclusive(cwd, (root) => recordCoverage(root, params, signal, {
         id, directory, fileAt, writeJson, boundTask, revision,
@@ -475,6 +495,7 @@ export function createReadOnlyWorkflow(runtime) {
         check(text(meta.title) && Array.isArray(meta.modulePath) && meta.modulePath.length > 0 && meta.modulePath.every(text), "用例缺少标题或模块。");
         for (const key of ["initialState", "dataStrategy", "cleanup"]) check(meta[key] === task.contract[key], `用例 ${key} 不能改变任务约定。`);
         check(JSON.stringify(meta.expected) === JSON.stringify(task.contract.expected), "候选不能更改已冻结的预期与来源。");
+        check(JSON.stringify(meta.approvalPlan) === JSON.stringify(task.approvalPlan), "候选不能更改审批流程计划。");
         if (task.contract.dataStrategy === "isolated-write") {
           check(JSON.stringify(meta.writeAuthorization) === JSON.stringify(task.contract.writeAuthorization), "用例写授权必须与任务约定一致。");
           check(JSON.stringify(meta.residualAuthorization) === JSON.stringify(task.contract.residualAuthorization),
