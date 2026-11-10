@@ -50,7 +50,74 @@
 @media (max-width: 700px) {
   .prompt-settings { padding: 16px; }
 }
-.extension-widgets pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 扩展状态区参考 DSH 输入区 dock：一行一条、圆角浅底、长文本截断；
+   扩展提供的多行 widget 按面板卡片展示。 */
+.extension-widgets {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  width: min(100%, var(--content-width));
+  margin: 0 auto 8px;
+  max-height: 160px;
+  overflow: auto;
+}
+.extension-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  user-select: text;
+}
+.extension-status__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.extension-status__text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.extension-status__plain {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.extension-status__command {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--hover);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.extension-widgets pre {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .extension-dialog {
   width: min(600px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
@@ -63,7 +130,6 @@
 }
 .extension-dialog input, .extension-dialog select, .extension-dialog textarea { width: 100%; color: inherit; background: var(--surface); }
 .extension-dialog button { margin: 8px; }
-.extension-widgets { flex: 0 0 auto; padding: 0 16px; max-height: 160px; overflow: auto; }
 .extension-widgets:empty, .extension-notices:empty { display: none; }
 .extension-notices { max-height: 100px; overflow: auto; padding: 8px 16px; }
 

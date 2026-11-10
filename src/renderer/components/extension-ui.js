@@ -4,6 +4,45 @@ function element(tag, text) {
   return node;
 }
 
+// 扩展状态是各扩展的自由文本：统一成一行状态条，独立出现的 /命令 单独成片段，
+// 其余正文超长截断；完整原文保留在 title，避免把整段内容摊在输入框上方。
+function appendStatusText(container, text) {
+  const pattern = /(^|\s)(\/[a-z][a-z0-9-]*)(?=\s|$)/gi;
+  let last = 0, match;
+  while ((match = pattern.exec(text))) {
+    const start = match.index + match[1].length;
+    appendPlain(container, text.slice(last, start));
+    const command = element("span", match[2]);
+    command.className = "extension-status__command";
+    container.append(command);
+    last = start + match[2].length;
+  }
+  appendPlain(container, text.slice(last));
+}
+
+function appendPlain(container, value) {
+  const trimmed = value.replace(/^\s+|\s+$/g, "");
+  if (trimmed === "") return;
+  const node = element("span", trimmed);
+  node.className = "extension-status__plain";
+  container.append(node);
+}
+
+function statusRow(event) {
+  const row = element("div");
+  row.className = "extension-status";
+  if (event.statusKey) row.dataset.statusKey = event.statusKey;
+  row.title = event.statusText;
+  const dot = element("span");
+  dot.className = "extension-status__dot";
+  dot.setAttribute("aria-hidden", "true");
+  const text = element("span");
+  text.className = "extension-status__text";
+  appendStatusText(text, event.statusText);
+  row.append(dot, text);
+  return row;
+}
+
 export function createExtensionUi(api, input, options) {
   if (!api.onExtensionUi) return { setSession() {}, refresh() {}, ready: Promise.resolve() };
   const dialog = element("dialog");
@@ -93,7 +132,8 @@ export function createExtensionUi(api, input, options) {
     const state = states.get(currentId) ?? new Map();
     document.title = state.get("setTitle")?.title || originalTitle;
     for (const event of state.values()) {
-      if (event.method === "setStatus" && event.statusText !== undefined) above.append(element("p", event.statusText));
+      // 空文本视为清除，避免留下一条只有圆点的空状态行。
+      if (event.method === "setStatus" && typeof event.statusText === "string" && event.statusText.trim() !== "") above.append(statusRow(event));
       if (event.method === "setWidget" && event.widgetLines) {
         const node = element("pre", event.widgetLines.join("\n"));
         (event.widgetPlacement === "belowEditor" ? below : above).append(node);

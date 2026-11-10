@@ -26,6 +26,8 @@ async function main() {
       const input = await ctx.ui.input("输入中文", "请输入");
       const edited = await ctx.ui.editor("编辑多行", input);
       ctx.ui.setStatus("ready", "桌面交互完成");
+      ctx.ui.setStatus("hint", "goal: unfocused [1 open] - /goal-focus");
+      ctx.ui.setStatus("blank", "   ");
       ctx.ui.setWidget("result", [value, edited], { placement: "belowEditor" });
       ctx.ui.notify("扩展通知"); ctx.ui.setTitle("Pi 桌面验收");
       ctx.ui.setToolsExpanded(true); ctx.ui.setEditorText("建议正文");
@@ -122,6 +124,8 @@ async function main() {
     await run(`window.ui.refresh()`);
     await check("刷新不会重复覆盖输入", `window.inputEvents===1`);
     await check("通知、状态、文本组件与标题可见", `document.title==='Pi 桌面验收' && document.querySelector('.extension-notices').textContent.includes('扩展通知') && [...document.querySelectorAll('.extension-widgets')].some(e=>e.textContent.includes('中文第一行'))`);
+    await check("扩展状态按行展示，命令提示独立成片段、空文本不占位", `[...document.querySelectorAll('.extension-status')].some(e=>e.textContent.includes('桌面交互完成')) && [...document.querySelectorAll('.extension-status__command')].map(e=>e.textContent).join(',')==='/goal-focus' && [...document.querySelectorAll('.extension-status')].some(e=>e.title==='goal: unfocused [1 open] - /goal-focus') && ![...document.querySelectorAll('.extension-status')].some(e=>e.dataset.statusKey==='blank')`);
+    if (process.env.PI_UI_ARTIFACT_DIR) await fs.writeFile(path.join(process.env.PI_UI_ARTIFACT_DIR, "extension-status.png"), (await win.webContents.capturePage()).toPNG());
     await run(`document.querySelector('#messages').innerHTML='<details class="tool-message"><summary>工具</summary></details>'`);
     await wait(`document.querySelector('.tool-message').open`);
     await sendMessage(session, "/desktop-timeout", () => {}, () => {});
