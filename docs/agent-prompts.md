@@ -8,7 +8,7 @@
 | 默认测试职责与技能路由 | [test-agent-prompt.mjs](../src/main/prompts/test-agent-prompt.mjs) | 没有已保存配置时作为默认值；已有自定义配置优先，新对话保存业务提示词快照 |
 | 用例粒度、覆盖与审批关联 | [UI 用例规则](ui-case-rules.md) | 详细规则在对应技能维护，不复制到默认提示词 |
 | UI 主 Agent 执行流程 | [qa-ui-basic/SKILL.md](../resources/testing/ui/skills/qa-ui-basic/SKILL.md) | 明确阶段继续条件，调用探索前读取规则文件 |
-| 功能探索范围与控制规则 | [exploration-control.md](../resources/testing/ui/exploration-control.md) | 统一维护范围、深度、去重与停止规则；主 Agent 将本次具体范围写入 contract.goal |
+| 功能探索范围与控制规则 | [exploration-control.md](../resources/testing/ui/exploration-control.md) | 统一维护功能覆盖维度、识别与执行边界、范围、深度、去重与停止规则；主 Agent 将本次具体范围写入 contract.goal |
 | 当前任务的探索约定 | 当前工作区 `qa/ui/tasks/<taskId>/task.json` 的 contract | qa_ui_explore 保存本次约定；不覆盖其他任务或已冻结预期 |
 | browser-use 提示词加载 | [explore.py](../resources/testing/ui/browser-use/explore.py) | 每次探索按入口相对位置读取 exploration-control.md，与 goal、冻结 contract 组装为 Agent 的 task |
 | 自动恢复与新对话交接 | [看门狗](agent-watchdog.md) | 按已实现的启用、取消和恢复条件运行，提示词本身不启动看门狗 |
@@ -52,3 +52,5 @@ resources/testing/ui/browser-use/.venv/bin/python -B tests/helpers/browser-use-p
 ```
 
 该检查复制 Python 入口与提示词到临时随包目录，从无关 cwd 调用真实任务组装，核对模型输入包含最新文件、原始目标和冻结 contract；文件缺失或为空时，在调用 Agent 前失败并完成收尾。浏览器、Agent 和进程查询均用隔离替身，不代表真实安装包或模型行为验收。
+
+审阅探索规则时，对照控制文件的适用项清单，确认范围内入口与业务动作均有去向，且与 qa-ui-basic 的阶段继续条件一致。新增覆盖维度只扩充盘点指导，不新增运行能力或写授权；尤其不能把文件操作、审批及状态流转的入口观察当成业务结果验收。
