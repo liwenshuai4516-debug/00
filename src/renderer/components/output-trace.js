@@ -692,7 +692,13 @@ export function createOutputTrace(container, { historical = false, onUpdate = ()
     appendMessage(root, "user", text);
   }
 
-  return { accept, restore, finish, dispose, insertUserMessage, root };
+  // 子级和扩展的阶段回报归入本次过程，避免挡在仍运行的主级输出之后。
+  function insertStatusMessage(text) {
+    appendMessage(processBody, "status", text);
+    schedule();
+  }
+
+  return { accept, restore, finish, dispose, insertUserMessage, insertStatusMessage, root };
 }
 
 export function appendOutputHistory(container, history, onUpdate = () => {}) {

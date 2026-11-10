@@ -10,6 +10,39 @@ const {
   registerAgentIpc,
 } = require("../../src/main/ipc/agent-ipc.js");
 
+test("思考片段结束与自动处理收尾分别呈现，不把输出结束当作请求完成", async () => {
+  const { sendMessage } = await import("../../src/main/pi-agent.mjs");
+  const statuses = [];
+  const boundary = Promise.withResolvers();
+  const finish = Promise.withResolvers();
+  let listener;
+  let returned = false;
+  const session = {
+    agent: { state: {} },
+    subscribe(callback) { listener = callback; return () => {}; },
+    async prompt() {
+      listener({ type: "agent_start" });
+      listener({ type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: "" } });
+      listener({ type: "agent_end", willRetry: false });
+      boundary.resolve();
+      await finish.promise;
+      listener({ type: "agent_settled", aborted: false });
+    },
+  };
+  const pending = sendMessage(session, "测试", () => {}, () => {}, text => statuses.push(text))
+    .then(() => { returned = true; });
+  await boundary.promise;
+  assert.match(statuses[0], /等待模型回复/);
+  assert.match(statuses[1], /思考片段已结束/);
+  assert.match(statuses[2], /等待自动处理收尾/);
+  assert.equal(returned, false);
+  finish.resolve();
+  await pending;
+  assert.match(statuses.at(-1), /已收尾.*保存/);
+  assert.match(getRequestStatus({ type: "agent_end", willRetry: true }), /等待自动重试/);
+  assert.match(getRequestStatus({ type: "agent_settled", aborted: true }), /已停止.*保存/);
+});
+
 test("重试状态显示次数与间隔，不回显原始错误", () => {
   const text = getRequestStatus({
     type: "auto_retry_start",

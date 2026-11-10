@@ -68,6 +68,7 @@ const chat = {
       emit({ type: "message_update", assistantMessageEvent: { type: "toolcall_end", contentIndex: index, toolCall: block } });
     }
     emit({ type: "message_end", message: first });
+    onTool({ type: "message", text: "子智能体已完成，只是阶段回报，主任务仍在继续。" });
     for (const block of first.content.filter(block => block.type === "toolCall")) {
       emit({ type: "tool_execution_start", toolCallId: block.id, toolName: block.name, args: block.arguments, skill: block.id === "c1" ? skill : undefined });
       onTool({ type: "start", toolCallId: block.id, name: block.name });
@@ -90,6 +91,8 @@ const chat = {
     emit({ type: "auto_retry_start", attempt: 1, maxAttempts: 3 });
     emit({ type: "turn_start" }); emit({ type: "message_start", message: assistant([]) });
     emit({ type: "message_end", message: final }); emit({ type: "turn_end", message: final });
+    // 扩展可能在最终正文之后才送达审核通知，不能因此把正文归为中间说明。
+    onTool({ type: "message", text: "扩展收尾通知" });
     emit({ type: "auto_retry_end", success: true }); emit({ type: "agent_end", willRetry: false });
     emit({ type: "agent_settled", aborted: false });
     history = toHistory([{ role: "user", content: text }, first, toolResult("c2", true, "文件不存在"), toolResult("c1", false, "技能指令"), todoResult, final],
@@ -123,6 +126,10 @@ async function main() {
   }
   try {
     await win.loadFile(path.join(root, "src/renderer/index.html")); await idle(); await send();
+    // 子级回报不能压在当前运行后面，遮住仍在更新的主级处理过程。
+    assert.equal(await js(`document.getElementById('messages').lastElementChild.classList.contains('output-run')`), true);
+    assert.match(await js(`document.querySelector('.trace-process').textContent`), /子智能体已完成/);
+    assert.equal(await js(`document.getElementById('stop-button').disabled`), false);
     assert.equal(await js(`document.querySelectorAll('.output-trace').length`), 1);
     assert.equal(await js(`document.querySelector('.output-trace').open`), true);
     assert.equal(await js(`document.querySelector('.output-trace').open&&document.querySelector('.trace-thinking').open`), true);
@@ -157,6 +164,7 @@ async function main() {
     assert.match(await js(`document.querySelector('.trace-events-body').textContent`), /auto_retry_start/);
     assert.equal(await js(`document.querySelectorAll('.output-run>[data-role="assistant"]').length`), 1);
     assert.match(await js(`document.querySelector('.output-run>[data-role="assistant"]').textContent`), /检查完成/);
+    assert.match(await js(`document.querySelector('.trace-process').textContent`), /扩展收尾通知/);
     // 最终回复下方展示 SDK 的耗时与 token，未知字段不显示为零。
     assert.match(await js(`document.querySelector('.output-run>[data-role="assistant"] .message-usage').textContent`), /^42 ms（SDK） · 30 tokens（输入 20 \/ 输出 10）$/);
     // 过程内的助手消息已有元信息行，不再重复用量页脚。

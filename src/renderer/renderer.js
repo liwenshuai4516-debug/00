@@ -1980,7 +1980,8 @@ form.addEventListener("submit", async (event) => {
     trajectoryModel.accept(output);
     scheduleTrajectoryRender();
     todoDock.accept(output);
-    if (!stopButton.disabled && output.type === "message_update" && output.assistantMessageEvent.type.startsWith("thinking_")) {
+    if (!stopButton.disabled && output.type === "message_update" && output.assistantMessageEvent.type.startsWith("thinking_")
+      && output.assistantMessageEvent.type !== "thinking_end") {
       setRequestStatus("模型正在思考……");
     }
   });
@@ -2003,7 +2004,11 @@ form.addEventListener("submit", async (event) => {
   });
 
   const unsubscribeTool = window.agent.onToolEvent((event) => {
-    if (event.type === "message") { addMessage("status", event.text); return; }
+    if (event.type === "message") {
+      if (outputTrace) outputTrace.insertStatusMessage(event.text);
+      else addMessage("status", event.text);
+      return;
+    }
     if (nativeOutputReceived) {
       if (event.type === "start") setRequestStatus(`正在调用工具：${event.name}`);
       if (event.type === "end") setRequestStatus("工具已返回，正在继续处理……");

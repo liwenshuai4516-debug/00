@@ -4,6 +4,8 @@
 
 停止、异常或未收到收尾事件时也停止计时、收起过程并显示实际状态，不制造最终回复。最后一条含工具调用的说明保留在过程区，没有独立结果时不改写为成功答复。工具支持同名并行及按 `parentToolCallId` 嵌套展示，均按调用编号关联。历史恢复采用相同的折叠布局。
 
+实时收到的子智能体和扩展阶段回报放在本次处理过程内，后续主 Agent 输出继续按顺序展示，避免旧回报挡在整个运行容器之后，使窗口底部看起来停止更新。子级或任务清单显示“已完成”不解除主请求的生成状态。思考片段结束后显示“等待模型继续”，底层运行结束后显示等待自动处理收尾；`agent_settled` 后显示保存请求结果，发送返回后才解除请求锁。扩展内部执行的审核不一定转发模型正文或支持桌面的文本 widget；本界面不能据此推断审核卡死，也不能以没有新文字代替收尾信号。
+
 ## 当前呈现
 
 以下截图来自 `tests/ui/output-trace.check.cjs` 的模拟事件与临时数据，不是真实模型回复，也不代表供应商侧耗时。
@@ -96,7 +98,7 @@ Agent 回复里的本地路径链接点击后在右侧栏打开预览；外部 `
 自动检查（临时配置、工作目录和历史，不读取真实认证/会话，不请求付费模型）：
 
 ```sh
-node --test tests/unit/output-events.test.js tests/unit/pi-output-runtime.test.js tests/unit/session-preview.test.js tests/unit/message-adapter.test.js tests/unit/agent-ipc.test.js tests/unit/chat-service.test.js tests/unit/window-close-preload.test.js tests/unit/session-info.test.js
+node --test tests/unit/request-status.test.js tests/unit/output-events.test.js tests/unit/pi-output-runtime.test.js tests/unit/session-preview.test.js tests/unit/message-adapter.test.js tests/unit/agent-ipc.test.js tests/unit/chat-service.test.js tests/unit/window-close-preload.test.js tests/unit/session-info.test.js
 node_modules/.bin/electron tests/ui/output-trace.check.cjs
 ```
 
@@ -105,6 +107,8 @@ node_modules/.bin/electron tests/ui/output-trace.check.cjs
 扩大运行 `session-service.test.js` 时，“缺少模型配置必须报错”的旧断言失败；隔离的修改前提交 `bd3623b` 同样失败（实际先报缺少工作目录），不将它记录为本功能通过，也未改动该无关断言。本轮没有进行真实供应商推理验收。
 
 自动页面检查已增加固定时钟验收：等待状态、思考/响应/工具各阶段、SDK 时间优先、重试不提前折叠、完成冻结、缺失时间不伪造、键盘焦点保护、异常未确认优先及计时器释放。另保存 `process-live.png` 和 `result-collapsed.png` 供检查；截图与模拟结果不代替真实模型验收。
+
+阶段回报检查使用模拟子级消息后继续主级工具执行，断言回报位于当前过程内、活动运行仍是消息区末项且停止按钮保持可用。请求状态检查使用可控会话暂停在 `agent_end` 与 `agent_settled` 之间，验证状态文案切换且发送尚未返回；不启动真实 Goal 审核或请求付费模型。
 
 手动验收：重启应用，在有工具需求的对话中观察自动展开的过程、状态与用时；使用支持 thinking 的模型核对思考内容，发送 `/skill:qa-requirement-review` 核对显式展开，再用自然语言触发技能并观察 read 标记；结束后过程应自动收起且只突出最后结果，可以重新展开查看中间说明。检查停止和重开后的历史。模型不返回 thinking 或未读取技能时，页面应如实保持缺省。
 

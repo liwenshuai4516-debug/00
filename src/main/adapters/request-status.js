@@ -1,6 +1,25 @@
 // 将 Pi 事件转换为状态文案，不转发供应商原始错误内容。
 function getRequestStatus(event) {
   switch (event.type) {
+    case "agent_start":
+    case "turn_start":
+      return "正在等待模型回复……";
+
+    case "message_update":
+      return event.assistantMessageEvent?.type === "thinking_end"
+        ? "思考片段已结束，正在等待模型继续……"
+        : undefined;
+
+    case "agent_end":
+      return event.willRetry
+        ? "本轮输出已结束，正在等待自动重试……"
+        : "本轮输出已结束，正在等待自动处理收尾……";
+
+    case "agent_settled":
+      return event.aborted
+        ? "Agent 已停止，正在保存请求结果……"
+        : "Agent 已收尾，正在保存请求结果……";
+
     case "auto_retry_start":
       return (
         `自动重试 ${event.attempt}/${event.maxAttempts}` +
