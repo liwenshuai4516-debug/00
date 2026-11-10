@@ -80,6 +80,14 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     return testData.moveCase(projectId, caseId, folder, assetHash);
   }
 
+  function createManualTestCase(projectId, input) {
+    return testData.createManualCase(projectId, input);
+  }
+
+  function updateManualTestCase(projectId, caseId, input, assetHash) {
+    return testData.updateManualCase(projectId, caseId, input, assetHash);
+  }
+
   function deleteTestCase(projectId, caseId, assetHash) {
     return testData.removeCase(projectId, caseId, assetHash);
   }
@@ -109,6 +117,8 @@ function createProjectService(projectStore, chooseDirectory, sessionService) {
     deleteTestData,
     getTestCase,
     moveTestCase,
+    createManualTestCase,
+    updateManualTestCase,
     deleteTestCase,
     listTestReports,
     getTestReport,

@@ -185,8 +185,12 @@ test("预加载项目接口只调用固定通道，不转发路径参数", async
 
   await agent.listProjects("/forged");
   await agent.addProject("/forged");
+  await agent.createManualTestCase("p1", { title: "手动用例" });
+  await agent.updateManualTestCase("p1", "case1", { title: "手动用例" }, "hash");
   assert.deepEqual(calls, [
     ["agent:list-projects"],
     ["agent:add-project"],
+    ["agent:create-manual-test-case", "p1", { title: "手动用例" }],
+    ["agent:update-manual-test-case", "p1", "case1", { title: "手动用例" }, "hash"],
   ]);
 });

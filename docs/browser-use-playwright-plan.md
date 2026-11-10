@@ -210,7 +210,7 @@ qa/ui/
     manifest.json
 ```
 
-任务目录同时承载新建用例和已有用例修复，修复不必启动探索浏览器。草稿可编辑；保存候选时冻结到新 revision。revision 中的脚本和说明不原地修改。`asset.json` 使用新的 `qa-ui-asset/v1` 结构，保存 caseId、版本条目、`currentRevision` 及可选的组织目录 `folder`；条目记录 revision、文件哈希和验证成功的 runId。未通过的结果从 runs 查询，不在索引中复制全部报告。
+任务目录同时承载新建用例和已有用例修复，修复不必启动探索浏览器。草稿可编辑；保存候选时冻结到新 revision。revision 中的脚本和说明不原地修改。`asset.json` 使用新的 `qa-ui-asset/v1` 结构，保存 caseId、版本条目、`currentRevision` 及可选的组织目录 `folder`；条目记录 revision、文件哈希和验证成功的 runId。未通过的结果从 runs 查询，不在索引中复制全部报告。面板手动创建的条目额外写入 `origin: "manual"`，保持 `currentRevision: null` 并使用占位 spec；编辑只追加手动版本，不进入可执行流程。
 
 没有正式引用的用例显示 candidate，有正式引用显示 verified；同时可显示“有新候选”。回归失败不抹掉历史验证事实，界面单独展示最近执行结果。删除旧人工 verified/confirmed 工作流标记，首版不另建人工审核状态。
 
@@ -247,7 +247,7 @@ UI 技能收敛为三份：`qa-ui-basic` 负责约定、探索、生成和修复
 
 报告沿用 `qa-report/v1`，直接包含项目、模块、所选版本和逐例结果，不再回看旧 case 文件补模块名称。新增字段限于 workflow、purpose（validate/regression）、所选 revisions、来源 taskId、修复关联，以及可获取的耗时／调用量。修复批次记录父 runId 与补丁摘要，界面可查看原始失败和后续验证，不合并改写为一次通过。
 
-现有“测试数据”面板增加对 `qa/ui/cases` 的独立用例目录读取，`qa/data` 下其他测试数据继续保留。用例列表按 `modulePath` 生成可筛选的目录树，显示模块/目录、正式版本、新候选、最近结果，并允许把组织目录写入 `asset.json` 的 `folder` 字段而不改 revision。首版正式用例内容只读；修改由 Agent 创建新候选，不继续提供直接编辑正式断言／步骤或删除 spec 内单条 test 的逻辑。删除以 case 为单位，历史运行快照不跟随删除。
+现有“测试数据”面板读取 `qa/ui/cases` 的版本用例，并改为左侧目录树、右侧列表的左右布局。用例列表支持目录/状态筛选、排序、搜索和分页，显示正式版本、新候选、最近结果，并允许把组织目录写入 `asset.json` 的 `folder` 字段而不改 revision。面板可新建和编辑 `origin: "manual"` 的手动用例，使用占位 spec、保持 `currentRevision: null`，编辑只追加手动版本；Agent 生成内容仍按 revision 只读，修改由 Agent 创建新候选，不继续提供直接编辑正式断言／步骤或删除 spec 内单条 test 的逻辑。`qa/data` 普通文件不再进入面板。删除以 case 为单位，历史运行快照不跟随删除。
 
 UI 用例和报告列表使用每页 50 条、按需详情。目录枚举在过滤新格式并排序后分页，不能先截断前 200 个目录再排序；首版允许扫描本地目录，不建数据库。报告逐例详情同样分页，不静默丢掉第 100 条后的结果。继续保留摘要大小和路径检查，轻量摘要不内嵌截图、DOM 或完整日志。
 

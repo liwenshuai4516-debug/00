@@ -311,6 +311,10 @@ contextBridge.exposeInMainWorld("agent", {
     ipcRenderer.invoke("agent:get-test-case", projectId, caseId, revision),
   moveTestCase: (projectId, caseId, folder, assetHash) =>
     ipcRenderer.invoke("agent:move-test-case", projectId, caseId, folder, assetHash),
+  createManualTestCase: (projectId, input) =>
+    ipcRenderer.invoke("agent:create-manual-test-case", projectId, input),
+  updateManualTestCase: (projectId, caseId, input, assetHash) =>
+    ipcRenderer.invoke("agent:update-manual-test-case", projectId, caseId, input, assetHash),
   deleteTestCase: (projectId, caseId, assetHash) =>
     ipcRenderer.invoke("agent:delete-test-case", projectId, caseId, assetHash),
 

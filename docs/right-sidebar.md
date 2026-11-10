@@ -27,14 +27,23 @@
 
 ### 测试数据
 
+- 工作台第二张卡片进入。视图改为左侧目录树、右侧用例列表的左右布局；宽面板保持双栏，窄于 500px 的容器自动改为目录在上、用例在下。
 - UI 用例读取当前项目 `workspaceDir/qa/ui/cases/<caseId>/asset.json` 的 `qa-ui-asset/v1`；无索引、旧 schema 及旧平铺资产不展示、不迁移。
-- 按编号、标题、模块或角色搜索；完整扫描后按模块、标题、编号排序并筛选，再每页 50 条。列表只含轻量信息，展开才读取准确 revision 的只读详情并核对说明和脚本哈希。
-- 有正式版本时显示正式标题及后续候选，无正式版本时展示最新候选；详情可切换已登记版本，显示初态、数据策略、清理、步骤、固定预期及来源、business/guard 断言、task 与验证 run。
+- 目录树支持折叠、目录筛选和父目录汇总计数；主区域支持按编号、标题、说明、目录或角色搜索，按「全部 / 正式 / 含候选 / 手动」筛选，并按最近更新、目录或标题排序；每页 50 条。
+- 列表只含轻量信息，展开才读取准确 revision 的详情并核对说明和脚本哈希。详情显示初态、数据策略、清理、步骤、固定预期及来源、business/guard 断言、task 与验证 run。
 - 最近结果仅采用同项目、真实工作区和准确正式 revision 的新版 regression，不混入候选 validate 或其他版本。
 - 只有正式用例提供「生成执行提示」，向输入框插入新 CLI 的精确 `--project` 和 `--cases`，不自动发送。查看候选详情不改变正式执行目标，纯候选没有执行入口。
+- 手动用例：右上角「新建用例」创建 `origin: "manual"` 的 `qa-ui-asset/v1`，保存标题、目录、角色、优先级、说明、步骤和预期；使用占位 spec、保持 `currentRevision: null`，只标记为「手动」，不会被当成可执行正式版本。编辑会追加新的手动版本，目录可调整，支持整例删除。
+- Agent 生成的用例内容仍按 revision 只读；面板只允许调整组织目录、整例删除和插入正式执行提示，不直接改写 revision 或脚本。手动用例需要由 Agent 生成并验证自动化脚本后才进入执行流程。
 - 「删除整个用例」确认后删除该 case 的全部版本，保留 tasks/runs 历史。主进程 idle 互斥和共享工作区锁内核对列表 assetHash、说明哈希及项目/task 归属；活动任务、遗留锁或版本变化会阻止删除。
-- 旧步骤/断言编辑、流程标记、批量移除 test 和 grep 复测入口已退出。其他 `qa/data` 普通文件仍可列表和单文件删除，最多展示 500 个并提示截断，排除旧 `ui/cases`。
+- 其他 `qa/data` 普通文件不再进入测试数据面板；后端列表接口为兼容保留，但页面不展示文件列表，也不提供单文件删除入口。
 - 版本详情上限 512 KiB、回归摘要 1 MiB，拒绝符号链接；页面核对项目与请求标识，切换后迟到响应不覆盖当前内容。完整契约见 [只读工作流](browser-use-readonly-workflow.md)。
+
+![测试数据左右布局](images/test-data-workspace.png)
+
+![手动用例详情](images/test-data-manual-case.png)
+
+![手动用例编辑器](images/test-data-manual-editor.png)
 
 ### 测试报告
 
@@ -110,7 +119,7 @@
 node --test tests/unit/project-environment.test.js tests/unit/test-data-service.test.js tests/unit/test-report-service.test.js tests/unit/file-preview-service.test.js tests/unit/workspace-tree-service.test.js tests/unit/browser-url.test.js
 ```
 
-用例面板本轮定向检查：`node --test tests/unit/test-data-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js` 24 项通过；独立页面 21 项断言通过，覆盖目录树计数、父/子目录筛选、面包屑、返回全部、设置目录、50 条分页、按需版本详情、来源只读、正式执行提示、候选无执行、搜索、删除确认、普通文件删除、切换项目迟到响应及无横向溢出。服务检查还覆盖 205 例完整排序分页、目录树完整枚举与统计、组织目录写入、哈希/链接/归属拒绝、旧资产隔离、整例删除与历史保留。共用 `sidebar-layout.check.cjs` 79 项通过；退出时仍有一次 Chromium 缓存目录日志，不把页面断言通过扩大为环境完全无异常。使用临时模拟接口和本地页面，不读取真实认证或请求模型。详见 [异常与恢复条件](browser-use-readonly-workflow.md)。
+用例面板本轮定向检查：`node --test tests/unit/test-data-service.test.js tests/unit/agent-ipc.test.js tests/unit/project-service.test.js` 25 项通过；独立页面 30 项断言通过，覆盖左右布局、目录筛选、父/子目录筛选、面包屑、状态筛选、排序、分页、按需版本详情、正式执行提示、候选无执行、手动用例新建/编辑/删除、设置目录、切换项目迟到响应、宽窄布局及无横向溢出。服务检查还覆盖 205 例完整排序分页、目录树完整枚举与统计、组织目录写入、哈希/链接/归属拒绝、旧资产隔离、整例删除与历史保留，以及手动用例占位 spec、版本追加和不可执行状态。共用 `sidebar-layout.check.cjs` 79 项通过；退出时仍有一次 Chromium 缓存目录日志，不把页面断言通过扩大为环境完全无异常。使用临时模拟接口和本地页面，不读取真实认证或请求模型。详见 [异常与恢复条件](browser-use-readonly-workflow.md)。
 
 报告面板本轮定向检查：报告服务、IPC、项目服务及共享工作流 23 项通过；独立报告页面 18 项断言通过，覆盖列表与逐例分页、跨整批失败摘要、用途/版本/来源、迟到请求、删除确认和统计刷新、焦点及无溢出。首次页面夹具错误触发刷新而超时，修正后一次恢复通过；Chromium 缓存日志仍未解决。仅使用临时数据和本地页面，无真实模型请求。详见 [异常记录 E、G](browser-use-readonly-workflow.md)。
 
@@ -120,7 +129,6 @@ node --test tests/unit/project-environment.test.js tests/unit/test-data-service.
 
 ![项目环境列表](images/right-sidebar-environments.png)
 
-![用例目录、版本与只读详情](images/test-data-versions.png)
 
 ![报告用途、版本来源与全批失败摘要](images/test-report-versions.png)
 
@@ -130,7 +138,7 @@ node --test tests/unit/project-environment.test.js tests/unit/test-data-service.
 
 - 真实指针拖拽、真实系统目录选择和真实配置写入未在自动检查中代替人工验收；测试使用临时配置和临时数据目录。
 - 项目环境密码是本机明文配置，不是加密凭据库；页面不回填已存密码，也不代表自动登录一定成功。
-- 用例内容按 revision 只读，允许二次确认后整例删除全部版本；「设置目录」只写 `asset.json` 的组织字段，不修改正式说明、spec 或 revision 哈希。旧资产不展示、不迁移；生产录制入口和其他技能仍待替换，不把面板接入称为整条工作流已切换。
+- Agent 用例内容按 revision 只读，允许二次确认后整例删除全部版本；「设置目录」只写 `asset.json` 的组织字段，不修改正式说明、spec 或 revision 哈希。手动用例可编辑，但只追加手动版本并使用占位 spec，不能被当作可执行用例；旧资产不展示、不迁移；生产录制入口和其他技能仍待替换，不把面板接入称为整条工作流已切换。
 - 测试报告内容只读；允许二次确认后删除无版本引用且已收尾的 UI 批次目录，不重跑、不改写原始摘要。报告详情依赖 `summary.json`，缺失或损坏时只能提示，不能从其他文件推断通过。修复任务关联尚未实现。
 - 文件预览只读单文件，不支持搜索、行号定位、图片/PDF 或二进制；Markdown 内嵌图片仍按文字展示。
 - 文件树没有搜索、多选或拖拽，也不显示忽略规则以外的隐藏文件策略；符号链接一律不展示。

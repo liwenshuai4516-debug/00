@@ -472,13 +472,13 @@ async function main() {
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelectorAll('.right-panel__card').length===5&&document.querySelectorAll('.right-panel__card')[1].disabled===false&&document.getElementById('right-sidebar-body').getAttribute('aria-busy')==='false'`);
     await run(`document.querySelectorAll('.right-panel__card')[1].click()`);
-    await wait(`document.querySelectorAll('.case-card').length===1`);
-    await check("测试数据按模块和用例展示最近结果", `document.querySelectorAll('.case-card').length===1&&document.querySelector('.case-version-meta').textContent.includes('演示模块')&&document.querySelector('.case-card__status').textContent==='正式 0001'&&document.querySelector('.case-card').textContent.includes('最近回归 通过')`);
+    await wait(`document.querySelectorAll('.case-row').length===1`);
+    await check("测试数据按模块和用例展示最近结果", `document.querySelectorAll('.case-row').length===1&&document.querySelector('.case-row__meta').textContent.includes('演示模块')&&document.querySelector('.case-row__status').textContent==='正式 0001'&&document.querySelector('.case-row').textContent.includes('最近回归 通过')`);
     await run(`new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))`);
     if (process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH) await writeFile(process.env.RIGHT_SIDEBAR_DATA_SCREENSHOT_PATH, (await win.webContents.capturePage()).toPNG());
-    await run(`document.querySelector('.case-card__head').click()`);
-    await wait(`document.querySelector('.case-version-detail')!==null`);
-    await check("展开用例显示断言与来源", `!document.querySelector('.case-card__body').hidden&&document.querySelector('.case-card__body').textContent.includes('演示基线')`);
+    await run(`document.querySelector('.case-row__head').click()`);
+    await wait(`document.querySelector('.case-detail')!==null`);
+    await check("展开用例显示断言与来源", `document.querySelector('.case-row__body')!==null&&document.querySelector('.case-row__body').textContent.includes('演示基线')`);
     await click('.right-panel__nav .right-sidebar__icon-button');
     await wait(`document.querySelectorAll('.right-panel__card').length===5`);
     await click('.right-panel__card');

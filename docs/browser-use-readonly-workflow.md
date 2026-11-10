@@ -55,7 +55,7 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 
 ## 版本用例面板
 
-右侧「测试数据」只将 `qa/ui/cases/<caseId>/asset.json` 的 `qa-ui-asset/v1` 纳入 UI 用例列表；无索引、旧 schema 和旧平铺资产不展示、不迁移。先完整枚举新格式目录，按目录、标题、caseId 排序并筛选，再每页 50 条；搜索范围是编号、标题、目录和角色。列表不携带步骤、预期或断言；展开时按准确 revision 读取详情，同时核对说明与脚本 SHA-256。
+右侧「测试数据」只将 `qa/ui/cases/<caseId>/asset.json` 的 `qa-ui-asset/v1` 纳入 UI 用例列表；无索引、旧 schema 和旧平铺资产不展示、不迁移。先完整枚举新格式目录，在左侧目录树和右侧列表之间展示；支持目录筛选、按「全部 / 正式 / 含候选 / 手动」筛选、按最近更新/目录/标题排序，再每页 50 条；搜索范围是编号、标题、说明、目录和角色。列表不携带步骤、预期或断言；展开时按准确 revision 读取详情，同时核对说明与脚本 SHA-256。
 
 目录设计参考了 GitHub 上较活跃的测试管理项目：[MeterSphere](https://github.com/metersphere/metersphere)（约 13.6k stars，模块树带数量、用例列表与统计）、[TestLink](https://github.com/TestLinkOpenSourceTRMS/testlink-code)（约 1.6k，项目/套件/用例层级）、[Kiwi TCMS](https://github.com/kiwitcms/Kiwi)（约 1.3k，用例、计划与运行分离）、[WHartTest](https://github.com/MGdaasLab/WHartTest)（约 1.1k，项目/模块、列表与脑图视图）、[AgileTC](https://github.com/didi/AgileTC)（约 728，用例集与目录管理）和 [Nitrate](https://github.com/Nitrate/Nitrate)（约 307，计划/用例/运行与搜索）。本面板只取适合右侧栏的目录树、计数、面包屑、范围搜索和汇总，不引入完整平台的计划、评审、脑图或多角色能力。
 
@@ -63,7 +63,7 @@ qa/ui/runs/<runId>/{html,sources,artifacts}/
 
 有正式版本时列表采用正式说明，展示后续未发布候选；只有候选时展示最新候选。详情可切换已登记版本，只读展示初态、数据策略、步骤、固定预期及来源、business/guard 断言和来源 task/验证 run。最近结果只关联同项目、真实工作区、准确 caseId/revision/脚本的新版 regression 摘要，不混入 validate 或其他版本结果。
 
-只有正式用例提供「生成执行提示」，向输入框插入精确 `--project` 和 `--cases`，不自动发送；查看候选详情不改变正式执行目标。旧步骤/断言编辑、流程标记、批量删除 test 及 grep 入口已退出。删除需确认整个 case 的所有版本永久删除；主进程 idle 互斥及共享工作区锁内核对列表 assetHash、版本说明哈希、项目和 task 归属，版本变化或活动任务会阻止删除；tasks/runs 保留。其他 `qa/data` 普通文件仍可列表和单文件删除，最多展示 500 个并提示截断，排除旧 `ui/cases`。
+只有正式用例提供「生成执行提示」，向输入框插入精确 `--project` 和 `--cases`，不自动发送；查看候选详情不改变正式执行目标。旧步骤/断言编辑、流程标记、批量删除 test 及 grep 入口已退出。删除需确认整个 case 的所有版本永久删除；主进程 idle 互斥及共享工作区锁内核对列表 assetHash、版本说明哈希、项目和 task 归属，版本变化或活动任务会阻止删除；tasks/runs 保留。其他 `qa/data` 普通文件不再在测试数据面板展示；后端文件列表接口为兼容保留。面板新增的手动用例使用占位 spec、`currentRevision: null` 和 `origin: "manual"`，编辑只追加手动版本，不冒充可执行正式版本。
 
 接口为 `listTestData(projectId, { page, query, folder })`、`getTestCase(projectId, caseId, revision)`、`moveTestCase(projectId, caseId, folder, assetHash)`、`deleteTestCase(projectId, caseId, assetHash)` 及普通文件的 `deleteTestData`。目录最多 8 级、每级 80 字符；移动目录使用 assetHash 防止覆盖并发版本变化，且只改组织字段，不改 revision。页面使用请求编号、项目和详情请求对象核对迟到结果。
 

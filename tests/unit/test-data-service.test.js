@@ -10,7 +10,7 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 async function setup(t) {
   const workspace = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "test-data-versions-")));
   t.after(() => fs.rm(workspace, { recursive: true, force: true }));
-  const service = createTestDataService({ list: async () => [{ id: "p1", workspaceDir: workspace }] });
+  const service = createTestDataService({ list: async () => [{ id: "p1", name: "演示项目", address: "https://demo.invalid", workspaceDir: workspace }] });
   async function save(caseId, { title = caseId, revision = "0001", formal = false, modulePath = ["合同", "列表"], projectId = "p1" } = {}) {
     const directory = path.join(workspace, "qa/ui/cases", caseId);
     const dest = path.join(directory, "revisions", revision);
@@ -142,6 +142,101 @@ test("最近结果仅关联当前正式 revision 的回归，候选验证、旧�
   assert.equal(item.lastResult.runId, "run-new");
   assert.equal(item.lastResult.status, "passed");
   assert.equal(item.lastResult.revision, "0001");
+});
+
+test("手动用例可创建、编辑、筛选和删除，但不会被当成可执行正式版本", async (t) => {
+  const { service, workspace } = await setup(t);
+  const created = await service.createManualCase("p1", {
+    title: "合同归档后的只读校验",
+    folder: "合同管理/合同归档",
+    role: "合同管理员",
+    priority: "P0",
+    description: "验证合同归档后不再提供编辑和删除入口。",
+    steps: ["进入合同详情", "点击归档", "返回列表检查操作入口"],
+    expected: "归档后详情只读，编辑与删除入口隐藏。",
+  });
+  assert.match(created.caseId, /^case-/);
+  assert.equal(created.revision, "0001");
+  assert.deepEqual(created.folder, ["合同管理", "合同归档"]);
+  const storedAsset = JSON.parse(await fs.readFile(path.join(workspace, "qa/ui/cases", created.caseId, "asset.json"), "utf8"));
+  const storedSpec = await fs.readFile(path.join(workspace, "qa/ui/cases", created.caseId, "revisions/0001/case.spec.cjs"), "utf8");
+  assert.equal(storedAsset.currentRevision, null);
+  assert.equal(storedAsset.origin, "manual");
+  assert.equal(storedAsset.revisions[0].origin, "manual");
+  assert.match(storedSpec, /test\.skip/);
+
+  await assert.rejects(service.createManualCase("p1", { title: "" }), /标题/);
+  await assert.rejects(service.createManualCase("p1", { title: "目录越界", folder: "../x" }), /目录/);
+
+  const manual = (await service.list("p1", { filter: "manual", sort: "updated" })).catalog;
+  assert.equal(manual.filterCounts.manual, 1);
+  assert.equal(manual.filterCounts.verified, 0);
+  assert.equal(manual.total, 1);
+  const item = manual.cases[0];
+  assert.equal(item.caseId, created.caseId);
+  assert.equal(item.manual, true);
+  assert.equal(item.runnable, false);
+  assert.deepEqual(item.candidates, []);
+  assert.equal(item.priority, "P0");
+  assert.equal(item.description, "验证合同归档后不再提供编辑和删除入口。");
+  assert.deepEqual(item.folderPath, ["合同管理", "合同归档"]);
+
+  const detail = await service.getCase("p1", created.caseId, "0001");
+  assert.equal(detail.origin, "manual");
+  assert.equal(detail.manual, true);
+  assert.equal(detail.meta.project.id, "p1");
+  assert.equal(detail.meta.origin, "manual");
+  assert.equal(detail.meta.steps.length, 3);
+  assert.equal(detail.meta.steps[0].text, "进入合同详情");
+  assert.equal(detail.meta.expected[0].text, "归档后详情只读，编辑与删除入口隐藏。");
+  assert.equal(detail.meta.assertions.length, 1);
+
+  const updated = await service.updateManualCase("p1", created.caseId, {
+    title: "合同归档后的只读校验（补充）",
+    folder: "合同管理/合同归档/2026",
+    role: "合同管理员",
+    priority: "P1",
+    description: "补充归档后的列表状态校验。",
+    steps: ["进入合同详情", "点击归档"],
+    expected: "归档后详情只读。",
+  }, created.assetHash);
+  assert.equal(updated.revision, "0002");
+  assert.deepEqual(updated.folder, ["合同管理", "合同归档", "2026"]);
+  const detail2 = await service.getCase("p1", created.caseId, "0002");
+  assert.equal(detail2.meta.title, "合同归档后的只读校验（补充）");
+  assert.equal(detail2.folder.join("/"), "合同管理/合同归档/2026");
+  assert.equal(detail2.revisions.length, 2);
+  assert.equal(detail2.revisions[1].origin, "manual");
+
+  await assert.rejects(service.updateManualCase("p1", created.caseId, {
+    title: "过期修改", folder: "", role: "", priority: "P2", description: "", steps: [], expected: "",
+  }, created.assetHash), /已变化/);
+
+  await (async () => {
+    const directory = path.join(workspace, "qa/ui/cases/ai-generated");
+    await fs.mkdir(path.join(directory, "revisions/0001"), { recursive: true });
+    const meta = { schema: "qa-ui-case/v1", caseId: "ai-generated", title: "Agent 用例", modulePath: ["自动"], project: { id: "p1" }, taskId: "task-ai",
+      targetUrl: "https://demo.invalid", role: "管理员", initialState: "初态", dataStrategy: "read-only", cleanup: "none",
+      expected: [], steps: [], assertions: [] };
+    const bytes = JSON.stringify(meta);
+    const script = "test('ai', async () => {});";
+    await fs.writeFile(path.join(directory, "revisions/0001/case.json"), bytes);
+    await fs.writeFile(path.join(directory, "revisions/0001/case.spec.cjs"), script);
+    const asset = { schema: "qa-ui-asset/v1", caseId: "ai-generated", currentRevision: "0001", revisions: [
+      { revision: "0001", taskId: "task-ai", validatedRunId: "run-1", hashes: { "case.json": hash(bytes), "case.spec.cjs": hash(script) } },
+    ] };
+    await fs.writeFile(path.join(directory, "asset.json"), JSON.stringify(asset));
+  })();
+  const ai = (await service.list("p1")).catalog.cases.find((entry) => entry.caseId === "ai-generated");
+  assert.ok(ai);
+  await assert.rejects(service.updateManualCase("p1", "ai-generated", {
+    title: "不应修改", folder: "", role: "", priority: "P2", description: "", steps: [], expected: "",
+  }, ai.assetHash), /只有手动用例/);
+
+  const latest = (await service.list("p1", { filter: "manual" })).catalog.cases[0];
+  await service.removeCase("p1", created.caseId, latest.assetHash);
+  await assert.rejects(fs.access(path.join(workspace, "qa/ui/cases", created.caseId)), { code: "ENOENT" });
+  assert.equal((await service.list("p1", { filter: "manual" })).catalog.total, 0);
 });
 
 test("旧 UI 资产不读取；其他 qa/data 文件继续列表和删除", async (t) => {

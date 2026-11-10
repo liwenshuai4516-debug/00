@@ -293,21 +293,28 @@ test("版本用例的分页和详情只读转发，整例删除共用空闲互�
     listTestData: (...args) => { calls.push(["list", ...args]); return "list"; },
     getTestCase: (...args) => { calls.push(["get", ...args]); return "detail"; },
     moveTestCase: (...args) => { calls.push(["move", ...args]); return "moved"; },
+    createManualTestCase: (...args) => { calls.push(["create-manual", ...args]); return "created"; },
+    updateManualTestCase: (...args) => { calls.push(["update-manual", ...args]); return "updated"; },
     deleteTestCase: (...args) => { calls.push(["delete", ...args]); return pending.promise; },
   });
   const options = { page: 3, query: "列表" };
   assert.equal(handlers.get("agent:list-test-data")({}, "p1", options), "list");
   assert.equal(handlers.get("agent:get-test-case")({}, "p1", "case1", "0002"), "detail");
   assert.throws(() => handlers.get("agent:move-test-case")({}, "p1", "case1", "合同管理/经营合同", "hash"), /请等待/);
+  assert.throws(() => handlers.get("agent:create-manual-test-case")({}, "p1", { title: "手动" }), /请等待/);
+  assert.throws(() => handlers.get("agent:update-manual-test-case")({}, "p1", "case1", { title: "手动" }, "hash"), /请等待/);
   assert.throws(() => handlers.get("agent:delete-test-case")({}, "p1", "case1", "hash"), /请等待/);
   busy = false;
   assert.equal(await handlers.get("agent:move-test-case")({}, "p1", "case1", "合同管理/经营合同", "hash"), "moved");
+  assert.equal(await handlers.get("agent:create-manual-test-case")({}, "p1", { title: "手动" }), "created");
+  assert.equal(await handlers.get("agent:update-manual-test-case")({}, "p1", "case1", { title: "手动" }, "hash"), "updated");
   const deletion = handlers.get("agent:delete-test-case")({}, "p1", "case1", "hash");
   assert.throws(() => handlers.get("agent:delete-test-case")({}, "p1", "case1", "hash"), /请等待/);
   pending.resolve({ caseId: "case1" });
   assert.deepEqual(await deletion, { caseId: "case1" });
   assert.deepEqual(calls, [["list", "p1", options], ["get", "p1", "case1", "0002"],
-    ["move", "p1", "case1", "合同管理/经营合同", "hash"], ["delete", "p1", "case1", "hash"]]);
+    ["move", "p1", "case1", "合同管理/经营合同", "hash"], ["create-manual", "p1", { title: "手动" }],
+    ["update-manual", "p1", "case1", { title: "手动" }, "hash"], ["delete", "p1", "case1", "hash"]]);
   for (const channel of ["agent:update-test-case-assertions", "agent:update-test-case-steps", "agent:update-test-case-marks", "agent:delete-test-cases"]) assert.equal(handlers.has(channel), false);
 });
 

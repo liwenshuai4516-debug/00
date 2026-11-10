@@ -289,6 +289,16 @@ function registerAgentIpc(
       projectService.moveTestCase(projectId, caseId, folder, assetHash),
     );
   });
+  ipcMain.handle("agent:create-manual-test-case", (_event, projectId, input) => {
+    return runIdleOperation(() =>
+      projectService.createManualTestCase(projectId, input),
+    );
+  });
+  ipcMain.handle("agent:update-manual-test-case", (_event, projectId, caseId, input, assetHash) => {
+    return runIdleOperation(() =>
+      projectService.updateManualTestCase(projectId, caseId, input, assetHash),
+    );
+  });
   ipcMain.handle("agent:delete-test-case", (_event, projectId, caseId, assetHash) => {
     return runIdleOperation(() =>
       projectService.deleteTestCase(projectId, caseId, assetHash),
