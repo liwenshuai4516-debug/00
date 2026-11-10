@@ -45,6 +45,92 @@ test("日志北京时间、会话真实路径与 MCP 启用/未加载状态", as
   assert.match(formatPromptDiagnostics(session, options), /MCP接入": "未加载/);
 });
 
+test("日志省略技能目录正文，只保留可用数量；原文长度仍按未省略提示词计", async () => {
+  const { stripSkillsCatalog, formatPromptDiagnostics } = await import("../../src/main/resources/prompt-diagnostics.mjs");
+  const catalog = [
+    "<skills>",
+    "The following skills provide specialized instructions for specific tasks.",
+    "Use the read tool to load a skill's file when the task matches its description.",
+    "<available_skills>",
+    "  <skill>",
+    "    <name>qa-ui-basic</name>",
+    "    <description>夹具技能描述</description>",
+    "  </skill>",
+    "  <skill>",
+    "    <name>qa-ui-execute</name>",
+    "    <description>第二个夹具技能</description>",
+    "  </skill>",
+    "</available_skills>",
+    "</skills>",
+  ].join("\n");
+  const prompt = `角色：测试\n\n${catalog}\n\n<cwd>/workspace</cwd>`;
+  const stripped = stripSkillsCatalog(prompt);
+  assert.doesNotMatch(stripped.prompt, /qa-ui-basic|夹具技能描述|available_skills/);
+  assert.match(stripped.prompt, /可用技能 2 个/);
+  assert.ok(stripped.prompt.startsWith("角色：测试\n\n<skills>"), "保留目录前后的提示词与分段");
+  assert.ok(stripped.prompt.includes("<cwd>/workspace</cwd>"));
+  assert.ok(stripped.omitted > 0);
+  const plain = stripSkillsCatalog("没有技能目录的提示词");
+  assert.deepEqual(plain, { prompt: "没有技能目录的提示词", omitted: 0 });
+
+  const session = {
+    sessionId: "fixture-strip-session", systemPrompt: prompt,
+    sessionManager: { getCwd: () => "/workspace", getSessionDir: () => "/workspace/sessions" },
+    getAllTools: () => [], extensionRunner: { hasHandlers: () => false },
+  };
+  const output = formatPromptDiagnostics(session, { agentDir: "/agent", currentUser: "fixture-user", now: new Date("2026-11-10T23:30:00Z") });
+  assert.doesNotMatch(output, /夹具技能描述|available_skills/);
+  assert.match(output, /本轮系统提示词（技能目录已省略）/);
+  assert.ok(output.includes(`${prompt.length} 字符（原文长度；日志凭据脱敏）`));
+});
+
+test("read 与 /skill: 展开打印运行时已加载技能，同轮去重且不猜 bash", async () => {
+  const { bindPromptDiagnostics } = await import("../../src/main/resources/prompt-diagnostics.mjs");
+  const workspace = path.join(os.tmpdir(), "诊断技能工作区");
+  const skillPath = path.join(workspace, ".pi", "skills", "qa-ui-basic", "SKILL.md");
+  const session = {
+    sessionId: "fixture-skill-session",
+    systemPrompt: [
+      "<skills>", "<available_skills>", "  <skill>",
+      "    <name>qa-ui-basic</name>",
+      "    <description>夹具技能描述</description>",
+      "  </skill>", "</available_skills>", "</skills>",
+    ].join("\n"),
+    sessionManager: { getCwd: () => workspace, getSessionDir: () => path.join(workspace, "sessions") },
+    getAllTools: () => [], extensionRunner: { hasHandlers: () => false },
+    resourceLoader: { getSkills: () => ({ skills: [{ name: "qa-ui-basic", filePath: skillPath }] }) },
+    subscribe: handler => { listeners.push(handler); return () => {}; },
+  };
+  const listeners = [];
+  const logged = [];
+  const info = console.info;
+  console.info = message => logged.push(message);
+  try {
+    bindPromptDiagnostics(session, { agentDir: path.join(workspace, "agent"), knownSecrets: [] });
+    const emit = event => listeners[0](event);
+    emit({ type: "agent_start" });
+    emit({ type: "tool_execution_start", toolName: "read", toolCallId: "t1", args: { path: skillPath } });
+    emit({ type: "tool_execution_start", toolName: "read", toolCallId: "t2", args: { path: path.join(workspace, "notes", "SKILL.md") } });
+    emit({ type: "tool_execution_start", toolName: "read", toolCallId: "t3", args: { path: skillPath } });
+    emit({ type: "message_end", message: { role: "user", content: `<skill name="qa-ui-basic" location="${skillPath}">\n技能正文\n</skill>` } });
+    emit({ type: "tool_execution_start", toolName: "bash", toolCallId: "t4", args: { command: `cat ${skillPath}` } });
+    emit({ type: "message_end", message: { role: "user", content: "普通消息" } });
+    emit({ type: "message_end", message: { role: "assistant", content: "回复" } });
+  } finally {
+    console.info = info;
+  }
+  assert.equal(logged.filter(line => line.startsWith("[Pi 桌面] 本轮系统提示词")).length, 1);
+  assert.equal(logged.filter(line => line.includes("夹具技能描述")).length, 0, "目录正文不进入日志");
+  const loaded = logged.filter(line => line.startsWith("[Pi 桌面] 已加载技能"));
+  assert.equal(loaded.length, 2, "同轮重复 read、普通 read 与 bash 不产生技能加载日志");
+  assert.match(loaded[0], /name="qa-ui-basic" source=read/);
+  assert.match(loaded[1], /name="qa-ui-basic" source=explicit/);
+  const round = logged[0].match(/round=(\S+)/)[1];
+  assert.ok(loaded.every(line => line.includes(`round=${round}`)), "加载日志与提示词日志属于同一轮次");
+  assert.ok(loaded.every(line => line.includes(`session=fixture-skill-session`)));
+  assert.ok(loaded.every(line => line.includes(`path=${skillPath}`)));
+});
+
 test("真实 SDK 每次运行记录实际提示词，重载、恢复和新会话不串日志（不请求模型）", async t => {
   const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "prompt-diagnostics-")));
   let passed = false;

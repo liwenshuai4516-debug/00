@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { userInfo } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseSkillBlock } from "@mariozechner/pi-coding-agent";
 
 // 运行期诊断只处理日志副本，不修改发送给 Pi 的提示词或读取认证配置。
 export function redactPromptLog(value, knownSecrets = []) {
@@ -18,8 +19,19 @@ export function redactPromptLog(value, knownSecrets = []) {
     .replace(/([?&](?:key|token|secret|password|api[_-]?key|access[_-]?token)=)[^\s&#"']+/gi, "$1[已脱敏]");
 }
 
-export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], now = new Date(), currentUser }) {
+// 技能目录是 Pi 生成的“可用技能”清单，不是运行时已加载的技能。
+// 日志只保留可用数量与加载入口说明，避免把整个目录正文写进控制台；模型输入不受影响。
+export function stripSkillsCatalog(prompt) {
+  const section = prompt.match(/(^|\n)<skills>\n[\s\S]*?\n<\/skills>(?=\n|$)/);
+  if (!section) return { prompt, omitted: 0 };
+  const skillCount = (section[0].match(/<skill>/g) ?? []).length;
+  const placeholder = `<skills>\n（技能目录正文已省略：可用技能 ${skillCount} 个。运行时实际加载的技能见 [Pi 桌面] 已加载技能 日志）\n</skills>`;
+  return { prompt: prompt.replace(section[0], `${section[1] ?? ""}${placeholder}`), omitted: section[0].length };
+}
+
+export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], now = new Date(), currentUser, roundId = randomUUID() }) {
   const prompt = session.systemPrompt;
+  const { prompt: visiblePrompt } = stripSkillsCatalog(prompt);
   const cwd = session.sessionManager.getCwd();
   const tools = session.getAllTools().filter(tool => tool.name.startsWith("mcp__") ||
     ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"].includes(tool.name));
@@ -47,9 +59,9 @@ export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], 
     },
   };
   return redactPromptLog([
-    `[Pi 桌面] 本轮完整系统提示词 round=${randomUUID()} session=${session.sessionId} ${prompt.length} 字符（原文长度；日志凭据脱敏）`,
+    `[Pi 桌面] 本轮系统提示词（技能目录已省略） round=${roundId} session=${session.sessionId} ${prompt.length} 字符（原文长度；日志凭据脱敏）`,
     "---------- 系统提示词开始 ----------",
-    prompt,
+    visiblePrompt,
     "---------- 系统提示词结束 ----------",
     "---------- 动态配置开始 ----------",
     JSON.stringify(dynamic, null, 2),
@@ -57,13 +69,51 @@ export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], 
   ].join("\n"), knownSecrets);
 }
 
+// 技能是否“已加载”只认 Pi 原生信号：read 工具读到技能文件，或 /skill:name 展开后的
+// user 消息与 loader 登记一致。bash 等间接读取不猜测，避免误报。
 export function bindPromptDiagnostics(session, { agentDir, knownSecrets }) {
-  // agent_start 在 before_agent_start 和扩展启动处理之后通知公共订阅者。
-  // 每个实际运行记录一次；SDK dispose 会清除订阅，reload 不重新绑定。
-  return session.subscribe(event => {
-    if (event.type !== "agent_start") return;
+  let roundId = randomUUID();
+  const loadedThisRound = new Set();
+  const skills = () => session.resourceLoader?.getSkills?.().skills ?? [];
+  const cwd = () => session.sessionManager?.getCwd?.() ?? process.cwd();
+  function reportLoaded(skill, source) {
+    const key = `${source}:${skill.name}`;
+    if (loadedThisRound.has(key)) return;
+    loadedThisRound.add(key);
     try {
-      console.info(formatPromptDiagnostics(session, { agentDir, knownSecrets, currentUser: userInfo().username }));
+      console.info(redactPromptLog(
+        `[Pi 桌面] 已加载技能 round=${roundId} session=${session.sessionId} name="${skill.name}" source=${source} path=${skill.filePath}`,
+        knownSecrets,
+      ));
+    } catch {
+      // 日志故障不改变运行结果，且不输出可能含敏感文本的原始异常。
+    }
+  }
+  return session.subscribe(event => {
+    if (event.type === "tool_execution_start" && event.toolName === "read" && typeof event.args?.path === "string") {
+      const target = path.resolve(cwd(), event.args.path);
+      const skill = skills().find(item => item.filePath && path.resolve(cwd(), item.filePath) === target);
+      if (skill) reportLoaded(skill, "read");
+      return;
+    }
+    if (event.type === "message_end" && event.message?.role === "user") {
+      const text = typeof event.message.content === "string" ? event.message.content
+        : (event.message.content ?? []).filter(item => item.type === "text").map(item => item.text).join("");
+      if (!text.startsWith("<skill")) return;
+      const expanded = parseSkillBlock(text);
+      if (!expanded) return;
+      const skill = skills().find(item => item.name === expanded.name &&
+        item.filePath && path.resolve(cwd(), item.filePath) === path.resolve(cwd(), expanded.location));
+      if (skill) reportLoaded(skill, "explicit");
+      return;
+    }
+    if (event.type !== "agent_start") return;
+    // agent_start 在 before_agent_start 和扩展启动处理之后通知公共订阅者。
+    // 每个实际运行记录一次；SDK dispose 会清除订阅，reload 不重新绑定。
+    roundId = randomUUID();
+    loadedThisRound.clear();
+    try {
+      console.info(formatPromptDiagnostics(session, { agentDir, knownSecrets, currentUser: userInfo().username, roundId }));
     } catch {
       // 日志故障不改变运行结果，且不输出可能含敏感文本的原始异常。
       console.error("[Pi 桌面] 系统提示词日志记录失败；本轮诊断信息未确认。");
