@@ -17,6 +17,8 @@
 
 Python 只暴露 navigate/click/input/select_dropdown/done。动作前按实际页面目标的 role/name、稳定属性与业务容器核对约定；输入仅允许声明值，拒绝追加、坐标、密码框与未声明控件。导航限定项目 origin/路径；非导航动作要求当前页面仍在项目范围。结束要求观察到身份和全部完成信号，不以模型自行宣称成功替代。沿用已批准的严格运行时补丁，无模型自动重试、浏览器自动重连或默认逐步截图。
 
+功能探索提示词统一维护在 [prompt/exploration-control.md](../resources/testing/ui/prompt/exploration-control.md)。主 Agent 先完成指定功能，再按真实发现继续其他功能的只读探索；初始功能清单不作白名单。每次 completed 只结束当前工具任务，后续目标由主 Agent 维护队列、冻结新约定并调用，工具自身不自动遍历。完整阶段顺序见 qa-ui-basic，发现、生成、验证和发布分别报告；本节既有真实验收记录不代表新增两阶段调度已获模型行为验收。
+
 后台登录沿用私有临时状态和现有登录进程。公开页无登录表单时跳过凭据提交；验证码/MFA/身份无法确认返回 blocked。角色文本仍须在探索与用例中核对。只支持已验证的 cookie/localStorage；遇到 IndexedDB 状态明确 blocked。Qwen 的内网直连仅在 Python 子进程中按用户已确认的该 provider/model 配置，不改变宿主代理。
 
 ## 文件契约与发布门槛

@@ -286,7 +286,7 @@ async def run(message):
             goal += "\nFrozen exploration contract: " + json.dumps(message["contract"], ensure_ascii=False)
             goal += "\nOpen " + message["url"] + "."
             # 以随包入口定位，避免依赖任务 cwd 或开发机路径；每次任务读取最新正文。
-            instructions = (Path(__file__).parent.parent / "exploration-control.md").read_text(encoding="utf-8").strip()
+            instructions = (Path(__file__).parent.parent / "prompt" / "exploration-control.md").read_text(encoding="utf-8").strip()
             if not instructions:
                 raise ValueError("empty-exploration-control")
             goal += "\n" + instructions + "\n"

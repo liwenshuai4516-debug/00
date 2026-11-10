@@ -8,16 +8,18 @@
 | 默认测试职责与技能路由 | [test-agent-prompt.mjs](../src/main/prompts/test-agent-prompt.mjs) | 没有已保存配置时作为默认值；已有自定义配置优先，新对话保存业务提示词快照 |
 | 用例粒度、覆盖与审批关联 | [UI 用例规则](ui-case-rules.md) | 详细规则在对应技能维护，不复制到默认提示词 |
 | UI 主 Agent 执行流程 | [qa-ui-basic/SKILL.md](../resources/testing/ui/skills/qa-ui-basic/SKILL.md) | 明确阶段继续条件，调用探索前读取规则文件 |
-| 功能探索范围与控制规则 | [exploration-control.md](../resources/testing/ui/exploration-control.md) | 统一维护功能覆盖维度、识别与执行边界、范围、深度、去重与停止规则；主 Agent 将本次具体范围写入 contract.goal |
+| 功能探索提示词 | [prompt/exploration-control.md](../resources/testing/ui/prompt/exploration-control.md) | 统一维护优先探索、自由发现、覆盖维度、深度、去重与停止规则；主 Agent 将当前阶段及独立目标写入 contract.goal |
 | 当前任务的探索约定 | 当前工作区 `qa/ui/tasks/<taskId>/task.json` 的 contract | qa_ui_explore 保存本次约定；不覆盖其他任务或已冻结预期 |
-| browser-use 提示词加载 | [explore.py](../resources/testing/ui/browser-use/explore.py) | 每次探索按入口相对位置读取 exploration-control.md，与 goal、冻结 contract 组装为 Agent 的 task |
+| browser-use 提示词加载 | [explore.py](../resources/testing/ui/browser-use/explore.py) | 每次探索按入口相对位置读取 prompt/exploration-control.md，与 goal、冻结 contract 组装为 Agent 的 task |
 | 自动恢复与新对话交接 | [看门狗](agent-watchdog.md) | 按已实现的启用、取消和恢复条件运行，提示词本身不启动看门狗 |
 
 修改源码默认值不会覆盖已保存的自定义业务提示词，也不会热改旧会话的业务提示词快照。已保存配置的用户需在「设置 → 提示词」按需更新，并新建对话；通用桌面提示词在下次会话初始化时读取。运行中的会话不会因文件修改立即更新。
 
 内置 UI 工具是否存在由扩展登记与禁用状态决定，子智能体也不因继承测试职责就获得父级 UI 工具。提示词只做条件路由，真实能力、权限、参数及成功状态以实际工具和技能为准；不建立第二套能力清单或绕过 Pi 的加载规则。
 
-UI 探索控制沿用现有工具参数，没有新增设置项或资源发现入口。修改规则文件后，主 Agent 调用前按技能引用重新读取；browser-use 在下一次探索时自动读取 UTF-8 正文，不缓存到后续任务，也不改变已启动的探索。文件缺失、不可读或为空时任务失败，不使用内嵌后备。开发资源位置为 resources/testing/ui/exploration-control.md，发布需复制到 process.resourcesPath/testing/ui/exploration-control.md，不依赖被测工作区的 cwd。范围与深度属于模型指导，实际导航、控件及输入约束仍由现有动作守卫校验；不表示已新增模块级路径拦截。完整流程以 qa-ui-basic 为准，用例拆分与语义覆盖仍以 qa-ui-case-design 为准。
+UI 探索提示词集中放在 `resources/testing/ui/prompt/`，沿用现有工具参数，没有新增设置项或资源发现入口。修改规则后，主 Agent 调用前按技能引用重新读取；browser-use 在下一次探索时自动读取 UTF-8 正文，不缓存到后续任务，也不改变已启动的探索。文件缺失、不可读或为空时任务失败，不使用旧路径或内嵌后备。开发资源位置为 resources/testing/ui/prompt/exploration-control.md，发布需完整复制到 process.resourcesPath/testing/ui/prompt/exploration-control.md，不依赖被测工作区的 cwd。
+
+主 Agent 按提示词先处理指定功能，再继续其他功能的只读自由探索；初始清单是优先顺序，不是功能白名单。单次工具仍核对已匹配项目、身份、控件和输入；主 Agent 从真实轨迹提取新入口，按独立目标声明后续任务，无需再次确认只读功能范围。工具自身不会在 completed 后启动下一目标；队列、总预算与停止依据由主 Agent 维护。新发现默认只探索，不自动生成、执行或发布额外用例，不扩大写入授权。完整流程以 qa-ui-basic 为准，用例拆分与语义覆盖仍以 qa-ui-case-design 为准。
 
 ## 借鉴来源与取舍
 
@@ -51,6 +53,6 @@ NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" node --test te
 resources/testing/ui/browser-use/.venv/bin/python -B tests/helpers/browser-use-prompt.check.py
 ```
 
-该检查复制 Python 入口与提示词到临时随包目录，从无关 cwd 调用真实任务组装，核对模型输入包含最新文件、原始目标和冻结 contract；文件缺失或为空时，在调用 Agent 前失败并完成收尾。浏览器、Agent 和进程查询均用隔离替身，不代表真实安装包或模型行为验收。
+该检查复制 Python 入口与 prompt 目录中的提示词到临时随包目录，从无关 cwd 调用真实任务组装，核对模型输入包含最新文件、原始目标和冻结 contract；文件缺失或为空时，在调用 Agent 前失败并完成收尾，即使旧路径有残留也不回退。浏览器、Agent 和进程查询均用隔离替身，不代表真实安装包或模型行为验收。
 
-审阅探索规则时，对照控制文件的适用项清单，确认范围内入口与业务动作均有去向，且与 qa-ui-basic 的阶段继续条件一致。新增覆盖维度只扩充盘点指导，不新增运行能力或写授权；尤其不能把文件操作、审批及状态流转的入口观察当成业务结果验收。
+审阅探索规则时，对照适用项清单，核对优先任务完成后是否转入自由探索、新入口是否去重入队、每个 completed 是否仅结束当前工具任务，以及预算、异常和取消时的停止依据；与 qa-ui-basic 的流程表保持一致。两阶段调度属于提示词指导，离线路径检查不能证明模型已经自动完成自由探索；文件操作、审批及状态流转的入口观察也不能代替业务结果验收。

@@ -22,8 +22,9 @@ class PromptChecks(unittest.IsolatedAsyncioTestCase):
         source = Path(__file__).resolve().parents[2] / "resources/testing/ui"
         entry = runtime / "browser-use/explore.py"
         shutil.copyfile(source / "browser-use/explore.py", entry)
-        self.prompt = runtime / "exploration-control.md"
-        shutil.copyfile(source / "exploration-control.md", self.prompt)
+        (runtime / "prompt").mkdir()
+        self.prompt = runtime / "prompt/exploration-control.md"
+        shutil.copyfile(source / "prompt/exploration-control.md", self.prompt)
         spec = importlib.util.spec_from_file_location("packaged_exploration", entry)
         self.probe = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.probe)
@@ -75,7 +76,7 @@ class PromptChecks(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(task.endswith(original + "\n"))
         self.assertIn(message["goal"], task)
         self.assertIn(json.dumps(message["contract"], ensure_ascii=False), task)
-        updated = "只探索第二次任务声明的范围。\n禁止进入归档页面。"
+        updated = "第二次任务优先探索查询功能，完成后继续自由探索。"
         self.prompt.write_text(updated, encoding="utf-8")
         result, factory, _ = await self.explore()
         self.assertEqual(result["status"], "completed")
@@ -83,6 +84,8 @@ class PromptChecks(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(original, factory.call_args.kwargs["task"])
 
     async def test_missing_prompt_stops_before_agent_without_fallback(self):
+        # 旧位置残留也不能覆盖新 prompt 目录的缺失错误。
+        (self.prompt.parent.parent / "exploration-control.md").write_text("旧路径提示词", encoding="utf-8")
         self.prompt.unlink()
         result, factory, _ = await self.explore()
         self.assertEqual(result["status"], "failed")
