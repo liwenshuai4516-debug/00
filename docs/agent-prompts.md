@@ -7,11 +7,16 @@
 | 通用任务推进、工具结果、安全与续跑语义 | [agent-system-prompt.mjs](../src/main/prompts/agent-system-prompt.mjs) | 会话初始化时追加，不替代 Pi 原生系统提示词及官方资源发现 |
 | 默认测试职责与技能路由 | [test-agent-prompt.mjs](../src/main/prompts/test-agent-prompt.mjs) | 没有已保存配置时作为默认值；已有自定义配置优先，新对话保存业务提示词快照 |
 | 用例粒度、覆盖与审批关联 | [UI 用例规则](ui-case-rules.md) | 详细规则在对应技能维护，不复制到默认提示词 |
+| UI 主 Agent 执行流程与探索范围控制 | [qa-ui-basic/SKILL.md](../resources/testing/ui/skills/qa-ui-basic/SKILL.md) | 明确阶段继续条件；主 Agent 将当前目标、范围、排除项与深度写入 contract.goal |
+| 当前任务的探索约定 | 当前工作区 `qa/ui/tasks/<taskId>/task.json` 的 contract | qa_ui_explore 保存本次约定；不覆盖其他任务或已冻结预期 |
+| browser-use 执行指令 | [explore.py](../resources/testing/ui/browser-use/explore.py) | 每次启动探索进程时，将 goal、冻结 contract 与精简执行指令组装为 Agent 的 task |
 | 自动恢复与新对话交接 | [看门狗](agent-watchdog.md) | 按已实现的启用、取消和恢复条件运行，提示词本身不启动看门狗 |
 
 修改源码默认值不会覆盖已保存的自定义业务提示词，也不会热改旧会话的业务提示词快照。已保存配置的用户需在「设置 → 提示词」按需更新，并新建对话；通用桌面提示词在下次会话初始化时读取。运行中的会话不会因文件修改立即更新。
 
 内置 UI 工具是否存在由扩展登记与禁用状态决定，子智能体也不因继承测试职责就获得父级 UI 工具。提示词只做条件路由，真实能力、权限、参数及成功状态以实际工具和技能为准；不建立第二套能力清单或绕过 Pi 的加载规则。
+
+UI 探索控制沿用现有工具参数，没有新增设置项或资源发现入口。技能正文更新后，当前会话需重新读取 qa-ui-basic；browser-use 执行指令在下一次探索进程启动时读取，不改变已启动的探索。范围与深度属于模型指导，实际导航、控件及输入约束仍由现有动作守卫校验；不表示已新增模块级路径拦截。完整流程以 qa-ui-basic 为准，用例拆分与语义覆盖仍以 qa-ui-case-design 为准。
 
 ## 借鉴来源与取舍
 
