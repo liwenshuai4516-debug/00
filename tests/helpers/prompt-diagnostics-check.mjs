@@ -72,6 +72,12 @@ try {
   assert.equal(runtimeLogs().length, 0, "运行期不打印轮次、工具调用、返回或技能加载");
   const output = diagnostics()[0];
   assert.ok(output.includes(TEST_AGENT_PROMPT));
+  assert.ok(output.includes(AGENT_SYSTEM_PROMPT));
+  assert.ok(output.indexOf(AGENT_SYSTEM_PROMPT) < output.indexOf(TEST_AGENT_PROMPT), "日志先打印桌面系统规则，再打印测试职责");
+  for (const name of ["AGENT_SYSTEM_PROMPT", "TEST_AGENT_PROMPT（当前会话测试职责）", "其余系统提示词"]) {
+    assert.ok(output.includes(`---------- ${name} 开始 ----------`));
+    assert.ok(output.includes(`---------- ${name} 结束 ----------`));
+  }
   assert.ok(!output.includes("You are an expert coding assistant operating inside pi"));
   assert.ok(output.includes(`session=${first.sessionId}`));
   assert.doesNotMatch(output, /fixture-runtime-secret|fixture-password-secret|第一轮/);
@@ -82,6 +88,7 @@ try {
   assert.match(output, /技能目录正文已省略/);
   assert.doesNotMatch(output, /EXTENSION_FINAL_PROMPT/, "初始日志不包含运行期 before_agent_start 的改写");
   assert.ok(modelPrompts[0].includes("fixture-password-secret"), "扩展运行期改写只进入模型输入，不修改日志脱敏");
+  assert.ok(modelPrompts[0].startsWith(TEST_AGENT_PROMPT + "\n\n" + AGENT_SYSTEM_PROMPT), "日志排序不改变模型输入顺序");
   assert.ok(modelPrompts[0].includes("<available_skills>"), "技能目录仍发送给模型");
   await sendMessage(first, "/skill:diagnostic-skill 附加说明", () => {}, () => {});
   assert.equal(diagnostics().length, 1);
@@ -115,6 +122,7 @@ try {
     const promptIndex = logs.findIndex(line => line.startsWith("[Pi 桌面] 初始系统提示词") && line.includes(`session=${session.sessionId}`));
     const readyIndex = logs.indexOf(`FIXTURE_SESSION_READY ${session.sessionId}`);
     assert.ok(readyIndex >= 0 && readyIndex < promptIndex, "初始提示词必须在扩展绑定完成后打印");
+    assert.ok(logs[promptIndex].indexOf(AGENT_SYSTEM_PROMPT) < logs[promptIndex].indexOf(TEST_AGENT_PROMPT), "恢复、新建和替换会话均按日志顺序分段");
   }
   assert.equal(calls, 6);
   assert.equal(runtimeLogs().length, 0, "重载、恢复与新会话均不追加运行期日志");

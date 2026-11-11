@@ -84,6 +84,31 @@ test("日志省略技能目录正文，只保留可用数量；原文长度仍�
   assert.ok(output.includes(`${prompt.length} 字符（原文长度；日志凭据脱敏）`));
 });
 
+test("日志先打印 AGENT_SYSTEM_PROMPT 再打印会话 TEST_AGENT_PROMPT，各段独立分隔且不改模型原文", async () => {
+  const { formatPromptDiagnostics } = await import("../../src/main/resources/prompt-diagnostics.mjs");
+  const agentSystemPrompt = "桌面规则夹具", testAgentPrompt = "会话自定义测试职责 password=fixture-secret";
+  const prompt = `${testAgentPrompt}\n\n${agentSystemPrompt}\n\nSYSTEM.md 及项目上下文夹具`;
+  const session = {
+    sessionId: "fixture-order", systemPrompt: prompt,
+    sessionManager: { getCwd: () => "/workspace", getSessionDir: () => "/workspace/sessions" },
+    getAllTools: () => [], extensionRunner: { hasHandlers: () => false },
+  };
+  const options = { agentDir: "/agent", currentUser: "fixture-user", agentSystemPrompt, testAgentPrompt };
+  const output = formatPromptDiagnostics(session, options);
+  assert.ok(output.includes("---------- AGENT_SYSTEM_PROMPT 开始 ----------\n桌面规则夹具\n---------- AGENT_SYSTEM_PROMPT 结束 ----------"));
+  assert.ok(output.includes("---------- TEST_AGENT_PROMPT（当前会话测试职责） 开始 ----------\n会话自定义测试职责 password=[已脱敏]\n---------- TEST_AGENT_PROMPT（当前会话测试职责） 结束 ----------"));
+  assert.ok(output.includes("---------- 其余系统提示词 开始 ----------\nSYSTEM.md 及项目上下文夹具\n---------- 其余系统提示词 结束 ----------"));
+  assert.ok(output.indexOf(agentSystemPrompt) < output.indexOf("会话自定义测试职责"));
+  assert.ok(output.indexOf("会话自定义测试职责") < output.indexOf("SYSTEM.md 及项目上下文夹具"));
+  assert.equal(session.systemPrompt, prompt);
+  assert.doesNotMatch(output, /fixture-secret/);
+
+  session.systemPrompt = "扩展已替换整个提示词";
+  const replaced = formatPromptDiagnostics(session, options);
+  assert.ok(replaced.includes(session.systemPrompt));
+  assert.doesNotMatch(replaced, /桌面规则夹具|会话自定义测试职责|AGENT_SYSTEM_PROMPT 开始/);
+});
+
 test("会话创建时打印一次初始系统提示词，失败只报告未确认", async () => {
   const { logInitialPrompt } = await import("../../src/main/resources/prompt-diagnostics.mjs");
   const session = {

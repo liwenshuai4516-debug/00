@@ -27,9 +27,24 @@ export function stripSkillsCatalog(prompt) {
   return { prompt: prompt.replace(section[0], `${section[1] ?? ""}${placeholder}`), omitted: section[0].length };
 }
 
-export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], now = new Date(), currentUser, role = "main" }) {
+export function formatPromptDiagnostics(session, { agentDir, agentSystemPrompt, testAgentPrompt, knownSecrets = [], now = new Date(), currentUser, role = "main" }) {
   const prompt = session.systemPrompt;
   const { prompt: visiblePrompt } = stripSkillsCatalog(prompt);
+  let promptLog = visiblePrompt;
+  const prefix = [testAgentPrompt, agentSystemPrompt].join("\n\n");
+  // 只拆分已确认的会话主体；扩展若整体替换提示词，继续打印实际原文。
+  if (typeof agentSystemPrompt === "string" && typeof testAgentPrompt === "string" && prompt.startsWith(prefix)) {
+    const sections = [
+      ["AGENT_SYSTEM_PROMPT", agentSystemPrompt],
+      ["TEST_AGENT_PROMPT（当前会话测试职责）", testAgentPrompt],
+      ["其余系统提示词", prompt.slice(prefix.length).trimStart()],
+    ];
+    promptLog = sections.filter(([, text]) => text !== "").map(([name, text]) => [
+      `---------- ${name} 开始 ----------`,
+      stripSkillsCatalog(text).prompt,
+      `---------- ${name} 结束 ----------`,
+    ].join("\n")).join("\n\n");
+  }
   const cwd = session.sessionManager.getCwd();
   const tools = session.getAllTools().filter(tool => tool.name.startsWith("mcp__") ||
     ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"].includes(tool.name));
@@ -59,7 +74,7 @@ export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], 
   return redactPromptLog([
     `[Pi 桌面] 初始系统提示词（技能目录已省略） session=${session.sessionId} role=${role} ${prompt.length} 字符（原文长度；日志凭据脱敏）`,
     "---------- 系统提示词开始 ----------",
-    visiblePrompt,
+    promptLog,
     "---------- 系统提示词结束 ----------",
     "---------- 动态配置开始 ----------",
     JSON.stringify(dynamic, null, 2),

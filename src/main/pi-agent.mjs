@@ -138,10 +138,11 @@ export async function createPiAgent(
   });
   // 每个会话独立持有运行时引用，探索复用此会话的官方模型和认证。
   const uiTestingRuntime = resourceOptions?.uiTestingRuntime ? { ...resourceOptions.uiTestingRuntime } : undefined;
+  const testAgentPrompt = promptSnapshot?.testAgentPrompt ?? resourceOptions?.delegatedPrompt ?? TEST_AGENT_PROMPT;
   const { agentDir, settingsManager, resourceLoader, reportDiagnostics } =
     await createPiResources({
       cwd: workspaceRoot,
-      systemPrompt: [promptSnapshot?.testAgentPrompt ?? resourceOptions?.delegatedPrompt ?? TEST_AGENT_PROMPT, AGENT_SYSTEM_PROMPT].join("\n\n"),
+      systemPrompt: [testAgentPrompt, AGENT_SYSTEM_PROMPT].join("\n\n"),
       askProjectTrust: resourceOptions?.askProjectTrust,
       onDiagnostics: resourceOptions?.onDiagnostics,
       uiTestingRuntime,
@@ -217,6 +218,8 @@ export async function createPiAgent(
   // 扩展命令替换会话时由 runtime 在绑定完成后调用，与普通创建保持同一时机。
   session.desktopLogInitialPrompt = () => logInitialPrompt(session, {
     agentDir,
+    agentSystemPrompt: AGENT_SYSTEM_PROMPT,
+    testAgentPrompt,
     knownSecrets: [startupModel.apiKey],
     role: resourceOptions?.subagentParent ? "subagent" : "main",
   });
