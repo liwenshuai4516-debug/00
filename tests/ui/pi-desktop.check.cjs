@@ -23,7 +23,7 @@ async function main() {
     pi.on("session_start", (_event, ctx) => ctx.ui.setStatus("startup", "默认状态不应展示"));
     pi.registerCommand("desktop-ui", { handler: async (_args, ctx) => {
       ctx.ui.setStatus("ready", "桌面交互中");
-      ctx.ui.setStatus("hint", "goal: unfocused [1 open] - /goal-focus");
+      ctx.ui.setStatus("goal", "goal: unfocused [1 open] - /goal-focus");
       ctx.ui.setStatus("blank", "   ");
       const value = await ctx.ui.select("选择验收选项", ["甲", "乙"]);
       if (!await ctx.ui.confirm("确认验收", value)) return;
@@ -93,11 +93,23 @@ async function main() {
     await check("初始化状态默认隐藏，空状态区不占布局", `document.querySelectorAll('.extension-status').length===0 && [...document.querySelectorAll('.extension-widgets')].every(e=>getComputedStyle(e).display==='none')`);
     const command = sendMessage(session, "/desktop-ui", () => {}, () => {});
     await wait(`document.querySelector('.extension-dialog select')`);
-    await check("调用期间状态可见，命令独立成片段、空文本与初始化状态不占位", `[...document.querySelectorAll('.extension-status')].some(e=>e.textContent.includes('桌面交互中')) && [...document.querySelectorAll('.extension-status__command')].map(e=>e.textContent).join(',')==='/goal-focus' && [...document.querySelectorAll('.extension-status')].some(e=>e.title==='goal: unfocused [1 open] - /goal-focus') && ![...document.querySelectorAll('.extension-status')].some(e=>['blank','startup'].includes(e.dataset.statusKey))`);
+    await check("调用期间未聚焦 goal 仍隐藏，其他状态正常显示", `document.querySelectorAll('.extension-status').length===1 && document.querySelector('.extension-status').textContent.includes('桌面交互中') && !document.querySelector('.extension-status[data-status-key="goal"]')`);
+    const goalUi = session.extensionRunner.getUIContext();
+    goalUi.setStatus("goal", "goal: 核对状态展示 [active] - /goal-status");
+    await wait(`document.querySelector('.extension-status[data-status-key="goal"]')`);
+    await check("聚焦 goal 状态保留，命令独立成片段、空文本与初始化状态不占位", `document.querySelector('.extension-status[data-status-key="goal"]').title==='goal: 核对状态展示 [active] - /goal-status' && [...document.querySelectorAll('.extension-status__command')].map(e=>e.textContent).join(',')==='/goal-status' && ![...document.querySelectorAll('.extension-status')].some(e=>['blank','startup'].includes(e.dataset.statusKey))`);
+    goalUi.setStatus("goal", "goal: unfocused [2 open] - /goal-focus");
+    await wait(`!document.querySelector('.extension-status[data-status-key="goal"]')`);
+    await check("取消聚焦即隐藏旧 goal 状态", `document.querySelectorAll('.extension-status').length===1`);
+    goalUi.setStatus("ready", undefined);
+    await wait(`document.querySelectorAll('.extension-status').length===0`);
+    await check("仅有未聚焦 goal 时，输入框上方不留空白占位", `getComputedStyle(document.querySelector('.extension-widgets')).display==='none'`);
+    goalUi.setStatus("ready", "桌面交互中");
+    await wait(`document.querySelectorAll('.extension-status').length===1`);
     await run(`window.ui.setSession('inactive-session')`);
     await check("切换会话不显示其他会话的调用状态", `document.querySelectorAll('.extension-status').length===0`);
     await run(`window.ui.setSession(${JSON.stringify(session.sessionId)})`);
-    await check("切回仍在调用的会话可显示其临时状态", `document.querySelectorAll('.extension-status').length===2`);
+    await check("切回仍在调用的会话只显示有效状态，未聚焦 goal 不恢复", `document.querySelectorAll('.extension-status').length===1 && !document.querySelector('.extension-status[data-status-key="goal"]')`);
     if (process.env.PI_UI_MANUAL_SELECT) {
       console.log("NATIVE_SELECT_READY：请选择乙并确认。");
       await wait(`document.querySelector('.extension-dialog h2').textContent==='确认验收'`, 60000);
@@ -136,7 +148,10 @@ async function main() {
     await run(`window.ui.refresh()`);
     await check("刷新不会重复覆盖输入", `window.inputEvents===1`);
     await check("通知、文本组件与标题仍可见", `document.title==='Pi 桌面验收' && document.querySelector('.extension-notices').textContent.includes('扩展通知') && [...document.querySelectorAll('.extension-widgets')].some(e=>e.textContent.includes('中文第一行'))`);
-    if (process.env.PI_UI_ARTIFACT_DIR) await fs.writeFile(path.join(process.env.PI_UI_ARTIFACT_DIR, "extension-status.png"), (await win.webContents.capturePage()).toPNG());
+    if (process.env.PI_UI_ARTIFACT_DIR) {
+      await run(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+      await fs.writeFile(path.join(process.env.PI_UI_ARTIFACT_DIR, "extension-status.png"), (await win.webContents.capturePage()).toPNG());
+    }
     await run(`document.querySelector('#messages').innerHTML='<details class="tool-message"><summary>工具</summary></details>'`);
     await wait(`document.querySelector('.tool-message').open`);
     await sendMessage(session, "/desktop-timeout", () => {}, () => {});

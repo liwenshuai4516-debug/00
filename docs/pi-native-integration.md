@@ -133,9 +133,9 @@ R4：服务器确认上传成功后显示“上传成功”和文件名；服务
 
 桌面通过 `bindExtensions({ mode: "rpc", uiContext, commandContextActions })` 绑定，`hasUI=true`；无界面检查仍使用 json/hasUI=false。选择、确认、输入支持信号取消和超时，多行编辑支持预填；通知、状态、字符串数组组件、标题、编辑器正文与工具展开接入页面。正文等输入绑定完成且组词结束后经原保存链路应用，页面销毁/重载会结束等待，迟到响应不再消费。
 
-输入区上方的扩展 `setStatus` 状态条默认隐藏，空区域不占布局。仅展示当前发送调用期间扩展新写入的状态，不恢复初始化或上次调用的状态；扩展命令和推理过程中的状态更新使用同一入口。请求完成（包括自动处理收尾）、失败或停止完成后清除状态及其重连缓存；请求内替换会话时先清除旧状态。`/reload` 和空闲时写入的状态不展示。切换页面会话只展示所属会话仍在调用中的状态；通知、弹窗、字符串数组组件、标题和输入建议继续遵循各自原有生命周期。
+输入区上方的扩展 `setStatus` 状态条默认隐藏，空区域不占布局。仅展示当前发送调用期间扩展新写入的状态，不恢复初始化或上次调用的状态；扩展命令和推理过程中的状态更新使用同一入口。goal 扩展使用 `goal` 状态键发送的 `goal: unfocused` 提醒始终隐藏，包括普通生成期间及从聚焦切回未聚焦时；其他状态继续按原条件展示，空区域不占位。此规则仅控制桌面状态条展示，不修改扩展目标或聚焦数据。请求完成（包括自动处理收尾）、失败或停止完成后清除状态及其重连缓存；请求内替换会话时先清除旧状态。`/reload` 和空闲时写入的状态不展示。切换页面会话只展示所属会话仍在调用中的状态；通知、弹窗、字符串数组组件、标题和输入建议继续遵循各自原有生命周期。
 
-定向验证：`node --test tests/unit/extension-ui-bridge.test.js tests/unit/tool-events.test.js tests/unit/request-status.test.js tests/unit/pi-desktop-runtime.test.js`；`node_modules/.bin/electron tests/ui/pi-desktop.check.cjs`。使用临时资源与离线夹具，核对默认隐藏、调用中展示、命令片段、会话隔离、重连缓存及正常/异常/停止收尾；不请求模型，不代表真实扩展业务或发布包已验收。
+定向验证：`node --test tests/unit/extension-ui-bridge.test.js tests/unit/tool-events.test.js tests/unit/request-status.test.js tests/unit/pi-desktop-runtime.test.js`；`node_modules/.bin/electron tests/ui/pi-desktop.check.cjs`。使用临时资源与离线夹具，核对默认隐藏、调用中展示、未聚焦 goal 隐藏与聚焦切换、命令片段、会话隔离、重连缓存及正常/异常/停止收尾；不请求模型，不代表真实扩展业务或发布包已验收。
 
 继承官方默认非 TUI UI context；自定义终端组件返回 undefined，终端编辑器、输入监听、页眉页脚、工作指示器与主题切换等不支持的方法维持官方非 TUI 行为。Pi 终端主题不会自动转换为 CSS。不要仅凭 hasUI 判断 TUI 组件可用，应结合 mode。
 

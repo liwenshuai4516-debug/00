@@ -133,7 +133,11 @@ export function createExtensionUi(api, input, options) {
     document.title = state.get("setTitle")?.title || originalTitle;
     for (const event of state.values()) {
       // 空文本视为清除，避免留下一条只有圆点的空状态行。
-      if (event.method === "setStatus" && typeof event.statusText === "string" && event.statusText.trim() !== "") above.append(statusRow(event));
+      if (event.method === "setStatus" && typeof event.statusText === "string" && event.statusText.trim() !== "") {
+        // goal 扩展会随普通会话刷新未聚焦提醒；未使用目标时不占会话界面。
+        if (event.statusKey === "goal" && /^goal:\s*unfocused\b/.test(event.statusText)) continue;
+        above.append(statusRow(event));
+      }
       if (event.method === "setWidget" && event.widgetLines) {
         const node = element("pre", event.widgetLines.join("\n"));
         (event.widgetPlacement === "belowEditor" ? below : above).append(node);
