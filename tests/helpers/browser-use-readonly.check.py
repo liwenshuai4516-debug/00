@@ -23,11 +23,32 @@ class ReadonlyChecks(unittest.TestCase):
     def guard(self, data, target=None, ancestors=None, visible="reviewer Beta ready"):
         return probe.readonly_guard(self.message, data, target or self.target, ancestors or self.beta, visible)
 
-    def test_schema_exposes_only_readonly_capabilities(self):
-        tools = probe.Tools(exclude_actions=[name for name in probe.PROBE_EXCLUDED_ACTIONS if name not in ("input", "select_dropdown")])
+    def action_names(self, controls):
+        tools = probe.exploration_tools({"contract": {"controls": controls}})
         schema = tools.registry.create_action_model().model_json_schema()
-        names = {next(iter(schema["$defs"][item["$ref"].split("/")[-1]]["properties"])) for item in schema["anyOf"]}
-        self.assertEqual(names, {"navigate", "click", "input", "select_dropdown", "done"})
+        return {next(iter(schema["$defs"][item["$ref"].split("/")[-1]]["properties"])) for item in schema["anyOf"]}
+
+    def test_schema_and_guard_follow_declared_actions(self):
+        self.assertEqual(self.action_names([{"action": "click"}]), {"navigate", "click", "done"})
+        self.assertEqual(self.action_names(self.message["contract"]["controls"]), {"navigate", "click", "input", "done"})
+        self.assertEqual(self.action_names([{"action": "select_dropdown"}]), {"navigate", "select_dropdown", "done"})
+
+    def test_native_dropdown_requires_declared_control_and_value(self):
+        target = {"role": "combobox", "name": "Department", "attributes": {}}
+        self.message["contract"]["controls"].append({"action": "select_dropdown", "role": "combobox", "name": "Department", "values": ["Beta"]})
+        self.guard({"select_dropdown": {"index": 1, "text": "Beta"}}, target)
+        with self.assertRaisesRegex(ValueError, "undeclared-filter-value"):
+            self.guard({"select_dropdown": {"index": 1, "text": "Other"}}, target)
+
+    def test_custom_dropdown_uses_two_declared_clicks(self):
+        self.message["contract"]["controls"] = [
+            {"action": "click", "role": "combobox", "name": "Department"},
+            {"action": "click", "role": "option", "name": "Beta"},
+        ]
+        self.guard({"click": {"index": 1}}, {"role": "combobox", "name": "Department", "attributes": {}})
+        self.guard({"click": {"index": 2}}, {"role": "option", "name": "Beta", "attributes": {}})
+        with self.assertRaisesRegex(ValueError, "undeclared-readonly-control"):
+            self.guard({"select_dropdown": {"index": 1, "text": "Beta"}})
 
     def test_same_named_button_requires_declared_business_row(self):
         self.guard({"click": {"index": 1}})

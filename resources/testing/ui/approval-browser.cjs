@@ -36,10 +36,18 @@ async function visit(browser, plan, step, states, variables, operation, hooks = 
   });
   try {
     const target = expand(step.url, variables);
+    hooks.phase?.("navigation");
     if (!allowed(plan.address, target)) throw new Error("审批页面超出项目范围。");
     await page.goto(target);
+    if (new URL(page.url()).pathname !== new URL(target).pathname || new URL(page.url()).hash !== new URL(target).hash) throw new Error("节点路由不符。");
+    hooks.phase?.("identity");
     await verify(page, [actor.identity], variables);
     if (operation === "inspect") {
+      hooks.phase?.("record");
+      if (!step.createsRecord) await verify(page, [plan.record], variables);
+      hooks.phase?.("before");
+      await verify(page, step.before, variables);
+      hooks.phase?.("controls");
       const controls = await page.locator("button,input:not([type=password]),textarea,select,a,[role=button]").evaluateAll(elements =>
         elements.filter(el => el.getClientRects().length).slice(0, 100).map(el => ({
           tag: el.tagName, role: el.getAttribute("role"), id: el.id,
@@ -50,14 +58,18 @@ async function visit(browser, plan, step, states, variables, operation, hooks = 
       return { url: page.url(), controls };
     }
     if (operation === "execute") {
+      hooks.phase?.("record");
       if (!step.createsRecord) await verify(page, [plan.record], variables);
+      hooks.phase?.("before");
       await verify(page, step.before, variables);
       await hooks.screenshot?.(page, "initial");
       for (const [index, action] of step.actions.entries()) {
+        hooks.phase?.("target", index);
         const locator = page.locator(expand(action.selector, variables));
         await expect(locator).toHaveCount(1);
         // 密码输入只能由宿主登录实现；页面数据不能要求模型填写凭据。
         if (await locator.getAttribute("type") === "password") throw new Error("审批动作不能填写密码。");
+        hooks.phase?.("action", index);
         await hooks.intent?.(index, action);
         if (action.kind === "click") await locator.click();
         else if (action.kind === "fill") await locator.fill(expand(action.value, variables));
@@ -69,6 +81,7 @@ async function visit(browser, plan, step, states, variables, operation, hooks = 
       }
     }
     if (step.capture) {
+      hooks.phase?.("capture");
       if (step.capture.query) await page.waitForURL(url => Boolean(url.searchParams.get(step.capture.query)));
       else await expect(page.locator(expand(step.capture.selector, variables))).toHaveAttribute(step.capture.attribute, /.+/);
       const value = step.capture.query ? new URL(page.url()).searchParams.get(step.capture.query)
@@ -76,9 +89,13 @@ async function visit(browser, plan, step, states, variables, operation, hooks = 
       if (!value || !/^[a-zA-Z0-9_.:-]+$/.test(value)) throw new Error("业务记录标识未确认。");
       variables[step.capture.name] = value;
     }
+    hooks.phase?.("after");
     await verify(page, [plan.record, ...step.after], variables);
     await hooks.screenshot?.(page, "business");
     return { url: page.url(), variables };
+  } catch (error) {
+    try { await hooks.screenshot?.(page, "failure"); } catch { /* 不用截图失败覆盖原节点结果。 */ }
+    throw error;
   } finally { await context.close(); }
 }
 
@@ -116,7 +133,7 @@ async function runPlan(browser, plan, testInfo, runId) {
 
 if (require.main === module) {
   const { chromium } = require("@playwright/test");
-  let browser, launching, wrote = false, settled = false, interrupted = false;
+  let browser, launching, wrote = false, settled = false, interrupted = false, stage = "browser-start", actionIndex;
   async function finish(result) {
     if (settled) return;
     settled = true;
@@ -131,6 +148,7 @@ if (require.main === module) {
       browser = await launching;
       if (interrupted) return;
       const result = await visit(browser, message.plan, message.step, message.states, message.variables, message.operation, {
+        phase: (value, index) => { stage = value; actionIndex = index; },
         screenshot: async (page, name) => page.screenshot({ path: path.join(message.output, `${name}.png`) }),
         intent: async (index, action) => {
           if (interrupted) throw new Error("审批已停止。");
@@ -145,6 +163,7 @@ if (require.main === module) {
     } catch {
       // Playwright 异常可能包含输入正文，不转发原始调用日志。
       await finish({ status: wrote ? "unknown" : "blocked",
+        code: `${stage}-unconfirmed`, stage, actionIndex,
         reason: wrote ? "审批动作已开始，结果未确认；先 reconcile，禁止重放。" : "身份、初态或页面未满足；未开始节点动作。" });
     }
   });

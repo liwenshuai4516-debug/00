@@ -198,7 +198,7 @@ async function login(runtime, project, contract, signal) {
   try {
     const credentials = await readCredentials(runtime, project);
     const result = await entry.auto(credentials, { authenticated: contract.identity.selector }, signal);
-    check(["saved", "not-required"].includes(result.status), "blocked：后台认证未通过；不会重交登录或人工接管。");
+    check(["saved", "not-required"].includes(result.status), `blocked：后台认证未通过（${result.code ?? "login-unconfirmed"}/${result.stage ?? "authentication"}）；不会重交登录或人工接管。`);
     const state = result.status === "saved" ? await json(entry.file) : { cookies: [], origins: [] };
     // browser-use 的 storage_state 尚未验证 IndexedDB 转换，不能静默丢失认证数据。
     check(!state.origins.some((origin) => origin.indexedDB?.length), "blocked：阶段 2 尚不支持 IndexedDB 登录态。");

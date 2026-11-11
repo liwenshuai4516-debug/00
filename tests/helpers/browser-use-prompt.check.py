@@ -33,7 +33,7 @@ class PromptChecks(unittest.IsolatedAsyncioTestCase):
         self.workspace.mkdir()
         self.task_count = 0
 
-    async def explore(self):
+    async def explore(self, rejected_action=False):
         self.task_count += 1
         output = self.root / f"task-{self.task_count}"
         output.mkdir()
@@ -41,12 +41,21 @@ class PromptChecks(unittest.IsolatedAsyncioTestCase):
                    "url": "https://example.invalid/app/list", "goal": "仅观察合同列表，排除提交与删除",
                    "chromium": "unused", "storageState": {}, "contract": {
                        "mode": "candidate", "expected": [{"id": "list", "text": "合同列表"}],
+                       "controls": [{"action": "click"}],
                        "budget": {"maxSteps": 3, "timeoutMs": 2000}}}
         frozen = copy.deepcopy(message)
         browser = SimpleNamespace(start=AsyncMock(), kill=AsyncMock(),
                                   event_bus=SimpleNamespace(on=Mock(), event_history={}))
         history = SimpleNamespace(is_done=lambda: True, is_successful=lambda: True)
         agent = SimpleNamespace(run=AsyncMock(return_value=history))
+        if rejected_action:
+            async def invoke_undeclared_action(**kwargs):
+                action = SimpleNamespace(model_dump=lambda **kwargs: {"input": {"index": 1, "text": "private-input-value"}},
+                                         get_index=lambda: 1)
+                target = SimpleNamespace(node_name="INPUT", ax_node=SimpleNamespace(role="textbox"))
+                state = SimpleNamespace(dom_state=SimpleNamespace(selector_map={1: target}))
+                await factory.call_args.kwargs["register_new_step_callback"](state, SimpleNamespace(action=[action]), 1)
+            agent.run.side_effect = invoke_undeclared_action
         records = []
         read_fd, write_fd = os.pipe()
         try:
@@ -98,6 +107,13 @@ class PromptChecks(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["reason"], "ValueError")
         factory.assert_not_called()
+
+    async def test_undeclared_action_returns_safe_target_and_stage(self):
+        result, _, _ = await self.explore(rejected_action=True)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["actionDiagnostic"], {"action": "input", "phase": "guard",
+                         "target": {"index": 1, "tag": "INPUT", "role": "textbox"}})
+        self.assertNotIn("private-input-value", json.dumps(result))
 
 
 if __name__ == "__main__":

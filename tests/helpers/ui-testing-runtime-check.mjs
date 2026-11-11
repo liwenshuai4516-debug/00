@@ -52,7 +52,13 @@ if (scenario === "resources") {
       for (const name of ["qa-ui-basic", "qa-ui-case-design", "qa-ui-execute", "qa-ui-assertion", "qa-test-report"]) {
         assert.equal(skills.filter(item => item.name === name).length, expected, name);
       }
-      if (expected) assert.equal(skills.find(item => item.name === "qa-ui-case-design").filePath, runtime.designSkill);
+      if (expected) {
+        assert.equal(skills.find(item => item.name === "qa-ui-case-design").filePath, runtime.designSkill);
+        const approval = extensions.find(entry => entry.tools.has("qa_ui_approval")).tools.get("qa_ui_approval").definition;
+        const operations = approval.parameters.properties.operation.anyOf.map(item => item.const);
+        assert.ok(operations.includes("preflight") && operations.includes("prepare"));
+        assert.equal(approval.parameters.properties.baseRevision.minimum, 0);
+      }
       for (const name of ["qa-ui-intent", "qa-ui-record"]) assert.equal(skills.filter(item => item.name === name).length, 0);
       const manager = session.desktopServices.settingsManager;
       assert.deepEqual(manager.getGlobalSettings(), settings);
@@ -83,6 +89,9 @@ if (scenario === "auto-login") {
       let body = "";
       for await (const chunk of request) body += chunk;
       const values = new URLSearchParams(body);
+      if (request.url === "/tenant-start") {
+        response.writeHead(302, { Location: "/tenant/switch" }); response.end(); return;
+      }
       if (request.url === "/private" && values.get("username") === "fixture-account" && values.get("password") === "fixture-private-password") {
         response.setHeader("Set-Cookie", "fixture_identity=private-fixture-token; HttpOnly; Path=/");
         response.writeHead(302, { Location: "/private" }); response.end(); return;
@@ -91,6 +100,12 @@ if (scenario === "auto-login") {
         response.setHeader("Set-Cookie", "spa_identity=private-fixture-token; HttpOnly; Path=/");
         response.writeHead(302, { Location: "/spa" }); response.end(); return;
       }
+    }
+    if (request.url === "/route-mismatch") {
+      response.writeHead(302, { Location: "/public" }); response.end(); return;
+    }
+    if (request.url === "/tenant/switch") {
+      response.end('<button id="tenant">项目管理</button>'); return;
     }
     if (request.url === "/spa" && request.headers.cookie?.includes("spa_identity=private-fixture-token")) {
       response.end('<h1>fixture-reviewer</h1><script>localStorage.setItem("role", "reviewer")</script>'); return;
@@ -103,6 +118,7 @@ if (scenario === "auto-login") {
       response.end('<h1>fixture-reviewer</h1><script>localStorage.setItem("role", "reviewer")</script>'); return;
     }
     response.end('<form method="post"><input name="username"><input name="password" type="password">' +
+      (request.url === "/ambiguous" ? '<input name="username">' : '') +
       (request.url === "/captcha" ? '<input name="captcha" placeholder="验证码">' : '') + '<button>登录</button></form>');
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -116,6 +132,7 @@ if (scenario === "auto-login") {
         assert.equal(result.status, route === "public" ? "not-required" : ["private", "spa"].includes(route) ? "saved" : "manual-required", route);
         assert.ok(!JSON.stringify(result).includes(credentials.password));
         if (route === "captcha") { assert.match(result.reason, /验证码/); assert.equal(submissions, 0); }
+        if (route === "captcha") assert.equal(result.code, "manual-authentication-required");
         if (route === "private") {
           assert.equal(submissions, 1);
           assert.equal((await fs.stat(entry.directory)).mode & 0o777, 0o700);
@@ -124,10 +141,27 @@ if (scenario === "auto-login") {
           assert.equal(state.cookies[0].name, "fixture_identity");
           assert.equal(state.origins[0].localStorage[0].value, "reviewer");
         }
-        if (route === "invalid") assert.equal(submissions, 2, "失败仅提交一次");
+        if (route === "invalid") { assert.equal(submissions, 2, "失败仅提交一次"); assert.equal(result.code, "login-unconfirmed"); }
         if (route === "spa") assert.equal(submissions, 3, "空壳闪现不能跳过登录");
       } finally { await entry.cleanup(); }
       await assert.rejects(fs.access(entry.directory), { code: "ENOENT" });
+    }
+    for (const scenario of [
+      { route: "private", credentials: { account: "fixture-account", password: "" }, code: "credentials-missing" },
+      { route: "ambiguous", code: "form-ambiguous" },
+      { route: "public", selectors: { authenticated: "h1", identityText: "wrong-identity" }, code: "identity-mismatch" },
+      { route: "route-mismatch", selectors: { authenticated: "h1" }, code: "route-mismatch" },
+      { route: "tenant-start", selectors: { tenant: { selector: "#tenant", confirm: "#missing-confirm" } }, code: "tenant-incomplete" },
+    ]) {
+      const before = submissions;
+      const entry = await openLogin(runtime, origin + "/" + scenario.route);
+      try {
+        const result = await entry.auto(scenario.credentials ?? credentials, scenario.selectors ?? {});
+        assert.equal(result.code, scenario.code, JSON.stringify(result));
+        assert.equal(result.status, "manual-required");
+        assert.equal(submissions, before + (scenario.route === "tenant-start" ? 1 : 0));
+        assert.ok(!JSON.stringify(result).includes(credentials.password));
+      } finally { await entry.cleanup(); }
     }
     assert.deepEqual((await fs.readdir(base)).filter(name => name.startsWith("qa-ui-auth-") || name.startsWith("playwright_chromiumdev_profile-")), []);
   } finally { await new Promise(resolve => server.close(resolve)); }

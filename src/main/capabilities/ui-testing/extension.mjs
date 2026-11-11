@@ -64,9 +64,10 @@ export function createUiTestingExtension(runtime) {
     register("qa_ui_coverage", "保存本轮功能清单或读取准确版本汇总。save 从 qa/ui/rounds/<roundId>/draft.json 校验来源、候选映射和 baseRevision，保留未生成项并写入不可改写的快照；不探索、不执行。read 读取已保存快照，不以当前资产重算历史。", Type.Object({
       roundId: string, action: Type.Union([Type.Literal("save"), Type.Literal("read")]), revision: Type.Optional(string),
     }), "coverage");
-    register("qa_ui_approval", "审批专用分支。先 instructions 动态读取 approval-control.md，再 inspect 观察真实控件；execute 按人员隔离执行一个声明节点；reconcile 只读核对结果不明的原节点；candidate 根据完整终态轨迹准备独立 E2E 草稿。凭据只由宿主处理。", Type.Object({
-      operation: Type.Union(["instructions", "inspect", "execute", "reconcile", "candidate"].map(value => Type.Literal(value))),
+    register("qa_ui_approval", "审批专用分支。instructions 读取规则；preflight 仅检查认证配置；prepare 显式修订零执行步骤计划并保留版本；inspect 按 before 等待页面就绪再观察控件，创建入口须 createsRecord:true；execute 冻结配置并隔离执行一个节点；reconcile 只读核对；candidate 依据完整终态轨迹准备 E2E 草稿。凭据只由宿主处理。", Type.Object({
+      operation: Type.Union(["instructions", "preflight", "prepare", "inspect", "execute", "reconcile", "candidate"].map(value => Type.Literal(value))),
       flowId: Type.Optional(string), targetUrl: Type.Optional(string), projectId: Type.Optional(string),
+      baseRevision: Type.Optional(Type.Integer({ minimum: 0 })),
       config: Type.Optional(Type.Object({
         source: string, residualAuthorization: Type.Object({ kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string }), record: Type.Object({ selector: string, text: string, kind: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("value")])) }),
         actors: Type.Array(Type.Object({ id: string, account: string, source: string,

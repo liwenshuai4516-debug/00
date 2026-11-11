@@ -23,6 +23,51 @@ function checks(items) {
     check(text(item.selector) && text(item.text) && [undefined, "text", "value"].includes(item.kind), "状态检查需要 selector/text。");
   }
 }
+
+function validateConfiguration(config, id) {
+  keys(config, ["source", "record", "actors", "residualAuthorization"]);
+  authorization(config.residualAuthorization);
+  checks([config.record]);
+  check(text(config.source) && Array.isArray(config.actors) && config.actors.length > 0, "必须提供流程来源与人员映射。");
+  const actorIds = new Set();
+  for (const actor of config.actors) {
+    keys(actor, ["id", "account", "source", "credentialSource", "identity", "login"]);
+    if (actor.login) {
+      keys(actor.login, ["account", "password", "submit", "tenant"]);
+      for (const key of ["account", "password", "submit"]) check(actor.login[key] === undefined || text(actor.login[key]), "登录配置只能声明选择器。");
+      if (actor.login.tenant) {
+        keys(actor.login.tenant, ["selector", "confirm"]);
+        check(text(actor.login.tenant.selector) && text(actor.login.tenant.confirm), "租户选择需要目标与确认控件。");
+      }
+    }
+    id(actor.id);
+    check(!actorIds.has(actor.id) && text(actor.account) && text(actor.source) && ["project", "test-password"].includes(actor.credentialSource), "人员映射或认证来源无效。");
+    checks([actor.identity]); actorIds.add(actor.id);
+  }
+}
+
+async function authenticationPreflight(runtime, project, actors = []) {
+  const configured = await readCredentials(runtime, project);
+  const projectCredentialsConfigured = text(configured.account) && text(configured.password);
+  const sharedTestPasswordConfigured = text(process.env.QA_UI_TEST_PASSWORD);
+  const results = actors.map(actor => {
+    const missing = [];
+    if (!text(actor.account)) missing.push("account");
+    if (!text(actor.source)) missing.push("source");
+    if (!text(actor.identity?.selector) || !text(actor.identity?.text)) missing.push("identity");
+    if (actor.credentialSource === "project") {
+      if (!projectCredentialsConfigured) missing.push("project-credentials");
+      if (actor.account !== configured.account) missing.push("project-account-mismatch");
+    } else if (actor.credentialSource === "test-password") {
+      if (!sharedTestPasswordConfigured) missing.push("test-password");
+    } else missing.push("credentialSource");
+    return { actorId: actor.id, configured: missing.length === 0, missing };
+  });
+  return { status: results.length > 0 && results.every(actor => actor.configured) ? "configured" : "incomplete",
+    verification: "configuration-only", projectCredentialsConfigured, sharedTestPasswordConfigured,
+    missing: results.length ? [] : ["actors"], actors: results };
+}
+
 export function validateApprovalStep(step, plan) {
   keys(step, ["id", "name", "source", "actorId", "url", "before", "after", "actions", "capture", "createsRecord", "terminal"]);
   check(step && /^[a-zA-Z0-9_-]{1,80}$/.test(step.id) && text(step.name) && text(step.source), "审批节点需要稳定编号、名称和规则来源。");
@@ -51,11 +96,12 @@ export async function approvalStates(runtime, project, actors, signal) {
     const credentials = actor.credentialSource === "project"
       ? (check(actor.account === configured.account, "project 凭据只能用于项目已配置账号。"), configured)
       : { account: actor.account, password: process.env.QA_UI_TEST_PASSWORD };
-    check(text(credentials.password), "宿主缺少对应测试认证：project 或 QA_UI_TEST_PASSWORD；不会猜密码或读取 .env。");
+    if (!text(credentials.password)) throw Object.assign(new Error("宿主缺少对应测试认证：project 或 QA_UI_TEST_PASSWORD；不会猜密码或读取 .env。"), { code: "credentials-missing", stage: "configuration", actorId: actor.id });
     const entry = await openLogin(runtime, project.targetUrl, signal);
     try {
       const result = await entry.auto(credentials, { ...actor.login, authenticated: actor.identity.selector, identityText: actor.identity.text }, signal);
-      check(["saved", "not-required"].includes(result.status), "节点账号认证或身份核验未通过，未执行审批。");
+      if (!["saved", "not-required"].includes(result.status)) throw Object.assign(new Error(`节点账号认证或身份核验未通过（${result.code ?? "login-unconfirmed"}）；未执行审批。`),
+        { code: result.code ?? "login-unconfirmed", stage: result.stage ?? "authentication", actorId: actor.id });
       states[actor.id] = result.status === "saved" ? JSON.parse(await fs.readFile(entry.file, "utf8")) : { cookies: [], origins: [] };
     } finally {
       try { await entry.cleanup(); } catch (error) { error.cleanupUnconfirmed = true; throw error; }
@@ -101,43 +147,51 @@ export async function approvalOperation(root, params, signal, helpers) {
   const instructions = (await fs.readFile(promptFile, "utf8")).trim();
   check(instructions, "审批提示词为空，停止审批分支。");
   if (params.operation === "instructions") return { promptFile, instructions };
+  check(["preflight", "prepare", "inspect", "execute", "reconcile", "candidate"].includes(params.operation), "未知审批操作。");
+  if (params.operation === "preflight" && !params.flowId) {
+    const project = await resolveProject(runtime, params, root.workspace, async () => root);
+    check(await fs.realpath(project.projectWorkspace) === root.workspace, "审批项目不属于当前工作区。");
+    return authenticationPreflight(runtime, project, params.config?.actors);
+  }
   id(params.flowId);
   const dir = await directory(root.base, "approvals", params.flowId);
   const file = path.join(dir, "flow.json");
-  let flow;
+  let flow, created = false;
   try { flow = JSON.parse(await fs.readFile(await fileAt(dir, "flow.json"), "utf8")); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   if (!flow) {
-    check(params.operation === "inspect" && params.config, "新审批流先 inspect 并提供 config。");
+    check(["inspect", "prepare"].includes(params.operation) && params.config, "新审批流先 prepare 或 inspect 并提供 config。");
+    check(params.baseRevision === undefined || params.baseRevision === 0, "新审批流配置版本须为 0。");
     const config = structuredClone(params.config);
-    keys(config, ["source", "record", "actors", "residualAuthorization"]);
-    authorization(config.residualAuthorization);
-    checks([config.record]);
-    check(text(config.source) && Array.isArray(config.actors) && config.actors.length > 0, "必须提供流程来源与人员映射。");
-    const actorIds = new Set();
-    for (const actor of config.actors) {
-      keys(actor, ["id", "account", "source", "credentialSource", "identity", "login"]);
-      if (actor.login) {
-        keys(actor.login, ["account", "password", "submit", "tenant"]);
-        for (const key of ["account", "password", "submit"]) check(actor.login[key] === undefined || text(actor.login[key]), "登录配置只能声明选择器。");
-        if (actor.login.tenant) {
-          keys(actor.login.tenant, ["selector", "confirm"]);
-          check(text(actor.login.tenant.selector) && text(actor.login.tenant.confirm), "租户选择需要目标与确认控件。");
-        }
-      }
-      id(actor.id);
-      check(!actorIds.has(actor.id) && text(actor.account) && text(actor.source) && ["project", "test-password"].includes(actor.credentialSource), "人员映射或认证来源无效。");
-      checks([actor.identity]); actorIds.add(actor.id);
-    }
+    validateConfiguration(config, id);
     const project = await resolveProject(runtime, params, root.workspace, async () => root);
     check(await fs.realpath(project.projectWorkspace) === root.workspace, "审批项目不属于当前工作区。");
     flow = { schema: "qa-ui-approval/v1", flowId: params.flowId, workspace: root.workspace, project: { id: project.projectId, name: project.projectName, address: project.address },
-      targetUrl: project.targetUrl, config, variables: { runId: params.flowId }, steps: [], createdAt: new Date().toISOString() };
+      targetUrl: project.targetUrl, config, configRevision: 1, configHistory: [], phase: "preparing",
+      variables: { runId: params.flowId }, steps: [], createdAt: new Date().toISOString() };
     await writeJson(file, flow);
-  } else if (params.config) check(same(params.config, flow.config), "已有审批流配置已冻结，不能改写人员或预期。");
+    created = true;
+  } else if (params.config && params.operation !== "prepare") check(same(params.config, flow.config), "配置变更须显式 prepare 并引用当前配置版本；冻结后禁止修改。");
   check(flow.schema === "qa-ui-approval/v1" && flow.flowId === params.flowId && flow.workspace === root.workspace, "审批记录归属不一致。");
   const project = await resolveProject(runtime, { projectId: flow.project.id, targetUrl: flow.targetUrl }, root.workspace, async () => root);
   check(await fs.realpath(project.projectWorkspace) === root.workspace && project.address === flow.project.address, "审批项目配置或归属已变化。");
+  // 旧零步骤计划仅能通过显式 prepare 修订；存在任何执行意图即保持冻结。
+  flow.configRevision ??= 1;
+  flow.phase = flow.steps.length || flow.frozenAt || flow.candidateTaskId || flow.phase === "frozen" ? "frozen" : "preparing";
+  if (params.operation === "preflight") return { flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision,
+    ...await authenticationPreflight(runtime, project, flow.config.actors) };
+  if (params.operation === "prepare") {
+    check(flow.phase === "preparing", "已有执行记录或冻结标记，禁止修改配置。");
+    check(created || params.baseRevision === flow.configRevision, "配置版本已变化或未提供 baseRevision，停止修订。");
+    validateConfiguration(params.config, id);
+    if (!same(params.config, flow.config)) {
+      flow.configHistory ??= [];
+      flow.configHistory.push({ revision: flow.configRevision, config: structuredClone(flow.config) });
+      flow.config = structuredClone(params.config); flow.configRevision++;
+    }
+    await writeJson(file, flow);
+    return { flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision };
+  }
   const plan = { address: flow.project.address, ...flow.config, files: flow.files ?? {}, steps: flow.steps.map(item => item.step) };
   const previous = flow.steps.at(-1);
   if (params.operation === "candidate") {
@@ -185,6 +239,10 @@ export async function approvalOperation(root, params, signal, helpers) {
   check(["inspect", "execute", "reconcile"].includes(params.operation), "未知审批操作。");
   const step = params.operation === "reconcile" && previous ? { ...previous.step, url: params.targetUrl ?? previous.step.url } : params.step;
   check(step && plan.actors.some(actor => actor.id === step.actorId), "需要明确节点及登记人员。");
+  if (params.operation === "inspect") {
+    checks(step.before);
+    check(!step.createsRecord || flow.steps.length === 0, "已有执行记录的 inspect 不能跳过记录核对。");
+  }
   if (params.operation === "execute") {
     validateApprovalStep(step, plan);
     check(!flow.steps.some(item => item.step.id === step.id), "该节点已有执行记录，禁止重复执行；先 inspect/reconcile。");
@@ -192,6 +250,9 @@ export async function approvalOperation(root, params, signal, helpers) {
     check((params.previousStepId ?? null) === (previous?.step.id ?? null), "必须引用最近已确认节点，禁止跳过状态衔接。");
     authorization(params.authorization);
     if (flow.steps.length > 0) check(!step.createsRecord, "同一审批流不得再次创建记录。");
+    const preflight = await authenticationPreflight(runtime, project, flow.config.actors);
+    if (preflight.status !== "configured") return { flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision,
+      ...preflight, status: "blocked", code: "authentication-configuration-incomplete", stage: "configuration", reason: "人员认证配置不齐备，未冻结或执行业务动作。" };
   }
   if (params.operation === "reconcile") check(previous && previous.status !== "completed", "没有结果待确认的节点。");
   const evidence = `check-${randomUUID()}`;
@@ -203,9 +264,17 @@ export async function approvalOperation(root, params, signal, helpers) {
     check(variables[key] !== undefined, `缺少流程变量：${key}`); return String(variables[key]);
   });
   check(matchesAddress(project.address, url), "节点 URL 超出项目范围。");
+  const inspection = { operation: params.operation, actorId: actor.id, configRevision: flow.configRevision, url };
+  await writeJson(path.join(output, "check.json"), inspection);
   let states;
   try { states = await approvalStates(runtime, { ...project, targetUrl: url }, [actor], signal); }
-  catch (error) { if (error.cleanupUnconfirmed) root.keepLock = true; throw error; }
+  catch (error) {
+    if (error.cleanupUnconfirmed) { root.keepLock = true; throw error; }
+    const result = { flowId: flow.flowId, status: "blocked", code: error.code ?? "login-unconfirmed", stage: error.stage ?? "authentication",
+      actorId: actor.id, reason: "节点认证未通过，未开始业务动作。", phase: flow.phase, configRevision: flow.configRevision, evidenceDirectory: output };
+    await writeJson(path.join(output, "check.json"), { ...inspection, ...result });
+    return result;
+  }
   const executable = structuredClone(step);
   for (const action of executable.actions ?? []) {
     if (action.kind === "upload") {
@@ -221,7 +290,8 @@ export async function approvalOperation(root, params, signal, helpers) {
   }
   let entry;
   if (params.operation === "execute") {
-    entry = { step: structuredClone(step), status: "unknown", evidence, authorization: params.authorization };
+    flow.phase = "frozen"; flow.frozenAt ??= new Date().toISOString();
+    entry = { step: structuredClone(step), configRevision: flow.configRevision, status: "unknown", evidence, authorization: params.authorization };
     flow.steps.push(entry); await writeJson(file, flow);
   }
   let result;
@@ -230,6 +300,7 @@ export async function approvalOperation(root, params, signal, helpers) {
   if (result.cleanupConfirmed === false) {
     root.keepLock = true; result.status = "unknown"; result.reason = "浏览器收尾未确认，保留工作区锁并停止依赖链。";
   }
+  await writeJson(path.join(output, "check.json"), { ...inspection, ...result });
   if (params.operation === "execute") {
     entry.status = result.status; entry.reason = result.reason;
     if (result.status === "completed") flow.variables = result.variables;
@@ -237,7 +308,8 @@ export async function approvalOperation(root, params, signal, helpers) {
   } else if (params.operation === "reconcile" && result.status === "completed") {
     previous.status = "completed"; previous.reconciledEvidence = evidence; flow.variables = result.variables; await writeJson(file, flow);
   }
-  return { flowId: flow.flowId, status: result.status, reason: result.reason, stepId: step.id, variables: flow.variables,
+  return { flowId: flow.flowId, status: result.status, reason: result.reason, code: result.code, stage: result.stage, actionIndex: result.actionIndex,
+    phase: flow.phase, configRevision: flow.configRevision, stepId: step.id, variables: flow.variables,
     evidenceDirectory: output, controls: result.controls, url: result.url, instructions: params.operation === "inspect" ? instructions : undefined,
     terminal: result.status === "completed" && step.terminal === true };
 }

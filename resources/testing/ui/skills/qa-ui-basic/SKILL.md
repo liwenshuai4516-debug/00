@@ -33,7 +33,7 @@ description: 编排只读或已授权隔离写的 UI 探索、候选生成、完
 | 冻结约定 | 按覆盖清单选择独立目标和输入条件，确定初态、预期来源、允许控件及预算，写入本次 contract | 生成候选时一任务对应一个独立用例目标；不把整个模块的覆盖清单塞进一次探索 |
 | 优先探索 | 调用 qa_ui_explore；工具后台匹配项目、登录，再由 browser-use 完成当前目标并记录新入口 | 仅 completed 可进入候选阶段；mode=explore 完成优先清单后转自由探索；异常或预算耗尽按未完成报告 |
 | 发现后处理 | completed 且清理确认后核对 task.json、actions.jsonl、done 说明与证据；有审批线索时按探索提示词加载项目 qa-approval-workflow；去重并回写有证据的新功能点，更新本轮功能记录 | 状态未知、失败、取消或清理未确认不回写确认索引；本轮保留部分观察与待确认状态；保存失败按异常停止，不影响原证据 |
-| 审批分支 | 明确审批要求或命中线索后，调用 qa_ui_approval instructions 动态加载下文提示词；依其规则读取项目流程、隔离认证、inspect、execute、reconcile及candidate | 仅按任务授权推进；终态及真实轨迹完整才准备完整链草稿，随后回到候选保存/独立验证；异常停依赖链，缺口保留 |
+| 审批分支 | 明确审批要求或命中线索后，调用 qa_ui_approval instructions 动态加载下文提示词；依其规则读取项目流程，preflight 检查配置，prepare 补齐人员，隔离认证及 inspect 取证，首次 execute 冻结，再逐节点执行、reconcile及candidate | 准备期修订显式引用配置版本；执行后不改配置；预检不等于登录成功；终态及真实轨迹完整才准备完整链草稿，随后回到候选保存/独立验证；异常停依赖链，缺口保留 |
 | 生成候选 | 加载 qa-ui-assertion，依据当前任务约定和真实成功动作生成草稿，调用 qa_ui_save_candidate 冻结 revision；按清单规程关联检查项、准确 revision 与业务预期引用并保存 | 保存只代表静态检查完成；mode=candidate 完成优先候选后转自由探索，不自动执行 |
 | 独立验证 | 仅 mode=complete 调用 qa_ui_run 的 validate 模式，读取准确 revision 的原生结果、证据与清理状态 | 实际 passed 且满足发布条件才继续；未通过按现有补丁与异常规则处理，不降低预期 |
 | 正式发布 | 调用 qa_ui_publish，关联 caseId、revision 和通过的 runId | 工具实际发布成功才称为正式版本；发布不等于另一次正式回归已执行 |

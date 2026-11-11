@@ -29,6 +29,16 @@ PROBE_EXCLUDED_ACTIONS = [
 ]
 
 
+def exploration_actions(message):
+    return {"navigate", "done"} | {rule["action"] for rule in message["contract"].get("controls", [])}
+
+
+def exploration_tools(message):
+    allowed = exploration_actions(message)
+    excluded = set(PROBE_EXCLUDED_ACTIONS) | {"click", "input", "select_dropdown"}
+    return Tools(exclude_actions=sorted(excluded - allowed))
+
+
 def matches_control(target, ancestors, rule):
     if target is None:
         return False
@@ -180,6 +190,7 @@ async def run(message):
                       keep_alive=False, auto_download_pdfs=False)
     model = ProbeModel(message.get("model"), mode)
     pending = None
+    action_diagnostic = None
     records = 0
     owned = []
     cancelled = False
@@ -206,17 +217,21 @@ async def run(message):
         lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
 
     async def before(state, decision, step):
-        nonlocal pending
+        nonlocal pending, action_diagnostic
         action = decision.action[0]
         data = action.model_dump(exclude_none=True, exclude_unset=True)
         name = next(iter(data))
+        target = state.dom_state.selector_map.get(action.get_index())
+        # 诊断不复制页面正文、输入值或完整属性。
+        action_diagnostic = {"action": name, "phase": "guard", "target": {
+            "index": action.get_index(), "tag": target.node_name if target else None,
+            "role": target.ax_node.role if target and target.ax_node else None}}
         # 小验证只需要导航、同名按钮点击和完成；拒绝坐标、脚本及其他动作。
-        allowed = ("navigate", "click", "input", "select_dropdown", "done") if readonly else ("navigate", "click", "done")
+        allowed = exploration_actions(message) if readonly else {"navigate", "click", "done"}
         if name not in allowed:
             raise ValueError(f"unsupported-probe-action:{name}")
         if not readonly and name == "navigate" and data[name].get("url") != message["url"]:
             raise ValueError("unexpected-probe-url")
-        target = state.dom_state.selector_map.get(action.get_index())
         if name not in ("navigate", "done") and target is None:
             raise ValueError("missing-target")
         visible = state.dom_state.llm_representation()
@@ -236,6 +251,7 @@ async def run(message):
                 raise ValueError("password-input-forbidden")
             observed = readonly_guard(message, data, describe(target), ancestors, visible)
         ref = None
+        action_diagnostic["phase"] = "evidence"
         if name != "navigate":
             # 默认逐步截图已关闭；仅在声明的关键节点主动留证。
             screenshot = await browser.take_screenshot(full_page=False)
@@ -246,13 +262,14 @@ async def run(message):
         pending = {"stepId": str(step), "url": state.url, "action": data,
                    "target": describe(target), "ancestors": ancestors,
                    "observed": observed, "evidence": ref, "startedAt": time.time()}
+        action_diagnostic["phase"] = "execution"
 
     async def step_start(agent):
         model.step_calls = 0
         emit("progress", phase="step", step=agent.state.n_steps)
 
     async def step_end(agent):
-        nonlocal pending, records
+        nonlocal pending, records, action_diagnostic
         results = agent.state.last_result or []
         if pending:
             record = {**pending, "result": [r.model_dump(exclude_none=True) for r in results],
@@ -266,6 +283,7 @@ async def run(message):
             step_errors.extend(redact(r.error, model.config)[:2000] for r in results if r.error)
             agent.stop()
             raise RuntimeError("step-failed-chain-stopped")
+        action_diagnostic = None
 
     async def execute():
         nonlocal owned, stage
@@ -299,7 +317,7 @@ async def run(message):
                       save_conversation_path=None, calculate_cost=False,
                       enable_signal_handler=False, llm_timeout=50, step_timeout=75,
                       file_system_path=str(output / "private" / "files"),
-                      tools=Tools(exclude_actions=[name for name in PROBE_EXCLUDED_ACTIONS if not readonly or name not in ("input", "select_dropdown")]))
+                      tools=exploration_tools(message) if readonly else Tools(exclude_actions=PROBE_EXCLUDED_ACTIONS))
         history = await agent.run(max_steps=message["contract"]["budget"]["maxSteps"] if readonly else 8, on_step_start=step_start, on_step_end=step_end)
         if not history.is_done() or not history.is_successful():
             raise RuntimeError("goal-not-completed")
@@ -339,6 +357,7 @@ async def run(message):
         frames = traceback.extract_tb(error.__traceback__)
         result = {"status": "failed", "reason": type(error).__name__, "stage": stage,
                   "modelError": model.error, "stepErrors": step_errors,
+                  "actionDiagnostic": action_diagnostic,
                   "frames": [{"file": Path(f.filename).name, "line": f.lineno,
                               "function": f.name} for f in frames]}
         if stage == "browser-start":

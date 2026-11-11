@@ -59,6 +59,10 @@ const server = http.createServer(async (req, res) => {
 create.onclick=async()=>{const r=await(await fetch('/create',{method:'POST',body:new URLSearchParams({name:document.querySelector('#name').value})})).json();location.href='/record?id='+r.id;};</script>`); return;
   }
   if (!record) { res.end(header + '<p id="status">missing</p>'); return; }
+  if (url.searchParams.has("delay")) {
+    const content = `<p id="name">${record.name}</p><p id="status">${record.status}</p><button id="approve">同意</button>`;
+    res.end(header + `<script>setTimeout(()=>document.body.insertAdjacentHTML('beforeend',${JSON.stringify(content)}),650)</script>`); return;
+  }
   res.end(header + `<p id="name">${record.name}</p><p id="status">${hideStatus ? "pending-display" : record.status}</p><p id="uploaded">${record.uploaded}</p>
 <input id="attachment" type="file"><button id="upload">上传</button><input id="opinion"><button id="approve">同意</button><script>
 upload.onclick=async()=>{const data=new FormData();data.append('file',document.querySelector('#attachment').files[0]);await fetch('/upload'+location.search,{method:'POST',body:data});document.querySelector('#uploaded').textContent='true';};
@@ -82,7 +86,7 @@ const finish = { id: "finish", name: "董事长审核", source: "fixture-rule", 
   before: [{ selector: "#status", text: "chairman" }], after: [{ selector: "#status", text: "done" }], terminal: true,
   actions: [{ kind: "upload", selector: "#attachment", file: "attachment.txt" }, { kind: "click", selector: "#upload" }, { kind: "click", selector: "#approve" }] };
 await fs.writeFile(path.join(workspace, "attachment.txt"), "fixture attachment");
-const inspect = (flowId, conf = config, step = { actorId: "creator", url: create.url }) => api.approval(workspace, { operation: "inspect", flowId, projectId: "fixture", targetUrl: create.url, config: conf, step });
+const inspect = (flowId, conf = config, step = { actorId: "creator", url: create.url, createsRecord: true, before: create.before }) => api.approval(workspace, { operation: "inspect", flowId, projectId: "fixture", targetUrl: create.url, config: conf, step });
 const execute = (flowId, step, previousStepId) => api.approval(workspace, { operation: "execute", flowId, step, previousStepId, authorization: auth });
 let evidence;
 try {
@@ -97,7 +101,23 @@ try {
   assert.throws(() => validateApprovalStep({ ...create, password: "not-allowed" }, { address: origin, actors: config.actors }), /未支持字段/);
   const preview = await inspect("full-chain"); assert.equal(preview.status, "completed"); assert.ok(preview.controls.some(item => item.id === "create"));
   assert.equal(writes.length, 0, "inspect 不写业务");
-  assert.equal((await execute("full-chain", create)).status, "completed");
+  const racing = await Promise.allSettled([execute("full-chain", create), api.approval(workspace, {
+    operation: "prepare", flowId: "full-chain", baseRevision: 1, config: { ...config, source: "racing-change" } })]);
+  assert.equal(racing[0].status, "fulfilled");
+  assert.equal(racing[0].value.status, "completed");
+  assert.equal(racing[1].status, "rejected", "执行与准备共用互斥，禁止交错覆盖");
+  const fullFlow = await read(path.join(workspace, "qa/ui/approvals/full-chain/flow.json"));
+  assert.equal(fullFlow.phase, "frozen");
+  await assert.rejects(api.approval(workspace, { operation: "prepare", flowId: "full-chain", baseRevision: 1, config }), /冻结/);
+  const ready = await api.approval(workspace, { operation: "inspect", flowId: "full-chain", step: {
+    actorId: "reviewer", url: review.url + "&delay=1", before: review.before } });
+  assert.equal(ready.status, "completed");
+  assert.ok(ready.controls.some(item => item.id === "approve"));
+  const missingRecord = await api.approval(workspace, { operation: "inspect", flowId: "full-chain", step: {
+    actorId: "reviewer", url: origin + "/record?id=missing", before: review.before } });
+  assert.equal(missingRecord.status, "blocked");
+  assert.equal(missingRecord.stage, "record");
+  assert.equal(writes.length, 1, "加载或记录不符不触发审批");
   assert.equal((await execute("full-chain", review, "create")).status, "completed");
   assert.equal((await execute("full-chain", finish, "review")).terminal, true);
   assert.equal(writes.length, 4);
@@ -124,7 +144,16 @@ try {
   await assert.rejects(api.run(workspace, { caseId: "chain", revision: saved.revision, mode: "regression" }), /附件已变化/);
   await fs.writeFile(path.join(workspace, "attachment.txt"), "fixture attachment");
   const wrong = structuredClone(config); wrong.actors[0].identity.text = "other-user";
-  await assert.rejects(inspect("wrong-identity", wrong), /身份核验未通过/);
+  const wrongIdentity = await inspect("wrong-identity", wrong);
+  assert.equal(wrongIdentity.status, "blocked");
+  assert.equal(wrongIdentity.code, "identity-mismatch");
+  assert.equal(wrongIdentity.phase, "preparing");
+  const originalCheck = await fs.readFile(path.join(wrongIdentity.evidenceDirectory, "check.json"), "utf8");
+  assert.equal(JSON.parse(originalCheck).configRevision, 1);
+  const corrected = await api.approval(workspace, { operation: "prepare", flowId: "wrong-identity", baseRevision: 1, config });
+  assert.equal(corrected.configRevision, 2);
+  assert.equal((await inspect("wrong-identity")).status, "completed");
+  assert.equal(await fs.readFile(path.join(wrongIdentity.evidenceDirectory, "check.json"), "utf8"), originalCheck);
   assert.equal(records.size, 3, "错误身份未写入");
   await inspect("uncertain");
   await execute("uncertain", create);
@@ -133,6 +162,8 @@ try {
   const uncertain = { ...review, before: [{ selector: "#name", text: "qa-{{runId}}" }] };
   const unknown = await execute("uncertain", uncertain, "create");
   assert.equal(unknown.status, "unknown");
+  assert.equal(unknown.stage, "after");
+  await assert.rejects(api.approval(workspace, { operation: "prepare", flowId: "uncertain", baseRevision: 1, config }), /冻结/);
   const count = writes.length; hideStatus = false;
   assert.equal((await api.approval(workspace, { operation: "reconcile", flowId: "uncertain" })).status, "completed");
   assert.equal(writes.length, count, "reconcile 只核对，不重交");
@@ -155,6 +186,14 @@ try {
   const recoveredCreate = await api.approval(workspace, { operation: "reconcile", flowId: "uncertain-create", targetUrl: origin + "/record?id=" + createdId });
   assert.equal(recoveredCreate.variables.recordId, createdId);
   assert.equal(writes.length, afterCreate, "未知创建沿原记录恢复，不新建");
+  const scan = async directory => {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) await scan(file);
+      else if (/\.(json|jsonl|log|md|cjs)$/.test(entry.name)) assert.ok(!(await fs.readFile(file, "utf8")).includes(password), `凭据不能进入产物：${entry.name}`);
+    }
+  };
+  await scan(path.join(workspace, "qa/ui"));
   assert.ok((await fs.readdir(workspace)).every(name => !name.startsWith("qa-ui-auth")));
   for (const entry of await fs.readdir(path.join(workspace, "qa/ui/runs"))) {
     const task = await read(path.join(workspace, "qa/ui/runs", entry, "task.json"));

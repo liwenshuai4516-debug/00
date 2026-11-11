@@ -98,7 +98,7 @@ resources/testing/ui/browser-use/.venv/bin/python -B tests/helpers/browser-use-p
 
 ## 审批提示词动态加载
 
-审批授权继承、人员映射、逐节点执行、附件、未知结果核对、完整链候选与交付统一在 [approval-control.md](../resources/testing/ui/prompt/approval-control.md) 维护。qa-ui-basic、qa-ui-execute、qa-ui-case-design、探索提示词与报告技能仅保存条件路由，不在默认系统提示词预加载审批正文。用户明确要求审批或命中审批语义时，主 Agent 调用 qa_ui_approval instructions，工具每次从实际 runtime.directory/prompt 读取当前正文；已启动节点/冻结计划不被热改。
+审批授权继承、人员映射、认证配置预检、准备修订与首次执行冻结、逐节点执行、附件、未知结果核对、完整链候选与交付统一在 [approval-control.md](../resources/testing/ui/prompt/approval-control.md) 维护。qa-ui-basic、qa-ui-execute、qa-ui-case-design、探索提示词与报告技能仅保存条件路由，不在默认系统提示词预加载审批正文。用户明确要求审批或命中审批语义时，主 Agent 调用 qa_ui_approval instructions，工具每次从实际 runtime.directory/prompt 读取当前正文；已启动节点/冻结计划不被热改。
 
 实际项目 qa-approval-workflow 负责业务流程和人员事实，不复制到客户端通用提示词。只读 browser-use 继续报告线索，由主 Agent 调度专用审批工具；它不自动展开整个审批链。实际路径、状态、输入输出及继续/停止条件见 [运行说明](ui-testing-runtime.md#审批执行边界)。提示词验收不等于真实模型或业务审批验收。
 

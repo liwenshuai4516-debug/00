@@ -14,7 +14,7 @@
 | qa_ui_save_candidate | 检查任务草稿、来源与步骤，冻结准确 revision，不执行 |
 | qa_ui_run | validate 验证候选，regression 仅执行当前正式版本 |
 | qa_ui_publish | 核对真实 passed 结果、版本哈希、证据与清理后更新正式引用 |
-| qa_ui_approval | 按需读取审批提示词、隔离账号观察、逐节点执行、结果核对及完整链候选草稿 |
+| qa_ui_approval | 按需读取审批提示词、认证配置预检、准备修订、隔离账号观察、首次执行冻结、逐节点执行、结果核对及完整链候选草稿 |
 | qa_ui_coverage | 保存本轮功能清单、校验准确候选映射并统计；read 读取已保存版本，不执行测试 |
 
 内置 UI 技能为 qa-ui-basic、qa-ui-assertion、qa-ui-execute，共用报告技能 qa-test-report。旧意图/录制技能及旧 project/login/prepare/finalize 工具已移除；旧平铺资产和录制日志不迁移、不作为新版来源。已有会话需重新加载资源或新建会话才使用更新入口。
@@ -71,8 +71,9 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 | 阶段 | 实际入口与产物 | 继续条件 |
 | --- | --- | --- |
 | 条件加载 | qa_ui_approval instructions → 当前运行资源 prompt/approval-control.md | 按准确流程及发起部门读取用户指定对照表，区分串行与会签，冻结启用节点及归档终态依据；普通功能跳过 |
-| 人员观察 | inspect → flow.json 与独立身份截图/真实控件 | 项目归属、身份核验、人员映射与残留约定成立；继承范围匹配的已有确认，凭据须由宿主实际注入 |
-| 节点执行 | execute → 意图、成功动作轨迹、前后截图及变量 | 引用上一已确认节点，核对同记录/初态，按授权执行一次并验证 after |
+| 准备与预检 | preflight / prepare → 配置缺口、flow.json 与 configRevision | 预检只确认宿主配置，不登录；准备修订引用当前 baseRevision，保留 configHistory 和原证据；旧零步骤计划可显式修订 |
+| 人员观察 | inspect → 绑定配置版本的检查结果、独立身份截图/真实控件 | 身份、record 及非空 before 就绪后采集；创建前明确 createsRecord 才跳过 record；认证失败不冻结配置 |
+| 节点执行 | execute → 冻结配置、意图、成功动作轨迹、前后截图及变量 | 全部登记人员认证配置齐备、当前人员认证成功，在现有互斥内先持久化冻结版本与意图；引用上一已确认节点，按授权执行一次并验证 after |
 | 异常核对 | reconcile → 原节点只读核对证据 | 只确认 record/after，不重放；收尾未知保留锁 |
 | 完整链草稿 | candidate → task.json 与 drafts/<caseId> | 从唯一新记录开始、全部启用节点动作完整，分别核对审批及范围内归档终态；预期与 after 来源匹配 |
 | 候选及独立回放 | save_candidate → validate → passed 才 publish；按范围 regression | 复用原版本/报告链，每批创建独立记录、多账号隔离、附件哈希冻结 |
@@ -80,9 +81,17 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 
 多账号凭据沿用项目已配置账号；已确认共用测试密码的其他账号可由宿主 QA_UI_TEST_PASSWORD 提供，不读取 .env 给模型、不修改全局项目账号，不支持每人不同密码的通用凭据库。登录选择器与可选租户选择由真实页面证据提供；认证、验证码/MFA、跨站或身份核验失败停止依赖链。每节点新上下文，登录态仅私有临时文件/IPC，回放关闭 trace。工具支持稳定定位器的 click/fill/select/upload，不代表任意前端控件均已验收。
 
+preflight 的 configured 仅表示所提供人员的配置齐备，不验证密码有效性，也不证明人员覆盖了业务全部节点。真实 Electron 主进程须通过该工具检查，命令进程环境不能代替。认证 code/stage 和节点 check.json 用于脱敏诊断；已产生执行意图的计划（包括 blocked/unknown）保持冻结，后续不能补换人员或改写既有步骤预期。旧无版本检查绑定初始配置版本 1，修订不回写旧检查。完整业务节点图仍由来源和逐步取证约束，没有新增通用流程引擎。
+
+只读探索的模型动作清单与执行守卫均从 contract.controls 生成：navigate/done 保留；click/input/select_dropdown 仅显式声明时可用。自定义下拉按真实属性声明两次 click，原生 select 在声明控件和值后可使用 select_dropdown；不增加模糊点击回退。失败诊断仅包含动作类型、目标索引/标签/角色及阶段，不复制输入值和页面正文。
+
 当前完整链采用显式 residual 授权：每次探索、验证或回归都创建专属记录并留下残留，不能报告为自动清理。候选及正式版本冻结 approvalPlan；修复任务继承该计划。完整链自动准备一条 E2E，独立节点/反向分支仍按用例设计规程设计，不能用 E2E 数量代替全分支覆盖。`qa/ui/approvals/` 是工作区运行产物，已忽略。运行资源准备复制 approval.mjs，approval-browser.cjs 和 prompt 与运行资源同目录发布，不直接编辑生成 lib。
 
 采购合同的对照表定位、串行且全部通过的会签语义、已确认统一测试密码及残留授权的适用范围、矩阵/时间线差异与归档终态判断，统一见[审批提示词](../resources/testing/ui/prompt/approval-control.md)的对应章节。规则在下次 instructions/节点操作读取时生效，不修改已冻结计划；这里只更新规则，未注入真实密码或新增真实业务验收。
+
+维护与验收入口：`node --test tests/unit/ui-approval-preparation.test.js tests/unit/ui-approval.test.js` 检查预检/准备/版本及浏览器节点；`node --test --test-name-pattern='resources|auto-login' tests/unit/ui-testing-runtime.test.js` 检查 SDK 工具参数及认证分类；`resources/testing/ui/browser-use/.venv/bin/python -B tests/helpers/browser-use-readonly.check.py` 检查动作清单与守卫，`browser-use-prompt.check.py` 检查随包提示词读取。均为临时夹具，不调用付费模型、不使用真实用户凭据；浏览器检查需要本机监听权限。真实账号、可选节点开关、负向多角色回放和真实审批须单独取证，不由离线通过推定就绪。
+
+2026-11-11 定向检查通过：上述准备、审批、SDK 登记、认证分类，`node --test tests/unit/ui-readonly-workflow.test.js` 的共享主线兼容，以及 `node --test tests/unit/browser-use-dropdown.test.js` 的真实本地 browser-use 下拉动作。合计 6 项 Node 子测试、13 项 Python 检查（动作守卫 9 项、随包提示词及脱敏诊断 4 项）。覆盖准备/执行互斥、认证失败后显式修订及旧证据保留、执行后冻结、延迟加载后取控件、记录错误拒绝、未知结果不重放。端口权限限制解除后完成浏览器验证；SDK 检查对象层级与下拉夹具控件声明各修正后验证通过。均不代表真实业务、当前已打开会话或安装包已更新。
 
 验证结果：2026-11-10，新增审批整链检查通过，覆盖三账号隔离、真实上传、完整链候选/验证/发布/回归、重复节点拒绝、错误身份拒绝、附件变动拒绝、未知结果核对、取消及未知创建恢复；原主线相关 29 项定向检查通过，无失败或跳过，后续补充的 SDK 实际调用与随包提示词路径检查通过。四份受影响技能的格式校验通过。不请求模型、不使用真实用户认证、不进行真实审批。真实业务流程、不同密码人员、验证码、复杂租户页面、真实安装包及跨平台仍未验收。
 
