@@ -102,4 +102,4 @@ resources/testing/ui/browser-use/.venv/bin/python -B tests/helpers/browser-use-p
 
 实际项目 qa-approval-workflow 负责业务流程和人员事实，不复制到客户端通用提示词。只读 browser-use 继续报告线索，由主 Agent 调度专用审批工具；它不自动展开整个审批链。实际路径、状态、输入输出及继续/停止条件见 [运行说明](ui-testing-runtime.md#审批执行边界)。提示词验收不等于真实模型或业务审批验收。
 
-采购合同补充按 [approval-control.md](../resources/testing/ui/prompt/approval-control.md) 中项目限定的已确认口径执行：准确定位流程对照表，区分串行与会签，继承已有凭据/残留确认，并按归档与终态章节冻结断言。凭据正文不进入提示词，宿主注入状态与用户已授权分开核对；旧用例或冻结计划需生成新修订，不能把历史记录条数当成新规则。
+采购合同补充按 [approval-control.md](../resources/testing/ui/prompt/approval-control.md) 中项目限定的已确认口径执行：准确定位流程对照表，会签按用户最新确认采用串行、全部通过，继承已有凭据/残留确认，并按归档与终态章节冻结断言。凭据正文不进入提示词，宿主注入状态与用户已授权分开核对；旧用例或冻结计划需生成新修订，不能把历史记录条数当成新规则。
