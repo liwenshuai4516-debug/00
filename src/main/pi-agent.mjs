@@ -9,7 +9,7 @@ import { createWorkspaceSession } from "./workspace/workspace-session.mjs";
 import { createPiResources } from "./resources/pi-resources.mjs";
 import sessionLifecycle from "./resources/pi-session-lifecycle.js";
 import { AGENT_SYSTEM_PROMPT } from "./prompts/agent-system-prompt.mjs";
-import { bindPromptDiagnostics, logInitialPrompt } from "./resources/prompt-diagnostics.mjs";
+import { logInitialPrompt } from "./resources/prompt-diagnostics.mjs";
 import messageAdapter from "./adapters/message-adapter.js";
 import outputAdapter from "./adapters/output-event-adapter.js";
 import modelConfig from "./config/model-config.js";
@@ -214,7 +214,6 @@ export async function createPiAgent(
     ...(resumeOptions?.thinkingLevel ? { thinkingLevel: resumeOptions.thinkingLevel } : {}),
     ...(resourceOptions?.subagentParent ? { thinkingLevel: resourceOptions.subagentParent.thinkingLevel } : {}),
   });
-  bindPromptDiagnostics(session, { knownSecrets: [startupModel.apiKey] });
   // 扩展命令替换会话时由 runtime 在绑定完成后调用，与普通创建保持同一时机。
   session.desktopLogInitialPrompt = () => logInitialPrompt(session, {
     agentDir,

@@ -84,69 +84,6 @@ test("日志省略技能目录正文，只保留可用数量；原文长度仍�
   assert.ok(output.includes(`${prompt.length} 字符（原文长度；日志凭据脱敏）`));
 });
 
-test("工具调用与技能加载在运行期打印，绑定本身不重复打印整段提示词", async () => {
-  const { bindPromptDiagnostics } = await import("../../src/main/resources/prompt-diagnostics.mjs");
-  const workspace = path.join(os.tmpdir(), "诊断技能工作区");
-  const skillPath = path.join(workspace, ".pi", "skills", "qa-ui-basic", "SKILL.md");
-  const session = {
-    sessionId: "fixture-skill-session",
-    systemPrompt: [
-      "<skills>", "<available_skills>", "  <skill>",
-      "    <name>qa-ui-basic</name>",
-      "    <description>夹具技能描述</description>",
-      "  </skill>", "</available_skills>", "</skills>",
-    ].join("\n"),
-    sessionManager: { getCwd: () => workspace, getSessionDir: () => path.join(workspace, "sessions") },
-    getAllTools: () => [], extensionRunner: { hasHandlers: () => false },
-    resourceLoader: { getSkills: () => ({ skills: [{ name: "qa-ui-basic", filePath: skillPath }] }) },
-    subscribe: handler => { listeners.push(handler); return () => {}; },
-  };
-  const listeners = [];
-  const logged = [];
-  const info = console.info;
-  console.info = message => logged.push(message);
-  try {
-    bindPromptDiagnostics(session, { knownSecrets: [] });
-    const emit = event => listeners[0](event);
-    emit({ type: "agent_start" });
-    emit({ type: "tool_execution_start", toolName: "read", toolCallId: "t1", args: { path: skillPath } });
-    emit({ type: "tool_execution_end", toolName: "read", toolCallId: "t1", isError: false, durationMs: 1234 });
-    emit({ type: "tool_execution_start", toolName: "read", toolCallId: "t2", args: { path: path.join(workspace, "notes", "SKILL.md") } });
-    emit({ type: "tool_execution_start", toolName: "read", toolCallId: "t3", args: { path: skillPath } });
-    emit({ type: "message_end", message: { role: "user", content: `<skill name="qa-ui-basic" location="${skillPath}">\n技能正文\n</skill>` } });
-    emit({ type: "tool_execution_start", toolName: "bash", toolCallId: "t4", args: { command: `cat ${skillPath}` } });
-    emit({ type: "tool_execution_end", toolName: "bash", toolCallId: "t4", isError: true });
-    emit({ type: "message_end", message: { role: "user", content: "普通消息" } });
-    emit({ type: "message_end", message: { role: "assistant", content: "回复" } });
-  } finally {
-    console.info = info;
-  }
-  assert.equal(logged.filter(line => line.includes("系统提示词")).length, 0, "运行期不重复打印整段提示词");
-  const runs = logged.filter(line => line.startsWith("[Pi 桌面] 本轮运行"));
-  assert.equal(runs.length, 1, "每次运行留一条轮次标记");
-  assert.match(runs[0], /session=fixture-skill-session/);
-  const calls = logged.filter(line => line.startsWith("[Pi 桌面] 工具调用"));
-  const returns = logged.filter(line => line.startsWith("[Pi 桌面] 工具返回"));
-  assert.equal(calls.length, 4, "每次工具调用一条，不合并");
-  assert.equal(returns.length, 2);
-  assert.match(calls[0], /tool=read/);
-  assert.match(returns[0], /tool=read status=ok 1234 ms/);
-  assert.match(returns[1], /tool=bash status=error \d+ ms/);
-  assert.match(calls[0], /call=t1/);
-  assert.match(returns[0], /call=t1/);
-  assert.match(returns[1], /日志观察计时/);
-  assert.ok(!logged.join("\n").includes(`cat ${skillPath}`), "命令正文与参数不进入日志");
-  assert.equal(logged.filter(line => line.includes("夹具技能描述")).length, 0, "目录正文不进入日志");
-  const loaded = logged.filter(line => line.startsWith("[Pi 桌面] 已加载技能"));
-  assert.equal(loaded.length, 2, "同轮重复 read、普通 read 与 bash 不产生技能加载日志");
-  assert.match(loaded[0], /name="qa-ui-basic" source=read/);
-  assert.match(loaded[1], /name="qa-ui-basic" source=explicit/);
-  const round = calls[0].match(/round=(\S+)/)[1];
-  assert.ok(loaded.every(line => line.includes(`round=${round}`)), "加载日志与工具日志属于同一轮次");
-  assert.ok(loaded.every(line => line.includes(`session=fixture-skill-session`)));
-  assert.ok(loaded.every(line => line.includes(`path=${skillPath}`)));
-});
-
 test("会话创建时打印一次初始系统提示词，失败只报告未确认", async () => {
   const { logInitialPrompt } = await import("../../src/main/resources/prompt-diagnostics.mjs");
   const session = {
@@ -179,7 +116,7 @@ test("会话创建时打印一次初始系统提示词，失败只报告未确�
   }
 });
 
-test("真实 SDK 会话创建记录初始提示词，运行期记录工具调用，重载、恢复和新会话不串日志（不请求模型）", async t => {
+test("真实 SDK 仅在启动记录提示词，工具和技能动态执行不追加日志（不请求模型）", async t => {
   const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "prompt-diagnostics-")));
   let passed = false;
   t.after(() => passed ? fs.rm(base, { recursive: true, force: true }) : process.stdout.write(`保留检查现场：${base}\n`));

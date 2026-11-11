@@ -94,8 +94,7 @@ try {
     const initial = diagnosticLogs.filter(line => line.startsWith("[Pi 桌面] 初始系统提示词") && line.includes(`session=${row.id} `));
     assert.equal(initial.length, 1, "子会话启动时各自打印一次提示词");
     assert.match(initial[0], /role=subagent/);
-    const runIndex = diagnosticLogs.findIndex(line => line.startsWith("[Pi 桌面] 本轮运行") && line.includes(`session=${row.id}`));
-    assert.ok(diagnosticLogs.indexOf(initial[0]) < runIndex, "子会话提示词在运行前打印");
+    assert.ok(!diagnosticLogs.some(line => /^\[Pi 桌面\] (本轮运行|工具调用|工具返回|已加载技能)/.test(line)), "子会话不打印运行期诊断");
   }
   assert.ok(rows.every(row => row.usage === 7), "子级用量不重复计算 fork 继承的父级响应");
   assert.ok(output.some(event => event.type === "message_end" && event.message?.content.some(b => b.text === "PARENT_SUMMARY")));

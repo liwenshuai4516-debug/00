@@ -56,9 +56,7 @@ async function create(file) {
   return session;
 }
 const diagnostics = () => logs.filter(item => item.startsWith("[Pi 桌面] 初始系统提示词"));
-const toolCalls = () => logs.filter(item => item.startsWith("[Pi 桌面] 工具调用"));
-const toolReturns = () => logs.filter(item => item.startsWith("[Pi 桌面] 工具返回"));
-const loadedSkills = () => logs.filter(item => item.startsWith("[Pi 桌面] 已加载技能"));
+const runtimeLogs = () => logs.filter(item => /^\[Pi 桌面\] (本轮运行|工具调用|工具返回|已加载技能)/.test(item));
 try {
   const first = await create();
   assert.ok(first.systemPrompt.includes("<available_skills>"), "夹具技能应被原生加载器发现");
@@ -70,10 +68,8 @@ try {
   await sendMessage(first, "第一轮", () => {}, () => {});
   assert.equal(diagnostics().length, 1, "运行期不重复打印整段提示词");
   assert.equal(calls, 2, "工具后的第二次响应不重复打印提示词");
-  assert.ok(toolCalls().length >= 1, "运行期打印工具调用");
-  assert.match(toolCalls()[0], /tool=read/);
-  assert.ok(toolReturns().length >= 1, "工具结束打印返回状态与耗时");
-  assert.match(toolReturns()[0], /tool=read status=ok \d+ ms/);
+  assert.ok(first.messages.some(message => message.role === "toolResult" && message.toolName === "read" && !message.isError), "停止打印不影响原生工具成功执行");
+  assert.equal(runtimeLogs().length, 0, "运行期不打印轮次、工具调用、返回或技能加载");
   const output = diagnostics()[0];
   assert.ok(output.includes(TEST_AGENT_PROMPT));
   assert.ok(!output.includes("You are an expert coding assistant operating inside pi"));
@@ -87,14 +83,10 @@ try {
   assert.doesNotMatch(output, /EXTENSION_FINAL_PROMPT/, "初始日志不包含运行期 before_agent_start 的改写");
   assert.ok(modelPrompts[0].includes("fixture-password-secret"), "扩展运行期改写只进入模型输入，不修改日志脱敏");
   assert.ok(modelPrompts[0].includes("<available_skills>"), "技能目录仍发送给模型");
-  assert.equal(loadedSkills().length, 1, "原生 read 命中技能文件时打印一次加载");
-  assert.match(loadedSkills()[0], /name="diagnostic-skill" source=read/);
   await sendMessage(first, "/skill:diagnostic-skill 附加说明", () => {}, () => {});
   assert.equal(diagnostics().length, 1);
-  assert.equal(loadedSkills().length, 2);
-  assert.match(loadedSkills()[1], /name="diagnostic-skill" source=explicit/);
-  const explicitRound = loadedSkills()[1].match(/round=(\S+)/)[1];
-  assert.ok(logs.some(line => line.startsWith("[Pi 桌面] 本轮运行") && line.includes(`round=${explicitRound}`)), "加载日志与运行轮次一致");
+  assert.ok(first.messages.some(message => message.role === "user" && JSON.stringify(message.content).includes("离线技能正文")), "技能仍通过 SDK 动态展开");
+  assert.equal(runtimeLogs().length, 0, "显式加载技能也不打印运行日志");
   await sendMessage(first, "/reload", () => {}, () => {});
   assert.equal(diagnostics().length, 1, "重载不重复打印提示词");
   await sendMessage(first, "重载后运行", () => {}, () => {});
@@ -125,7 +117,7 @@ try {
     assert.ok(readyIndex >= 0 && readyIndex < promptIndex, "初始提示词必须在扩展绑定完成后打印");
   }
   assert.equal(calls, 6);
-  assert.equal(loadedSkills().length, 2, "无技能重复加载时不追加日志");
+  assert.equal(runtimeLogs().length, 0, "重载、恢复与新会话均不追加运行期日志");
   const history = await fs.readFile(first.sessionFile, "utf8");
   assert.ok(!history.includes("动态配置开始"), "诊断块不写入会话历史");
 } finally {
