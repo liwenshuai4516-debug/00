@@ -116,3 +116,7 @@ UI 报告只接收 qa-report/v1、kind=ui、workflow=browser-use-playwright 和�
 真实模型候选/补丁验收使用 `node tests/helpers/ui-model-generation.check.mjs <隔离证据目录> all`（或 `repair` 复用已完成候选）；候选 revision 0001、补丁 revision 0002 与最终回归均通过，模型为 `qwen3.8-flash-next`，未访问真实业务站点。包装脚本两次提前结束的修正记录见 [异常报告 L](browser-use-readonly-workflow.md#异常报告-l真实模型验收包装脚本误判与登录守卫阻断已修正)。
 
 2026-11-09 定向修复后，用例页 16 项、报告页 18 项与共用侧栏 79 项检查通过、退出 0；同步创建临时目录并在 ready 前设置 sessionData 后，三页原缓存错误消失。侧栏另修正设置断言范围、展开动画等待及 390px 聊天标签栏溢出。报告页退出时仍有 GPU shared-image 日志，根因待确认；历史与本次恢复记录见 [实现记录](browser-use-readonly-workflow.md)。2026-11-09 隔离写与修复关联接入后：用例页 16 项连续 3 次、报告页 19 项通过；期间修复了确认框第二次打开被旧 close 事件关闭的竞态（报告 J）。真实模型整链及真实模型生成候选/补丁已在受控本地页面通过（见上）；真实业务、跨 frame、IndexedDB、多角色、自动修复决策和安装包仍未扩大为已验收能力。真实业务写操作仅限已声明的采购合同草稿创建/查询。
+
+## 未发布只读候选继续验证
+
+已有成功探索证据的只读候选可通过 `qa_ui_save_candidate({operation:"continue-candidate",caseId,baseRevision})` 创建承接任务，保存新修订后进入既有 validate/publish 链路，无需重调探索模型。原任务和原版本保留，覆盖统计追溯原探索；限制、失败处理及完整步骤见[候选继续验证](browser-use-readonly-workflow.md#未发布只读候选继续验证)。审批预检新增配置来源诊断；由存量详情转为新建测试时，保留旧计划，按真实新建入口准备新计划，见[审批执行规则](../resources/testing/ui/prompt/approval-control.md)。

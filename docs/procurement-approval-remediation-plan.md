@@ -2,7 +2,7 @@
 
 日期：2026-11-11，Asia/Shanghai（UTC+08:00）。
 
-状态：**修复方案，尚未实施**。本次仅核对源码与既有产物并编写方案，不修改运行逻辑、不配置真实密码、不运行真实模型或审批。本文件中的新增字段与入口均为拟议契约，当前不可调用。
+状态：**客户端已实施，真实业务验收部分完成、认证受阻**。候选承接和预检来源诊断已通过定向测试；真实 Agent 完成两候选验证及10人准备检查，后续提交前认证未通过，未执行审批。逐项结果、48条映射及恢复条件见[实施与验收报告](procurement-approval-acceptance.md)。下文保留优化后的实施设计，不能将其目标视为全部已完成。
 
 ## 1. 目标与边界
 
@@ -11,7 +11,7 @@
 完成目标：
 
 1. 两个已有只读候选能够经明确授权承接到完整验证，复用真实证据，不重新调用探索模型，也不改写原任务和原 revision。
-2. 审批准备能够准确说明检查了哪份配置、缺哪些实际人员和认证；补齐后沿原零执行计划继续。
+2. 审批准备能够准确说明检查了哪份配置、缺哪些实际人员和认证；补齐后为新建记录建立新计划，旧零执行计划仅保留历史引用。
 3. 设计、脚本、来源、范围快照和交付统计一致；产品不符合预期可以产生真实失败结果，不能为了发布修改预期。
 4. 模型超时只暂停依赖它的探索分支，不扩大到已有有效候选或不依赖模型的准备工作。
 
@@ -21,13 +21,13 @@
 
 测试产物工作区：`/Users/liyingjun/Desktop/SW-QA/18-00work space`，其中 `qa` 是产物目录，不是工具应使用的 cwd。实际工作流 cwd 应为该工作区根目录，避免形成 `qa/qa/ui`。
 
-## 2. 已确认事实与修复类型
+## 2. 实施前已确认事实与修复类型
 
 | 编号 | 事实及源码/产物依据 | 分类 | 处理 |
 | --- | --- | --- | --- |
 | F1 | 两个资产均为0001、currentRevision=null、validatedRunId=null，绑定 completed/candidate 任务；workflow.mjs 的 executeSelection 拒绝非 complete 来源验证 | 工作流缺少承接能力 | 增加有来源、有限范围的候选继续入口，保留原门禁 |
 | F2 | saveCandidate 普通分支要求同一 case 的所有 revision 来自同一 task；createRepairTask 只接受正式版本及失败 regression 父批次 | 工作流缺少承接能力 | 同步补齐承接任务保存规则；不能只创建一个 complete 任务 |
-| F3 | 两份 flow.json 都只有管理员 creator=pms_admin，steps=[] | 审批计划未完成 | 补齐真实人员，prepare 修订原计划；不需要重写审批引擎 |
+| F3 | 两份 flow.json 都只有管理员 creator=pms_admin，steps=[] | 审批计划未完成 | 补齐真实人员，为新建记录新建 flowId；旧计划保留历史，不重写审批引擎 |
 | F4 | 历史 preflight 报 sharedTestPasswordConfigured=false；approval.mjs 从主进程环境读取，bootstrap.js 启动时加载客户端根目录.env | 宿主环境配置 | 安全配置后在实际主进程重新预检；不新增凭据库 |
 | F5 | 不带 flowId/config.actors 的 preflight 按空数组检查，不会自动读取某个旧计划 | 调用和诊断不清 | 调用带准确 flowId；补充配置来源诊断，避免误称计划为空 |
 | F6 | 既有规则已确认串行、全部通过；矩阵同格展示两人不能证明规则改变 | 规则执行及报告偏差 | 保留既有规则，单独核实节点类型和启用配置，不重复索要已确认口径 |
@@ -49,7 +49,7 @@ flowchart TD
   B --> C[离线验证承接、保存、执行与发布边界]
   C --> D[按准确新修订验证两个既有只读目标]
   A --> E[补人员映射及宿主认证配置]
-  E --> F[原计划 prepare 与逐人 inspect]
+  E --> F[新建入口的新计划 prepare 与逐人 inspect]
   F --> G[规则、开关、数据及权限就绪的审批节点]
   G --> H[完整终态后生成 E2E 候选并独立验证]
   A --> I[模型超时分支保留暂停]
@@ -59,27 +59,23 @@ flowchart TD
   J --> K
 ```
 
-B/C 是客户端代码修复；E/F 是配置和计划准备；D/G/H/J 是后续真实验收。本次仅交付方案，不能把后续真实验收记为已授权执行或已完成。
+B/C 是客户端代码修复；E/F 是配置和计划准备；D/G/H/J 是真实验收，各阶段只按实际结果记录完成与阻塞。
 
 ## 4. P0：已有只读候选的显式继续能力
 
 ### 4.1 采用方案
 
-在现有 `qa_ui_save_candidate` 上增加明确的候选继续操作，复用现有工作区互斥、草稿、revision、validate 和 publish 链路。拟议参数：
+在现有 `qa_ui_save_candidate` 上增加明确的候选继续操作，复用现有工作区互斥、草稿、revision、validate 和 publish 链路。实际参数：
 
 ```json
 {
   "operation": "continue-candidate",
   "caseId": "pms-approval-flow-model-isolation",
-  "baseRevision": "0001",
-  "authorization": {
-    "kind": "user",
-    "reference": "可定位的用户继续执行该只读候选的授权来源"
-  }
+  "baseRevision": "0001"
 }
 ```
 
-这是新增契约设计，不是现有命令。保留旧调用行为；operation 缺省仍沿用现有保存/正式修复分派，不能与新参数混用后静默选路。工具仍受应用 full-access/ask/read-only 权限控制；authorization 记录可追溯来源，不能只凭模型填写一段文字就绕过应用权限。
+这是新增契约，需在更新后的会话工具 schema 中使用。保留旧调用行为；operation 缺省仍沿用现有保存/正式修复分派，不能与新参数混用后静默选路。工具沿用应用 full-access/ask/read-only 权限控制，不新增模型自填的授权字符串作为门禁。
 
 成功只建立一个 `kind=candidate-continuation` 的本地任务与可编辑草稿，不运行浏览器、模型或测试，不自动发布。返回 taskId、draftDirectory、sourceTaskId、caseId、baseRevision 和下一步。复用源约定，将新任务 mode 明确设为 complete；原任务继续保持 candidate。
 
@@ -94,13 +90,13 @@ B/C 是客户端代码修复；E/F 是配置和计划准备；D/G/H/J 是后续�
 
 ### 4.3 来源与版本处理
 
-新任务保存只读的 continuation 信息：源 caseId/revision/taskId、源文件哈希及授权引用。草稿 case.json.taskId 使用新任务编号，steps 保留原成功步骤编号；校验时明确回查原任务 actions.jsonl，不新造动作、不声称发生了新探索。
+新任务保存只读的 continuation 信息：源 caseId/revision/taskId、源版本文件哈希、task.json 及 actions.jsonl 哈希。草稿 case.json.taskId 使用新任务编号，steps 保留原成功步骤编号；校验时明确回查原任务 actions.jsonl，不新造动作、不声称发生了新探索。
 
 保存承接草稿时增加专门分支，允许新任务在同一资产下生成0002；校验它确实继承0001及其来源，不把普通新任务都放开。原0001、原 task.json 和原 actions.jsonl 字节保持不变。
 
 承接阶段允许保持原脚本，或只修定位、等待、证据保存；修改前后均核对冻结的业务字段。补齐新业务目标或更改人员预期应进入新的完整设计任务，不能伪装成定位修复。
 
-当前 removeUiCase 的归属校验、removeUiReport 的引用保护、coverage 的来源校验及报告展示均须沿实际字段核对。沿用新 taskId 可兼容的地方不改；确实需要展示继承来源时仅增加必要字段，避免制造另一套报告模型。源任务被破坏或证据消失时拒绝保存，不补造材料。
+coverage 必须区分修订所属承接 taskId 与原探索 sourceTaskId；承接发布时间不计为新探索。当前 removeUiCase 的归属校验、removeUiReport 的引用保护及报告展示均须沿实际字段核对。沿用新 taskId 可兼容的地方不改；确实需要展示继承来源时仅增加必要字段，避免制造另一套报告模型。源任务被破坏或证据消失时拒绝保存，不补造材料。
 
 ### 4.4 验证与发布
 
@@ -141,11 +137,11 @@ B/C 是客户端代码修复；E/F 是配置和计划准备；D/G/H/J 是后续�
 
 每人登记 id/account/source/credentialSource/identity；目录核对部门、账号状态、分页和同名情况。姓名无法唯一匹配时才询问，不批量猜拼音。身份完整文案以可信页面证据为准；已有管理员正确文案为“你好 项目管理系统管理员”，不能删掉前缀，也不推定其他人必然同格式。
 
-读取两份旧计划后，选择与本轮目标相符的一份作为继续计划，另一份保留历史引用，不删除。当前r2指向存量合同详情，record 也是存量节点文本；**不能只追加人员后把它当成新建测试记录计划**。prepare 需同时明确新建入口、独立记录标识、初态与来源。必须先确认零执行、未冻结，引用当前配置版本修订并保留 configHistory 和旧证据。
+两份旧计划均保留历史引用，不删除。它们指向存量合同详情，record 也是存量节点文本；**不能只追加人员后把它当成新建测试记录计划**。现有 prepare 只修订 config，不能改变 targetUrl；先核对旧计划零执行、无结果未知写入，再以新 flowId、明确新建入口、独立记录标识、初态和来源 prepare 新计划。新计划保留对旧来源的引用，不绕过失败或未知操作。
 
 ### 5.3 凭据配置
 
-沿现有宿主环境 `QA_UI_TEST_PASSWORD`。开发态主进程在启动时加载客户端根目录.env；被测工作区的.env或当前命令窗口环境不能替代运行中应用的主进程状态。本次方案不读取密码正文。
+沿现有宿主环境 `QA_UI_TEST_PASSWORD`。开发态主进程在启动时加载客户端根目录.env；被测工作区的.env或当前命令窗口环境不能替代运行中应用的主进程状态。密码正文不进入模型、计划、报告或提交。
 
 实际实施时通过受控本机配置注入，避免把密码放入对话、命令参数、仓库或报告。若需要重启，先确认应用内任务停止且输入已保存，不能为刷新变量直接杀进程；配置后在真实 Electron 主进程调用指定flowId预检。项目管理员凭据保持原项目来源，不被覆盖成其他账号，也不复制给多名审批人。
 
@@ -210,13 +206,13 @@ B/C 是客户端代码修复；E/F 是配置和计划准备；D/G/H/J 是后续�
 
 ## 9. 文件范围与同步要求
 
-| 文件/范围 | 拟议变更 | 验收 |
+| 文件/范围 | 实施范围 | 验收 |
 | --- | --- | --- |
 | src/main/capabilities/ui-testing/workflow.mjs | 候选继续、来源校验、同资产保存的限定分支、预算及幂等；复核删除/报告引用 | 承接与原验证发布链保持一致 |
 | src/main/capabilities/ui-testing/extension.mjs | 新operation参数/说明，保留旧参数兼容 | SDK真实工具schema与处理分派一致 |
 | src/main/capabilities/ui-testing/approval.mjs | preflight配置来源诊断，不扩大认证语义 | 三类预检来源及错误归属正确 |
-| src/main/capabilities/ui-testing/coverage.mjs | 仅在现有来源校验不能识别承接时补必要校验 | 新来源可追溯，旧快照不重算 |
-| tests/unit/ui-candidate-continuation.test.js（拟新增） | 承接、权限来源、归属、哈希、预算、幂等、字段冻结 | 不请求真实模型，不读真实配置 |
+| src/main/capabilities/ui-testing/coverage.mjs | 核对承接所属任务、原探索证据与 generated/reused 统计 | 新来源可追溯，旧快照不重算 |
+| tests/unit/ui-candidate-continuation.test.js（已新增） | 承接、权限来源、归属、哈希、预算、幂等、字段冻结 | 不请求真实模型，不读真实配置 |
 | tests/unit/ui-approval-preparation.test.js | 预检来源、旧零步骤prepare、身份/配置失败边界 | 使用临时数据，不调用真实业务 |
 | tests/helpers/ui-readonly-workflow.check.mjs 及对应unit入口 | 承接保存、真实本地验证/发布与失败闭环 | 离线模型、本地隔离页面，无付费调用 |
 | resources/testing/ui/skills/qa-ui-basic/SKILL.md | 主流程新增“继续已有候选”分支与停止条件 | 先复用有效证据，不重复探索 |
@@ -241,7 +237,7 @@ AGENTS.md/README仅在实际能力边界或公开入口发生变化且原文需�
 
 ```sh
 node --test tests/unit/ui-candidate-continuation.test.js tests/unit/ui-approval-preparation.test.js
-node --test tests/unit/ui-readonly-workflow.test.js
+node --test tests/unit/ui-readonly-workflow.test.js tests/unit/ui-repair-workflow.test.js
 node --test --test-name-pattern='resources' tests/unit/ui-testing-runtime.test.js
 node --test tests/unit/ui-coverage.test.js
 ```
@@ -268,8 +264,8 @@ node --test tests/unit/ui-coverage.test.js
 
 回退代码不删除新task/revision/run，不将新schema产物手改成旧格式；旧版本不支持承接任务时应明确不兼容、只读保留现场，不能接着运行。结果未知的审批写操作一律先reconcile，不自动回滚业务数据。
 
-## 12. 本方案核查状态
+## 12. 原方案核查记录（实施前）
 
-本次重新核对了工作流参数、同资产修订限制、权限入口、审批计划和两个候选的expected/assertions。前次隔离验证 `node --test tests/unit/ui-approval-preparation.test.js` 为1项通过；本次仅方案变更，不重复运行应用或业务测试。
+本次重新核对了工作流参数、同资产修订限制、权限入口、审批计划和两个候选的expected/assertions。方案提交时的隔离验证 `node --test tests/unit/ui-approval-preparation.test.js` 为1项通过；当时仅方案变更、未运行应用或业务测试。后续实施和真实验收以[实施与验收报告](procurement-approval-acceptance.md)为准。
 
 本次读取中有两处预期路径不存在、一次不存在通配模式被zsh拒绝，相关查询已停止；之后通过文件清单确认真实入口 `tests/helpers/ui-readonly-workflow.check.mjs` 和 `src/main/resources/permission-gate.mjs` 后读取。未执行依赖错误路径的写操作，未调用或重试业务服务。没有据此推断能力缺失。

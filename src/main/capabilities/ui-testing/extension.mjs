@@ -53,7 +53,8 @@ export function createUiTestingExtension(runtime) {
     register("qa_ui_explore", "只读探索：匹配项目、后台登录并记录任务轨迹。必须明确 Pi 模型和业务预期来源；不生成脚本。", Type.Object({
       targetUrl: string, projectId: Type.Optional(string), projectName: Type.Optional(string), contract,
     }), "explore");
-    register("qa_ui_save_candidate", "将 drafts/<caseId>/case.spec.cjs 和 case.json 静态检查并冻结为候选版本；不执行。只传 caseId+baseRevision+parentRunId 时，根据失败的回归批次建立已有用例的修复任务并返回 taskId 与草稿目录，不启动浏览器；后续补丁沿用该 taskId。", Type.Object({
+    register("qa_ui_save_candidate", "将草稿静态检查并冻结为候选；不执行。operation=continue-candidate 仅传 caseId+baseRevision，不传 taskId/parentRunId/patchSummary，显式承接未发布只读候选，返回承接 taskId 与已复制草稿，不调用探索模型；后续用 taskId+caseId 保存新修订。省略 operation 保留旧保存行为；只传 caseId+baseRevision+parentRunId 时建立正式版本修复任务。", Type.Object({
+      operation: Type.Optional(Type.Literal("continue-candidate")),
       taskId: Type.Optional(string), caseId: string,
       baseRevision: Type.Optional(string), parentRunId: Type.Optional(string), patchSummary: Type.Optional(string),
     }), "saveCandidate");

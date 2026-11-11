@@ -31,14 +31,14 @@
 - pms 采购合同测试已由用户确认使用统一测试密码，已核实的测试账号可直接采用 `credentialSource:"test-password"`，不再逐人索要密码或重复询问是否允许共用。密码正文仅由宿主通过 `QA_UI_TEST_PASSWORD` 注入，不写入本文件、技能、计划、报告、日志或命令行。已确认密码不等于宿主已完成注入；变量缺失时准确报告“宿主未注入已确认测试凭据”，只暂停依赖登录的执行，继续流程分析和用例设计。共用密码不提供账号映射，仍按真实目录或用户确认取得 account 并验证 identity。
 - 可选 `login.account/password/submit` **都是控件选择器**；`login.tenant:{selector,confirm}` 是已知租户与确认按钮。不得传密码正文，不读 `.env`、Cookie 或真实凭据配置给模型，不把凭据写入计划、用例、报告或命令行。
 - 登录成功仍必须核对 identity；再核对同一业务记录、当前节点及可用动作。验证码、MFA、跨站登录或身份不符时停止依赖链，不换账号绕过。
-- 先调用 `preflight` 核对实际宿主配置；不带 flowId 时提供 projectId/targetUrl 及 config，可在创建计划前检查。只返回配置是否齐备、缺失项及 actorId，不返回凭据、不登录。`configured` 不代表账号认证成功；不能用 Agent 命令进程的环境检查替代 Electron 主进程预检。人员目录需核对部门、账号状态与分页，同名无法唯一匹配才请求确认。
+- 先调用 `preflight` 核对实际宿主配置；不带 flowId 时提供 projectId/targetUrl 及 config，可在创建计划前检查。回执 configurationSource=flow/config/none 明确检查来源；none 表示本次未提供人员，不表示某份旧计划没有人员。只返回配置是否齐备、缺失项及 actorId，不返回凭据、不登录。`configured` 不代表账号认证成功；不能用 Agent 命令进程的环境检查替代 Electron 主进程预检。人员目录需核对部门、账号状态与分页，同名无法唯一匹配才请求确认。
 
 ## 工具操作与节点规程
 
 实际工具为 `qa_ui_approval`；未登记/被禁用时报告能力不可用。`qa_ui_explore` 保持只读；审批写动作走此专用分支。整个分支沿用工作区互斥锁。每条流程使用稳定 flowId，记录在 `qa/ui/approvals/<flowId>/flow.json`，不要新建等价流程来绕过错误。
 
 1. `instructions`：动态读取本文件，不登录或执行审批。
-2. `prepare`：首次提供 flowId、targetUrl、projectId、config，保存准备阶段配置（configRevision=1）；修订时提供原 flowId、当前 baseRevision 和完整 config。仅无执行步骤、无冻结标记的计划可修订，旧配置保存在 configHistory，旧证据不改写；旧零步骤计划按版本 1 处理，旧检查证据绑定初始配置。config 含 source、record、actors、residualAuthorization。先补齐本次启用节点的人员、身份和选择器，不能指望执行后再添加人员。
+2. `prepare`：首次提供 flowId、targetUrl、projectId、config，保存准备阶段配置（configRevision=1）；修订时提供原 flowId、当前 baseRevision 和完整 config。仅无执行步骤、无冻结标记的计划可修订，旧配置保存在 configHistory，旧证据不改写；旧零步骤计划按版本 1 处理，旧检查证据绑定初始配置。config 含 source、record、actors、residualAuthorization。prepare 不改变旧计划的 targetUrl；从存量详情观察切换到新建独立测试记录时，新建有明确新建入口的 flowId，保留旧计划及历史引用，这不用于绕过失败或结果未知操作。先补齐本次启用节点的人员、身份和选择器，不能指望执行后再添加人员。
 3. `inspect`：首次也可同时保存 config；提供 `step:{actorId,url,before}`，隔离登录、严格核对身份，等待同一 record 和非空 before（如当前节点）后才读取控件并截图。创建前入口还须 `createsRecord:true`，仅无执行步骤时允许跳过尚不存在的 record 检查。每次检查保存 configRevision；认证失败仍处于准备阶段，可通过 prepare 校正，不手改历史或换 flowId。record 的 text 可含 `{{runId}}` 或已提取变量。残留授权按上文继承，不宣称自动清理。
 4. `execute`：提供 flowId、完整 step、authorization；第二个及后续节点还需 previousStepId，精确引用最近已确认节点。先预检全部已登记人员认证配置，再认证当前处理人；失败不冻结。首次执行在同一互斥入口保存冻结版本和动作意图，再进入业务操作；此后任何 blocked/unknown 结果均禁止修改配置，不能以“可能没写入”为由退回准备阶段。每次只执行一个节点，按真实页面声明动作，不把整个流程塞成一串无状态检查的点击。节点预期在该节点首次登记后不可改写，后续节点按已核实流程追加。
 5. 每个 step 必须有 id/name/source/actorId/url、非空 before/after 和 actions；after 的预期来自流程规则。首个创建节点 `createsRecord:true`，输入唯一标识 `{{runId}}`；可用 `capture:{name:"recordId",query:"id"}` 从最终 URL 提取记录标识，或用 selector/attribute 从真实页面属性提取。后续 URL/断言可以引用 `{{recordId}}`。每次操作后核对 record 及 after；最后节点 `terminal:true`，after 明确验证业务终态。把节点、下一处理人及审批记录等需要验证的内容列成独立检查。

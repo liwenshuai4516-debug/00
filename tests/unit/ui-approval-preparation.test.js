@@ -22,12 +22,17 @@ test("审批准备：配置预检不登录，旧零步骤计划可修订，执�
     actors: [{ id: "creator", account: "creator", source: "fixture-directory", credentialSource: "project", identity: { selector: "#identity", text: "creator" } },
       { id: "reviewer", account: "reviewer", source: "fixture-directory", credentialSource: "test-password", identity: { selector: "#identity", text: "reviewer" } }] };
   const result = await api.approval(base, { operation: "preflight", targetUrl, projectId: "fixture", config });
+  assert.equal(result.configurationSource, "config");
   assert.equal(result.status, "incomplete");
   assert.equal(result.verification, "configuration-only");
   assert.equal(result.projectCredentialsConfigured, true);
   assert.equal(result.sharedTestPasswordConfigured, false);
   assert.deepEqual(result.actors.find(actor => actor.actorId === "reviewer").missing, ["test-password"]);
   assert.ok(!JSON.stringify(result).includes("fixture-private-secret"));
+  const noActors = await api.approval(base, { operation: "preflight", targetUrl, projectId: "fixture" });
+  assert.equal(noActors.configurationSource, "none");
+  assert.match(noActors.reason, /本次未提供人员配置/);
+  assert.deepEqual(noActors.missing, ["actors"]);
   assert.deepEqual(await fs.readdir(path.join(base, "qa/ui/approvals")).catch(error => error.code === "ENOENT" ? [] : Promise.reject(error)), []);
   const dir = path.join(base, "qa/ui/approvals/legacy");
   await fs.mkdir(dir, { recursive: true });
@@ -35,6 +40,15 @@ test("审批准备：配置预检不登录，旧零步骤计划可修订，执�
     config: { ...config, actors: config.actors.slice(0, 1) }, variables: { runId: "legacy" }, steps: [], createdAt: new Date().toISOString() };
   await fs.writeFile(path.join(dir, "flow.json"), JSON.stringify(original));
   await fs.writeFile(path.join(dir, "old-evidence.txt"), "old inspection evidence");
+  const legacyPreflight = await api.approval(base, { operation: "preflight", flowId: "legacy" });
+  assert.equal(legacyPreflight.configurationSource, "flow");
+  assert.equal(legacyPreflight.configRevision, 1);
+  assert.equal(legacyPreflight.status, "configured", "仅有项目认证时不需要共享密码");
+  await assert.rejects(api.approval(base, { operation: "preflight", flowId: "not-found" }), /新审批流/);
+  await assert.rejects(api.approval(base, { operation: "prepare", flowId: "legacy", targetUrl: "https://example.invalid/app/other", baseRevision: 1, config }), /新的 flowId/);
+  const newFlow = await api.approval(base, { operation: "prepare", flowId: "new-record", targetUrl, projectId: "fixture", config });
+  assert.equal(newFlow.configRevision, 1);
+  assert.equal(JSON.parse(await fs.readFile(path.join(base, "qa/ui/approvals/new-record/flow.json"), "utf8")).targetUrl, targetUrl);
   const revised = await api.approval(base, { operation: "prepare", flowId: "legacy", baseRevision: 1, config });
   assert.equal(revised.phase, "preparing");
   assert.equal(revised.configRevision, 2);

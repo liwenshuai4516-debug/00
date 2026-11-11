@@ -66,7 +66,7 @@ emit({type:'done',status:'completed',actions:4,modelCalls:0,cleanupConfirmed:tru
 }
 if (real) runtime.modelRuntime = modelRuntime;
 const contract = {
-  mode: "complete", goal: "Open the target URL, confirm fixture-reviewer. Fill Filter with Beta. Confirm only the Beta row remains visible. Click Detail in the Beta row exactly once. Observe Beta · ready and finish successfully. Do not click Alpha.",
+  mode: real ? "complete" : "candidate", goal: "Open the target URL, confirm fixture-reviewer. Fill Filter with Beta. Confirm only the Beta row remains visible. Click Detail in the Beta row exactly once. Observe Beta · ready and finish successfully. Do not click Alpha.",
   role: "reviewer", identity: { selector: '[data-testid="identity"]', text: "fixture-reviewer" },
   expected: [{ id: "filter-detail", text: "筛选 Beta 后仅 Beta 可见，详情结果与该行 Beta 一致。", source: { kind: "user", reference: "受控夹具验收约定：已知 Alpha/Beta 数据，仅查看 Beta。" } }],
   initialState: "全新上下文；受控夹具固定 Alpha 和 Beta，两行可重新定位。", dataStrategy: "read-only", cleanup: "none",
@@ -169,8 +169,18 @@ test("filter and detail agree", async ({ page }, testInfo) => {
     await fs.writeFile(path.join(draft, "case.spec.cjs"), script);
     evidence.checks.push("拒绝预期漂移、虚构步骤、跳过测试");
   }
-  const candidate = await call("qa_ui_save_candidate", { taskId: explored.taskId, caseId });
+  let candidate = await call("qa_ui_save_candidate", { taskId: explored.taskId, caseId });
   assert.equal(candidate.revision, "0001");
+  let continuation;
+  if (!real) {
+    await assert.rejects(api.run(workspace, { caseId, revision: "0001", mode: "validate" }), /候选/);
+    const originalTask = await fs.readFile(path.join(taskDir, "task.json"));
+    continuation = await call("qa_ui_save_candidate", { operation: "continue-candidate", caseId, baseRevision: "0001" });
+    assert.equal((await call("qa_ui_save_candidate", { operation: "continue-candidate", caseId, baseRevision: "0001" })).taskId, continuation.taskId);
+    candidate = await call("qa_ui_save_candidate", { taskId: continuation.taskId, caseId });
+    assert.equal(candidate.revision, "0002");
+    assert.deepEqual(await fs.readFile(path.join(taskDir, "task.json")), originalTask);
+  }
   const selection = { caseId, revision: candidate.revision };
   await assert.rejects(api.run(workspace, { ...selection, mode: "regression" }), /正式版本/);
   evidence.checks.push("候选不能回归");
@@ -194,9 +204,11 @@ test("filter and detail agree", async ({ page }, testInfo) => {
   const coverageSnapshot = await read(closedCoverage.summaryFile);
   assert.equal(coverageSnapshot.mappings[0].validationStatus, "passed");
   assert.equal(coverageSnapshot.mappings[0].published, true);
+  assert.equal(coverageSnapshot.mappings[0].sourceTaskId, explored.taskId);
+  if (continuation) assert.equal(coverageSnapshot.mappings[0].taskId, continuation.taskId);
   assert.equal(published.status, "verified");
   const assetFile = path.join(workspace, "qa/ui/cases", caseId, "asset.json");
-  assert.equal((await read(assetFile)).currentRevision, "0001");
+  assert.equal((await read(assetFile)).currentRevision, selection.revision);
   const regression = await call("qa_ui_run", { ...selection, mode: "regression" });
   assert.equal(regression.status, "passed");
   evidence.checks.push("独立上下文筛选详情通过、发布、正式回归通过，验证批次不重复启动");
@@ -214,10 +226,10 @@ test("filter and detail agree", async ({ page }, testInfo) => {
     await write(manifestFile, manifest);
     await assert.rejects(api.publish(workspace, { ...selection, runId: result.runId }), /实际 passed/);
     await fs.writeFile(result.summaryFile, original);
-    const frozen = path.join(workspace, "qa/ui/cases", caseId, "revisions/0001/case.spec.cjs");
+    const frozen = path.join(workspace, "qa/ui/cases", caseId, "revisions", selection.revision, "case.spec.cjs");
     await fs.appendFile(frozen, "// changed\n");
     await assert.rejects(api.publish(workspace, { ...selection, runId: result.runId }), /revision 文件已变更/);
-    assert.equal((await read(assetFile)).currentRevision, "0001");
+    assert.equal((await read(assetFile)).currentRevision, selection.revision);
     evidence.checks.push("拒绝报告篡改、真实失败、版本变动；正式引用保留");
     // 同一工作区第二实例不能穿透文件锁；取消不等待锁。
     const controller = new AbortController();

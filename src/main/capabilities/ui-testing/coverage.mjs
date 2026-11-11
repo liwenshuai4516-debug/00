@@ -47,7 +47,7 @@ function report(snapshot) {
 // 由工作流注入同一把工作区锁及已有任务、版本读取器，不另建资产来源。
 export async function recordCoverage(root, params, signal, io) {
   signal?.throwIfAborted();
-  const { id, directory, fileAt, writeJson, boundTask, revision } = io;
+  const { id, directory, fileAt, writeJson, boundTask, revision, continuationSource } = io;
   id(params.roundId);
   check(["save", "read"].includes(params.action), "清单 action 必须为 save 或 read。");
   const roundDir = params.action === "save"
@@ -141,10 +141,18 @@ export async function recordCoverage(root, params, signal, io) {
       caseIds.add(item.case.caseId);
       const selected = await revision(root, item.case.caseId, item.case.revision);
       const { asset, entry, meta } = selected;
-      const sourceTaskId = entry.baseTaskId ?? entry.taskId;
+      const { task: owner } = await boundTask(root, entry.taskId);
+      const { task: metadataTask } = await boundTask(root, meta.taskId);
+      const continuation = metadataTask.kind === "candidate-continuation" ? metadataTask.continuation : null;
+      const sourceTaskId = continuation?.sourceTaskId ?? entry.baseTaskId ?? entry.taskId;
       const { task } = await boundTask(root, sourceTaskId);
+      if (continuation) {
+        await continuationSource(root, metadataTask, meta);
+        check(continuation.caseId === meta.caseId &&
+          (owner.taskId === metadataTask.taskId || (owner.kind === "repair" && entry.baseTaskId === metadataTask.taskId)), "承接来源与候选修订不一致。");
+      }
       check(asset.origin !== "manual" && meta.schema === "qa-ui-case/v1" && meta.caseId === asset.caseId &&
-        meta.taskId === sourceTaskId && meta.project?.id === draft.projectId && task.project?.id === draft.projectId &&
+        meta.taskId === (continuation ? metadataTask.taskId : sourceTaskId) && meta.project?.id === draft.projectId && task.project?.id === draft.projectId &&
         task.status === "completed" && task.contract.mode !== "explore" && meta.role === feature.role && meta.targetUrl === task.targetUrl &&
         same(meta.expected, task.contract.expected), "候选与功能角色、项目或成功探索来源不一致，手动设计稿不计生成。");
       check(Array.isArray(item.expectedIds) && item.expectedIds.length > 0 && new Set(item.expectedIds).size === item.expectedIds.length &&

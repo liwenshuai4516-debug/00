@@ -363,3 +363,11 @@ contract.writeAuthorization = { kind: "user" | "rule" | "baseline", reference: "
 本次定向验证命令：`node --test tests/unit/ui-approval.test.js`，以及 `ui-readonly-workflow`、`ui-testing-runtime`、`ui-packaged-layout`、`ui-coverage`、`ui-project-context`、`permission-gate`、`prompt-content`、`ui-write-workflow`、`ui-residual-workflow`、`ui-repair-workflow` 对应单元检查（29 项），均通过；最后对审批、SDK 与模拟随包布局三项补充检查也通过。四份受影响技能通过 quick_validate。没有请求真实模型、读取真实认证或执行业务审批。
 
 验证中先后遇到本机端口权限 EPERM、临时动态资源缺少 bridge.cjs、候选脚本 test.setTimeout 与既有静态规则冲突，以及夹具误从 manifest 读取 summary 字段。各次均停下该依赖链并定位：端口检查经审批获准后继续；补齐隔离资源；将审批超时放回执行配置；修正夹具读取位置。修复后只对相关链路验证，失败现场保留在系统临时目录，不涉及真实业务写入。
+
+## 未发布只读候选继续验证
+
+`qa_ui_save_candidate({operation:"continue-candidate",caseId,baseRevision})` 只建立承接任务和复制草稿，不调用模型或浏览器；省略 operation 沿用普通保存/正式修复接口。原任务保持 candidate，新任务为 complete，草稿 taskId 使用新任务编号。检查草稿后用返回 taskId 保存新 revision，再 validate，实际 passed 且证据完整才 publish；regression 仍仅运行 currentRevision。原探索任务、动作及版本哈希冻结并在保存、执行和覆盖登记时核对，不能修改预期、步骤、身份或初态。源任务须 completed 且清理确认，候选须最新、未发布且未验证；不承接审批或隔离写。重复请求返回原承接任务，未发布资产三个修订预算不重置；取消、失败与结果未知沿原任务/run 保留证据，不重新创建等价任务。
+
+覆盖记录区分 revision 所属 taskId 与原探索 sourceTaskId，按原探索时间计算 generated/reused，承接不计新探索；承接发布后的正式修复仍沿现有 repair 入口。审批 preflight 返回 configurationSource=flow/config/none；none 明确是本次未提供人员。旧计划 prepare 只能改 config，不能改 targetUrl；从存量详情转到新建独立记录时使用新 flowId 和新建入口，并保留旧计划，不用新计划绕过结果未知的写入。
+
+流程：已有候选 → 显式承接 → 检查草稿并保存新修订 → validate → 读取原生结果 → passed 才 publish → 正式回归；失败或收尾未知停依赖链。审批准备：核实旧计划零执行 → 为新建记录创建新计划 → 指定 flowId 预检 → 逐人身份观察 → 独立记录逐节点执行 → 终态候选 → 独立验证。

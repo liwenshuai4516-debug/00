@@ -151,7 +151,9 @@ export async function approvalOperation(root, params, signal, helpers) {
   if (params.operation === "preflight" && !params.flowId) {
     const project = await resolveProject(runtime, params, root.workspace, async () => root);
     check(await fs.realpath(project.projectWorkspace) === root.workspace, "审批项目不属于当前工作区。");
-    return authenticationPreflight(runtime, project, params.config?.actors);
+    return { configurationSource: params.config?.actors ? "config" : "none",
+      ...(params.config?.actors ? {} : { reason: "本次未提供人员配置；未检查任何已保存审批计划。" }),
+      ...await authenticationPreflight(runtime, project, params.config?.actors) };
   }
   id(params.flowId);
   const dir = await directory(root.base, "approvals", params.flowId);
@@ -178,10 +180,12 @@ export async function approvalOperation(root, params, signal, helpers) {
   // 旧零步骤计划仅能通过显式 prepare 修订；存在任何执行意图即保持冻结。
   flow.configRevision ??= 1;
   flow.phase = flow.steps.length || flow.frozenAt || flow.candidateTaskId || flow.phase === "frozen" ? "frozen" : "preparing";
-  if (params.operation === "preflight") return { flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision,
+  if (params.operation === "preflight") return { configurationSource: "flow", flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision,
     ...await authenticationPreflight(runtime, project, flow.config.actors) };
   if (params.operation === "prepare") {
     check(flow.phase === "preparing", "已有执行记录或冻结标记，禁止修改配置。");
+    check(params.targetUrl === undefined || params.targetUrl === flow.targetUrl,
+      "prepare 不修改已保存计划的入口；新建测试须使用新的 flowId 和新建入口，保留旧计划。");
     check(created || params.baseRevision === flow.configRevision, "配置版本已变化或未提供 baseRevision，停止修订。");
     validateConfiguration(params.config, id);
     if (!same(params.config, flow.config)) {

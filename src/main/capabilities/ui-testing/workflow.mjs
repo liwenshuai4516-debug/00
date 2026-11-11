@@ -259,6 +259,22 @@ export function createReadOnlyWorkflow(runtime) {
     }
     return { asset, entry, files, meta: await json(files["case.json"]) };
   }
+
+  async function continuationSource(root, task, meta) {
+    const source = task.continuation;
+    const base = await revision(root, source.caseId, source.baseRevision);
+    const original = await boundTask(root, source.sourceTaskId);
+    check(base.entry.taskId === source.sourceTaskId && JSON.stringify(base.entry.hashes) === JSON.stringify(source.sourceHashes) &&
+      hash(await fs.readFile(await fileAt(original.dir, "task.json"))) === source.sourceTaskHash &&
+      hash(await fs.readFile(await fileAt(original.dir, "actions.jsonl"))) === source.sourceActionsHash,
+    "承接来源版本或探索证据已变化。");
+    check(task.targetUrl === original.task.targetUrl && JSON.stringify(task.project) === JSON.stringify(original.task.project) &&
+      JSON.stringify(task.contract) === JSON.stringify({ ...original.task.contract, mode: "complete" }) &&
+      !task.approvalPlan && !meta.approvalPlan, "承接任务不能改变原目标、身份或约定。");
+    check(meta.taskId === task.taskId && JSON.stringify({ ...meta, taskId: base.meta.taskId }) === JSON.stringify(base.meta),
+      "承接候选不能改变业务说明、预期、步骤或断言。");
+    return base;
+  }
   async function executeSelection(root, selections, mode, signal) {
     signal?.throwIfAborted();
     check(selections.length > 0, "没有可执行的正式用例。");
@@ -284,6 +300,8 @@ export function createReadOnlyWorkflow(runtime) {
         check(selected.entry.baseRevision === task.repair.baseRevision && selected.entry.parentRunId === task.repair.parentRunId &&
           selected.entry.baseTaskId === task.repair.baseTaskId, "修复版本与修复任务不匹配。");
       }
+      const metadataTask = selected.meta.taskId === task.taskId ? task : (await boundTask(root, selected.meta.taskId)).task;
+      if (metadataTask.kind === "candidate-continuation") await continuationSource(root, metadataTask, selected.meta);
       check(mode !== "validate" || task.contract.mode === "complete", "任务只允许生成候选，未授权独立回放。");
       check(mode !== "regression" || (selected.asset.currentRevision === selected.entry.revision && text(selected.entry.validatedRunId)), "普通回归只能执行当前正式版本，不能执行候选。");
       tasks.push(task);
@@ -411,6 +429,61 @@ export function createReadOnlyWorkflow(runtime) {
     return { taskId, caseId, status: "repair-task", baseRevision, parentRunId, draftDirectory: path.join(dir, "drafts", caseId) };
   }
 
+  async function continueCandidate(root, { caseId, baseRevision }) {
+    const selected = await revision(root, caseId, baseRevision);
+    const { asset, entry, meta } = selected;
+    const source = await boundTask(root, entry.taskId);
+    check(source.task.status === "completed" && source.task.contract.mode === "candidate" &&
+      source.task.terminal?.cleanupConfirmed === true, "候选来源任务未完成或收尾未确认。");
+    check(source.task.contract.dataStrategy === "read-only" && source.task.contract.cleanup === "none" &&
+      meta.dataStrategy === "read-only" && meta.cleanup === "none" && !source.task.approvalPlan && !meta.approvalPlan,
+    "仅支持无审批计划的只读候选承接。");
+    check(meta.taskId === source.task.taskId && meta.project?.id === source.task.project.id &&
+      meta.targetUrl === source.task.targetUrl && meta.role === source.task.contract.role &&
+      meta.initialState === source.task.contract.initialState && JSON.stringify(meta.expected) === JSON.stringify(source.task.contract.expected),
+    "候选与来源任务不一致。");
+    const actionsFile = await fileAt(source.dir, "actions.jsonl");
+    const actions = (await fs.readFile(actionsFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    const knownSteps = new Set(actions.filter((item) => item.result?.length && item.result.every((result) => !result.error)).map((item) => item.stepId));
+    check(Array.isArray(meta.steps) && meta.steps.length > 0 && meta.steps.every((step) => knownSteps.has(step.stepId)),
+      "候选步骤缺少来源任务的成功动作证据。");
+    for (const item of await fs.readdir(path.join(root.base, "tasks"), { withFileTypes: true })) {
+      if (!item.isDirectory() || item.name.startsWith(".")) continue;
+      let existing;
+      try { existing = await json(await fileAt(root.base, "tasks", item.name, "task.json")); }
+      catch (error) { if (error.code !== "ENOENT") throw error; continue; }
+      if (existing.kind === "candidate-continuation" && existing.continuation?.caseId === caseId &&
+        existing.continuation?.baseRevision === baseRevision) {
+        check(existing.continuation.sourceTaskId === entry.taskId && existing.workspace === root.workspace, "已有承接任务归属不一致。");
+        return { taskId: existing.taskId, caseId, sourceTaskId: entry.taskId, baseRevision,
+          draftDirectory: path.join(root.base, "tasks", existing.taskId, "drafts", caseId), status: "candidate-continuation" };
+      }
+    }
+
+    check(asset.currentRevision === null && asset.revisions.at(-1) === entry &&
+      !entry.validatedRunId && !entry.validationRunId, "仅可承接最新的未发布、未验证候选。");
+    check(asset.revisions.length < 3, "候选修订预算已用尽。");
+
+    const taskId = `task-${randomUUID()}`;
+    const dir = await directory(root.base, "tasks", taskId);
+    const draft = await directory(dir, "drafts", caseId);
+    const continuation = { caseId, baseRevision, sourceTaskId: entry.taskId, sourceHashes: structuredClone(entry.hashes),
+      sourceTaskHash: hash(await fs.readFile(await fileAt(source.dir, "task.json"))),
+      sourceActionsHash: hash(await fs.readFile(actionsFile)) };
+    const task = { schema: "qa-ui-task/v1", workflow, kind: "candidate-continuation", taskId,
+      workspace: root.workspace, project: structuredClone(source.task.project), targetUrl: source.task.targetUrl,
+      contract: { ...structuredClone(source.task.contract), mode: "complete" },
+      approvalPlan: source.task.approvalPlan ? structuredClone(source.task.approvalPlan) : undefined,
+      continuation, status: "completed", startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+      terminal: { status: "completed", cleanupConfirmed: true } };
+    const metadata = { ...meta, taskId };
+    await fs.copyFile(selected.files["case.spec.cjs"], path.join(draft, "case.spec.cjs"));
+    await writeJson(path.join(draft, "case.json"), metadata);
+    await writeJson(path.join(dir, "task.json"), task);
+    return { taskId, caseId, sourceTaskId: entry.taskId, baseRevision,
+      draftDirectory: draft, status: "candidate-continuation", next: "检查草稿后调用 qa_ui_save_candidate 保存新 revision，再进行 validate。" };
+  }
+
   return {
     async approval(cwd, params, signal) {
       return exclusive(cwd, root => approvalOperation(root, params, signal, {
@@ -419,7 +492,7 @@ export function createReadOnlyWorkflow(runtime) {
     },
     async coverage(cwd, params, signal) {
       return exclusive(cwd, (root) => recordCoverage(root, params, signal, {
-        id, directory, fileAt, writeJson, boundTask, revision,
+        id, directory, fileAt, writeJson, boundTask, revision, continuationSource,
       }));
     },
     async explore(cwd, params, signal, onEvent = () => {}) {
@@ -479,10 +552,18 @@ export function createReadOnlyWorkflow(runtime) {
         signal?.throwIfAborted();
         const caseId = params.caseId;
         id(caseId);
+        check(params.operation === undefined || params.operation === "continue-candidate", "未知候选操作。");
+        if (params.operation === "continue-candidate") {
+          check(params.taskId === undefined && params.parentRunId === undefined && params.patchSummary === undefined,
+            "承接操作仅接受 caseId 与 baseRevision，不能混用保存或修复参数。");
+          return continueCandidate(root, { caseId, baseRevision: params.baseRevision });
+        }
         if (!text(params.taskId)) return createRepairTask(root, { caseId, baseRevision: params.baseRevision, parentRunId: params.parentRunId });
         const { task, dir } = await boundTask(root, params.taskId);
         const repair = task.kind === "repair" ? task.repair : null;
+        const continuation = task.kind === "candidate-continuation" ? task.continuation : null;
         if (repair) check(repair.caseId === caseId, "修复任务与用例不匹配。");
+        if (continuation) check(continuation.caseId === caseId, "承接任务与用例不匹配。");
         check(task.status === "completed" && task.contract.mode !== "explore", "只有允许生成候选且完成探索的任务可以保存。");
         const draft = path.join(dir, "drafts");
         const scriptFile = await fileAt(draft, caseId, "case.spec.cjs");
@@ -509,6 +590,8 @@ export function createReadOnlyWorkflow(runtime) {
           for (const key of ["title", "modulePath", "targetUrl", "role", "initialState", "dataStrategy", "cleanup", "writeAuthorization", "residualAuthorization", "expected", "steps", "assertions"]) {
             check(JSON.stringify(meta[key]) === JSON.stringify(base.meta[key]), `修复补丁不能改变 ${key}；只允许修改脚本定位、等待和证据。`);
           }
+        } else if (continuation) {
+          await continuationSource(root, task, meta);
         } else {
           check(meta.taskId === params.taskId, "用例身份、项目、目标和探索任务必须一致。");
           const actions = (await fs.readFile(await fileAt(dir, "actions.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line));
@@ -540,6 +623,11 @@ export function createReadOnlyWorkflow(runtime) {
         if (repair) {
           check(asset.currentRevision === repair.baseRevision, "正式版本已变化，修复任务不能继续保存补丁。");
           check(asset.revisions.filter((item) => item.taskId === params.taskId).length < 2, "每个修复任务最多两个候选补丁。");
+        } else if (continuation) {
+          check(asset.currentRevision === null && asset.revisions.some((item) => item.revision === continuation.baseRevision && item.taskId === continuation.sourceTaskId),
+            "承接基础候选已变化或发布。");
+          check(asset.revisions.filter((item) => item.taskId === params.taskId).length < 2 && asset.revisions.length < 3,
+            "承接任务的候选修订预算已用尽。");
         } else {
           check(asset.revisions.length < 3 && asset.revisions.every((item) => item.taskId === params.taskId), "阶段 2 仅新建用例，同任务最多初稿及两个补丁；已有用例修复请使用修复任务。");
         }
@@ -552,12 +640,15 @@ export function createReadOnlyWorkflow(runtime) {
         await fs.writeFile(path.join(destination, "case.json"), metaData, { flag: "wx" });
         const entry = repair
           ? { revision: number, taskId: params.taskId, baseRevision: repair.baseRevision, baseTaskId: repair.baseTaskId, parentRunId: repair.parentRunId, hashes, validatedRunId: null }
+          : continuation
+            ? { revision: number, taskId: params.taskId, baseRevision: continuation.baseRevision, baseTaskId: continuation.sourceTaskId, hashes, validatedRunId: null }
           : { revision: number, taskId: params.taskId, hashes, validatedRunId: null };
         if (text(params.patchSummary)) entry.patchSummary = params.patchSummary.trim().slice(0, 300);
         asset.revisions.push(entry);
         await writeJson(assetFile, asset);
         return { caseId, revision: number, status: "candidate", hashes,
-          ...(repair ? { baseRevision: repair.baseRevision, parentRunId: repair.parentRunId } : {}) };
+          ...(repair ? { baseRevision: repair.baseRevision, parentRunId: repair.parentRunId } : {}),
+          ...(continuation ? { baseRevision: continuation.baseRevision, sourceTaskId: continuation.sourceTaskId } : {}) };
       });
     },
     async run(cwd, { caseId, revision: number, mode }, signal) {
