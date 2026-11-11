@@ -392,7 +392,10 @@ export async function sendMessage(
     }
   };
   let unsubscribe = session.subscribe(receive);
+  let finishUiStatus;
   const rebind = (next) => {
+    finishUiStatus?.();
+    finishUiStatus = undefined;
     unsubscribe();
     observed = next;
     unsubscribe = next.subscribe(receive);
@@ -408,6 +411,7 @@ export async function sendMessage(
       return { completionStatus };
     }
     let disposition;
+    finishUiStatus = session.desktopBeginUiStatus?.();
     await session.prompt(text, {
       preflightResult: (result) => { disposition = result; },
     });
@@ -417,6 +421,7 @@ export async function sendMessage(
       throw new Error(session.agent.state.errorMessage);
     }
   } finally {
+    finishUiStatus?.();
     // 请求结束后取消订阅，防止下一次重复接收。
     unsubscribe();
     session.desktopRuntimeListeners?.delete(rebind);

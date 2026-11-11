@@ -61,7 +61,21 @@ function createExtensionUiBridge() {
     }
     const state = new Map();
     states.set(sessionId, state);
+    let statusActive = false;
+    session.desktopBeginUiStatus = () => {
+      statusActive = true;
+      return () => {
+        if (!statusActive) return;
+        statusActive = false;
+        for (const [key, event] of state) {
+          if (event.method === "setStatus") state.delete(key);
+        }
+        if (states.get(sessionId) === state) send({ method: "clearStatus", sessionId });
+      };
+    };
     const emit = (method, data, key = method) => {
+      // 初始化与后台状态不常驻输入区，只保留当前调用期间的状态。
+      if (method === "setStatus" && (!statusActive || states.get(sessionId) !== state)) return;
       const event = { sessionId, method, ...data };
       if (method !== "notify") state.set(key, event);
       send(event);

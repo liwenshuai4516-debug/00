@@ -20,20 +20,23 @@ async function main() {
   process.env.PI_CODING_AGENT_DIR = agentDir;
   app.setPath("userData", path.join(root, "user-data"));
   await fs.writeFile(path.join(agentDir, "extensions/desktop.js"), `export default function(pi) {
+    pi.on("session_start", (_event, ctx) => ctx.ui.setStatus("startup", "默认状态不应展示"));
     pi.registerCommand("desktop-ui", { handler: async (_args, ctx) => {
+      ctx.ui.setStatus("ready", "桌面交互中");
+      ctx.ui.setStatus("hint", "goal: unfocused [1 open] - /goal-focus");
+      ctx.ui.setStatus("blank", "   ");
       const value = await ctx.ui.select("选择验收选项", ["甲", "乙"]);
       if (!await ctx.ui.confirm("确认验收", value)) return;
       const input = await ctx.ui.input("输入中文", "请输入");
       const edited = await ctx.ui.editor("编辑多行", input);
       ctx.ui.setStatus("ready", "桌面交互完成");
-      ctx.ui.setStatus("hint", "goal: unfocused [1 open] - /goal-focus");
-      ctx.ui.setStatus("blank", "   ");
       ctx.ui.setWidget("result", [value, edited], { placement: "belowEditor" });
       ctx.ui.notify("扩展通知"); ctx.ui.setTitle("Pi 桌面验收");
       ctx.ui.setToolsExpanded(true); ctx.ui.setEditorText("建议正文");
     }});
     pi.registerCommand("desktop-timeout", { handler: async (_args, ctx) => { await ctx.ui.input("超时取消", "", { timeout: 150 }); } });
-    pi.registerCommand("desktop-wait", { handler: async (_args, ctx) => { await ctx.ui.input("等待停止"); } });
+    pi.registerCommand("desktop-wait", { handler: async (_args, ctx) => { ctx.ui.setStatus("wait", "等待扩展交互"); await ctx.ui.input("等待停止"); } });
+    pi.registerCommand("desktop-fail", { handler: async (_args, ctx) => { ctx.ui.setStatus("failure", "即将失败"); throw Error("离线预期扩展错误"); } });
     pi.registerCommand("desktop-new", { handler: async (_args, ctx) => {
       await ctx.newSession({ withSession: async fresh => fresh.ui.setEditorText("新会话建议") });
     }});
@@ -87,8 +90,14 @@ async function main() {
       window.ui=createExtensionUi(window.agent,input,{canEdit:()=>window.canEdit});await window.ui.ready;
       window.ui.setSession(${JSON.stringify(session.sessionId)});
     })()`);
+    await check("初始化状态默认隐藏，空状态区不占布局", `document.querySelectorAll('.extension-status').length===0 && [...document.querySelectorAll('.extension-widgets')].every(e=>getComputedStyle(e).display==='none')`);
     const command = sendMessage(session, "/desktop-ui", () => {}, () => {});
     await wait(`document.querySelector('.extension-dialog select')`);
+    await check("调用期间状态可见，命令独立成片段、空文本与初始化状态不占位", `[...document.querySelectorAll('.extension-status')].some(e=>e.textContent.includes('桌面交互中')) && [...document.querySelectorAll('.extension-status__command')].map(e=>e.textContent).join(',')==='/goal-focus' && [...document.querySelectorAll('.extension-status')].some(e=>e.title==='goal: unfocused [1 open] - /goal-focus') && ![...document.querySelectorAll('.extension-status')].some(e=>['blank','startup'].includes(e.dataset.statusKey))`);
+    await run(`window.ui.setSession('inactive-session')`);
+    await check("切换会话不显示其他会话的调用状态", `document.querySelectorAll('.extension-status').length===0`);
+    await run(`window.ui.setSession(${JSON.stringify(session.sessionId)})`);
+    await check("切回仍在调用的会话可显示其临时状态", `document.querySelectorAll('.extension-status').length===2`);
     if (process.env.PI_UI_MANUAL_SELECT) {
       console.log("NATIVE_SELECT_READY：请选择乙并确认。");
       await wait(`document.querySelector('.extension-dialog h2').textContent==='确认验收'`, 60000);
@@ -118,13 +127,15 @@ async function main() {
       await click(".extension-dialog button[type=submit]");
     }
     await command;
+    await wait(`document.querySelectorAll('.extension-status').length===0`);
+    await run(`window.ui.refresh();window.ui.setSession('inactive-session');window.ui.setSession(${JSON.stringify(session.sessionId)})`);
+    await check("调用结束后状态清除，刷新和切回会话不恢复旧状态", `document.querySelectorAll('.extension-status').length===0 && getComputedStyle(document.querySelector('.extension-widgets')).display==='none'`);
     await check("输入未就绪时保留待应用正文", `document.querySelector('#message-input').value==='' && window.inputEvents===0`);
     await run(`window.canEdit=true;window.ui.refresh()`);
     await check("扩展正文只应用一次并触发输入保存事件", `document.querySelector('#message-input').value==='建议正文' && window.inputEvents===1`);
     await run(`window.ui.refresh()`);
     await check("刷新不会重复覆盖输入", `window.inputEvents===1`);
-    await check("通知、状态、文本组件与标题可见", `document.title==='Pi 桌面验收' && document.querySelector('.extension-notices').textContent.includes('扩展通知') && [...document.querySelectorAll('.extension-widgets')].some(e=>e.textContent.includes('中文第一行'))`);
-    await check("扩展状态按行展示，命令提示独立成片段、空文本不占位", `[...document.querySelectorAll('.extension-status')].some(e=>e.textContent.includes('桌面交互完成')) && [...document.querySelectorAll('.extension-status__command')].map(e=>e.textContent).join(',')==='/goal-focus' && [...document.querySelectorAll('.extension-status')].some(e=>e.title==='goal: unfocused [1 open] - /goal-focus') && ![...document.querySelectorAll('.extension-status')].some(e=>e.dataset.statusKey==='blank')`);
+    await check("通知、文本组件与标题仍可见", `document.title==='Pi 桌面验收' && document.querySelector('.extension-notices').textContent.includes('扩展通知') && [...document.querySelectorAll('.extension-widgets')].some(e=>e.textContent.includes('中文第一行'))`);
     if (process.env.PI_UI_ARTIFACT_DIR) await fs.writeFile(path.join(process.env.PI_UI_ARTIFACT_DIR, "extension-status.png"), (await win.webContents.capturePage()).toPNG());
     await run(`document.querySelector('#messages').innerHTML='<details class="tool-message"><summary>工具</summary></details>'`);
     await wait(`document.querySelector('.tool-message').open`);
@@ -132,9 +143,17 @@ async function main() {
     await check("超时请求自动关闭", `!document.querySelector('.extension-dialog').open`);
     const waiting = sendMessage(session, "/desktop-wait", () => {}, () => {});
     await wait(`document.querySelector('.extension-dialog').open`);
+    await check("等待扩展期间仅显示本次更新的状态", `document.querySelectorAll('.extension-status').length===1 && document.querySelector('.extension-status').dataset.statusKey==='wait'`);
     bridge.cancelAll();
     await waiting;
-    await check("停止取消扩展等待", `!document.querySelector('.extension-dialog').open`);
+    await wait(`document.querySelectorAll('.extension-status').length===0`);
+    await check("停止取消扩展等待并清除临时状态", `!document.querySelector('.extension-dialog').open && document.querySelectorAll('.extension-status').length===0`);
+    await sendMessage(session, "/desktop-fail", () => {}, () => {});
+    await wait(`document.querySelectorAll('.extension-status').length===0`);
+    await check("扩展报错后临时状态清除", `document.querySelectorAll('.extension-status').length===0`);
+    assert.ok(session.desktopResourceDiagnostics.some(item => item.message.includes("离线预期扩展错误")));
+    await sendMessage(session, "/reload", () => {}, () => {});
+    await check("资源重载的初始化状态也不展示", `document.querySelectorAll('.extension-status').length===0`);
     await sendMessage(session, "/desktop-new", () => {}, () => {});
     const next = await service.getSession();
     await run(`window.ui.setSession(${JSON.stringify(next.sessionId)})`);

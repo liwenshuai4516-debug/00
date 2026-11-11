@@ -172,6 +172,11 @@ export function createExtensionUi(api, input, options) {
     if (event.method === "clear") {
       states.delete(event.sessionId);
       appliedEditors.delete(event.sessionId);
+    } else if (event.method === "clearStatus") {
+      const state = states.get(event.sessionId);
+      for (const [key, item] of state ?? []) {
+        if (item.method === "setStatus") state.delete(key);
+      }
     } else if (event.method === "notify") {
       const note = element("p", event.message);
       note.dataset.type = event.notifyType;

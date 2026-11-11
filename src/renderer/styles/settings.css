@@ -62,6 +62,7 @@
   max-height: 160px;
   overflow: auto;
 }
+.extension-widgets:empty { display: none; }
 .extension-status {
   display: flex;
   align-items: center;
