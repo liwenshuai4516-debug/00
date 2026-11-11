@@ -13,7 +13,7 @@
 | 当前任务的探索约定 | 当前工作区 `qa/ui/tasks/<taskId>/task.json` 的 contract | qa_ui_explore 保存本次约定；不覆盖其他任务或已冻结预期 |
 | 本轮功能清单与转换汇总 | [本轮清单规程](../resources/testing/ui/skills/qa-ui-basic/references/coverage.md) | 主 Agent 通过 qa_ui_coverage 持续保存并冻结 qa/ui/rounds 准确版本；不由 browser-use 写入或计算 |
 | browser-use 提示词加载 | [explore.py](../resources/testing/ui/browser-use/explore.py) | 每次探索按入口相对位置读取 prompt/exploration-control.md，与 goal、冻结 contract 组装为 Agent 的 task |
-| 系统提示词运行日志 | [prompt-diagnostics.mjs](../src/main/resources/prompt-diagnostics.mjs)，由 createPiAgent 绑定 | 每次实际 agent_start 打印当轮有效系统提示词（技能目录正文省略，只留可用数量）与动态配置；技能实际加载时另打印一行，日志副本脱敏；不改写模型输入 |
+| 系统提示词与运行日志 | [prompt-diagnostics.mjs](../src/main/resources/prompt-diagnostics.mjs)，由 createPiAgent 和 desktop runtime 接通 | 会话创建且扩展绑定完成后打印一次初始提示词（技能目录正文省略，只留可用数量）与动态配置；实际运行时打印轮次、工具调用/返回和技能加载，日志副本脱敏；不改写模型输入 |
 | 自动恢复与新对话交接 | [看门狗](agent-watchdog.md) | 按已实现的启用、取消和恢复条件运行，提示词本身不启动看门狗 |
 
 修改源码默认值不会覆盖已保存的自定义业务提示词，也不会热改旧会话的业务提示词快照。已保存配置的用户需在「设置 → 提示词」按需更新，并新建对话；通用桌面提示词在下次会话初始化时读取。运行中的会话不会因文件修改立即更新。
@@ -30,15 +30,15 @@ UI 探索提示词集中放在 `resources/testing/ui/prompt/`，沿用现有工�
 
 探索中发现明确审批线索时，主 Agent 按探索提示词动态读取 approval-control.md，再加载实际测试工作区已登记的 qa-approval-workflow，将本次适用的只读要点与来源放入后续 contract；普通功能不加载。成功且清理确认的探索后，主 Agent 核实并去重，将有证据的新检查点和项目专属功能索引回写至当前生效的探索提示词，详细依据保存在原任务 discoveries.md。条件路由与文件回写属于主 Agent 提示词约定，工具不提供自动持久化服务；文件不可写或并发版本变化时保留发现并报告待处理。安装包资源不能假定可写，本次没有新增可写运行副本或跨版本迁移机制。
 
-## 查看每轮实际系统提示词、已加载技能与动态配置
+## 查看初始系统提示词、工具调用、已加载技能与动态配置
 
-会话创建后在每次实际 `agent_start` 打印一次主进程 `console.info` 日志；新会话首轮、恢复会话的下一轮和子会话均按各自 session 记录。只创建空会话、执行被扩展消费的命令或 `/reload` 不生成运行记录；同轮工具调用后的多次响应不重复打印。重载沿用该会话订阅，替换会话重新绑定，SDK dispose 释放旧订阅。
+会话创建完成（扩展已绑定、技能与工具已登记）后打印一次主进程 `console.info` 初始系统提示词日志；主会话与子会话按各自 session 分别记录，恢复会话重新创建时再记录一次。运行期不再重复打印整段提示词，改为打印每次运行的轮次标记、工具调用和动态加载的技能；只创建空会话、执行被扩展消费的命令或 `/reload` 不产生运行期日志。重载沿用该会话订阅，替换会话重新绑定，SDK dispose 释放旧订阅。
 
-开发时从 `npm start` 的终端查看，使用 `[Pi 桌面] 本轮系统提示词` 搜索。打印格式为 `round=<UUID> session=<实际会话编号> <原文字符数> 字符`，随后是“系统提示词开始/结束”与“动态配置开始/结束”分隔块。不添加独立日志文件、不转发到页面或写入会话历史；安装包中的日志查看方式由进程启动方式决定，本次未新增文件日志或界面入口。
+开发时从 `npm start` 的终端查看，使用 `[Pi 桌面] 初始系统提示词` 搜索。打印格式为 `session=<实际会话编号> role=<main|subagent> <原文字符数> 字符`，随后是“系统提示词开始/结束”与“动态配置开始/结束”分隔块。运行期另有 `[Pi 桌面] 本轮运行 round=<UUID> session=<会话编号>`、`[Pi 桌面] 工具调用 round=<UUID> session=<会话编号> tool=<工具名> call=<toolCallId>` 与 `[Pi 桌面] 工具返回 round=<UUID> session=<会话编号> tool=<工具名> status=<ok|error> <耗时> ms call=<toolCallId>`。耗时优先使用 SDK 的 durationMs，缺失时若记录了开始事件则使用本地计时并标为“日志观察计时”，两者均缺失时省略；并行调用按 call 关联。工具日志不打印参数、命令正文、工具结果或其他正文。不添加独立日志文件、不转发到页面或写入会话历史；安装包中的日志查看方式由进程启动方式决定，本次未新增文件日志或界面入口。
 
-系统提示词直接读取 SDK 的 `session.systemPrompt`，包含已生效的业务职责快照、桌面语言/行为边界/最终回答协议、自定义 SYSTEM.md/APPEND_SYSTEM.md、项目上下文、技能目录和扩展修改。其中 Pi 生成的 `<skills>` 可用技能目录只保留“可用技能 N 个”的统计行，不再打印整个目录正文；其余正文原样记录，没有另建一套摘要。Pi 默认英文角色已由配置正文替换，历史快照正文不改写；技能目录不等于技能正文已读取。此日志记录运行开始时的有效状态，不代表后续 `context_with_system`、供应商请求转换或工具轮次中更新后的最终网络载荷，也不打印用户消息、工具结果、内部思考或请求头。
+系统提示词直接读取 SDK 的 `session.systemPrompt`，包含已生效的业务职责快照、桌面语言/行为边界/最终回答协议、自定义 SYSTEM.md/APPEND_SYSTEM.md、项目上下文、技能目录和扩展修改。其中 Pi 生成的 `<skills>` 可用技能目录只保留“可用技能 N 个”的统计行，不再打印整个目录正文；其余正文原样记录，没有另建一套摘要。Pi 默认英文角色已由配置正文替换，历史快照正文不改写；技能目录不等于技能正文已读取。此日志记录会话创建完成时的有效状态，不包含运行期 `before_agent_start` 等对提示词的追加或改写；也不代表后续 `context_with_system`、供应商请求转换或工具轮次中更新后的最终网络载荷，也不打印用户消息、工具结果、内部思考或请求头。
 
-技能实际加载时另打印 `[Pi 桌面] 已加载技能 round=<UUID> session=<会话编号> name="<技能名>" source=<read|explicit> path=<SKILL.md>`，与当轮提示词日志使用同一 round。`source=read` 指原生 `read` 参数归一为绝对路径后命中当前 loader 登记的技能文件；`source=explicit` 指输入 `/skill:name` 经公开 `parseSkillBlock` 解析后与登记的名称、路径一致。bash 等间接读取、名字含 `SKILL.md` 的普通文件、未匹配的别名或链接路径都不打印，避免误报；同一轮内同名同来源只记一次，新一轮重新计时。该日志只说明技能文件被打开发送给模型，不表示技能任务成功、脚本已成执行或审批已完成。
+技能实际加载时另打印 `[Pi 桌面] 已加载技能 round=<UUID> session=<会话编号> name="<技能名>" source=<read|explicit> path=<SKILL.md>`，与当轮运行标记及工具日志使用同一 round。`source=read` 指原生 `read` 参数归一为绝对路径后命中当前 loader 登记的技能文件；`source=explicit` 指输入 `/skill:name` 经公开 `parseSkillBlock` 解析后与登记的名称、路径一致。bash 等间接读取、名字含 `SKILL.md` 的普通文件、未匹配的别名或链接路径都不打印，避免误报；同一轮内同名同来源只记一次，新一轮重新计时。该日志只说明技能文件被打开发送给模型，不表示技能任务成功、脚本已成执行或审批已完成。
 
 动态配置记录当时的北京时间（固定 Asia/Shanghai、UTC+08:00）、操作系统用户名（项目没有独立用户登录体系，不冒充业务账号）、实际会话目录的末级名称、MCP 接入是否已加载及当前已登记工具的名称/暴露方式。连接器启用按实际 `mcp_servers_change` 处理器判断；未配置任何服务也可能已启用，工具登记不代表服务连接或认证成功，未查询的连接状态明确标注。日志不会为诊断主动连接 MCP、请求模型或读取认证配置。
 
@@ -52,7 +52,7 @@ UI 探索提示词集中放在 `resources/testing/ui/prompt/`，沿用现有工�
 node --test tests/unit/prompt-diagnostics.test.js
 ```
 
-核对北京时间跨日、路径与会话归属、MCP 接入状态、凭据脱敏、扩展修改后的提示词、技能目录正文不进入日志且仍发送给模型、read 与 `/skill:` 展开的加载行及同轮去重、空会话/命令不打印、工具多轮不重复、重载/恢复/新会话绑定及日志不进入历史。离线替身不能代替真实供应商网络载荷或安装包验收。
+核对北京时间跨日、路径与会话归属、MCP 接入状态、凭据脱敏、初始提示词与扩展运行期改写的边界、技能目录正文不进入日志且仍发送给模型、read 与 `/skill:` 展开的加载行及同轮去重。空会话创建即打印初始提示词，命令不制造运行标记；工具多轮与重载不重复整段提示词，恢复/新会话/扩展替换均在扩展绑定后各自打印，日志不进入历史。离线替身不能代替真实供应商网络载荷或安装包验收。
 
 ## 借鉴来源与取舍
 
@@ -79,6 +79,8 @@ NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" node --test te
 ```
 
 这些检查不能证明真实模型一定遵循规则，也不表示真实业务写入、审批或长任务恢复已新增验收。工具执行与发布规则以相应技能和功能文档为准。
+
+日志触发方式调整为“会话创建打印初始提示词、运行期打印轮次标记与工具调用”。定向验证使用 `NODE_OPTIONS="--require $PWD/tests/helpers/pi-test-isolation.cjs" node --test tests/unit/prompt-diagnostics.test.js tests/unit/session-prompt.test.js tests/unit/subagents.test.js tests/unit/pi-desktop-runtime.test.js`，覆盖创建即打印一次、运行与 `/reload` 不重复、工具调用/返回与 SDK 耗时、恢复/新会话/扩展替换的绑定顺序、子会话独立记录、失败只报告未确认。使用真实 SDK 和临时资源，不请求模型；真实启动后的终端输出与安装包仍需人工核对。
 
 2026-11-10 系统提示词主体切换的定向验证：先在真实 SDK 隔离会话复现配置正文不在开头的断言失败，再通过公开 systemPromptOverride 修复。session-prompt、prompt-diagnostics、prompt-content、permission-trust 共 8 项通过，未请求模型；覆盖中文配置正文成为主体、默认英文角色与 read 通用规则不再注入、全局/项目 SYSTEM.md 和 APPEND_SYSTEM.md 的发现优先级、AGENTS.md 与技能保留、新旧会话及空会话恢复、资源重载、扩展最终提示词及日志脱敏。模型流为离线夹具，真实供应商行为与重新启动后的人工验收未执行。
 

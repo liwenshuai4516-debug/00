@@ -29,7 +29,7 @@ export function stripSkillsCatalog(prompt) {
   return { prompt: prompt.replace(section[0], `${section[1] ?? ""}${placeholder}`), omitted: section[0].length };
 }
 
-export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], now = new Date(), currentUser, roundId = randomUUID() }) {
+export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], now = new Date(), currentUser, role = "main" }) {
   const prompt = session.systemPrompt;
   const { prompt: visiblePrompt } = stripSkillsCatalog(prompt);
   const cwd = session.sessionManager.getCwd();
@@ -59,7 +59,7 @@ export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], 
     },
   };
   return redactPromptLog([
-    `[Pi 桌面] 本轮系统提示词（技能目录已省略） round=${roundId} session=${session.sessionId} ${prompt.length} 字符（原文长度；日志凭据脱敏）`,
+    `[Pi 桌面] 初始系统提示词（技能目录已省略） session=${session.sessionId} role=${role} ${prompt.length} 字符（原文长度；日志凭据脱敏）`,
     "---------- 系统提示词开始 ----------",
     visiblePrompt,
     "---------- 系统提示词结束 ----------",
@@ -69,31 +69,61 @@ export function formatPromptDiagnostics(session, { agentDir, knownSecrets = [], 
   ].join("\n"), knownSecrets);
 }
 
+// 会话创建完成（扩展已绑定、技能与工具已登记）时打印一次初始系统提示词；
+// 每轮运行只打印工具调用与动态加载的技能，不重复打印整段提示词。
+export function logInitialPrompt(session, options) {
+  try {
+    // 未显式传入时使用操作系统用户名；不冒充业务系统账号。
+    console.info(formatPromptDiagnostics(session, { currentUser: userInfo().username, ...options }));
+  } catch {
+    // 日志故障不改变运行结果，且不输出可能含敏感文本的原始异常。
+    console.error("[Pi 桌面] 初始系统提示词日志记录失败；诊断信息未确认。");
+  }
+}
+
 // 技能是否“已加载”只认 Pi 原生信号：read 工具读到技能文件，或 /skill:name 展开后的
 // user 消息与 loader 登记一致。bash 等间接读取不猜测，避免误报。
-export function bindPromptDiagnostics(session, { agentDir, knownSecrets }) {
+export function bindPromptDiagnostics(session, { knownSecrets }) {
   let roundId = randomUUID();
   const loadedThisRound = new Set();
+  const toolStarted = new Map();
   const skills = () => session.resourceLoader?.getSkills?.().skills ?? [];
   const cwd = () => session.sessionManager?.getCwd?.() ?? process.cwd();
+  // 日志故障不改变运行结果，且不输出可能含敏感文本的原始异常。
+  function logLine(text) {
+    try {
+      console.info(text);
+    } catch {
+      // 控制台不可写时保持运行结果不变。
+    }
+  }
   function reportLoaded(skill, source) {
     const key = `${source}:${skill.name}`;
     if (loadedThisRound.has(key)) return;
     loadedThisRound.add(key);
-    try {
-      console.info(redactPromptLog(
-        `[Pi 桌面] 已加载技能 round=${roundId} session=${session.sessionId} name="${skill.name}" source=${source} path=${skill.filePath}`,
-        knownSecrets,
-      ));
-    } catch {
-      // 日志故障不改变运行结果，且不输出可能含敏感文本的原始异常。
-    }
+    logLine(redactPromptLog(
+      `[Pi 桌面] 已加载技能 round=${roundId} session=${session.sessionId} name="${skill.name}" source=${source} path=${skill.filePath}`,
+      knownSecrets,
+    ));
   }
   return session.subscribe(event => {
-    if (event.type === "tool_execution_start" && event.toolName === "read" && typeof event.args?.path === "string") {
-      const target = path.resolve(cwd(), event.args.path);
-      const skill = skills().find(item => item.filePath && path.resolve(cwd(), item.filePath) === target);
-      if (skill) reportLoaded(skill, "read");
+    if (event.type === "tool_execution_start") {
+      toolStarted.set(event.toolCallId, performance.now());
+      // 只记录工具名与调用耗时，不打印参数、命令正文、结果或其他正文。
+      logLine(`[Pi 桌面] 工具调用 round=${roundId} session=${session.sessionId} tool=${event.toolName} call=${event.toolCallId}`);
+      if (event.toolName === "read" && typeof event.args?.path === "string") {
+        const target = path.resolve(cwd(), event.args.path);
+        const skill = skills().find(item => item.filePath && path.resolve(cwd(), item.filePath) === target);
+        if (skill) reportLoaded(skill, "read");
+      }
+      return;
+    }
+    if (event.type === "tool_execution_end") {
+      const started = toolStarted.get(event.toolCallId);
+      toolStarted.delete(event.toolCallId);
+      const elapsed = event.durationMs !== undefined ? ` ${Math.round(event.durationMs)} ms`
+        : started === undefined ? "" : ` ${Math.round(performance.now() - started)} ms（日志观察计时）`;
+      logLine(`[Pi 桌面] 工具返回 round=${roundId} session=${session.sessionId} tool=${event.toolName} status=${event.isError ? "error" : "ok"}${elapsed} call=${event.toolCallId}`);
       return;
     }
     if (event.type === "message_end" && event.message?.role === "user") {
@@ -109,14 +139,11 @@ export function bindPromptDiagnostics(session, { agentDir, knownSecrets }) {
     }
     if (event.type !== "agent_start") return;
     // agent_start 在 before_agent_start 和扩展启动处理之后通知公共订阅者。
-    // 每个实际运行记录一次；SDK dispose 会清除订阅，reload 不重新绑定。
+    // 运行期不再重复打印整段提示词，只按轮次归组工具调用与技能加载日志。
     roundId = randomUUID();
     loadedThisRound.clear();
-    try {
-      console.info(formatPromptDiagnostics(session, { agentDir, knownSecrets, currentUser: userInfo().username, roundId }));
-    } catch {
-      // 日志故障不改变运行结果，且不输出可能含敏感文本的原始异常。
-      console.error("[Pi 桌面] 系统提示词日志记录失败；本轮诊断信息未确认。");
-    }
+    toolStarted.clear();
+    // 每次实际运行留一条轻量轮次标记，供工具调用与技能加载日志关联。
+    logLine(`[Pi 桌面] 本轮运行 round=${roundId} session=${session.sessionId}`);
   });
 }

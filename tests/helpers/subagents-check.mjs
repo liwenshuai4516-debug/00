@@ -72,6 +72,9 @@ const options = { permissionController: { currentMode: () => permissionMode },
   createUiContext: (_session, ui) => ({ ...ui, setWidget: (key, lines) => widgets.push({ key, lines }) }),
 };
 const create = (resumePath) => createPiAgent(directory, false, resumePath, workspace, config, undefined, undefined, undefined, options);
+const diagnosticLogs = [];
+const originalInfo = console.info;
+console.info = message => { diagnosticLogs.push(message); originalInfo(message); };
 let session = await create();
 try {
   const originalId = session.sessionId;
@@ -87,6 +90,13 @@ try {
   let rows = JSON.parse(session.desktopSubagents.list().content[0].text);
   assert.equal(rows.length, 2);
   assert.ok(rows.every(row => row.status === "completed" && row.output === "CHILD_DONE"));
+  for (const row of rows) {
+    const initial = diagnosticLogs.filter(line => line.startsWith("[Pi 桌面] 初始系统提示词") && line.includes(`session=${row.id} `));
+    assert.equal(initial.length, 1, "子会话启动时各自打印一次提示词");
+    assert.match(initial[0], /role=subagent/);
+    const runIndex = diagnosticLogs.findIndex(line => line.startsWith("[Pi 桌面] 本轮运行") && line.includes(`session=${row.id}`));
+    assert.ok(diagnosticLogs.indexOf(initial[0]) < runIndex, "子会话提示词在运行前打印");
+  }
   assert.ok(rows.every(row => row.usage === 7), "子级用量不重复计算 fork 继承的父级响应");
   assert.ok(output.some(event => event.type === "message_end" && event.message?.content.some(b => b.text === "PARENT_SUMMARY")));
   assert.equal(output.at(-1).type, "agent_settled");
@@ -192,4 +202,5 @@ try {
   console.log("子智能体真实 SDK 离线验证通过：并行、fork、边界汇总、消息、恢复、权限、容量、停止、重载。");
 } finally {
   await lifecycle.closePiSession(session);
+  console.info = originalInfo;
 }

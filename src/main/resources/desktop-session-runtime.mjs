@@ -81,6 +81,7 @@ export async function bindDesktopRuntime(initial, createReplacement, resourceOpt
     });
     session.desktopResourceDiagnostics ??= [];
     session.desktopResourceDiagnostics.push(...await session.desktopReportDiagnostics());
+    session.desktopLogInitialPrompt();
   }
 
   async function adopt(session) {
