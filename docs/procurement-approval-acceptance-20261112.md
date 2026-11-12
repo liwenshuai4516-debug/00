@@ -4,7 +4,7 @@
 
 ## 已确认的进展与停止位置
 
-**当前结论：客户端既有修复已通过定向测试，真实完整审批链仍未通过。** 原唯一合同从创建至刘波盖章共12个前置步骤已有成功证据，仍在发起人确认。旧确认使用非法编号；本次已只读查明手填格式为 `HSKJ-CGHT-四位年份-三位序号`，无需用户另选A/B/C或提供编号。15:42 的生产 Agent 合法输入纠正验证又因本次脚本错误限定审核意见所在容器而停止，仅完成4次本地填写，没有上传或确认请求。纠正定位已通过真实只读DOM及离线检查，但未再次提交；归档、完整链独立回放及发布仍未执行。详见文末“合法编号恢复验证与定位失败”。
+**当前结论：发起人确认的编号与意见框定位阻塞已解决，生产 Agent 真实确认通过；完整链尚被刘波归档接口的业务403阻塞。** 原唯一合同已保存编号 `HSKJ-CGHT-2026-900`、签订日、有效期及扫描件，17:16:26流转“归档”。刘波本人页面显示归档按钮，但其实际权限响应没有归档接口授权标识；17:19单次归档POST返回HTTP200/业务403。只读复核仍为归档、finalDraftConfirmed=1、archiveFlag=0，未重放、未代审、未修改被测系统或权限。旧12个前置成功步骤加本次独立确认构成13个已完成业务步骤，不冒称原frozen flow已整体completed；归档终态及独立完整链回放仍未通过。详见文末“确认恢复成功与归档权限阻塞”。
 
 
 客户端补齐脱敏登录子阶段、有限请求 HTTP 状态/数字业务码及审批页面失败观察；不保存认证头、请求/响应正文。inspect、execute 成功及页面失败增加有限 pageText，截图使用 fullPage，内嵌滚动区不承诺全部展开；inspect 保留隐藏文件输入框，text/value 检查为全等、须定位具体节点。验收启动器在进程内从现有项目配置读取已授权密码并注入原 QA_UI_TEST_PASSWORD 入口，未改写凭据文件，没有新增凭据库、重试器或流程引擎；这不代表已重启用户桌面窗口或验证其既有进程环境。
@@ -241,3 +241,68 @@ flowchart TD
 | offline-locator-check.log | 根据实际只读DOM片段构造的离线验证，不连接被测系统 |
 
 本次只更新验收文档与工作区本地证据/候选，没有发现需修改客户端公共实现的这处选择器，也未修改被测系统。未新建或冻结round，没有将precision资产按generated计数；旧partial轮次仍保留。完整链报告与48条设计最终覆盖快照尚未完成，不能用本节代替正式结果评估或全链批准。
+
+
+## 确认恢复成功与归档权限阻塞（17:16–17:22，UTC+08:00）
+
+用户“帮我解决这个问题”明确恢复后，沿上节已修正的定位继续原合同。工作区产物目录仍为 `qa/ui/tasks/procurement-confirm-recovery-20261112/`；完整当前报告为 `current-result.md`。旧v1失败、旧check、frozen flow revision12及旧round均保留。
+
+### 已解决的确认阻塞
+
+执行稿 `confirm-v2-execute.mjs` 使用真实label关联的唯一“审核意见”框，填写前核实可编辑及文件输入唯一；上传成功（HTTP/业务200）后才点击确认。没有改业务预期，没有修改被测系统。
+
+生产 Agent（sessionId `01a1cf0a-ee73-754e-bbf0-3c226a20f969`，既有qwen3.8-flash-next）17:16:22–17:16:26执行一次，7动作completed、退出码0，`confirm-v2/confirm-result.json` 为passed。上传POST一次、confirm POST一次（HTTP200）；随后重新打开原记录详情业务200，且页面核实下一处理人为刘波。
+
+| 检查 | before → after |
+| --- | --- |
+| 记录 | 始终478297089609900032，未创建替代合同 |
+| 节点 | 发起人确认 → 归档 |
+| finalDraftConfirmed / archiveFlag | 0/0 → 1/0 |
+| 编号 | 未提供 → HSKJ-CGHT-2026-900 |
+| 签订日 / 有效期 | 2026-11-12 / 2026-11-12至2027-11-11，真实保存 |
+| 扫描件 | 本次独立测试文件真实上传并绑定，文件名及存储地址记录在after.contractScan |
+
+确认脚本业务执行调用号为 `chatcmpl-tool-b6a7901877e5ce37`。之前只读进程存在性检查返回 `NOT-RUNNING`/退出码1，不是确认脚本失败；后续实际确认脚本仅执行一次，不能将该检查误算为业务重试。confirm响应摘要没有取得数字业务码，不补写为200；真实成功依据为后续详情和页面状态。新扫描件绑定已确认，旧无文件ID的成功上传残留仍保留，不因新文件成功自动删旧文件。
+
+### 归档错误报告及实际恢复条件
+
+| 项目 | 已核实事实 |
+| --- | --- |
+| 时间、目标及停止位置 | 2026-11-12 17:19:28–17:19:46，Asia/Shanghai；刘波本人归档原合同；已停止归档及依赖终态的完整链回放/发布 |
+| 实际链路 | 用户恢复→生产Electron/createPiAgent→原生read/bash→archive-once.mjs→生产openLogin/Playwright→pms archive；未使用qa_ui_approval修改旧frozen flow |
+| Agent / 工具 | sessionId `01a1cf0d-f56a-7569-8d24-2db0e20def7f`；bash toolCallId `chatcmpl-tool-be9098d8fbce13ef`；脚本退出码1、archive-result.status=failed。Agent settled不代表业务通过 |
+| 实际技能 | 外层读取工作区 `.pi/skills/qa-approval-workflow/SKILL.md`核对流程与终态来源；两个生产业务Agent未额外加载SKILL，按审阅脚本执行；未使用钉钉服务 |
+| 前置核对 | 刘波隔离登录、项目管理租户、本人身份、原ID及归档/刘波待办、finalDraftConfirmed=1、archiveFlag=0；真实只读页面有唯一确认归档按钮，意见框label为“处理意见”，不同于确认页“审核意见” |
+| 实际动作 | 填意见一次，确认归档click一次；无新建、上传、代审或重复确认 |
+| 直接业务错误 | `POST /api/project-management-backend/v1/web/contract-mgt/procurement-contract/archive`：HTTP200，业务码403；因此未返回列表，脚本等待15秒超时。不能把后续等待超时作为唯一根因 |
+| 已确认权限差异 | 刘波GET `/api/base-service/permission`业务200，按钮权限包含采购合同approve、seal、upload-final-draft、initiate、confirm，未包含archive；页面仍显示确认归档，流程指定处理人刘波 |
+| 尚缺证据 | 完整403响应message、服务端日志及准确拒绝判断分支未记录；不能确定应修哪张角色表、接口注册还是服务端校验，也不能仅凭缺失项宣称已证明服务端源码缺陷 |
+| 只读复核 | `archive/archive-after-rejection.json`：详情业务200，原ID/编号，processTaskName=归档、contractStatus=APPROVING、processStatus=APPROVAL、finalDraftConfirmed=1、archiveFlag=0；诊断浏览器阻断所有非GET请求，未重复归档 |
+| 已执行处置 | 保留失败截图、原请求和两动作轨迹；停止写入，不改账号权限/业务配置/被测系统源码，不换管理员归档，不重建合同 |
+| 影响 | 确认成功及已绑定扫描件保留；本次未归档，没有终态通过证据。旧flow仍unknown不改写；没有全链candidate/validate/publish |
+| 最小恢复 | 被测系统维护方核对并修复归档接口与流程处理人权限不一致，提供恢复证据；刘波重登后只读核对接口授权和原待办，再单次归档、核对终态；当前不自动重试 |
+
+实际权限响应使用的精确接口授权标识为：`POST/project-management-backend/v1/web/contract-mgt/procurement-contract/archive`。这是定位线索，不是本轮已执行的授权变更；不能用授予管理员或通配权限代替核对。用户既定边界禁止修改被测系统源码、权限和业务配置，因此该环境问题未在本任务中擅自修改。
+
+只读响应中未匹配到原业务ID的待办对象，因接口字段关联尚未核实，不据此宣称待办缺失；本轮处理人结论以当前原合同流程与本人页面为准。正式恢复仍需核对完整任务关联，不能只看有无按钮。
+
+### 后续流程与验证状态
+
+```mermaid
+flowchart TD
+  A[原意见框定位纠正并核对初态] --> B[真实Agent确认 passed]
+  B --> C[刘波本人只读核对归档入口]
+  C --> D[单次归档请求 业务403]
+  D --> E[停写并只读确认仍未归档]
+  E --> F[定位接口权限与可见按钮不一致]
+  F --> G[等待被测系统维护方恢复证据]
+  G --> H[核对权限 原合同及待办后单次归档]
+  H --> I[终态证据及独立结果核对]
+```
+
+本轮脚本语法检查通过、确认真实业务passed、归档真实业务failed；没有扩大为客户端全量测试、发布包验证或48条设计全覆盖。新设计已同步“处理意见”定位、上传完成等待、归档权限恢复前提和失败停止条件。工作区新增 `current-result.md`、`confirm-v2-execute.mjs`、`archive-once.mjs` 及相应截图/请求/Agent事件，均为本地验收产物，不纳入客户端Git提交。
+
+
+独立生产 Pi Agent 以新临时会话 `01a1cf11-153b-74e3-bdf3-7f6edcbe7be2` 只读核对六份原生结果/事件文件，正常收尾；确认“真实确认passed、归档403未通过”的结论，未批准全链或正式回归。原始复核意见为工作区 `independent-result-review.md`，事件为 `agent-result-review-events.json`。其指出六文件未包含语法输出、NOT-RUNNING原回包及归档前观察，现另存 `syntax-checks.json`、`process-check-output.json`并明确引用此前两份归档前只读观察。原flow执行后只读状态快照为 `original-flow-current-status.json`，不能将其冒称为执行前后哈希对照。
+
+复核还将诊断字段 `opinionCount=0` 与“处理意见”框存在视为矛盾：该历史字段实际上统计“审核意见”label，归档页为0；真实归档脚本按“处理意见”唯一且可编辑检查通过，失败发生在提交之后。保留旧诊断并补充字段语义，不为结论改写原证据。复核自行使用的S1等级没有项目分级来源，本报告不采用该严重级别。
