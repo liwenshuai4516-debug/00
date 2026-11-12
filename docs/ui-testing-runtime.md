@@ -14,7 +14,7 @@
 | qa_ui_save_candidate | 检查任务草稿、来源与步骤，冻结准确 revision，不执行 |
 | qa_ui_run | validate 验证候选，regression 仅执行当前正式版本 |
 | qa_ui_publish | 核对真实 passed 结果、版本哈希、证据与清理后更新正式引用 |
-| qa_ui_approval | 按需读取审批提示词、认证配置预检、准备修订、隔离账号观察、首次执行冻结、逐节点执行、结果核对及完整链候选草稿 |
+| qa_ui_approval | 按需读取审批提示词、认证配置预检、准备修订、登录控件纠错、隔离账号观察、首次执行冻结业务配置、逐节点执行、结果核对及完整链候选草稿 |
 | qa_ui_coverage | 保存本轮功能清单、校验准确候选映射并统计；read 读取已保存版本，不执行测试 |
 
 内置 UI 技能为 qa-ui-basic、qa-ui-assertion、qa-ui-execute，共用报告技能 qa-test-report。旧意图/录制技能及旧 project/login/prepare/finalize 工具已移除；旧平铺资产和录制日志不迁移、不作为新版来源。已有会话需重新加载资源或新建会话才使用更新入口。
@@ -72,9 +72,12 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 | --- | --- | --- |
 | 条件加载 | qa_ui_approval instructions → 当前运行资源 prompt/approval-control.md | 按准确流程及发起部门读取用户指定对照表，区分串行与会签，冻结启用节点及归档终态依据；普通功能跳过 |
 | 准备与预检 | preflight / prepare → 配置缺口、flow.json 与 configRevision | 预检只确认宿主配置，不登录；准备修订引用当前 baseRevision，保留 configHistory 和原证据；旧零步骤计划可显式修订 |
-| 人员观察 | inspect → 绑定配置版本的检查结果、独立身份截图/真实控件 | 身份、record 及非空 before 就绪后采集；创建前明确 createsRecord 才跳过 record；认证失败不冻结配置 |
-| 节点执行 | execute → 冻结配置、意图、成功动作轨迹、前后截图及变量 | 全部登记人员认证配置齐备、当前人员认证成功，在现有互斥内先持久化冻结版本与意图；引用上一已确认节点，按授权执行一次并验证 after |
+| 登录控件纠错 | configure-login → 仅登录选择器的新版本及来源 | 已执行步骤须全部 completed、尚无候选；引用当前 baseRevision 和已登记 actorId，保留冻结业务内容及旧证据。单次点击租户卡片的 confirm 可省略，选择完成后才访问业务页；修订后一次 inspect，失败停止 |
+| 人员观察 | inspect → 绑定配置版本的检查结果、完整页面截图/真实控件（含隐藏文件输入框）及有限 pageText；认证失败保存脱敏 diagnostics | 身份、record 及非空 before 就绪后采集；text/value 均为全等，应定位具体节点/字段；创建前明确 createsRecord 才跳过 record；文字截断时核对截图；认证失败不冻结配置，按子阶段定位后停止依赖链 |
+| 节点执行 | execute → 冻结业务配置、意图、成功动作轨迹、前后截图、有限 pageText 及变量 | 全部登记人员认证配置齐备、当前人员认证成功，在现有互斥内先持久化冻结版本与意图；引用上一已确认节点，按授权执行一次并验证 after |
 | 异常核对 | reconcile → 原节点只读核对证据 | 只确认 record/after，不重放；收尾未知保留锁 |
+| 未开始点击的定位纠错 | execute + retryEvidence → 原节点一次新尝试，保留 attempts | 只限 target 阶段、此前完整轨迹均为 fill、未开始任何业务点击；仅改失败 selector，before/after/身份/输入不变，重新核对原状态。已点击或 after 未确认仍只能 reconcile |
+| 已提交的结果定位纠错 | reconcile + reconcileAfter → 一次只读核对，成功另存 reconciledStep | 原 after 失败且完整动作/收尾已确认；source 引用新页面证据，仅改 selector，预期文字、kind、顺序和数量不变；保留原 step/check，回放继承正确定位。失败停止，不重交动作 |
 | 完整链草稿 | candidate → task.json 与 drafts/<caseId> | 从唯一新记录开始、全部启用节点动作完整，分别核对审批及范围内归档终态；预期与 after 来源匹配 |
 | 候选及独立回放 | save_candidate → validate → passed 才 publish；按范围 regression | 复用原版本/报告链，每批创建独立记录、多账号隔离、附件哈希冻结 |
 | 主线收尾 | 回到本轮清单与 qa-test-report | 分列节点证据和正式 run，保留受阻项、记录残留与生成率 |
@@ -82,6 +85,8 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 多账号凭据沿用项目已配置账号；已确认共用测试密码的其他账号可由宿主 QA_UI_TEST_PASSWORD 提供，不读取 .env 给模型、不修改全局项目账号，不支持每人不同密码的通用凭据库。登录选择器与可选租户选择由真实页面证据提供；认证、验证码/MFA、跨站或身份核验失败停止依赖链。每节点新上下文，登录态仅私有临时文件/IPC，回放关闭 trace。工具支持稳定定位器的 click/fill/select/upload，不代表任意前端控件均已验收。
 
 preflight 的 configured 仅表示所提供人员的配置齐备，不验证密码有效性，也不证明人员覆盖了业务全部节点。真实 Electron 主进程须通过该工具检查，命令进程环境不能代替。认证 code/stage 和节点 check.json 用于脱敏诊断；已产生执行意图的计划（包括 blocked/unknown）保持冻结，后续不能补换人员或改写既有步骤预期。旧无版本检查绑定初始配置版本 1，修订不回写旧检查。完整业务节点图仍由来源和逐步取证约束，没有新增通用流程引擎。
+
+登录诊断及停止条件见[审批提示词的异常处理](../resources/testing/ui/prompt/approval-control.md#异常取消与结果核对)。检查能区分点击失败和点击后未完成跳转，保留有限 HTTP 状态及数字业务码，不保存认证正文。审批页面检查失败也保存有限业务文字和请求状态，不能将 HTTP 200 内的业务403/500当作成功。截图使用 fullPage，内嵌滚动区仍以当前视口为准，文字与截图须结合核对。离线 `auto-login` 检查覆盖认证返回401时仅提交一次、查询参数脱敏及禁用按钮未发请求；这不等于真实认证恢复。
 
 只读探索的模型动作清单与执行守卫均从 contract.controls 生成：navigate/done 保留；click/input/select_dropdown 仅显式声明时可用。自定义下拉按真实属性声明两次 click，原生 select 在声明控件和值后可使用 select_dropdown；不增加模糊点击回退。失败诊断仅包含动作类型、目标索引/标签/角色及阶段，不复制输入值和页面正文。
 

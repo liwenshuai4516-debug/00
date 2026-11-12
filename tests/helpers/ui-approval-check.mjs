@@ -54,17 +54,21 @@ const server = http.createServer(async (req, res) => {
   }
   const record = records.get(url.searchParams.get("id"));
   const header = `<p id="identity">${account}</p>`;
+  if (url.pathname === "/diagnostic-status") {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ code: 403, token: "fixture-response-secret" })); return;
+  }
   if (url.pathname === "/new") {
     res.end(header + `<p id="status">new</p><input id="name"><button id="create">创建</button><script>
 create.onclick=async()=>{const r=await(await fetch('/create',{method:'POST',body:new URLSearchParams({name:document.querySelector('#name').value})})).json();location.href='/record?id='+r.id;};</script>`); return;
   }
-  if (!record) { res.end(header + '<p id="status">missing</p>'); return; }
+  if (!record) { res.end(header + '<p id="status">missing</p><script>fetch("/diagnostic-status")</script>'); return; }
   if (url.searchParams.has("delay")) {
-    const content = `<p id="name">${record.name}</p><p id="status">${record.status}</p><button id="approve">同意</button>`;
+    const content = `<p id="name">${record.name}</p><p id="status">${record.status}</p><input id="attachment" type="file" hidden><button id="approve">同意</button>`;
     res.end(header + `<script>setTimeout(()=>document.body.insertAdjacentHTML('beforeend',${JSON.stringify(content)}),650)</script>`); return;
   }
   res.end(header + `<p id="name">${record.name}</p><p id="status">${hideStatus ? "pending-display" : record.status}</p><p id="uploaded">${record.uploaded}</p>
-<input id="attachment" type="file"><button id="upload">上传</button><input id="opinion"><button id="approve">同意</button><script>
+<input id="attachment" type="file"><button id="upload">上传</button><input id="opinion"><p>同意</p><button id="approve">同意</button><script>
 upload.onclick=async()=>{const data=new FormData();data.append('file',document.querySelector('#attachment').files[0]);await fetch('/upload'+location.search,{method:'POST',body:data});document.querySelector('#uploaded').textContent='true';};
 approve.onclick=async()=>{const r=await(await fetch('/approve'+location.search,{method:'POST'})).json();document.querySelector('#status').textContent=${hideStatus ? "'pending-display'" : "r.status"};};</script>`);
 });
@@ -100,11 +104,18 @@ try {
   assert.equal((await dynamic.approval(workspace, { operation: "instructions" })).instructions, "本轮动态规则");
   assert.throws(() => validateApprovalStep({ ...create, password: "not-allowed" }, { address: origin, actors: config.actors }), /未支持字段/);
   const preview = await inspect("full-chain"); assert.equal(preview.status, "completed"); assert.ok(preview.controls.some(item => item.id === "create"));
+  assert.match(preview.pageText, /creator/);
+  assert.ok(!preview.pageText.includes(password), "业务观察不能回传登录密码");
   assert.equal(writes.length, 0, "inspect 不写业务");
-  const racing = await Promise.allSettled([execute("full-chain", create), api.approval(workspace, {
+  // 等执行已持锁并发出首个页面请求，再竞争准备操作，不依赖文件系统调度决定胜者。
+  const executionStarted = once(server, "request");
+  const executing = execute("full-chain", create);
+  await executionStarted;
+  const racing = await Promise.allSettled([executing, api.approval(workspace, {
     operation: "prepare", flowId: "full-chain", baseRevision: 1, config: { ...config, source: "racing-change" } })]);
   assert.equal(racing[0].status, "fulfilled");
   assert.equal(racing[0].value.status, "completed");
+  assert.match(racing[0].value.pageText, /review/);
   assert.equal(racing[1].status, "rejected", "执行与准备共用互斥，禁止交错覆盖");
   const fullFlow = await read(path.join(workspace, "qa/ui/approvals/full-chain/flow.json"));
   assert.equal(fullFlow.phase, "frozen");
@@ -113,10 +124,16 @@ try {
     actorId: "reviewer", url: review.url + "&delay=1", before: review.before } });
   assert.equal(ready.status, "completed");
   assert.ok(ready.controls.some(item => item.id === "approve"));
+  assert.ok(ready.controls.some(item => item.id === "attachment" && item.type === "file"), "观察包含由上传按钮代理的隐藏文件输入框");
   const missingRecord = await api.approval(workspace, { operation: "inspect", flowId: "full-chain", step: {
     actorId: "reviewer", url: origin + "/record?id=missing", before: review.before } });
   assert.equal(missingRecord.status, "blocked");
   assert.equal(missingRecord.stage, "record");
+  assert.equal(missingRecord.diagnostics.pathname, "/record");
+  assert.match(missingRecord.pageText, /missing/);
+  assert.ok(missingRecord.diagnostics.requests.some(request => request.pathname === "/record" && request.status === 200));
+  assert.ok(missingRecord.diagnostics.requests.some(request => request.pathname === "/diagnostic-status" && request.businessCode === 403));
+  assert.ok(!JSON.stringify(missingRecord).includes("fixture-response-secret"));
   assert.equal(writes.length, 1, "加载或记录不符不触发审批");
   assert.equal((await execute("full-chain", review, "create")).status, "completed");
   assert.equal((await execute("full-chain", finish, "review")).terminal, true);
@@ -159,15 +176,32 @@ try {
   await execute("uncertain", create);
   hideStatus = true;
   // before 使用节点创建后已核实的 record，模拟提交生效但结果区未刷新的故障。
-  const uncertain = { ...review, before: [{ selector: "#name", text: "qa-{{runId}}" }] };
+  const uncertain = { ...review, before: [{ selector: "#name", text: "qa-{{runId}}" }], after: [{ selector: "#missing-status", text: "chairman" }] };
   const unknown = await execute("uncertain", uncertain, "create");
   assert.equal(unknown.status, "unknown");
   assert.equal(unknown.stage, "after");
+  await assert.rejects(api.approval(workspace, { operation: "execute", flowId: "uncertain", previousStepId: "create", authorization: auth,
+    step: uncertain, retryEvidence: path.basename(unknown.evidenceDirectory) }), /只能 reconcile/);
   await assert.rejects(api.approval(workspace, { operation: "prepare", flowId: "uncertain", baseRevision: 1, config }), /冻结/);
   const count = writes.length; hideStatus = false;
-  assert.equal((await api.approval(workspace, { operation: "reconcile", flowId: "uncertain" })).status, "completed");
+  const correction = { source: "fixture DOM confirms #status after submitted review", checks: review.after };
+  await assert.rejects(api.approval(workspace, { operation: "execute", flowId: "uncertain", reconcileAfter: correction }), /只读 reconcile/);
+  await assert.rejects(api.approval(workspace, { operation: "reconcile", flowId: "uncertain", reconcileAfter: {
+    ...correction, checks: [{ selector: "#status", text: "invented" }] } }), /预期、顺序和检查数量/);
+  const originalUnknown = await fs.readFile(path.join(unknown.evidenceDirectory, "check.json"), "utf8");
+  assert.equal((await api.approval(workspace, { operation: "reconcile", flowId: "uncertain", reconcileAfter: correction })).status, "completed");
   assert.equal(writes.length, count, "reconcile 只核对，不重交");
+  const reconciled = await read(path.join(workspace, "qa/ui/approvals/uncertain/flow.json"));
+  assert.equal(reconciled.steps.at(-1).reason, undefined, "只读核对成功后不保留已过期的未确认原因，原check仍保留");
+  assert.deepEqual(reconciled.steps.at(-1).step.after, uncertain.after, "保留原错误定位和预期");
+  assert.deepEqual(reconciled.steps.at(-1).reconciledStep.after, review.after);
+  assert.equal(await fs.readFile(path.join(unknown.evidenceDirectory, "check.json"), "utf8"), originalUnknown);
+  await assert.rejects(api.approval(workspace, { operation: "reconcile", flowId: "uncertain", reconcileAfter: correction }), /仅允许一次/);
   await assert.rejects(execute("uncertain", uncertain, "create"), /禁止重复执行/);
+  await execute("uncertain", finish, "review");
+  const correctedCandidate = await api.approval(workspace, { operation: "candidate", flowId: "uncertain", caseId: "corrected-result", title: "纠正结果定位后的完整链", modulePath: ["Fixture"], contract });
+  const correctedTask = await read(path.join(workspace, "qa/ui/tasks", correctedCandidate.taskId, "task.json"));
+  assert.deepEqual(correctedTask.approvalPlan.steps[1].after, review.after, "独立回放继承纠正后的定位，不改业务预期");
   await inspect("cancelled-node");
   await execute("cancelled-node", create);
   const controller = new AbortController();
@@ -186,6 +220,28 @@ try {
   const recoveredCreate = await api.approval(workspace, { operation: "reconcile", flowId: "uncertain-create", targetUrl: origin + "/record?id=" + createdId });
   assert.equal(recoveredCreate.variables.recordId, createdId);
   assert.equal(writes.length, afterCreate, "未知创建沿原记录恢复，不新建");
+  await inspect("target-repair");
+  await execute("target-repair", create);
+  const ambiguous = structuredClone(review);
+  ambiguous.actions[1].selector = ':text-is("同意")';
+  const beforeRepair = writes.length;
+  const failedTarget = await execute("target-repair", ambiguous, "create");
+  assert.equal(failedTarget.status, "unknown");
+  assert.equal(failedTarget.stage, "target");
+  assert.equal(failedTarget.actionIndex, 1);
+  assert.equal(writes.length, beforeRepair, "歧义控件点击尚未开始");
+  const retryEvidence = path.basename(failedTarget.evidenceDirectory);
+  const targetEvidence = await fs.readFile(path.join(failedTarget.evidenceDirectory, "check.json"), "utf8");
+  const repair = step => api.approval(workspace, { operation: "execute", flowId: "target-repair", previousStepId: "create", authorization: auth, step, retryEvidence });
+  await assert.rejects(repair({ ...review, after: [{ selector: "#status", text: "invented" }] }), /业务预期/);
+  // 使用正确控件仅恢复一次，保留首次失败而不重放任何审批点击。
+  assert.equal((await repair(review)).status, "completed");
+  assert.equal(writes.length, beforeRepair + 1);
+  const repairedFlow = await read(path.join(workspace, "qa/ui/approvals/target-repair/flow.json"));
+  assert.equal(repairedFlow.steps.at(-1).attempts[0].evidence, retryEvidence);
+  assert.equal(repairedFlow.steps.at(-1).attempts[0].status, "unknown");
+  assert.equal(await fs.readFile(path.join(failedTarget.evidenceDirectory, "check.json"), "utf8"), targetEvidence);
+  await assert.rejects(repair(review), /最多纠正一次/);
   const scan = async directory => {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const file = path.join(directory, entry.name);

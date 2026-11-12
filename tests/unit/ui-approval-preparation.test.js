@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const os = require("node:os");
 
-test("审批准备：配置预检不登录，旧零步骤计划可修订，执行记录阻止修订", async t => {
+test("审批准备：配置预检、业务冻结与有界登录选择器修订", async t => {
   const { createReadOnlyWorkflow } = await import("../../src/main/capabilities/ui-testing/workflow.mjs");
   const base = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "approval-preparation-")));
   let passed = false;
@@ -67,5 +67,25 @@ test("审批准备：配置预检不登录，旧零步骤计划可修订，执�
   const before = await fs.readFile(path.join(dir, "flow.json"), "utf8");
   await assert.rejects(api.approval(base, { operation: "prepare", flowId: "legacy", baseRevision: 3, config }), /冻结/);
   assert.equal(await fs.readFile(path.join(dir, "flow.json"), "utf8"), before);
+  const loginChange = { operation: "configure-login", flowId: "legacy", baseRevision: 3, actorId: "reviewer",
+    login: { tenant: { selector: "#project-tenant" } }, authorization: auth };
+  await assert.rejects(api.approval(base, loginChange), /结果未确认/);
+  current.steps[0].status = "completed";
+  await fs.writeFile(path.join(dir, "flow.json"), JSON.stringify(current));
+  await assert.rejects(api.approval(base, { ...loginChange, config: current.config }), /不能变更业务/);
+  await assert.rejects(api.approval(base, { ...loginChange, login: { credential: "forbidden" } }), /未支持字段/);
+  const loginResult = await api.approval(base, loginChange);
+  assert.equal(loginResult.configRevision, 4);
+  assert.equal(loginResult.phase, "frozen");
+  const loginSaved = JSON.parse(await fs.readFile(path.join(dir, "flow.json"), "utf8"));
+  const expectedConfig = structuredClone(current.config);
+  expectedConfig.actors[1].login = loginChange.login;
+  assert.deepEqual(loginSaved.config, expectedConfig, "登录修订不能换账号、身份、记录或业务规则");
+  assert.deepEqual(loginSaved.steps, current.steps, "保留已执行步骤和旧配置版本归属");
+  assert.deepEqual(loginSaved.configHistory.at(-1).config, current.config);
+  await assert.rejects(api.approval(base, loginChange), /配置版本/);
+  loginSaved.candidateTaskId = "task-existing";
+  await fs.writeFile(path.join(dir, "flow.json"), JSON.stringify(loginSaved));
+  await assert.rejects(api.approval(base, { ...loginChange, baseRevision: 4 }), /已生成候选/);
   passed = true;
 });

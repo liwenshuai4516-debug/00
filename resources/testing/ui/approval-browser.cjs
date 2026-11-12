@@ -28,6 +28,17 @@ async function visit(browser, plan, step, states, variables, operation, hooks = 
   if (!actor || !states[actor.id]) throw new Error("缺少节点身份登录态。");
   const context = await browser.newContext({ storageState: states[actor.id] });
   const page = await context.newPage();
+  const requests = [], pageErrors = [];
+  page.on("response", async response => {
+    if (requests.length < 20 && ["document", "xhr", "fetch"].includes(response.request().resourceType())) {
+      const entry = { method: response.request().method(), pathname: new URL(response.url()).pathname, status: response.status() };
+      requests.push(entry);
+      if ((response.headers()["content-type"] ?? "").includes("application/json")) {
+        try { const body = await response.json(); if (typeof body.code === "number") entry.businessCode = body.code; } catch { /* 不保留响应正文。 */ }
+      }
+    }
+  });
+  page.on("pageerror", error => { if (pageErrors.length < 5) pageErrors.push(error.name); });
   page.setDefaultTimeout(10000);
   await context.route("**/*", route => {
     const url = route.request().url();
@@ -49,13 +60,13 @@ async function visit(browser, plan, step, states, variables, operation, hooks = 
       await verify(page, step.before, variables);
       hooks.phase?.("controls");
       const controls = await page.locator("button,input:not([type=password]),textarea,select,a,[role=button]").evaluateAll(elements =>
-        elements.filter(el => el.getClientRects().length).slice(0, 100).map(el => ({
+        elements.filter(el => el.type === "file" || el.getClientRects().length).slice(0, 100).map(el => ({
           tag: el.tagName, role: el.getAttribute("role"), id: el.id,
           name: el.getAttribute("aria-label") || el.innerText?.slice(0, 100) || el.getAttribute("placeholder"),
           type: el.getAttribute("type"), testId: el.getAttribute("data-testid"),
         })));
       await hooks.screenshot?.(page, "inspection");
-      return { url: page.url(), controls };
+      return { url: page.url(), controls, pageText: (await page.locator("body").innerText()).slice(0, 16000) };
     }
     if (operation === "execute") {
       hooks.phase?.("record");
@@ -92,9 +103,11 @@ async function visit(browser, plan, step, states, variables, operation, hooks = 
     hooks.phase?.("after");
     await verify(page, [plan.record, ...step.after], variables);
     await hooks.screenshot?.(page, "business");
-    return { url: page.url(), variables };
+    return { url: page.url(), variables, pageText: (await page.locator("body").innerText()).slice(0, 16000) };
   } catch (error) {
     try { await hooks.screenshot?.(page, "failure"); } catch { /* 不用截图失败覆盖原节点结果。 */ }
+    error.diagnostics = { pathname: new URL(page.url()).pathname, requests, pageErrors };
+    error.pageText = await page.locator("body").innerText().then(text => text.slice(0, 16000)).catch(() => undefined);
     throw error;
   } finally { await context.close(); }
 }
@@ -149,7 +162,7 @@ if (require.main === module) {
       if (interrupted) return;
       const result = await visit(browser, message.plan, message.step, message.states, message.variables, message.operation, {
         phase: (value, index) => { stage = value; actionIndex = index; },
-        screenshot: async (page, name) => page.screenshot({ path: path.join(message.output, `${name}.png`) }),
+        screenshot: async (page, name) => page.screenshot({ path: path.join(message.output, `${name}.png`), fullPage: true }),
         intent: async (index, action) => {
           if (interrupted) throw new Error("审批已停止。");
           wrote = true;
@@ -160,10 +173,10 @@ if (require.main === module) {
         }) + "\n"),
       });
       await finish({ status: "completed", ...result });
-    } catch {
+    } catch (error) {
       // Playwright 异常可能包含输入正文，不转发原始调用日志。
       await finish({ status: wrote ? "unknown" : "blocked",
-        code: `${stage}-unconfirmed`, stage, actionIndex,
+        code: `${stage}-unconfirmed`, stage, actionIndex, diagnostics: error.diagnostics, pageText: error.pageText,
         reason: wrote ? "审批动作已开始，结果未确认；先 reconcile，禁止重放。" : "身份、初态或页面未满足；未开始节点动作。" });
     }
   });

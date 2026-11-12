@@ -23,7 +23,18 @@ let browser;
   async function autoLogin(message) {
     const selectors = message.selectors ?? {};
     let stage = "page-ready", verificationCode = "identity-unconfirmed";
-    const blocked = (code, reason) => ({ status: "manual-required", code, stage, reason });
+    const requests = [];
+    let errorKind;
+    const safePath = value => {
+      let pathname = new URL(value).pathname;
+      for (const secret of Object.values(message.credentials)) {
+        if (secret) pathname = pathname.split(secret).join("[redacted]").split(encodeURIComponent(secret)).join("[redacted]");
+      }
+      return pathname;
+    };
+    const blocked = async (code, reason) => ({ status: "manual-required", code, stage, reason,
+      diagnostics: { errorKind, pathname: safePath(page.url()),
+        passwordVisible: await password.isVisible().catch(() => null), requests } });
     const password = page.locator(selectors.password || 'input[type="password"]').filter({ visible: true });
     const verified = async () => {
       let current;
@@ -67,16 +78,48 @@ let browser;
       const action = await password.evaluate((element) => element.form?.action || location.href);
       if (new URL(action, page.url()).origin !== target.origin) return blocked("manual-authentication-required", "登录表单提交到其他站点，需要人工核对。");
       // 凭据仅通过私有 IPC 进入此进程，不经过模型、工具结果或磁盘脚本。
+      // 只保留请求方法、无查询参数的路径和状态，不记录请求正文、响应正文或认证头。
+      const tracked = new Map();
+      page.on("request", request => {
+        if (requests.length >= 12 || !["document", "xhr", "fetch"].includes(request.resourceType())) return;
+        const url = new URL(request.url());
+        const entry = { method: request.method(), pathname: safePath(url), sameOrigin: url.origin === target.origin };
+        requests.push(entry); tracked.set(request, entry);
+      });
+      page.on("response", async response => {
+        const entry = tracked.get(response.request());
+        if (!entry) return;
+        entry.status = response.status();
+        if ((response.headers()["content-type"] ?? "").includes("application/json")) {
+          try { const body = await response.json(); if (typeof body.code === "number") entry.businessCode = body.code; } catch { /* 不保留响应正文。 */ }
+        }
+      });
+      page.on("requestfailed", request => {
+        const entry = tracked.get(request);
+        if (entry) entry.failed = request.failure()?.errorText?.match(/net::ERR_[A-Z_]+/)?.[0] ?? "request-failed";
+      });
       await context.route("**/*", (route) => new URL(route.request().url()).origin === target.origin ? route.continue() : route.abort());
-      stage = "login-submit";
+      stage = "login-account";
       await account.fill(message.credentials.account, { timeout: 5000 });
+      stage = "login-password";
       await password.fill(message.credentials.password, { timeout: 5000 });
+      stage = "login-click";
       await submit.click({ timeout: 5000 });
+      stage = "login-transition";
       await password.waitFor({ state: "hidden", timeout: 10000 });
-      if (selectors.tenant && await page.locator(selectors.tenant.selector).isVisible()) {
+      if (selectors.tenant) {
         stage = "tenant-selection";
-        await page.locator(selectors.tenant.selector).click({ timeout: 5000 });
-        await page.locator(selectors.tenant.confirm).click({ timeout: 5000 });
+        const tenant = page.locator(selectors.tenant.selector);
+        // SPA 在密码框消失后才渲染租户页；不能提前跳回业务地址绕过租户选择。
+        await Promise.race([
+          tenant.waitFor({ state: "visible", timeout: 5000 }).catch(() => {}),
+          selectors.authenticated ? page.locator(selectors.authenticated).waitFor({ state: "visible", timeout: 5000 }).catch(() => {}) : new Promise(() => {}),
+        ]);
+        if (await tenant.isVisible()) {
+          await tenant.click({ timeout: 5000 });
+          if (selectors.tenant.confirm) await page.locator(selectors.tenant.confirm).click({ timeout: 5000 });
+          await tenant.waitFor({ state: "hidden", timeout: 10000 });
+        }
       }
       stage = "target-route";
       await page.goto(target.href);
@@ -87,8 +130,9 @@ let browser;
       stage = "storage-state";
       await save(message.file);
       return { status: "saved", verification: selectors.authenticated ? "configured-marker" : "target-route-without-login-form" };
-    } catch {
+    } catch (error) {
       // Playwright 错误可能带输入值，禁止将原始错误发送给宿主。
+      errorKind = error.name === "TimeoutError" ? "timeout" : "browser-error";
       return blocked(stage === "tenant-selection" ? "tenant-incomplete" : "login-unconfirmed", "自动登录未通过验证；不会重复提交，请按失败阶段检查认证条件。");
     }
   }

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fork } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { resolveProject, readCredentials, matchesAddress } from "./project-context.mjs";
 import { openLogin } from "./login-session.mjs";
 
@@ -37,7 +38,7 @@ function validateConfiguration(config, id) {
       for (const key of ["account", "password", "submit"]) check(actor.login[key] === undefined || text(actor.login[key]), "登录配置只能声明选择器。");
       if (actor.login.tenant) {
         keys(actor.login.tenant, ["selector", "confirm"]);
-        check(text(actor.login.tenant.selector) && text(actor.login.tenant.confirm), "租户选择需要目标与确认控件。");
+        check(text(actor.login.tenant.selector) && (actor.login.tenant.confirm === undefined || text(actor.login.tenant.confirm)), "租户选择需要目标，独立确认控件可选。");
       }
     }
     id(actor.id);
@@ -101,7 +102,7 @@ export async function approvalStates(runtime, project, actors, signal) {
     try {
       const result = await entry.auto(credentials, { ...actor.login, authenticated: actor.identity.selector, identityText: actor.identity.text }, signal);
       if (!["saved", "not-required"].includes(result.status)) throw Object.assign(new Error(`节点账号认证或身份核验未通过（${result.code ?? "login-unconfirmed"}）；未执行审批。`),
-        { code: result.code ?? "login-unconfirmed", stage: result.stage ?? "authentication", actorId: actor.id });
+        { code: result.code ?? "login-unconfirmed", stage: result.stage ?? "authentication", actorId: actor.id, diagnostics: result.diagnostics });
       states[actor.id] = result.status === "saved" ? JSON.parse(await fs.readFile(entry.file, "utf8")) : { cookies: [], origins: [] };
     } finally {
       try { await entry.cleanup(); } catch (error) { error.cleanupUnconfirmed = true; throw error; }
@@ -147,7 +148,8 @@ export async function approvalOperation(root, params, signal, helpers) {
   const instructions = (await fs.readFile(promptFile, "utf8")).trim();
   check(instructions, "审批提示词为空，停止审批分支。");
   if (params.operation === "instructions") return { promptFile, instructions };
-  check(["preflight", "prepare", "inspect", "execute", "reconcile", "candidate"].includes(params.operation), "未知审批操作。");
+  check(params.reconcileAfter === undefined || params.operation === "reconcile", "结果定位纠错只允许只读 reconcile，不得用于 execute。");
+  check(["preflight", "prepare", "configure-login", "inspect", "execute", "reconcile", "candidate"].includes(params.operation), "未知审批操作。");
   if (params.operation === "preflight" && !params.flowId) {
     const project = await resolveProject(runtime, params, root.workspace, async () => root);
     check(await fs.realpath(project.projectWorkspace) === root.workspace, "审批项目不属于当前工作区。");
@@ -182,6 +184,25 @@ export async function approvalOperation(root, params, signal, helpers) {
   flow.phase = flow.steps.length || flow.frozenAt || flow.candidateTaskId || flow.phase === "frozen" ? "frozen" : "preparing";
   if (params.operation === "preflight") return { configurationSource: "flow", flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision,
     ...await authenticationPreflight(runtime, project, flow.config.actors) };
+  if (params.operation === "configure-login") {
+    // 仅修正认证页面定位；已执行的业务规则、人员身份和动作证据保持冻结。
+    check(!flow.candidateTaskId && flow.steps.every(item => item.status === "completed"), "已有结果未确认或已生成候选，禁止修改登录选择器。");
+    check(params.baseRevision === flow.configRevision, "配置版本已变化或未提供 baseRevision，停止修订。");
+    check(params.config === undefined && params.step === undefined && params.targetUrl === undefined, "登录修订只接受 actorId/login，不能变更业务配置或入口。");
+    authorization(params.authorization);
+    const config = structuredClone(flow.config);
+    const actor = config.actors.find(item => item.id === params.actorId);
+    check(actor && params.login, "登录修订需要已登记人员与明确选择器。");
+    actor.login = structuredClone(params.login);
+    validateConfiguration(config, id);
+    if (!same(config, flow.config)) {
+      flow.configHistory ??= [];
+      flow.configHistory.push({ revision: flow.configRevision, config: structuredClone(flow.config), change: "login-selectors", actorId: actor.id, authorization: params.authorization });
+      flow.config = config; flow.configRevision++;
+      await writeJson(file, flow);
+    }
+    return { flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision, actorId: actor.id, verification: "configuration-only" };
+  }
   if (params.operation === "prepare") {
     check(flow.phase === "preparing", "已有执行记录或冻结标记，禁止修改配置。");
     check(params.targetUrl === undefined || params.targetUrl === flow.targetUrl,
@@ -196,8 +217,27 @@ export async function approvalOperation(root, params, signal, helpers) {
     await writeJson(file, flow);
     return { flowId: flow.flowId, phase: flow.phase, configRevision: flow.configRevision };
   }
-  const plan = { address: flow.project.address, ...flow.config, files: flow.files ?? {}, steps: flow.steps.map(item => item.step) };
-  const previous = flow.steps.at(-1);
+  const plan = { address: flow.project.address, ...flow.config, files: flow.files ?? {}, steps: flow.steps.map(item => item.reconciledStep ?? item.step) };
+  let previous = flow.steps.at(-1), retry;
+  if (params.operation === "execute" && params.retryEvidence) {
+    retry = previous;
+    check(retry && retry.step.id === params.step?.id && retry.evidence === params.retryEvidence && retry.status === "unknown" && !retry.attempts,
+      "仅可明确引用最近一次未确认的控件定位失败，且最多纠正一次。");
+    const result = JSON.parse(await fs.readFile(await fileAt(dir, retry.evidence, "check.json"), "utf8"));
+    const index = result.actionIndex;
+    const actions = (await fs.readFile(await fileAt(dir, retry.evidence, "actions.jsonl"), "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
+    const intents = (await fs.readFile(await fileAt(dir, retry.evidence, "intents.jsonl"), "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
+    check(result.cleanupConfirmed === true && result.stage === "target" && Number.isInteger(index) && index > 0 &&
+      actions.length === index && intents.length === index && retry.step.actions.slice(0, index).every(action => action.kind === "fill") &&
+      intents.every((intent, i) => intent.index === i && intent.kind === "fill"),
+    "审批点击或其他写动作可能已开始，只能 reconcile，禁止重放。");
+    const comparable = structuredClone(params.step);
+    check(comparable.actions?.length === retry.step.actions.length && comparable.actions[index], "定位纠错不能改变动作数量。");
+    check(comparable.actions[index].selector !== retry.step.actions[index].selector, "定位纠错须提供有新证据的不同选择器。");
+    comparable.actions[index].selector = retry.step.actions[index].selector;
+    check(isDeepStrictEqual(comparable, retry.step), "定位纠错只能修改未开始动作的 selector，业务预期、人员及输入必须不变。");
+    previous = flow.steps.at(-2);
+  }
   if (params.operation === "candidate") {
     check(previous?.status === "completed" && previous.step.terminal === true && flow.steps.every(item => item.status === "completed"), "审批链尚未确认终态，不能生成完整链候选。");
     check(flow.steps[0].step.createsRecord === true && JSON.stringify(flow.steps[0].step).includes("{{runId}}"), "独立回放须从创建本轮唯一记录开始，不能复用固定存量记录。");
@@ -243,13 +283,28 @@ export async function approvalOperation(root, params, signal, helpers) {
   check(["inspect", "execute", "reconcile"].includes(params.operation), "未知审批操作。");
   const step = params.operation === "reconcile" && previous ? { ...previous.step, url: params.targetUrl ?? previous.step.url } : params.step;
   check(step && plan.actors.some(actor => actor.id === step.actorId), "需要明确节点及登记人员。");
+  if (params.reconcileAfter) {
+    const correction = params.reconcileAfter;
+    keys(correction, ["source", "checks"]);
+    checks(correction.checks);
+    check(previous?.status === "unknown" && !previous.reconcileCorrection && text(correction.source), "结果定位纠错须有新证据且仅允许一次。");
+    const result = JSON.parse(await fs.readFile(await fileAt(dir, previous.evidence, "check.json"), "utf8"));
+    const actions = (await fs.readFile(await fileAt(dir, previous.evidence, "actions.jsonl"), "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
+    check(result.stage === "after" && result.cleanupConfirmed === true && actions.length === step.actions.length,
+      "仅完整动作后的结果定位失败可纠错；不得补造动作或重放。");
+    check(isDeepStrictEqual(correction.checks.map(({ selector, ...expected }) => expected), step.after.map(({ selector, ...expected }) => expected)) &&
+      correction.checks.some((item, index) => item.selector !== step.after[index].selector), "只允许修改结果 selector，预期、顺序和检查数量必须不变。");
+    step.after = structuredClone(correction.checks);
+    previous.reconcileCorrection = structuredClone(correction);
+    await writeJson(file, flow);
+  }
   if (params.operation === "inspect") {
     checks(step.before);
     check(!step.createsRecord || flow.steps.length === 0, "已有执行记录的 inspect 不能跳过记录核对。");
   }
   if (params.operation === "execute") {
     validateApprovalStep(step, plan);
-    check(!flow.steps.some(item => item.step.id === step.id), "该节点已有执行记录，禁止重复执行；先 inspect/reconcile。");
+    check(retry || !flow.steps.some(item => item.step.id === step.id), "该节点已有执行记录，禁止重复执行；先 inspect/reconcile。");
     check(!previous || (previous.status === "completed" && previous.step.terminal !== true), "上一节点未确认或已终态，不能继续提交。");
     check((params.previousStepId ?? null) === (previous?.step.id ?? null), "必须引用最近已确认节点，禁止跳过状态衔接。");
     authorization(params.authorization);
@@ -275,7 +330,7 @@ export async function approvalOperation(root, params, signal, helpers) {
   catch (error) {
     if (error.cleanupUnconfirmed) { root.keepLock = true; throw error; }
     const result = { flowId: flow.flowId, status: "blocked", code: error.code ?? "login-unconfirmed", stage: error.stage ?? "authentication",
-      actorId: actor.id, reason: "节点认证未通过，未开始业务动作。", phase: flow.phase, configRevision: flow.configRevision, evidenceDirectory: output };
+      actorId: actor.id, diagnostics: error.diagnostics, reason: "节点认证未通过，未开始业务动作。", phase: flow.phase, configRevision: flow.configRevision, evidenceDirectory: output };
     await writeJson(path.join(output, "check.json"), { ...inspection, ...result });
     return result;
   }
@@ -296,7 +351,9 @@ export async function approvalOperation(root, params, signal, helpers) {
   if (params.operation === "execute") {
     flow.phase = "frozen"; flow.frozenAt ??= new Date().toISOString();
     entry = { step: structuredClone(step), configRevision: flow.configRevision, status: "unknown", evidence, authorization: params.authorization };
-    flow.steps.push(entry); await writeJson(file, flow);
+    if (retry) { entry.attempts = [retry]; flow.steps[flow.steps.length - 1] = entry; }
+    else flow.steps.push(entry);
+    await writeJson(file, flow);
   }
   let result;
   try { result = await browserStep(runtime, { plan, step: executable, states, variables, operation: params.operation, output }, signal); }
@@ -310,10 +367,12 @@ export async function approvalOperation(root, params, signal, helpers) {
     if (result.status === "completed") flow.variables = result.variables;
     await writeJson(file, flow);
   } else if (params.operation === "reconcile" && result.status === "completed") {
+    if (params.reconcileAfter) previous.reconciledStep = { ...previous.step, after: step.after };
+    delete previous.reason;
     previous.status = "completed"; previous.reconciledEvidence = evidence; flow.variables = result.variables; await writeJson(file, flow);
   }
-  return { flowId: flow.flowId, status: result.status, reason: result.reason, code: result.code, stage: result.stage, actionIndex: result.actionIndex,
+  return { flowId: flow.flowId, status: result.status, reason: result.reason, code: result.code, stage: result.stage, actionIndex: result.actionIndex, diagnostics: result.diagnostics,
     phase: flow.phase, configRevision: flow.configRevision, stepId: step.id, variables: flow.variables,
-    evidenceDirectory: output, controls: result.controls, url: result.url, instructions: params.operation === "inspect" ? instructions : undefined,
+    evidenceDirectory: output, controls: result.controls, pageText: result.pageText, url: result.url, instructions: params.operation === "inspect" ? instructions : undefined,
     terminal: result.status === "completed" && step.terminal === true };
 }

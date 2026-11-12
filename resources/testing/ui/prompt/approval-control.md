@@ -29,7 +29,7 @@
 - `credentialSource:"project"`：仅可使用项目已配置的同一 account，宿主读取既有认证。
 - `credentialSource:"test-password"`：仅用于已经确认共用测试密码的账号，宿主从启动环境 `QA_UI_TEST_PASSWORD` 取值。它不是新的项目配置来源；未配置则报告缺失。不同人员使用不同密码的项目目前不能使用此模式，需要单独认证能力。
 - pms 采购合同测试已由用户确认使用统一测试密码，已核实的测试账号可直接采用 `credentialSource:"test-password"`，不再逐人索要密码或重复询问是否允许共用。密码正文仅由宿主通过 `QA_UI_TEST_PASSWORD` 注入，不写入本文件、技能、计划、报告、日志或命令行。已确认密码不等于宿主已完成注入；变量缺失时准确报告“宿主未注入已确认测试凭据”，只暂停依赖登录的执行，继续流程分析和用例设计。共用密码不提供账号映射，仍按真实目录或用户确认取得 account 并验证 identity。
-- 可选 `login.account/password/submit` **都是控件选择器**；`login.tenant:{selector,confirm}` 是已知租户与确认按钮。不得传密码正文，不读 `.env`、Cookie 或真实凭据配置给模型，不把凭据写入计划、用例、报告或命令行。
+- 可选 `login.account/password/submit` **都是控件选择器**；`login.tenant:{selector,confirm?}` 是已知租户控件及可选的独立确认按钮。不得传密码正文，不读 `.env`、Cookie 或真实凭据配置给模型，不把凭据写入计划、用例、报告或命令行。
 - 登录成功仍必须核对 identity；再核对同一业务记录、当前节点及可用动作。验证码、MFA、跨站登录或身份不符时停止依赖链，不换账号绕过。
 - 先调用 `preflight` 核对实际宿主配置；不带 flowId 时提供 projectId/targetUrl 及 config，可在创建计划前检查。回执 configurationSource=flow/config/none 明确检查来源；none 表示本次未提供人员，不表示某份旧计划没有人员。只返回配置是否齐备、缺失项及 actorId，不返回凭据、不登录。`configured` 不代表账号认证成功；不能用 Agent 命令进程的环境检查替代 Electron 主进程预检。人员目录需核对部门、账号状态与分页，同名无法唯一匹配才请求确认。
 
@@ -39,11 +39,13 @@
 
 1. `instructions`：动态读取本文件，不登录或执行审批。
 2. `prepare`：首次提供 flowId、targetUrl、projectId、config，保存准备阶段配置（configRevision=1）；修订时提供原 flowId、当前 baseRevision 和完整 config。仅无执行步骤、无冻结标记的计划可修订，旧配置保存在 configHistory，旧证据不改写；旧零步骤计划按版本 1 处理，旧检查证据绑定初始配置。config 含 source、record、actors、residualAuthorization。prepare 不改变旧计划的 targetUrl；从存量详情观察切换到新建独立测试记录时，新建有明确新建入口的 flowId，保留旧计划及历史引用，这不用于绕过失败或结果未知操作。先补齐本次启用节点的人员、身份和选择器，不能指望执行后再添加人员。
-3. `inspect`：首次也可同时保存 config；提供 `step:{actorId,url,before}`，隔离登录、严格核对身份，等待同一 record 和非空 before（如当前节点）后才读取控件并截图。创建前入口还须 `createsRecord:true`，仅无执行步骤时允许跳过尚不存在的 record 检查。每次检查保存 configRevision；认证失败仍处于准备阶段，可通过 prepare 校正，不手改历史或换 flowId。record 的 text 可含 `{{runId}}` 或已提取变量。残留授权按上文继承，不宣称自动清理。
-4. `execute`：提供 flowId、完整 step、authorization；第二个及后续节点还需 previousStepId，精确引用最近已确认节点。先预检全部已登记人员认证配置，再认证当前处理人；失败不冻结。首次执行在同一互斥入口保存冻结版本和动作意图，再进入业务操作；此后任何 blocked/unknown 结果均禁止修改配置，不能以“可能没写入”为由退回准备阶段。每次只执行一个节点，按真实页面声明动作，不把整个流程塞成一串无状态检查的点击。节点预期在该节点首次登记后不可改写，后续节点按已核实流程追加。
+3. `inspect`：首次也可同时保存 config；提供 `step:{actorId,url,before}`，隔离登录、严格核对身份，等待同一 record 和非空 before（如当前节点）后才读取控件、最多16000字符的可见业务文字 pageText 并保存完整页面截图。文字可能截断，必要时读取原截图，不把截断当作节点不存在。创建前入口还须 `createsRecord:true`，仅无执行步骤时允许跳过尚不存在的 record 检查。每次检查保存 configRevision；准备期认证失败不冻结，可通过 prepare 校正；已冻结流程只允许按下文 configure-login 纠正登录控件，不手改历史或换 flowId。record 的 text 可含 `{{runId}}` 或已提取变量。残留授权按上文继承，不宣称自动清理。
+4. `execute`：提供 flowId、完整 step、authorization；第二个及后续节点还需 previousStepId，精确引用最近已确认节点。先预检全部已登记人员认证配置，再认证当前处理人；失败不冻结。首次执行在同一互斥入口保存冻结版本和动作意图，再进入业务操作；此后禁止修改业务配置，不能以“可能没写入”为由退回准备阶段。每次只执行一个节点，按真实页面声明动作，不把整个流程塞成一串无状态检查的点击。节点预期在该节点首次登记后不可改写，后续节点按已核实流程追加。
 5. 每个 step 必须有 id/name/source/actorId/url、非空 before/after 和 actions；after 的预期来自流程规则。首个创建节点 `createsRecord:true`，输入唯一标识 `{{runId}}`；可用 `capture:{name:"recordId",query:"id"}` 从最终 URL 提取记录标识，或用 selector/attribute 从真实页面属性提取。后续 URL/断言可以引用 `{{recordId}}`。每次操作后核对 record 及 after；最后节点 `terminal:true`，after 明确验证业务终态。把节点、下一处理人及审批记录等需要验证的内容列成独立检查。
-6. actions 仅支持 `click {selector}`、`fill/select {selector,value}`、`upload {selector,file}`，动作 kind 写在对象中。file 是当前工作区内相对路径，工具拒绝逃逸与符号链接并冻结文件哈希；不猜附件或上传非测试文件。定位器必须来自真实 inspect/页面证据且唯一，密码输入仅由宿主登录处理。页面/请求受项目地址约束。
-7. 每节点成功返回后保存证据，再 inspect 下一处理人的真实页面、执行下一节点，直至规则终态。默认正常链一次只执行一个合法动作序列；驳回、退回、转交等独立分支按用户范围用独立记录设计，不在正常链临时试点。
+6. actions 仅支持 `click {selector}`、`fill/select {selector,value}`、`upload {selector,file}`，动作 kind 写在对象中。先核实编号、日期等输入的实际格式、必填和唯一性规则，不以任意 QA 前缀代替业务编号格式；尚未核实的测试数据不冻结到 after，也不先上传后猜格式。file 是当前工作区内相对路径，工具拒绝逃逸与符号链接并冻结文件哈希；不猜附件或上传非测试文件。inspect 同时返回可见控件和由上传按钮代理的隐藏文件输入框。定位器必须来自真实 inspect/页面证据且唯一，密码输入仅由宿主登录处理。页面/请求受项目地址约束。text 检查使用元素完整文字全等（value 检查使用输入值全等），应定位具体节点或字段，不把 body 包含某词当成全等断言。
+认证选择器纠错：已有明确页面证据、所有已执行节点均 completed 且未生成候选时，可调用 `configure-login`，提供原 flowId、当前 baseRevision、actorId、login 和 authorization。工具只更新该登记人员的登录控件，旧配置及修订来源进入 configHistory，configRevision 递增，已执行步骤及其版本归属不变，frozen 保持；不能改变账号、身份、人员、记录、入口、动作或预期。结果未确认时先 reconcile，不能借此绕过写入未知。多租户登录须明确选择真实目标租户：tenant.selector 是有证据的唯一控件，tenant.confirm 仅在页面另有确认按钮时提供；单次点击即选择的卡片不加第二次确认。选择完成后才访问业务目标。配置修订不是登录成功，仍须一次 inspect 验证，失败停止。
+
+7. 每节点成功回传有限 pageText，结合截图和原轨迹保存证据，再 inspect 下一处理人的真实页面、执行下一节点，直至规则终态。默认正常链一次只执行一个合法动作序列；驳回、退回、转交等独立分支按用户范围用独立记录设计，不在正常链临时试点。
 
 参数示意（选择器、URL、人员和来源均须换为本项目真实值）：
 
@@ -97,11 +99,13 @@
 
 首次失败暂停依赖链，保留 flowId、stepId、原动作意图、截图与结果。不得原样重交、删除 flow.json/锁、改预期或换入口绕过。认证故障不作为“无数据”。
 
-认证诊断按 code/stage 区分 credentials-missing、form-ambiguous、tenant-incomplete、identity-mismatch/identity-unconfirmed、route-mismatch、manual-authentication-required、login-unconfirmed。后续页面检查通过 record/before/target/action/after 阶段定位。诊断仅说明失败位置，不能仅凭登录未成功就断言密码错误，也不能将管理员页面上的控件作为真实处理人的入口证据。发现明确新证据、修复前置条件且操作可安全重复时，才做一次定向验证。
+认证诊断按 code/stage 区分 credentials-missing、form-ambiguous、tenant-incomplete、identity-mismatch/identity-unconfirmed、route-mismatch、manual-authentication-required、login-unconfirmed。登录动作细分 login-account、login-password、login-click、login-transition；diagnostics 仅保留异常类别、无查询参数的页面路径、密码框是否可见及有限请求的方法/路径/HTTP状态、数字业务码或网络错误类别，不保留输入、认证头和请求/响应正文。login-transition 表示已点击后等待表单消失；HTTP 200 仍不能证明业务认证成功。后续页面检查通过 record/before/target/action/after 阶段定位，失败时也保留有限 pageText、请求状态与页面错误类别，用于区分空白页、权限拒绝和断言不符；数字业务码只是响应摘要，不能从500猜测服务端根因。诊断仅说明失败位置，不能仅凭登录未成功就断言密码错误，也不能将管理员页面上的控件作为真实处理人的入口证据。发现明确新证据、修复前置条件且操作可安全重复时，才做一次定向验证。
 
 - `blocked`：前置身份、页面或初态未满足；未开始该节点动作。说明缺口，不把它记为执行通过。
 - `unknown`：可能已有部分写入，包括超时/取消。沿原 flowId 使用 `reconcile` 只读核对原节点的 record/after/capture；创建已生效但中断时，可先用 inspect/已有证据找到本轮唯一记录，再提供真实 `targetUrl` 定位该记录（仍核对相同 record/after），不能重复 execute 原节点；核对仍不满足则保留未知。不得把“尚未观察到”解释成“没有写入”。
+- 定位失败的唯一纠错例外：原 check 为 target 阶段、cleanupConfirmed=true，动作与意图轨迹完整证明此前只有 fill、尚未开始任何 click/upload/select，且有只读新证据证实原状态及唯一正确控件时，可在原 execute 中提供 `retryEvidence`（原 check 目录名）。工具仅接受同一节点、相同 before/after/人员/输入/动作数量，仅修改失败动作的 selector，原尝试保留在 attempts，最多一次；重新核对原 before 后执行。原选择器未变化、结果阶段已到 action/after、已有点击或已纠错过均拒绝，不能把该入口用于重放结果未知的提交。历史“同意”标签与操作按钮同名时，定位必须限定真实操作区。
 - reconcile 确认后可继续下一个节点；若原动作成功轨迹不完整，不能生成完整链候选。状态核对成功不能补造动作轨迹。
+- 已完整执行、仅 after 定位错误时，可在 reconcile 中提供一次 `reconcileAfter:{source,checks}`：source 引用新的只读页面证据，checks 与原 after 的数量、顺序、文字和 kind 完全一致，只改 selector。工具要求原失败处于 after、动作轨迹完整且浏览器收尾确认，先登记纠错再只读核对；失败停止，不重交动作。原 step/check 保留，成功后另存 reconciledStep，完整链回放使用纠正后的定位及原业务预期。此入口不能用于 execute 或更改结果预期。
 - 浏览器收尾未知时保留工作区锁并停止新任务；先按报告核对实际进程、记录和恢复条件。工具确认已关闭后才解除正常锁；取消信号已发送不代表业务已撤回。
 
 ## 候选、回放与交付

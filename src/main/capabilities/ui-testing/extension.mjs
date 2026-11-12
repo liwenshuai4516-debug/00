@@ -3,6 +3,8 @@ import { createReadOnlyWorkflow } from "./workflow.mjs";
 
 const string = Type.String({ minLength: 1 });
 const attributes = Type.Record(Type.String(), string);
+const loginSelectors = Type.Object({ account: Type.Optional(string), password: Type.Optional(string), submit: Type.Optional(string),
+  tenant: Type.Optional(Type.Object({ selector: string, confirm: Type.Optional(string) })) });
 const contract = Type.Object({
   mode: Type.Union([Type.Literal("explore"), Type.Literal("candidate"), Type.Literal("complete")]),
   goal: string, role: string,
@@ -65,17 +67,17 @@ export function createUiTestingExtension(runtime) {
     register("qa_ui_coverage", "保存本轮功能清单或读取准确版本汇总。save 从 qa/ui/rounds/<roundId>/draft.json 校验来源、候选映射和 baseRevision，保留未生成项并写入不可改写的快照；不探索、不执行。read 读取已保存快照，不以当前资产重算历史。", Type.Object({
       roundId: string, action: Type.Union([Type.Literal("save"), Type.Literal("read")]), revision: Type.Optional(string),
     }), "coverage");
-    register("qa_ui_approval", "审批专用分支。instructions 读取规则；preflight 仅检查认证配置；prepare 显式修订零执行步骤计划并保留版本；inspect 按 before 等待页面就绪再观察控件，创建入口须 createsRecord:true；execute 冻结配置并隔离执行一个节点；reconcile 只读核对；candidate 依据完整终态轨迹准备 E2E 草稿。凭据只由宿主处理。", Type.Object({
-      operation: Type.Union(["instructions", "preflight", "prepare", "inspect", "execute", "reconcile", "candidate"].map(value => Type.Literal(value))),
+    register("qa_ui_approval", "审批专用分支。instructions 读取规则；preflight 仅检查认证配置；prepare 显式修订零执行步骤计划并保留版本；configure-login 仅修正已登记人员登录选择器，须 baseRevision 和来源，不改冻结业务规则或未确认结果；inspect 按 before 等待页面就绪再观察控件，创建入口须 createsRecord:true；execute 隔离执行一个节点，retryEvidence仅允许有完整fill轨迹且尚未开始点击的target失败纠正selector一次；reconcile只读核对提交未知结果，reconcileAfter仅允许有新证据时纠正结果selector一次、原预期不变；candidate依据完整终态轨迹准备E2E草稿。凭据只由宿主处理。", Type.Object({
+      operation: Type.Union(["instructions", "preflight", "prepare", "configure-login", "inspect", "execute", "reconcile", "candidate"].map(value => Type.Literal(value))),
       flowId: Type.Optional(string), targetUrl: Type.Optional(string), projectId: Type.Optional(string),
       baseRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+      actorId: Type.Optional(string), login: Type.Optional(loginSelectors),
       config: Type.Optional(Type.Object({
         source: string, residualAuthorization: Type.Object({ kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string }), record: Type.Object({ selector: string, text: string, kind: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("value")])) }),
         actors: Type.Array(Type.Object({ id: string, account: string, source: string,
           credentialSource: Type.Union([Type.Literal("project"), Type.Literal("test-password")]),
           identity: Type.Object({ selector: string, text: string }),
-          login: Type.Optional(Type.Object({ account: Type.Optional(string), password: Type.Optional(string), submit: Type.Optional(string),
-            tenant: Type.Optional(Type.Object({ selector: string, confirm: string })) })),
+          login: Type.Optional(loginSelectors),
         }), { minItems: 1 }),
       })),
       step: Type.Optional(Type.Object({
@@ -85,7 +87,9 @@ export function createUiTestingExtension(runtime) {
         actions: Type.Optional(Type.Array(Type.Object({ kind: Type.Union(["click", "fill", "select", "upload"].map(value => Type.Literal(value))), selector: string, value: Type.Optional(string), file: Type.Optional(string) }))),
         capture: Type.Optional(Type.Object({ name: string, query: Type.Optional(string), selector: Type.Optional(string), attribute: Type.Optional(string) })),
         createsRecord: Type.Optional(Type.Boolean()), terminal: Type.Optional(Type.Boolean()),
-      })), previousStepId: Type.Optional(string),
+      })), previousStepId: Type.Optional(string), retryEvidence: Type.Optional(string),
+      reconcileAfter: Type.Optional(Type.Object({ source: string, checks: Type.Array(Type.Object({ selector: string, text: string,
+        kind: Type.Optional(Type.Union([Type.Literal("text"), Type.Literal("value")])) }), { minItems: 1 }) })),
       authorization: Type.Optional(Type.Object({ kind: Type.Union([Type.Literal("user"), Type.Literal("rule"), Type.Literal("baseline")]), reference: string })),
       caseId: Type.Optional(string), title: Type.Optional(string), modulePath: Type.Optional(Type.Array(string)), contract: Type.Optional(contract),
     }), "approval");

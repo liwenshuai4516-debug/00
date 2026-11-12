@@ -12,6 +12,9 @@ description: 编排只读或已授权隔离写的 UI 探索、候选生成、完
 | 用户意图 | 操作与完成条件 |
 | --- | --- |
 | 探索页面 | contract.mode=explore；优先探索指定功能，再继续自由探索，汇总轨迹，不生成或执行脚本 |
+| 认证控件纠错 | 按审批提示词以 configure-login 版本化修正登录选择器，再一次 inspect | 仅有真实页面证据、执行结果均确认且未生成候选时使用；不改账号、身份、冻结业务规则或旧结果，多租户须完成目标租户选择 |
+| 未开始点击的定位纠错 | 按审批提示词提供原 retryEvidence，原节点仅纠正一次失败 selector | 仅有完整 fill 轨迹、target 阶段且未开始点击时允许；不改输入和业务预期，原失败保留。已提交结果未知仍走 reconcile |
+| 已提交的结果定位纠错 | 按审批提示词通过 reconcileAfter 只读核对一次 | 原 after 定位失败、完整动作及新页面证据齐备；只改结果 selector，原预期和失败保留，禁止重交 |
 | 生成候选 | mode=candidate；优先探索及指定候选保存后仍继续只读自由探索，汇总交付，不运行 |
 | 完整测试 | mode=complete；探索、候选、定向验证，通过才发布 |
 | 继续已有只读候选 | 用户要求继续验证时，按下文候选承接入口复用成功探索证据；不重新调用探索模型 |
@@ -34,7 +37,7 @@ description: 编排只读或已授权隔离写的 UI 探索、候选生成、完
 | 冻结约定 | 按覆盖清单选择独立目标和输入条件，确定初态、预期来源、允许控件及预算，写入本次 contract | 生成候选时一任务对应一个独立用例目标；不把整个模块的覆盖清单塞进一次探索 |
 | 优先探索 | 调用 qa_ui_explore；工具后台匹配项目、登录，再由 browser-use 完成当前目标并记录新入口 | 仅 completed 可进入候选阶段；mode=explore 完成优先清单后转自由探索；异常或预算耗尽按未完成报告 |
 | 发现后处理 | completed 且清理确认后核对 task.json、actions.jsonl、done 说明与证据；有审批线索时按探索提示词加载项目 qa-approval-workflow；去重并回写有证据的新功能点，更新本轮功能记录 | 状态未知、失败、取消或清理未确认不回写确认索引；本轮保留部分观察与待确认状态；保存失败按异常停止，不影响原证据 |
-| 审批分支 | 明确审批要求或命中线索后，调用 qa_ui_approval instructions 动态加载下文提示词；依其规则读取项目流程，preflight 检查配置，prepare 补齐人员，隔离认证及 inspect 取证，首次 execute 冻结，再逐节点执行、reconcile及candidate | 准备期修订显式引用配置版本；执行后不改配置；预检不等于登录成功；终态及真实轨迹完整才准备完整链草稿，随后回到候选保存/独立验证；异常停依赖链，缺口保留 |
+| 审批分支 | 明确审批要求或命中线索后，调用 qa_ui_approval instructions 动态加载下文提示词；依其规则读取项目流程，preflight 检查配置，prepare 补齐人员，隔离认证及 inspect 取证，首次 execute 冻结，再逐节点执行、reconcile及candidate | 准备期修订显式引用配置版本；执行后不改配置；预检不等于登录成功；认证受阻按提示词读取脱敏诊断并停链；终态及真实轨迹完整才准备完整链草稿，随后回到候选保存/独立验证；异常停依赖链，缺口保留 |
 | 生成候选 | 加载 qa-ui-assertion，依据当前任务约定和真实成功动作生成草稿，调用 qa_ui_save_candidate 冻结 revision；按清单规程关联检查项、准确 revision 与业务预期引用并保存 | 保存只代表静态检查完成；mode=candidate 完成优先候选后转自由探索，不自动执行 |
 | 候选承接 | 对 completed/candidate、清理已确认、未发布未验证的最新只读候选，调用 qa_ui_save_candidate({operation:"continue-candidate",caseId,baseRevision})；检查复制的草稿，再用返回 taskId 保存新 revision | 原任务与原版本不变；不调用模型或浏览器；冻结说明与原证据不变；共用最多三个未发布修订预算；重复承接返回原 taskId；随后进入独立验证 |
 | 独立验证 | 仅 mode=complete 调用 qa_ui_run 的 validate 模式，读取准确 revision 的原生结果、证据与清理状态 | 实际 passed 且满足发布条件才继续；未通过按现有补丁与异常规则处理，不降低预期 |

@@ -92,6 +92,9 @@ if (scenario === "auto-login") {
       if (request.url === "/tenant-start") {
         response.writeHead(302, { Location: "/tenant/switch" }); response.end(); return;
       }
+      if (request.url === "/tenant-single-start") {
+        response.writeHead(302, { Location: "/tenant/single-switch" }); response.end(); return;
+      }
       if (request.url === "/private" && values.get("username") === "fixture-account" && values.get("password") === "fixture-private-password") {
         response.setHeader("Set-Cookie", "fixture_identity=private-fixture-token; HttpOnly; Path=/");
         response.writeHead(302, { Location: "/private" }); response.end(); return;
@@ -100,12 +103,20 @@ if (scenario === "auto-login") {
         response.setHeader("Set-Cookie", "spa_identity=private-fixture-token; HttpOnly; Path=/");
         response.writeHead(302, { Location: "/spa" }); response.end(); return;
       }
+      if (request.url.startsWith("/invalid")) response.statusCode = 401;
     }
     if (request.url === "/route-mismatch") {
       response.writeHead(302, { Location: "/public" }); response.end(); return;
     }
     if (request.url === "/tenant/switch") {
       response.end('<button id="tenant">项目管理</button>'); return;
+    }
+    if (request.url === "/tenant/single-switch") {
+      response.end('<div id="tenant" onclick="location.href=\'/tenant/single-select\'">项目管理</div>'); return;
+    }
+    if (request.url === "/tenant/single-select") {
+      response.setHeader("Set-Cookie", "fixture_identity=private-fixture-token; HttpOnly; Path=/");
+      response.writeHead(302, { Location: "/tenant-single-start" }); response.end(); return;
     }
     if (request.url === "/spa" && request.headers.cookie?.includes("spa_identity=private-fixture-token")) {
       response.end('<h1>fixture-reviewer</h1><script>localStorage.setItem("role", "reviewer")</script>'); return;
@@ -114,12 +125,12 @@ if (scenario === "auto-login") {
       // 登录守卫前的空壳会短暂渲染身份区，随后才跳登录页。
       response.end('<h1>fixture-reviewer</h1><script>setTimeout(() => { location.href = "/spa-login" }, 100)</script>'); return;
     }
-    if (request.url === "/public" || (request.url === "/private" && request.headers.cookie?.includes("fixture_identity=private-fixture-token"))) {
+    if (request.url === "/public" || (["/private", "/tenant-single-start"].includes(request.url) && request.headers.cookie?.includes("fixture_identity=private-fixture-token"))) {
       response.end('<h1>fixture-reviewer</h1><script>localStorage.setItem("role", "reviewer")</script>'); return;
     }
-    response.end('<form method="post"><input name="username"><input name="password" type="password">' +
+    response.end('<form method="post"' + (request.url === "/invalid" ? ' action="/invalid?token=private-fixture-token"' : '') + '><input name="username"><input name="password" type="password">' +
       (request.url === "/ambiguous" ? '<input name="username">' : '') +
-      (request.url === "/captcha" ? '<input name="captcha" placeholder="验证码">' : '') + '<button>登录</button></form>');
+      (request.url === "/captcha" ? '<input name="captcha" placeholder="验证码">' : '') + '<button' + (request.url === "/disabled" ? ' disabled' : '') + '>登录</button></form>');
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const origin = "http://127.0.0.1:" + server.address().port;
@@ -141,14 +152,30 @@ if (scenario === "auto-login") {
           assert.equal(state.cookies[0].name, "fixture_identity");
           assert.equal(state.origins[0].localStorage[0].value, "reviewer");
         }
-        if (route === "invalid") { assert.equal(submissions, 2, "失败仅提交一次"); assert.equal(result.code, "login-unconfirmed"); }
+        if (route === "invalid") {
+          assert.equal(submissions, 2, "失败仅提交一次"); assert.equal(result.code, "login-unconfirmed");
+          assert.equal(result.stage, "login-transition");
+          assert.equal(result.diagnostics.errorKind, "timeout");
+          assert.equal(result.diagnostics.passwordVisible, true);
+          assert.deepEqual(result.diagnostics.requests, [{ method: "POST", pathname: "/invalid", sameOrigin: true, status: 401 }]);
+          assert.ok(!JSON.stringify(result).includes("private-fixture-token"), "诊断不得带查询参数中的 token");
+        }
         if (route === "spa") assert.equal(submissions, 3, "空壳闪现不能跳过登录");
       } finally { await entry.cleanup(); }
       await assert.rejects(fs.access(entry.directory), { code: "ENOENT" });
     }
+    const tenantLogin = await openLogin(runtime, origin + "/tenant-single-start");
+    try {
+      const before = submissions;
+      const result = await tenantLogin.auto(credentials, { authenticated: "h1", identityText: "fixture-reviewer", tenant: { selector: "#tenant" } });
+      assert.equal(result.status, "saved", "支持真实页面的一次点击租户选择，不强制第二次确认");
+      assert.equal(submissions, before + 1);
+      assert.ok(JSON.parse(await fs.readFile(tenantLogin.file, "utf8")).cookies.length > 0);
+    } finally { await tenantLogin.cleanup(); }
     for (const scenario of [
       { route: "private", credentials: { account: "fixture-account", password: "" }, code: "credentials-missing" },
       { route: "ambiguous", code: "form-ambiguous" },
+      { route: "disabled", code: "login-unconfirmed" },
       { route: "public", selectors: { authenticated: "h1", identityText: "wrong-identity" }, code: "identity-mismatch" },
       { route: "route-mismatch", selectors: { authenticated: "h1" }, code: "route-mismatch" },
       { route: "tenant-start", selectors: { tenant: { selector: "#tenant", confirm: "#missing-confirm" } }, code: "tenant-incomplete" },
@@ -161,6 +188,10 @@ if (scenario === "auto-login") {
         assert.equal(result.status, "manual-required");
         assert.equal(submissions, before + (scenario.route === "tenant-start" ? 1 : 0));
         assert.ok(!JSON.stringify(result).includes(credentials.password));
+        if (scenario.route === "disabled") {
+          assert.equal(result.stage, "login-click");
+          assert.deepEqual(result.diagnostics.requests, [], "点击失败不能误报已提交认证请求");
+        }
       } finally { await entry.cleanup(); }
     }
     assert.deepEqual((await fs.readdir(base)).filter(name => name.startsWith("qa-ui-auth-") || name.startsWith("playwright_chromiumdev_profile-")), []);
