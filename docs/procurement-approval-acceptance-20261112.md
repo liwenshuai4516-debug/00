@@ -4,7 +4,7 @@
 
 ## 已确认的进展与停止位置
 
-**当前结论：发起人确认的编号与意见框定位阻塞已解决，生产 Agent 真实确认通过；完整链尚被刘波归档接口的业务403阻塞。** 原唯一合同已保存编号 `HSKJ-CGHT-2026-900`、签订日、有效期及扫描件，17:16:26流转“归档”。刘波本人页面显示归档按钮，但其实际权限响应没有归档接口授权标识；17:19单次归档POST返回HTTP200/业务403。只读复核仍为归档、finalDraftConfirmed=1、archiveFlag=0，未重放、未代审、未修改被测系统或权限。旧12个前置成功步骤加本次独立确认构成13个已完成业务步骤，不冒称原frozen flow已整体completed；归档终态及独立完整链回放仍未通过。详见文末“确认恢复成功与归档权限阻塞”。
+**当前结论：发起人确认已真实通过；2026-11-13新登录预检发现刘波已有经营合同归档权限，但仍缺本次采购合同归档权限，尚未再次归档。** 原合同 `478297089609900032 / HSKJ-CGHT-2026-900` 仍为归档、finalDraftConfirmed=1、archiveFlag=0，编号/日期/扫描件保留。12日采购归档业务403仍是原始失败；13日只读预检未通过即停止，未发新归档POST、未修改权限或被测系统。需补齐准确的procurement-contract/archive授权并重新核对后，才能由生产Agent执行一次定向归档。完整链终态与独立全链回放均未通过。
 
 
 客户端补齐脱敏登录子阶段、有限请求 HTTP 状态/数字业务码及审批页面失败观察；不保存认证头、请求/响应正文。inspect、execute 成功及页面失败增加有限 pageText，截图使用 fullPage，内嵌滚动区不承诺全部展开；inspect 保留隐藏文件输入框，text/value 检查为全等、须定位具体节点。验收启动器在进程内从现有项目配置读取已授权密码并注入原 QA_UI_TEST_PASSWORD 入口，未改写凭据文件，没有新增凭据库、重试器或流程引擎；这不代表已重启用户桌面窗口或验证其既有进程环境。
@@ -306,3 +306,24 @@ flowchart TD
 独立生产 Pi Agent 以新临时会话 `01a1cf11-153b-74e3-bdf3-7f6edcbe7be2` 只读核对六份原生结果/事件文件，正常收尾；确认“真实确认passed、归档403未通过”的结论，未批准全链或正式回归。原始复核意见为工作区 `independent-result-review.md`，事件为 `agent-result-review-events.json`。其指出六文件未包含语法输出、NOT-RUNNING原回包及归档前观察，现另存 `syntax-checks.json`、`process-check-output.json`并明确引用此前两份归档前只读观察。原flow执行后只读状态快照为 `original-flow-current-status.json`，不能将其冒称为执行前后哈希对照。
 
 复核还将诊断字段 `opinionCount=0` 与“处理意见”框存在视为矛盾：该历史字段实际上统计“审核意见”label，归档页为0；真实归档脚本按“处理意见”唯一且可编辑检查通过，失败发生在提交之后。保留旧诊断并补充字段语义，不为结论改写原证据。复核自行使用的S1等级没有项目分级来源，本报告不采用该严重级别。
+
+
+## 2026-11-13权限恢复预检：经营合同权限不能替代采购合同
+
+用户通知刘波已加归档权限后，09:01:25–09:01:29（Asia/Shanghai）使用新的隔离登录及项目管理租户，只读核对实际权限和原合同。结果为observed，表示观察完成，不表示业务前提通过。实际GET `/api/base-service/permission` HTTP200/业务200，包含 `POST/project-management-backend/v1/web/contract-mgt/operation-contract/archive`（经营合同归档），仍无 `POST/project-management-backend/v1/web/contract-mgt/procurement-contract/archive`（本次采购合同归档）。没有据用户口头通知直接重试旧403。
+
+| 项目 | 结果 |
+| --- | --- |
+| 身份/原记录 | 你好 刘波；478297089609900032 / HSKJ-CGHT-2026-900 |
+| 真实初态 | 归档/刘波，finalDraftConfirmed=1、archiveFlag=0、APPROVING/APPROVAL；原已确认编号、日期和扫描件仍在 |
+| 可见控件 | “处理意见”1个、确认归档按钮1个；按钮可见不代替精确接口权限 |
+| 实际链路 | 用户恢复通知→exec_command运行工作区permission-preflight.mjs→本仓库openLogin与Playwright→pms登录/租户→只读权限及原合同页面 |
+| 工具与状态 | node脚本退出码0；权限前置条件不通过；本轮未额外读取SKILL、未启动生产Pi Agent归档，不把准备好的脚本记成已调用 |
+| 已执行处置 | 业务页面阻断非GET；业务请求全为GET，0次归档/上传/新建/确认。未改被测系统源码、权限或配置，未重放12日的归档请求 |
+| 停止原因 | 本次目标为采购合同，当前只有经营合同归档权限；旧403失败条件没有证据已经解除 |
+| 最小恢复 | 在项目管理租户补齐准确采购合同archive接口授权；新登录只读确认生效及原待办，再由生产Agent单次归档并核对终态 |
+| 未完成范围 | 归档与终态、独立完整链回放/发布仍未执行；旧flow、旧round及旧失败保留 |
+
+证据位于实际工作区 `qa/ui/tasks/procurement-archive-recovery-20261113/permission-preflight.json/png`；本轮报告为同目录 `current-result.md`，恢复设计为 `recovery-design.md`。新执行候选 `archive-once-after-permission.mjs` 语法检查通过，尚未运行；它再次校验精确采购权限，归档HTTP/业务码失败立即停，避免仅报随后等跳转超时。归档日期断言随本轮日期为2026-11-13，原签订日及有效期保持12日已保存值，不改旧预期记录。
+
+当前继续步骤：补齐采购接口授权证据 → 新登录只读核对权限、本人及原记录 → 生产Agent单次归档 → 原详情FINISH、archiveFlag=1、刘波/本轮时间/意见/材料 → 列表/详情终态与独立结果核对。前提不通过停在只读阶段，业务结果未知先核对而不重放；失败仍停止并报告。权限视图仅保留采购/合同/归档相关字符串，不保存认证信息，也不推断具体服务端拒绝代码分支。
