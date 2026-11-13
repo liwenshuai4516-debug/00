@@ -9,6 +9,8 @@
 | 用例粒度、覆盖与审批关联 | [UI 用例规则](ui-case-rules.md) | 详细规则在对应技能维护，不复制到默认提示词 |
 | UI 主 Agent 执行流程 | [qa-ui-basic/SKILL.md](../resources/testing/ui/skills/qa-ui-basic/SKILL.md) | 明确阶段继续条件，调用探索前读取规则文件 |
 | 正式回归与审批测试执行 | [qa-ui-execute/SKILL.md](../resources/testing/ui/skills/qa-ui-execute/SKILL.md) | 正式版本回归；审批任务按项目流程与已确认人员账号映射执行，仍以实际工具能力为前提 |
+| 审批通用执行规程 | [approval-control.md](../resources/testing/ui/prompt/approval-control.md) | instructions 动态读取；维护节点前字段、上传、权限核对及异常恢复，不新增工具参数或自动权限检查 |
+| 项目审批事实与页面资料 | [qa-approval-workflow](../.pi/skills/qa-approval-workflow/SKILL.md)及[采购合同核对资料](../.pi/skills/qa-approval-workflow/references/采购合同确认与归档.md) | 必须在实际测试工作区安装并按需读取；部署声明与历史观察不代替本次结果，其他流程不套用 |
 | 功能探索提示词 | [prompt/exploration-control.md](../resources/testing/ui/prompt/exploration-control.md) | 统一维护优先探索、自由发现、覆盖维度、审批技能条件加载、功能核实与去重回写及停止规则；当前阶段和独立目标写入 contract.goal |
 | 当前任务的探索约定 | 当前工作区 `qa/ui/tasks/<taskId>/task.json` 的 contract | qa_ui_explore 保存本次约定；不覆盖其他任务或已冻结预期 |
 | 本轮功能清单与转换汇总 | [本轮清单规程](../resources/testing/ui/skills/qa-ui-basic/references/coverage.md) | 主 Agent 通过 qa_ui_coverage 持续保存并冻结 qa/ui/rounds 准确版本；不由 browser-use 写入或计算 |
@@ -29,6 +31,8 @@ UI 探索提示词集中放在 `resources/testing/ui/prompt/`，沿用现有工�
 主 Agent 按提示词先处理指定功能，再继续其他功能的只读自由探索；初始清单是优先顺序，不是功能白名单。单次工具仍核对已匹配项目、身份、控件和输入；主 Agent 从真实轨迹提取新入口，按独立目标声明后续任务，无需再次确认只读功能范围。工具自身不会在 completed 后启动下一目标；队列、总预算与停止依据由主 Agent 维护。新发现默认只探索，不自动生成、执行或发布额外用例，不扩大写入授权。完整流程以 qa-ui-basic 为准，用例拆分与语义覆盖仍以 qa-ui-case-design 为准。
 
 探索中发现明确审批线索时，主 Agent 按探索提示词动态读取 approval-control.md，再加载实际测试工作区已登记的 qa-approval-workflow，将本次适用的只读要点与来源放入后续 contract；普通功能不加载。成功且清理确认的探索后，主 Agent 核实并去重，将有证据的新检查点和项目专属功能索引回写至当前生效的探索提示词，详细依据保存在原任务 discoveries.md。条件路由与文件回写属于主 Agent 提示词约定，工具不提供自动持久化服务；文件不可写或并发版本变化时保留发现并报告待处理。安装包资源不能假定可写，本次没有新增可写运行副本或跨版本迁移机制。
+
+审批维护按「通用执行规程 → 项目流程与页面资料 → 本节点取证 → 执行及结果核对」衔接，详见[审批执行流程表](ui-testing-runtime.md#审批执行边界)。本次补充字段/上传/精确权限核对、原链恢复及 Agent 与业务结果分层说明；矩阵候选的动态重绘等待见 qa-ui-assertion。规则在下次 instructions 或技能正文实际读取后参与任务，不热改已冻结计划、既有会话快照或历史结果；文件已同步也不等于旧会话已加载。规则维护的离线检查不能替代真实模型遵循规则或归档终态验收。
 
 ## 查看会话启动时的系统提示词
 

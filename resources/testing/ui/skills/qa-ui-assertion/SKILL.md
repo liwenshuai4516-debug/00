@@ -23,6 +23,8 @@ case.json 使用 qa-ui-case/v1。assertions.kind 为 business 或 guard；每条
 
 一例一 test，采用 @playwright/test 的 web-first expect，稳定 role/name 或业务属性定位。无 first/nth、临时 ref、固定 sleep、skip 或 catch 吞错。新上下文先核对身份与可重复初态，附 qa-initial-state 截图；业务断言后附 qa-business-result 截图；隔离写任务按约定保存并 attach qa-cleanup（用例内清理）或 qa-residue（已授权的声明残留）；不得用清理证据替代业务断言。截图不替代断言，凭据不进入脚本或日志。
 
+切换模型或动态重绘后，先等待有来源的完整业务状态再读取文本集合；`length>0` 不能证明表头或数据已稳定，预期数量有来源时可等待准确数量，再核对完整内容及顺序。修等待不把全等改为包含、不删顺序或数量断言；复核脚本差异，case.json 哈希相同也不能证明脚本没有新增或改变业务断言。
+
 qa_ui_save_candidate 仅静态检查并冻结 revision。只有 qa_ui_run 的独立原生结果才能判断回放，准确版本验证通过才可 qa_ui_publish。冻结后不修改版本文件，修改草稿后保存新候选。已有正式版本失败回归通过 qa_ui_save_candidate 的修复任务入口保存最小补丁；不改变业务说明和预期。用户明确继续只读 candidate 时，调用 operation=continue-candidate 承接并保存新修订；草稿 taskId 绑定承接任务，steps 和冻结业务说明仍追溯原成功探索。承接及保存均不执行测试，三个未发布修订的预算不重置。
 
 ## 失败处理

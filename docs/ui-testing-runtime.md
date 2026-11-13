@@ -74,17 +74,20 @@ dataStrategy 固定 read-only，cleanup 固定 none。允许的 click/input/sele
 | 准备与预检 | preflight / prepare → 配置缺口、flow.json 与 configRevision | 预检只确认宿主配置，不登录；准备修订引用当前 baseRevision，保留 configHistory 和原证据；旧零步骤计划可显式修订 |
 | 登录控件纠错 | configure-login → 仅登录选择器的新版本及来源 | 已执行步骤须全部 completed、尚无候选；引用当前 baseRevision 和已登记 actorId，保留冻结业务内容及旧证据。单次点击租户卡片的 confirm 可省略，选择完成后才访问业务页；修订后一次 inspect，失败停止 |
 | 人员观察 | inspect → 绑定配置版本的检查结果、完整页面截图/真实控件（含隐藏文件输入框）及有限 pageText；认证失败保存脱敏 diagnostics | 身份、record 及非空 before 就绪后采集；text/value 均为全等，应定位具体节点/字段；创建前明确 createsRecord 才跳过 record；文字截断时核对截图；认证失败不冻结配置，按子阶段定位后停止依赖链 |
+| 节点前证据核对 | 主 Agent 按审批提示词读取当前节点页面、字段规则、上传及必要权限证据 | 分别核对真实处理人入口、字段格式/定位、上传登记；已有403或补权通知先新登录正确租户只读核对准确接口权限与原记录。属于执行规程，不是 preflight 新增权限功能或 upload 自动等待能力 |
 | 节点执行 | execute → 冻结业务配置、意图、成功动作轨迹、前后截图、有限 pageText 及变量 | 全部登记人员认证配置齐备、当前人员认证成功，在现有互斥内先持久化冻结版本与意图；引用上一已确认节点，按授权执行一次并验证 after |
 | 异常核对 | reconcile → 原节点只读核对证据 | 只确认 record/after，不重放；收尾未知保留锁 |
 | 未开始点击的定位纠错 | execute + retryEvidence → 原节点一次新尝试，保留 attempts | 只限 target 阶段、此前完整轨迹均为 fill、未开始任何业务点击；仅改失败 selector，before/after/身份/输入不变，重新核对原状态。已点击或 after 未确认仍只能 reconcile |
 | 已提交的结果定位纠错 | reconcile + reconcileAfter → 一次只读核对，成功另存 reconciledStep | 原 after 失败且完整动作/收尾已确认；source 引用新页面证据，仅改 selector，预期文字、kind、顺序和数量不变；保留原 step/check，回放继承正确定位。失败停止，不重交动作 |
 | 完整链草稿 | candidate → task.json 与 drafts/<caseId> | 从唯一新记录开始、全部启用节点动作完整，分别核对审批及范围内归档终态；预期与 after 来源匹配 |
 | 候选及独立回放 | save_candidate → validate → passed 才 publish；按范围 regression | 复用原版本/报告链，每批创建独立记录、多账号隔离、附件哈希冻结 |
-| 主线收尾 | 回到本轮清单与 qa-test-report | 分列节点证据和正式 run，保留受阻项、记录残留与生成率 |
+| 主线收尾 | 回到本轮清单与 qa-test-report | 分列会话、技能读取、工具执行、业务节点与正式 run 证据，说明超时来源及取消终值；保留受阻项、记录残留与生成率，不以 Agent 启动或 settled 代替业务通过 |
 
 多账号凭据沿用项目已配置账号；已确认共用测试密码的其他账号可由宿主 QA_UI_TEST_PASSWORD 提供，不读取 .env 给模型、不修改全局项目账号，不支持每人不同密码的通用凭据库。登录选择器与可选租户选择由真实页面证据提供；认证、验证码/MFA、跨站或身份核验失败停止依赖链。每节点新上下文，登录态仅私有临时文件/IPC，回放关闭 trace。工具支持稳定定位器的 click/fill/select/upload，不代表任意前端控件均已验收。
 
 preflight 的 configured 仅表示所提供人员的配置齐备，不验证密码有效性，也不证明人员覆盖了业务全部节点。真实 Electron 主进程须通过该工具检查，命令进程环境不能代替。认证 code/stage 和节点 check.json 用于脱敏诊断；已产生执行意图的计划（包括 blocked/unknown）保持冻结，后续不能补换人员或改写既有步骤预期。旧无版本检查绑定初始配置版本 1，修订不回写旧检查。完整业务节点图仍由来源和逐步取证约束，没有新增通用流程引擎。
+
+新回放从独立记录开始；原链异常恢复沿用原记录及已确认动作，不重建替代合同。selector 纠错不能改输入或业务预期，当前没有通用冻结计划修订入口；独立恢复脚本不回填原 flow 成功或补造正式 run。字段、上传、权限与异常归因的详细规程见审批提示词，采购合同部署资料见项目审批技能；本次维护不执行真实审批，当前完整链状态仍以[真实验收记录](procurement-approval-acceptance-20261112.md)为准。
 
 登录诊断及停止条件见[审批提示词的异常处理](../resources/testing/ui/prompt/approval-control.md#异常取消与结果核对)。检查能区分点击失败和点击后未完成跳转，保留有限 HTTP 状态及数字业务码，不保存认证正文。审批页面检查失败也保存有限业务文字和请求状态，不能将 HTTP 200 内的业务403/500当作成功。截图使用 fullPage，内嵌滚动区仍以当前视口为准，文字与截图须结合核对。离线 `auto-login` 检查覆盖认证返回401时仅提交一次、查询参数脱敏及禁用按钮未发请求；这不等于真实认证恢复。
 
@@ -95,6 +98,8 @@ preflight 的 configured 仅表示所提供人员的配置齐备，不验证密�
 采购合同的对照表定位、串行且全部通过的会签语义、已确认统一测试密码及残留授权的适用范围、矩阵/时间线差异与归档终态判断，统一见[审批提示词](../resources/testing/ui/prompt/approval-control.md)的对应章节。规则在下次 instructions/节点操作读取时生效，不修改已冻结计划；这里只更新规则，未注入真实密码或新增真实业务验收。
 
 维护与验收入口：`node --test tests/unit/ui-approval-preparation.test.js tests/unit/ui-approval.test.js` 检查预检/准备/版本及浏览器节点；`node --test --test-name-pattern='resources|auto-login' tests/unit/ui-testing-runtime.test.js` 检查 SDK 工具参数及认证分类；`resources/testing/ui/browser-use/.venv/bin/python -B tests/helpers/browser-use-readonly.check.py` 检查动作清单与守卫，`browser-use-prompt.check.py` 检查随包提示词读取。均为临时夹具，不调用付费模型、不使用真实用户凭据；浏览器检查需要本机监听权限。真实账号、可选节点开关、负向多角色回放和真实审批须单独取证，不由离线通过推定就绪。
+
+2026-11-13 规则维护验证：`node --test tests/unit/ui-approval-preparation.test.js` 1项、上述 `browser-use-prompt.check.py` 4项通过；本次修改的 qa-approval-workflow、qa-ui-basic、qa-ui-assertion 三份技能格式、新增文件链接及文档表格检查通过。未请求模型、未执行真实审批，不代表新增规程的模型行为或完整链终态已通过。
 
 2026-11-11 定向检查通过：上述准备、审批、SDK 登记、认证分类，`node --test tests/unit/ui-readonly-workflow.test.js` 的共享主线兼容，以及 `node --test tests/unit/browser-use-dropdown.test.js` 的真实本地 browser-use 下拉动作。合计 6 项 Node 子测试、13 项 Python 检查（动作守卫 9 项、随包提示词及脱敏诊断 4 项）。覆盖准备/执行互斥、认证失败后显式修订及旧证据保留、执行后冻结、延迟加载后取控件、记录错误拒绝、未知结果不重放。端口权限限制解除后完成浏览器验证；SDK 检查对象层级与下拉夹具控件声明各修正后验证通过。均不代表真实业务、当前已打开会话或安装包已更新。
 
