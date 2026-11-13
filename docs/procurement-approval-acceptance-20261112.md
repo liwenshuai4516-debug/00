@@ -4,7 +4,7 @@
 
 ## 已确认的进展与停止位置
 
-**当前结论：发起人确认已真实通过；2026-11-13新登录预检发现刘波已有经营合同归档权限，但仍缺本次采购合同归档权限，尚未再次归档。** 原合同 `478297089609900032 / HSKJ-CGHT-2026-900` 仍为归档、finalDraftConfirmed=1、archiveFlag=0，编号/日期/扫描件保留。12日采购归档业务403仍是原始失败；13日只读预检未通过即停止，未发新归档POST、未修改权限或被测系统。需补齐准确的procurement-contract/archive授权并重新核对后，才能由生产Agent执行一次定向归档。完整链终态与独立全链回放均未通过。
+**当前结论：采购合同归档权限已于2026-11-13新登录只读核对生效；真实Agent已启动，但触发本次验收启动器五分钟上限，归档尚未执行。** 原合同 `478297089609900032 / HSKJ-CGHT-2026-900` 的发起人确认已通过，仍为归档、finalDraftConfirmed=1、archiveFlag=0。09:07新预检确认准确procurement-contract/archive授权存在；生产Agent09:12被timer中止，工具执行事件0、归档脚本未启动。09:13新登录复核权限仍在且记录未归档。旧403及09:01权限未生效的历史保留，不再要求用户重复配置；当前停止点是Agent执行而非归档权限。完整链终态及新独立回放仍未通过。
 
 
 客户端补齐脱敏登录子阶段、有限请求 HTTP 状态/数字业务码及审批页面失败观察；不保存认证头、请求/响应正文。inspect、execute 成功及页面失败增加有限 pageText，截图使用 fullPage，内嵌滚动区不承诺全部展开；inspect 保留隐藏文件输入框，text/value 检查为全等、须定位具体节点。验收启动器在进程内从现有项目配置读取已授权密码并注入原 QA_UI_TEST_PASSWORD 入口，未改写凭据文件，没有新增凭据库、重试器或流程引擎；这不代表已重启用户桌面窗口或验证其既有进程环境。
@@ -327,3 +327,30 @@ flowchart TD
 证据位于实际工作区 `qa/ui/tasks/procurement-archive-recovery-20261113/permission-preflight.json/png`；本轮报告为同目录 `current-result.md`，恢复设计为 `recovery-design.md`。新执行候选 `archive-once-after-permission.mjs` 语法检查通过，尚未运行；它再次校验精确采购权限，归档HTTP/业务码失败立即停，避免仅报随后等跳转超时。归档日期断言随本轮日期为2026-11-13，原签订日及有效期保持12日已保存值，不改旧预期记录。
 
 当前继续步骤：补齐采购接口授权证据 → 新登录只读核对权限、本人及原记录 → 生产Agent单次归档 → 原详情FINISH、archiveFlag=1、刘波/本轮时间/意见/材料 → 列表/详情终态与独立结果核对。前提不通过停在只读阶段，业务结果未知先核对而不重放；失败仍停止并报告。权限视图仅保留采购/合同/归档相关字符串，不保存认证信息，也不推断具体服务端拒绝代码分支。
+
+
+## 2026-11-13采购归档权限已恢复，Agent运行上限停止
+
+用户明确回复“采购合同归档已配置”后，09:07:07–09:07:11（Asia/Shanghai）重新使用刘波隔离登录项目管理租户。`permission-restored-preflight.json`确认身份、准确采购合同archive接口权限存在，原合同仍归档、finalDraftConfirmed=1、archiveFlag=0，处理意见与归档按钮各唯一。该证据改变了旧403的已知前置条件，因此启动生产Agent作一次定向恢复，未直接重放归档。
+
+| 项目 | 实际事实与限制 |
+| --- | --- |
+| 任务与结论 | 原合同采购归档；权限恢复核对通过，Agent执行失败，归档及后续终态核验未执行 |
+| 实际时间 | 09:07:48启动至09:12:54退出，2026-11-13，Asia/Shanghai |
+| Agent身份 | createPiAgent生产入口；sessionId `01a1d272-52b8-7148-8ff1-719ecd6c1f8d`；既有qwen3.8-flash-next模型，临时隔离会话 |
+| 真实链路 | 用户恢复通知→exec_command运行只读预检→前提通过→exec_command启动Electron agent.cjs→createPiAgent/session.prompt→既有模型通道。预期的read/bash和Playwright归档均未执行 |
+| 直接停止原因 | 本次临时验收启动器五分钟timer调用session.abort；deadline=true、status=failed、error=client aborted，进程退出码1。不是归档接口重现403，五分钟也不是Pi SDK或被测系统的运行时限制 |
+| 原生记录 | 助手stopReason=aborted，历史保留未完成read调用 `chatcmpl-tool-bcefea9c983abc45`，参数path截断至procurement-archive-recovery-2026；实际tool_execution_start/end事件0条，不能将未完成工具参数记为工具已执行 |
+| 根因边界 | 可以确认触发本次运行上限；无法确认为什么五分钟仍未形成完整工具调用，缺供应商时序/日志。不能仅凭client aborted说认证/网络/额度故障，不能说供应商完全没有返回数据 |
+| 技能 | 本轮未额外读取SKILL，Agent没有执行read，未加载所提示读取的设计或脚本；未使用钉钉审批或替代模型服务 |
+| 写入及残留 | archive-execute/archive-started.json不存在，归档候选未启动；0次归档/上传/确认/新建，旧合同/材料与失败保留，无新写入结果未知 |
+| 已执行处置 | 沿同一进程有限等待并确认退出，没有另开相同任务；停止归档依赖链，仅新登录只读复核；没有绕过Agent由外层直接提交 |
+| 停止后复核 | 09:13:34–09:13:40，准确采购归档权限仍存在；原记录、编号、归档/刘波、APPROVING/APPROVAL、archiveFlag=0、finalDraftConfirmed=1，扫描件/日期仍在；业务页面阻断非GET |
+| 最小恢复 | 用户无需再次修改业务权限；先取得Agent/模型通道能完成工具调用的恢复证据，再按原记录先只读核对后定向归档。当前不以新会话、换模型或放宽计时盲重试；若后续结果未知仍不得重放 |
+
+本轮工作区 `qa/ui/tasks/procurement-archive-recovery-20261113/`：`permission-restored-preflight.json/png`为恢复预检；`agent-archive-events.json`、`agent-message-status.json`及`aborted-toolcall-summary.json`为Agent事件/终值及截断工具调用摘要；`state-after-agent-stop.json/png`为停止后只读状态；`evidence-checks.json`核对权限已恢复、0工具执行、脚本未启动及原记录仍未归档。`current-result.md`已更新为本轮完整停止报告。原09:01预检与旧403均未覆盖。
+
+`archive-once-after-permission.mjs`及`terminal-readonly.mjs`语法检查通过，两者均未执行业务；不能把准备好的终态脚本当作列表/详情终态检查通过。新恢复设计同步了“权限已生效→Agent运行上限停止→只读复核→待执行链恢复证据”的状态，不再停留在要求用户补权限，也不把Agent启动冒称业务验收通过。完整链归档、终态、独立结果复核及新candidate/validate/publish均未完成。
+
+
+本轮还做了不依赖模型的只读定位：停止计时来自临时agent.cjs；与12日同类归档Agent比对，模型标识相同、6个qa_ui工具schema一致，比较结果保存在 `runtime-metadata-comparison.json`。这不是完整请求相同或服务已恢复的证据；SDK本次durationMs=299802，aborted usage零值不能当作实际token为零。没有发现可据以自动重启的明确前置修复，故不盲重试。
